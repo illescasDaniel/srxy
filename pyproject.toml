@@ -1,0 +1,93 @@
+[project]
+name = "srxy"
+version = "1.0.0"
+description = "Composable Python search with per-field match strategies and a Q expression DSL"
+readme = "README.md"
+requires-python = ">=3.11"
+license = { text = "MIT" }
+dependencies = [
+	"jellyfish>=1.2",
+	"openpyxl>=3.1",
+	"pypdf>=6.0",
+	"python-docx>=1.2",
+	"python-pptx>=1.0",
+	"rapidfuzz>=3.14",
+]
+
+[project.optional-dependencies]
+semantic = [
+	"sentence-transformers>=5.0",
+]
+dev = [
+	"basedpyright>=1.39",
+	"pytest>=9.0",
+	"pytest-cov>=7.0",
+	"ruff>=0.15",
+]
+uploader = [
+	"build>=1.5",
+	"twine>=6.0",
+]
+
+[build-system]
+requires = ["setuptools>=82"]
+build-backend = "setuptools.build_meta"
+
+[project.scripts]
+srxy = "srxy.cli:main"
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-v --tb=short"
+pythonpath = ["."]
+markers = [
+	"unit: fast isolated tests",
+	"integration: tests using real models and fixture datasets",
+]
+
+[tool.ruff]
+line-length = 120
+target-version = "py311"
+src = ["src", "tests"]
+
+[tool.ruff.format]
+indent-style = "tab"
+
+[tool.ruff.lint]
+select = ["F", "I", "E", "S", "B"]
+fixable = ["ALL"]
+ignore = ["E501"]
+
+[tool.ruff.lint.isort]
+combine-as-imports = true
+lines-after-imports = 2
+
+[tool.ruff.lint.per-file-ignores]
+"scripts/**" = ["S603", "S607"]
+"tests/**" = ["S101"]
+
+[tool.basedpyright]
+typeCheckingMode = "strict"
+include = ["src", "tests"]
+pythonVersion = "3.11"
+venvPath = "."
+venv = ".venv"
+extraPaths = ["src"]
+reportMissingTypeStubs = false
+reportUnknownMemberType = false
+reportUnknownLambdaType = false
+reportUnknownVariableType = false
+reportUnknownArgumentType = false
+reportUnknownParameterType = false
+reportAttributeAccessIssue = false
+executionEnvironments = [
+	{ root = "src" },
+	{ root = "tests", extraPaths = ["src", "."] },
+]
+
+[tool.coverage.run]
+source = ["srxy"]
+omit = ["tests/*"]

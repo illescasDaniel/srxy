@@ -1,0 +1,14 @@
+.venv/
+examples/.venv-package-test/
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+dist/
+build/
+.pytest_cache/
+.coverage
+htmlcov/
+.ruff_cache/
+.mypy_cache/
+.basedpyright/

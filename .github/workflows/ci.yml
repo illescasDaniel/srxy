@@ -1,0 +1,42 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Install dependencies
+        run: |
+          .venv/bin/pip install --upgrade "pip>=26.1.2"
+          .venv/bin/pip install -e ".[dev]"
+
+      - name: Install shell linting tools
+        run: |
+          sudo apt-get install -y shellcheck
+          SHFMT_VER=3.13.1
+          curl -sSL \
+            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VER}/shfmt_v${SHFMT_VER}_linux_amd64" \
+            -o /usr/local/bin/shfmt
+          chmod +x /usr/local/bin/shfmt
+
+      - name: Quality gate
+        env:
+          CI: true
+          GITHUB_ACTIONS: true
+        run: ./scripts/quality/checks.sh
