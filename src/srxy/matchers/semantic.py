@@ -2,17 +2,13 @@ from __future__ import annotations
 
 import os
 from pathlib import Path
-from typing import TYPE_CHECKING
 
 from srxy.matchers.base import Matcher
 
 
-if TYPE_CHECKING:
-	from sentence_transformers import SentenceTransformer
-
 DEFAULT_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
-_semantic_model: SentenceTransformer | None = None
+_semantic_model: object | None = None
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
@@ -39,8 +35,8 @@ def _model_source() -> str:
 	return os.environ.get("SRXY_SEMANTIC_MODEL", DEFAULT_MODEL_ID).strip() or DEFAULT_MODEL_ID
 
 
-def _load_model() -> SentenceTransformer:
-	from sentence_transformers import SentenceTransformer
+def _load_model() -> object:
+	from sentence_transformers import SentenceTransformer  # type: ignore[reportMissingImports]
 
 	source = _model_source()
 	model_path = Path(source)
@@ -52,7 +48,7 @@ def _load_model() -> SentenceTransformer:
 	return SentenceTransformer(source)
 
 
-def _get_model() -> SentenceTransformer:
+def _get_model() -> object:
 	global _semantic_model
 	if _semantic_model is None:
 		_semantic_model = _load_model()
@@ -71,7 +67,7 @@ def reset_semantic_model():
 
 
 def _cosine_similarity(left: object, right: object) -> float:
-	from sentence_transformers import util
+	from sentence_transformers import util  # type: ignore[reportMissingImports]
 
 	return float(util.cos_sim(left, right)[0][0])  # type: ignore[index]
 

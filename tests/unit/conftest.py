@@ -10,6 +10,7 @@ from srxy.matchers.registry import get_atomic_matcher
 @pytest.fixture(autouse=True)
 def mock_semantic_model(monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.setenv("SRXY_SEMANTIC", "1")
+	monkeypatch.setattr("srxy.matchers.semantic.sentence_transformers_installed", lambda: True)
 	get_atomic_matcher.cache_clear()
 	mock_model = MagicMock()
 	mock_model.encode.side_effect = lambda texts: [[float(hash(text) % 1000), 0.1] for text in texts]
