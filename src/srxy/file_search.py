@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from srxy.document_text import is_document_path, iter_document_lines
@@ -58,6 +58,21 @@ def _iter_files(
 			if skip_hidden_folders and _is_hidden_path_part(filename):
 				continue
 			yield current / filename
+
+
+def _collect_files(
+	root: Path,
+	*,
+	skip_hidden_folders: bool = True,
+	skip_noise_folders: bool = True,
+) -> list[Path]:
+	return list(
+		_iter_files(
+			root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+		)
+	)
 
 
 def content_location_kind(path: Path) -> str:
@@ -172,6 +187,66 @@ def _score_lines(
 	return content_score, matches
 
 
+def _search_single_file(
+	file_path: Path,
+	*,
+	matcher: CompositeMatcher,
+	normalized_query: str,
+	search_root: Path,
+	search_names: bool,
+	search_contents: bool,
+	threshold: float,
+	max_file_size: int | None,
+	effective_line_threshold: float,
+	max_line_matches: int,
+	skipped_files: list[SkippedFile] | None,
+) -> FileSearchResult | None:
+	if not file_path.is_file():
+		return None
+
+	breakdown: dict[str, float] = {}
+	scores: list[float] = []
+	line_matches: list[LineMatch] = []
+
+	if search_names:
+		name_score = _score_name(matcher, normalized_query, file_path, search_root)
+		breakdown["name"] = name_score
+		scores.append(name_score)
+
+	if search_contents:
+		if max_file_size is not None and not _file_within_size_limit(file_path, max_file_size):
+			try:
+				size_bytes = file_path.stat().st_size
+			except OSError:
+				size_bytes = 0
+			if skipped_files is not None:
+				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
+		else:
+			content_score, line_matches = _score_lines(
+				matcher,
+				normalized_query,
+				file_path,
+				max_file_size,
+				effective_line_threshold,
+				max_line_matches,
+			)
+			breakdown["content"] = content_score
+			scores.append(content_score)
+
+	if not scores:
+		return None
+
+	score = max(scores)
+	if score < threshold:
+		return None
+	return FileSearchResult(
+		path=file_path,
+		score=score,
+		breakdown=breakdown,
+		lines=line_matches,
+	)
+
+
 def magic_file_search(
 	path: Path | str,
 	query: str,
@@ -185,6 +260,8 @@ def magic_file_search(
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
 	skipped_files: list[SkippedFile] | None = None,
+	on_progress: Callable[[int, int], None] | None = None,
+	on_result: Callable[[FileSearchResult], None] | None = None,
 ) -> list[FileSearchResult]:
 	if not search_names and not search_contents:
 		raise ValueError("Enable at least one of search_names or search_contents")
@@ -200,58 +277,34 @@ def magic_file_search(
 	search_root = root if root.is_dir() else root.parent
 	matcher = CompositeMatcher()
 	results: list[FileSearchResult] = []
-
-	for file_path in _iter_files(
+	files = _collect_files(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
-	):
-		if not file_path.is_file():
-			continue
+	)
+	total_files = len(files)
 
-		breakdown: dict[str, float] = {}
-		scores: list[float] = []
-		line_matches: list[LineMatch] = []
-
-		if search_names:
-			name_score = _score_name(matcher, normalized_query, file_path, search_root)
-			breakdown["name"] = name_score
-			scores.append(name_score)
-
-		if search_contents:
-			if max_file_size is not None and not _file_within_size_limit(file_path, max_file_size):
-				try:
-					size_bytes = file_path.stat().st_size
-				except OSError:
-					size_bytes = 0
-				if skipped_files is not None:
-					skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
-			else:
-				content_score, line_matches = _score_lines(
-					matcher,
-					normalized_query,
-					file_path,
-					max_file_size,
-					effective_line_threshold,
-					max_line_matches,
-				)
-				breakdown["content"] = content_score
-				scores.append(content_score)
-
-		if not scores:
-			continue
-
-		score = max(scores)
-		if score < threshold:
-			continue
-		results.append(
-			FileSearchResult(
-				path=file_path,
-				score=score,
-				breakdown=breakdown,
-				lines=line_matches,
-			)
+	for index, file_path in enumerate(files, start=1):
+		result = _search_single_file(
+			file_path,
+			matcher=matcher,
+			normalized_query=normalized_query,
+			search_root=search_root,
+			search_names=search_names,
+			search_contents=search_contents,
+			threshold=threshold,
+			max_file_size=max_file_size,
+			effective_line_threshold=effective_line_threshold,
+			max_line_matches=max_line_matches,
+			skipped_files=skipped_files,
 		)
+		if on_progress is not None:
+			on_progress(index, total_files)
+		if result is None:
+			continue
+		results.append(result)
+		if on_result is not None:
+			on_result(result)
 
 	results.sort(key=lambda result: result.score, reverse=True)
 	return results

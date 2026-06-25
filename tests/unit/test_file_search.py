@@ -6,7 +6,7 @@ import pytest
 from tests.helpers import write_docx_with_text, write_pdf_with_text, write_pptx_with_text, write_xlsx_with_text
 
 from srxy import magic_file_search
-from srxy.models import SkippedFile
+from srxy.models import FileSearchResult, SkippedFile
 
 
 pytestmark = pytest.mark.unit
@@ -356,3 +356,33 @@ def test_given_oversized_file_when_collecting_skipped_then_reports_file(tmp_path
 	assert len(skipped) == 1
 	assert skipped[0].path == large_file
 	assert skipped[0].size_bytes > 1024
+
+
+def test_given_directory_when_searching_with_callbacks_then_streams_progress_and_results(tmp_path: Path):
+	# given
+	(tmp_path / "alpha.txt").write_text("hello", encoding="utf-8")
+	(tmp_path / "beta.txt").write_text("revenue report", encoding="utf-8")
+	(tmp_path / "gamma.txt").write_text("goodbye", encoding="utf-8")
+	progress_calls: list[tuple[int, int]] = []
+	streamed_paths: list[str] = []
+
+	def on_progress(current: int, total: int) -> None:
+		progress_calls.append((current, total))
+
+	def on_result(result: FileSearchResult):
+		streamed_paths.append(result.path.name)
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"revenue",
+		search_names=False,
+		on_progress=on_progress,
+		on_result=on_result,
+	)
+
+	# then
+	assert progress_calls == [(1, 3), (2, 3), (3, 3)]
+	assert streamed_paths == ["beta.txt"]
+	assert len(results) == 1
+	assert results[0].path.name == "beta.txt"
