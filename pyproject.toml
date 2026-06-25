@@ -20,6 +20,7 @@ semantic = [
 ]
 dev = [
 	"basedpyright>=1.39",
+	"pip-audit>=2.10",
 	"pytest>=9.0",
 	"pytest-cov>=7.0",
 	"ruff>=0.15",
