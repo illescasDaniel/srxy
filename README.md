@@ -1,5 +1,9 @@
 # Srxy
 
+[![CI](https://github.com/illescasDaniel/srxy/actions/workflows/ci.yml/badge.svg)](https://github.com/illescasDaniel/srxy/actions/workflows/ci.yml)
+[![version](https://img.shields.io/pypi/v/srxy)](https://pypi.org/project/srxy/)
+[![PyPI](https://img.shields.io/badge/PyPI-srxy-3775A9?logo=pypi&logoColor=white)](https://pypi.org/project/srxy/)
+
 **Smart, composable search for Python — and your filesystem.**
 
 Pass any list of objects (dicts, dataclasses, Pydantic models) and find what you mean, not just what you typed. Fuzzy, phonetic, and composite matching out of the box. Search files by name or content from Python or the terminal.
