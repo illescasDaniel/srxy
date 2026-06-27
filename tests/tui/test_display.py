@@ -58,11 +58,11 @@ def test_given_tui_when_screenshot_exported_then_status_and_footer_labels_are_vi
 	asyncio.run(run())
 
 
-_FILTER_LABELS = ("Top files",)
+_FILTER_LABELS = ("Top files", "Matches per file", "Query", "Path")
 
 
 @pytest.mark.parametrize("theme", ["textual-light", "textual-dark"])
-def test_given_tui_when_screenshot_exported_then_filter_placeholders_are_visible(theme: str):
+def test_given_tui_when_screenshot_exported_then_field_labels_are_always_visible(theme: str):
 	# given
 	app = _build_app(theme=theme)
 
@@ -71,9 +71,7 @@ def test_given_tui_when_screenshot_exported_then_filter_placeholders_are_visible
 			await pilot.pause()
 			svg = app.export_screenshot(title="srxy-tui")
 			assert_labels_visible(svg, _FILTER_LABELS)
-			max_matches_input = app.query_one("#filter-max-matches")
-			assert max_matches_input.placeholder == "Matches per file"
-			assert max_matches_input.value == "50"
+			assert app.query_one("#filter-max-matches").value == "50"
 
 	# when / then
 	asyncio.run(run())

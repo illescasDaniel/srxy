@@ -78,7 +78,7 @@ class HelpModal(ModalScreen[None]):
   Orange Search  Settings changed since last run — search again
 
 [b]Filters[/b]
-  Top files          Max matched files to show (empty = all)
+  Top files          Max matched files (empty = all)
   Matches per file   Max matches per file (lines, OCR, transcript, …)
 
 [b]Results[/b]

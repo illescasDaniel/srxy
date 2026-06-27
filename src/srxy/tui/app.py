@@ -94,6 +94,15 @@ class SrxyApp(App[int]):
 		padding: 1 1;
 	}
 
+	#search-bar Label {
+		width: auto;
+		min-width: 8;
+		height: 2;
+		padding: 0 1 0 0;
+		content-align: right middle;
+		color: $text-muted;
+	}
+
 	#search-bar Input {
 		width: 1fr;
 		height: 2;
@@ -123,6 +132,15 @@ class SrxyApp(App[int]):
 	#filters-bar {
 		height: auto;
 		padding: 0 1 1 1;
+	}
+
+	#filters-bar Label {
+		width: auto;
+		min-width: 14;
+		height: 2;
+		padding: 0 1 0 0;
+		content-align: right middle;
+		color: $text-muted;
 	}
 
 	#filters-bar Input {
@@ -245,8 +263,10 @@ class SrxyApp(App[int]):
 	def compose(self) -> ComposeResult:
 		yield Header()
 		with Horizontal(id="search-bar"):
-			yield Input(placeholder="Query", id="query-input", value=self._args.query or "")
-			yield Input(placeholder="Path", id="path-input", value=str(self._args.path))
+			yield Label("Query", id="query-label")
+			yield Input(id="query-input", value=self._args.query or "", placeholder="")
+			yield Label("Path", id="path-label")
+			yield Input(id="path-input", value=str(self._args.path), placeholder="")
 			yield Button("Search", variant="primary", id="search-button")
 		with Grid(id="options-bar"):
 			yield Checkbox("Names", id="opt-names", value=True)
@@ -265,12 +285,10 @@ class SrxyApp(App[int]):
 			yield Checkbox("Noise", id="opt-noise", value=bool(self._args.include_noise))
 		with Horizontal(id="filters-bar"):
 			limit_value = "" if self._args.limit is None else str(self._args.limit)
-			yield Input(placeholder="Top files (empty = all)", id="filter-limit", value=limit_value)
-			yield Input(
-				placeholder="Matches per file",
-				id="filter-max-matches",
-				value=str(self._args.max_matches),
-			)
+			yield Label("Top files", id="filter-limit-label")
+			yield Input(placeholder="all", id="filter-limit", value=limit_value)
+			yield Label("Matches per file", id="filter-max-matches-label")
+			yield Input(id="filter-max-matches", value=str(self._args.max_matches), placeholder="")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
