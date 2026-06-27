@@ -494,6 +494,7 @@ def test_given_mp3_with_artist_tag_when_searching_contents_then_returns_file(tmp
 	assert "Beatles" in results[0].lines[0].text
 
 
+@pytest.mark.transcribe
 def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcript_line(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -998,7 +999,7 @@ def test_given_multiple_files_when_searching_with_limit_then_returns_top_scores_
 	# given
 	(tmp_path / "zzz-rev.txt").write_text("x", encoding="utf-8")
 	(tmp_path / "revenue-report.txt").write_text("y", encoding="utf-8")
-	(tmp_path / "revenue-revenue-revenue.txt").write_text("z", encoding="utf-8")
+	(tmp_path / "revenue.txt").write_text("z", encoding="utf-8")
 	query = "revenue"
 
 	# when
@@ -1014,4 +1015,4 @@ def test_given_multiple_files_when_searching_with_limit_then_returns_top_scores_
 	# then
 	assert len(results) == 2
 	assert results[0].score >= results[1].score
-	assert results[0].path.name == "revenue-revenue-revenue.txt"
+	assert results[0].path.name == "revenue.txt"

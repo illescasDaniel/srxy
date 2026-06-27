@@ -58,6 +58,7 @@ def test_given_semantic_image_device_override_when_resolving_then_uses_override(
 	assert resolve_semantic_image_device() == "cpu"
 
 
+@pytest.mark.semantic
 def test_given_semantic_model_load_when_device_resolved_then_passes_device(monkeypatch: pytest.MonkeyPatch):
 	# given
 	monkeypatch.setenv("SRXY_SEMANTIC_DEVICE", "mps")
