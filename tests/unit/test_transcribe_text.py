@@ -83,6 +83,7 @@ def test_given_deps_and_ffmpeg_when_checking_available_then_returns_true(monkeyp
 		assert is_transcribe_available() is True
 
 
+@pytest.mark.transcribe
 def test_given_mocked_transcription_when_iterating_lines_then_yields_segments(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -148,6 +149,7 @@ def test_given_transcribe_deps_installed_when_checking_then_uses_find_spec(monke
 	assert transcribe_deps_installed() is True
 
 
+@pytest.mark.transcribe
 def test_given_cached_transcript_when_iterating_twice_then_transcribes_once(
 	tmp_path: Path,
 	monkeypatch: pytest.MonkeyPatch,
