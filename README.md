@@ -6,7 +6,7 @@
 
 **Find files by what you mean — from the terminal or Python.**
 
-Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audio, video, and OS file tags. One command: `srxy`.
+Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audio, video, and OS file tags. On an interactive terminal, **srxy opens a full-screen TUI by default**; use `--no-tui` when you want plain CLI output for scripts and pipes.
 
 ## Installation
 
@@ -33,10 +33,28 @@ If you don't have pipx yet, see the [pipx installation guide](https://pipx.pypa.
 
 ## Quick start
 
-Search file names and contents (default) with fuzzy matching:
+### Interactive TUI (default)
+
+On a TTY, srxy launches an interactive **Textual** TUI — the primary way to use the tool:
+
+```bash
+srxy                          # empty query/path; type and search
+srxy registry ./src           # pre-filled; search starts automatically
+srxy transform ./docs --ocr   # flags pre-select OCR, semantic, etc.
+```
+
+The TUI gives you live scan progress, a sortable results table, and a preview pane for the selected file. Toggle search modes from the options bar, adjust limits, copy paths and match snippets, and open files without leaving the terminal.
+
+See [Interactive TUI](#interactive-tui) for the full walkthrough.
+
+### Plain CLI (`--no-tui`)
+
+For scripts, pipes, and CI, use the classic text interface. Grouped output is still the default when stdout is not the TUI:
 
 ```bash
 srxy registry ./src
+srxy registry ./src --no-tui    # force plain output on a TTY
+srxy revenue ./docs --json      # always plain (machine-readable)
 ```
 
 Grouped output highlights scores, match locations, and query hits:
@@ -44,12 +62,12 @@ Grouped output highlights scores, match locations, and query hits:
 ```
 1 file matched for "registry"
 ── ./src/srxy/file_search.py ──
-   score 0.82  ·  matched: name, content
-   line 128  ·  score 0.76
-   │ def magic_file_search(
+   match 82%  ·  matched: name, content
+   line 128  ·  match 76%
+   │ def «magic»_file_search(
 ```
 
-**Targeted modes:**
+**Targeted modes** (work in both TUI and CLI):
 
 ```bash
 srxy revenue ./docs --content-only          # skip filename search
@@ -71,6 +89,70 @@ srxy token . --include-hidden --include-noise
 ```
 
 Directories are walked recursively. By default, dot-prefixed hidden entries and noise folders (`__pycache__`, `node_modules`) are skipped.
+
+---
+
+## Interactive TUI
+
+When stdout is an interactive terminal and you are not using `--json`, `--format flat`, or `-o/--output`, srxy opens the TUI automatically. This is the recommended way to explore matches: you see **why** a file ranked, **where** each hit lives, and **what** text matched — without re-running commands.
+
+<p align="center"><em>(screenshot)</em></p>
+
+### Layout
+
+| Area | What it shows |
+|------|----------------|
+| **Query / Path** | Search string and root directory; **Search** runs the scan |
+| **Options** | Toggle Names, Content, Semantic, Image semantic, OCR, Transcribe, Hidden, Noise |
+| **Filters** | **Top files** (`-l` / `--limit`, empty = all) and **Per file** (`--max-matches`) |
+| **Results** | Sortable table: match %, path, matched sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
+| **Preview** | Selected file path, score, matched sources, and a table of hits (location, snippet with **bold** query highlights) |
+| **Status** | Scan progress, match count, and copy buttons (**Path**, **Match**, **All**) |
+
+Heavy modes (OCR, semantic, transcription, image semantic) run in a background worker so the UI stays responsive.
+
+### Search workflow
+
+1. Enter a query and path (or launch `srxy` with arguments pre-filled).
+2. Toggle options and filters; click **Search** or press **Enter** / **Ctrl+S**.
+3. Use **j** / **k** (or arrow keys) to move through results — the preview updates for each file.
+4. Press **o** to open the selected file in your OS default app.
+
+If you change the query, path, options, or filters after a search, the **Search** button turns **orange** until you search again (stale results).
+
+### Copy to clipboard
+
+| Key | Button | Copies |
+|-----|--------|--------|
+| `y` | **Path** | Absolute path of the selected result |
+| `m` | **Match** | Focused preview row (`location` + match snippet) |
+| `M` | **All** | Every preview row for the selected file |
+
+A short toast confirms when text is on the clipboard. Copy uses the terminal’s clipboard protocol (OSC 52); most modern terminals support it.
+
+### Keybindings
+
+| Keys | Action |
+|------|--------|
+| `Enter`, `Ctrl+S` | Run search |
+| `/` | Focus query input |
+| `j` / `k` | Move selection in results |
+| `o` | Open selected file |
+| `y`, `m`, `M` | Copy path, match, or all matches |
+| `?` | Help |
+| `q`, `Ctrl+C` | Quit |
+
+Footer hints list the main bindings. Press **?** in the app for the full in-app help.
+
+### When the TUI is skipped
+
+Plain CLI output is used automatically when:
+
+- You pass **`--no-tui`**
+- You use **`--json`**, **`--format flat`**, or **`-o` / `--output`**
+- stdout is **not a TTY** (pipes, redirects, CI)
+
+Example: `srxy token . | head` never opens the TUI.
 
 ---
 
@@ -106,6 +188,8 @@ These add capabilities on top of the table above — see [Power-ups](#power-ups)
 
 ## CLI reference
 
+The same flags work in the TUI (pre-filled on launch) and in plain CLI mode (`--no-tui` or non-TTY).
+
 | | |
 |---|---|
 | **Search scope** | `--names-only`, `--content-only`, `--names` / `--no-names`, `--content` / `--no-content` |
@@ -113,22 +197,11 @@ These add capabilities on top of the table above — see [Power-ups](#power-ups)
 | **Limits** | `--max-file-size`, `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` (`--max-line-matches` is a deprecated alias) |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
 | **Walk** | `--include-hidden`, `--include-noise` |
-| **UX** | `--progress` / `--no-progress`, `--no-tui` |
+| **UX** | `--progress` / `--no-progress`, `--no-tui` (force plain output on a TTY) |
 
-### Interactive TUI
+### Plain output behavior
 
-On an interactive terminal, srxy opens a **Textual** TUI by default:
-
-- **`srxy`** — launcher with empty query/path; type a query and press Enter or click Search.
-- **`srxy registry ./src`** — one-shot search with fields pre-filled; search starts automatically.
-
-The TUI shows live scan progress, a sortable results table, and a preview pane for the selected match. Toggle names, content, semantic, image semantic, OCR, and transcription from the options bar.
-
-**Keybindings:** `Enter` / `Ctrl+S` search · `/` focus query · `j`/`k` move selection · `o` open file · `?` help · `q` / `Ctrl+C` quit.
-
-Force plain-text output (progress bar on stderr, grouped results on stdout) with **`--no-tui`**. Scriptable modes always use plain output: `--json`, `--format flat`, `-o/--output`, and non-TTY pipes.
-
-When stderr is a terminal and `--no-tui` is set (or output is piped), a file-scan progress bar is shown on stderr; during slow work (OCR, transcription, CLIP encoding, model load) an activity spinner appears. A brief **match found** flash appears on the progress bar when a file matches. Plain-mode results are printed **after** the scan completes, sorted by score (best first). Skipped-file warnings are printed after the match summary.
+When the TUI is not used and stderr is a terminal, a file-scan progress bar is shown on stderr; during slow work (OCR, transcription, CLIP encoding, model load) an activity spinner appears. A brief **match found** flash appears on the progress bar when a file matches. Results are printed **after** the scan completes, sorted by score (best first). Skipped-file warnings are printed after the match summary.
 
 **Exit codes:** `0` matches found, `1` no matches, `2` usage/path error.
 
