@@ -87,18 +87,29 @@ def test_given_weak_lines_when_searching_contents_then_excludes_lines_below_thre
 	assert results == []
 
 
-def test_given_many_matching_lines_when_searching_contents_then_respects_max_line_matches(tmp_path: Path):
+def test_given_many_matching_lines_when_searching_contents_then_respects_max_matches(tmp_path: Path):
 	# given
 	lines = "\n".join(f"token line {index}" for index in range(100))
 	(tmp_path / "many.txt").write_text(lines, encoding="utf-8")
 	query = "token"
 
 	# when
-	results = magic_file_search(tmp_path, query, search_names=False, max_line_matches=3, threshold=0.25)
+	results = magic_file_search(tmp_path, query, search_names=False, max_matches=3, threshold=0.25)
 
 	# then
 	assert len(results) == 1
 	assert len(results[0].lines) == 3
+
+
+def test_given_max_line_matches_alias_when_searching_then_emits_deprecation_warning(tmp_path: Path):
+	# given
+	(tmp_path / "many.txt").write_text("token line", encoding="utf-8")
+	query = "token"
+
+	# when / then
+	with pytest.warns(DeprecationWarning, match="max_line_matches is deprecated"):
+		results = magic_file_search(tmp_path, query, search_names=False, max_line_matches=1, threshold=0.25)
+	assert len(results[0].lines) == 1
 
 
 def test_given_single_file_path_when_searching_then_returns_that_file(tmp_path: Path):

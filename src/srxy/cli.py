@@ -6,7 +6,7 @@ import os
 import sys
 import threading
 from pathlib import Path
-from typing import IO, TextIO
+from typing import IO, Callable, TextIO
 
 from srxy.file_search import magic_file_search, suggest_max_file_size
 from srxy.matchers.semantic import (
@@ -54,6 +54,7 @@ _LOCATION_LABELS = {
 
 _PROGRESS_BAR_WIDTH = 40
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+_TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def format_location_label(kind: str, number: int) -> str:
@@ -80,7 +81,7 @@ def _format_locations(kind: str, numbers: list[int]) -> str:
 	return f"{label}s {_format_number_ranges(sorted_numbers)}"
 
 
-def _match_labels(result: FileSearchResult) -> str:
+def match_labels(result: FileSearchResult) -> str:
 	labels: list[str] = []
 	if "name" in result.breakdown and result.breakdown["name"] > 0.0:
 		labels.append("name")
@@ -143,7 +144,7 @@ def format_grouped_result(result: FileSearchResult, *, query: str = "", separato
 	if separator:
 		lines.append("")
 	path_text = result.path.as_posix()
-	label_text = _match_labels(result)
+	label_text = match_labels(result)
 	lines.append(f"── {path_text} ──")
 	lines.append(f"   score {result.score:.2f}  ·  matched: {label_text}")
 	for location, preview, score in _iter_grouped_line_displays(result.lines, query=query):
@@ -466,7 +467,7 @@ def build_parser() -> argparse.ArgumentParser:
 		prog="srxy",
 		description="Fuzzy file and content search using composite matchers.",
 	)
-	parser.add_argument("query", help="Search string")
+	parser.add_argument("query", nargs="?", default=None, help="Search string")
 	parser.add_argument("path", nargs="?", default=".", help="File or directory to search (default: .)")
 	parser.add_argument("--threshold", type=float, default=0.35, help="Minimum match score (default: 0.35)")
 	parser.add_argument(
@@ -476,10 +477,16 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Skip text and document content search in files larger than this many bytes (default: unlimited)",
 	)
 	parser.add_argument(
-		"--max-line-matches",
+		"--max-matches",
 		type=int,
 		default=50,
-		help="Maximum matching lines returned per file (default: 50)",
+		help="Maximum matching results per file: lines, OCR, transcript, metadata, etc. (default: 50)",
+	)
+	parser.add_argument(
+		"--max-line-matches",
+		type=int,
+		dest="max_matches",
+		help=argparse.SUPPRESS,
 	)
 	parser.add_argument(
 		"-l",
@@ -584,6 +591,11 @@ def build_parser() -> argparse.ArgumentParser:
 		action="store_true",
 		help="Search noise directories like __pycache__ and node_modules (default: skip)",
 	)
+	parser.add_argument(
+		"--no-tui",
+		action="store_true",
+		help="Force plain-text output even on an interactive terminal",
+	)
 
 	return parser
 
@@ -619,10 +631,17 @@ def render_results(
 	return format_grouped(results, query=query)
 
 
-def main(argv: list[str] | None = None) -> int:
-	parser = build_parser()
-	args = parser.parse_args(argv)
+def should_use_tui(args: argparse.Namespace) -> bool:
+	if args.no_tui:
+		return False
+	if args.json or args.format == "flat" or args.output is not None:
+		return False
+	if os.environ.get("CI", "").strip().lower() in _TRUTHY_ENV_VALUES:
+		return False
+	return sys.stdout.isatty() and sys.stderr.isatty()
 
+
+def apply_args_to_env(args: argparse.Namespace):
 	if args.semantic_all:
 		os.environ["SRXY_SEMANTIC"] = "1"
 		os.environ["SRXY_OCR"] = "1"
@@ -644,40 +663,114 @@ def main(argv: list[str] | None = None) -> int:
 		os.environ["SRXY_TRANSCRIBE_MODEL"] = args.transcribe_model
 	os.environ["SRXY_TRANSCRIBE_THRESHOLD"] = str(args.transcribe_threshold)
 
+
+def sync_options_to_args(
+	args: argparse.Namespace,
+	*,
+	search_names: bool,
+	search_contents: bool,
+	semantic: bool,
+	semantic_image: bool,
+	ocr: bool,
+	transcribe: bool,
+	include_hidden: bool,
+	include_noise: bool,
+):
+	args.names_only = search_names and not search_contents
+	args.content_only = search_contents and not search_names
+	args.search_names = search_names
+	args.search_contents = search_contents
+	args.semantic = semantic
+	args.semantic_image = semantic_image
+	args.semantic_all = False
+	args.ocr = ocr
+	args.transcribe = transcribe
+	args.include_hidden = include_hidden
+	args.include_noise = include_noise
+
+
+def run_preflight(
+	args: argparse.Namespace,
+	*,
+	interactive: bool,
+	prompt_yes: Callable[[str], bool] | None = None,
+) -> str | None:
+	apply_args_to_env(args)
+
 	if ocr_requested(None) and not is_ocr_available():
-		print(ocr_unavailable_message(), file=sys.stderr)
-		return 2
+		return ocr_unavailable_message()
 
 	if transcribe_requested(None) and not transcribe_deps_installed():
-		print(transcribe_unavailable_message(), file=sys.stderr)
-		return 2
+		return transcribe_unavailable_message()
 	if transcribe_requested(None) and not ffmpeg_available():
-		print(ffmpeg_unavailable_message(), file=sys.stderr)
-		return 2
-	if transcribe_requested(None) and not ensure_transcribe_model(interactive=sys.stdin.isatty()):
-		print(transcribe_model_missing_message(), file=sys.stderr)
-		return 2
+		return ffmpeg_unavailable_message()
+	if transcribe_requested(None) and not ensure_transcribe_model(
+		interactive=interactive,
+		prompt_yes=prompt_yes,
+	):
+		return transcribe_model_missing_message()
 
 	if semantic_env_enabled():
 		if not sentence_transformers_installed():
-			print(
-				"Semantic matching requires the optional dependency: pip install 'srxy[semantic]'",
-				file=sys.stderr,
-			)
-			return 2
-		if not ensure_semantic_text_model(interactive=sys.stdin.isatty()):
-			print(semantic_text_model_missing_message(), file=sys.stderr)
-			return 2
+			return "Semantic matching requires the optional dependency: pip install 'srxy[semantic]'"
+		if not ensure_semantic_text_model(interactive=interactive, prompt_yes=prompt_yes):
+			return semantic_text_model_missing_message()
 
 	if semantic_image_requested(None):
 		if not is_semantic_image_available():
-			print(semantic_image_unavailable_message(), file=sys.stderr)
-			return 2
-		if not ensure_semantic_image_model(interactive=sys.stdin.isatty()):
-			print(semantic_image_model_missing_message(), file=sys.stderr)
-			return 2
+			return semantic_image_unavailable_message()
+		if not ensure_semantic_image_model(interactive=interactive, prompt_yes=prompt_yes):
+			return semantic_image_model_missing_message()
 
+	return None
+
+
+def execute_search(
+	args: argparse.Namespace,
+	*,
+	skipped_files: list[SkippedFile] | None = None,
+	on_progress: Callable[[int, int], None] | None = None,
+	on_activity: Callable[[str | None], None] | None = None,
+	on_result: Callable[[FileSearchResult], None] | None = None,
+) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 	search_names, search_contents = resolve_search_modes(args)
+	effective_skipped = skipped_files if skipped_files is not None else []
+	query = args.query or ""
+	results = magic_file_search(
+		args.path,
+		query,
+		search_names=search_names,
+		search_contents=search_contents,
+		threshold=args.threshold,
+		semantic_image_threshold=args.semantic_image_threshold,
+		transcribe_threshold=args.transcribe_threshold,
+		limit=args.limit,
+		max_file_size=args.max_file_size,
+		max_matches=args.max_matches,
+		skip_hidden_folders=not args.include_hidden,
+		skip_noise_folders=not args.include_noise,
+		skipped_files=effective_skipped
+		if search_contents or ocr_requested(None) or transcribe_requested(None)
+		else None,
+		ocr=ocr_requested(None),
+		transcribe=transcribe_requested(None),
+		on_progress=on_progress,
+		on_activity=on_activity,
+		on_result=on_result,
+	)
+	return results, effective_skipped
+
+
+def run_plain(args: argparse.Namespace) -> int:
+	if args.query is None:
+		print("error: the following arguments are required: query", file=sys.stderr)
+		return 2
+
+	error = run_preflight(args, interactive=sys.stdin.isatty())
+	if error is not None:
+		print(error, file=sys.stderr)
+		return 2
+
 	skipped_files: list[SkippedFile] = []
 	show_progress = resolve_show_progress(args)
 	progress = ProgressBar() if show_progress else None
@@ -704,24 +797,9 @@ def main(argv: list[str] | None = None) -> int:
 			progress.flash_match()
 
 	try:
-		results = magic_file_search(
-			args.path,
-			args.query,
-			search_names=search_names,
-			search_contents=search_contents,
-			threshold=args.threshold,
-			semantic_image_threshold=args.semantic_image_threshold,
-			transcribe_threshold=args.transcribe_threshold,
-			limit=args.limit,
-			max_file_size=args.max_file_size,
-			max_line_matches=args.max_line_matches,
-			skip_hidden_folders=not args.include_hidden,
-			skip_noise_folders=not args.include_noise,
-			skipped_files=skipped_files
-			if search_contents or ocr_requested(None) or transcribe_requested(None)
-			else None,
-			ocr=ocr_requested(None),
-			transcribe=transcribe_requested(None),
+		results, skipped_files = execute_search(
+			args,
+			skipped_files=skipped_files,
 			on_progress=on_progress,
 			on_activity=on_activity,
 			on_result=on_result,
@@ -755,6 +833,19 @@ def main(argv: list[str] | None = None) -> int:
 		print(format_no_matches_message(args.query, args.path), file=sys.stderr)
 
 	return 0 if results else 1
+
+
+def main(argv: list[str] | None = None) -> int:
+	parser = build_parser()
+	args = parser.parse_args(argv)
+
+	if should_use_tui(args):
+		from srxy.tui import run_tui
+
+		auto_start = args.query is not None and bool(args.query.strip())
+		return run_tui(args, auto_start=auto_start)
+
+	return run_plain(args)
 
 
 if __name__ == "__main__":

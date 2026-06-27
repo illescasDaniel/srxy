@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import IO
+from typing import IO, Callable
 
 
 SEMANTIC_TEXT_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
@@ -161,6 +161,7 @@ def _ensure_model(
 	auto_download: bool,
 	stdin: IO[str] | None = None,
 	stdout: IO[str] | None = None,
+	prompt_yes: Callable[[str], bool] | None = None,
 ) -> bool:
 	if is_model_installed(target_dir):
 		os.environ.setdefault(env_var, str(target_dir))
@@ -168,11 +169,15 @@ def _ensure_model(
 
 	should_download = auto_download or _auto_download_enabled()
 	if not should_download and interactive:
-		should_download = _prompt_yes(
-			f"{label} is not cached at {target_dir}.\nDownload {model_id} ({size_hint})? [y/N] ",
-			stdin=stdin,
-			stdout=stdout,
-		)
+		prompt_text = f"{label} is not cached at {target_dir}.\nDownload {model_id} ({size_hint})?"
+		if prompt_yes is not None:
+			should_download = prompt_yes(prompt_text)
+		else:
+			should_download = _prompt_yes(
+				f"{prompt_text} [y/N] ",
+				stdin=stdin,
+				stdout=stdout,
+			)
 
 	if not should_download:
 		return False
@@ -189,6 +194,7 @@ def ensure_semantic_text_model(
 	auto_download: bool = False,
 	stdin: IO[str] | None = None,
 	stdout: IO[str] | None = None,
+	prompt_yes: Callable[[str], bool] | None = None,
 ) -> bool:
 	return _ensure_model(
 		label="Semantic text model",
@@ -200,6 +206,7 @@ def ensure_semantic_text_model(
 		auto_download=auto_download,
 		stdin=stdin,
 		stdout=stdout,
+		prompt_yes=prompt_yes,
 	)
 
 
@@ -209,6 +216,7 @@ def ensure_semantic_image_model(
 	auto_download: bool = False,
 	stdin: IO[str] | None = None,
 	stdout: IO[str] | None = None,
+	prompt_yes: Callable[[str], bool] | None = None,
 ) -> bool:
 	return _ensure_model(
 		label="Semantic image model",
@@ -220,6 +228,7 @@ def ensure_semantic_image_model(
 		auto_download=auto_download,
 		stdin=stdin,
 		stdout=stdout,
+		prompt_yes=prompt_yes,
 	)
 
 
@@ -256,6 +265,7 @@ def ensure_transcribe_model(
 	auto_download: bool = False,
 	stdin: IO[str] | None = None,
 	stdout: IO[str] | None = None,
+	prompt_yes: Callable[[str], bool] | None = None,
 ) -> bool:
 	from srxy.device import resolve_transcribe_device, transcribe_backend_for_device
 
@@ -272,6 +282,7 @@ def ensure_transcribe_model(
 			auto_download=auto_download,
 			stdin=stdin,
 			stdout=stdout,
+			prompt_yes=prompt_yes,
 		)
 	return _ensure_model(
 		label="Transcription model (faster-whisper)",
@@ -283,6 +294,7 @@ def ensure_transcribe_model(
 		auto_download=auto_download,
 		stdin=stdin,
 		stdout=stdout,
+		prompt_yes=prompt_yes,
 	)
 
 

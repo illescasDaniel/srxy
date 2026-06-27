@@ -119,6 +119,23 @@ def test_given_default_args_when_parsing_then_max_file_size_is_unlimited():
 
 	# then
 	assert args.max_file_size is None
+	assert args.max_matches == 50
+
+
+def test_given_max_matches_flag_when_running_cli_then_limits_lines_per_file(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	lines = "\n".join(f"token line {index}" for index in range(20))
+	(tmp_path / "many.txt").write_text(lines, encoding="utf-8")
+
+	# when
+	exit_code = main(["token", str(tmp_path), "--content-only", "--no-progress", "--max-matches", "3"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert captured.out.count("│") == 3
 
 
 def test_given_matching_directory_when_running_cli_then_prints_results(

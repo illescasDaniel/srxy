@@ -110,12 +110,25 @@ These add capabilities on top of the table above — see [Power-ups](#power-ups)
 |---|---|
 | **Search scope** | `--names-only`, `--content-only`, `--names` / `--no-names`, `--content` / `--no-content` |
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe` |
-| **Limits** | `--max-file-size`, `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-line-matches`, `-l` / `--limit` |
+| **Limits** | `--max-file-size`, `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` (`--max-line-matches` is a deprecated alias) |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
 | **Walk** | `--include-hidden`, `--include-noise` |
-| **UX** | `--progress` / `--no-progress` |
+| **UX** | `--progress` / `--no-progress`, `--no-tui` |
 
-When stderr is a terminal (default), a file-scan progress bar is shown; during slow work (OCR, transcription, CLIP encoding, model load) an activity spinner appears on stderr. A brief **match found** flash appears on the progress bar when a file matches. Results are printed **after** the scan completes, sorted by score (best first). Skipped-file warnings are printed after the match summary.
+### Interactive TUI
+
+On an interactive terminal, srxy opens a **Textual** TUI by default:
+
+- **`srxy`** — launcher with empty query/path; type a query and press Enter or click Search.
+- **`srxy registry ./src`** — one-shot search with fields pre-filled; search starts automatically.
+
+The TUI shows live scan progress, a sortable results table, and a preview pane for the selected match. Toggle names, content, semantic, image semantic, OCR, and transcription from the options bar.
+
+**Keybindings:** `Enter` / `Ctrl+S` search · `/` focus query · `j`/`k` move selection · `o` open file · `?` help · `q` / `Ctrl+C` quit.
+
+Force plain-text output (progress bar on stderr, grouped results on stdout) with **`--no-tui`**. Scriptable modes always use plain output: `--json`, `--format flat`, `-o/--output`, and non-TTY pipes.
+
+When stderr is a terminal and `--no-tui` is set (or output is piped), a file-scan progress bar is shown on stderr; during slow work (OCR, transcription, CLIP encoding, model load) an activity spinner appears. A brief **match found** flash appears on the progress bar when a file matches. Plain-mode results are printed **after** the scan completes, sorted by score (best first). Skipped-file warnings are printed after the match summary.
 
 **Exit codes:** `0` matches found, `1` no matches, `2` usage/path error.
 

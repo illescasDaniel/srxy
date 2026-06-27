@@ -17,6 +17,7 @@ dependencies = [
 	"python-docx>=1.2",
 	"python-pptx>=1.0",
 	"rapidfuzz>=3.14",
+	"textual>=3.0",
 ]
 
 [project.optional-dependencies]
@@ -59,6 +60,7 @@ pythonpath = ["."]
 markers = [
 	"unit: fast isolated tests",
 	"integration: tests using real models and fixture datasets",
+	"tui: Textual TUI display and interaction tests",
 	"ocr: tests requiring a real OCR backend",
 	"linux_xattr: tests that require Linux extended attribute support",
 	"macos_finder: tests that require writable macOS Finder tag extended attributes",

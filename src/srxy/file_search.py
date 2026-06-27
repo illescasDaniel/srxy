@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -269,7 +270,7 @@ def _score_lines(
 	file_path: Path,
 	max_file_size: int | None,
 	line_threshold: float,
-	max_line_matches: int,
+	max_matches: int,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	*,
 	ocr: bool | None = None,
@@ -311,7 +312,7 @@ def _score_lines(
 			)
 
 	matches.sort(key=lambda match: match.score, reverse=True)
-	matches = matches[:max_line_matches]
+	matches = matches[:max_matches]
 	content_score = matches[0].score if matches else 0.0
 	return content_score, matches
 
@@ -327,7 +328,7 @@ def _search_single_file(
 	threshold: float,
 	max_file_size: int | None,
 	effective_line_threshold: float,
-	max_line_matches: int,
+	max_matches: int,
 	skipped_files: list[SkippedFile] | None,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
@@ -368,7 +369,7 @@ def _search_single_file(
 				file_path,
 				max_file_size,
 				effective_line_threshold,
-				max_line_matches,
+				max_matches,
 				transcribe_threshold,
 				ocr=ocr,
 				transcribe=transcribe,
@@ -431,7 +432,7 @@ def magic_file_search(
 	search_contents: bool = True,
 	threshold: float = 0.35,
 	max_file_size: int | None = None,
-	max_line_matches: int = 50,
+	max_matches: int = 50,
 	line_threshold: float | None = None,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
@@ -445,7 +446,15 @@ def magic_file_search(
 	on_progress: Callable[[int, int], None] | None = None,
 	on_activity: Callable[[str | None], None] | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
+	max_line_matches: int | None = None,
 ) -> list[FileSearchResult]:
+	if max_line_matches is not None:
+		warnings.warn(
+			"max_line_matches is deprecated; use max_matches instead",
+			DeprecationWarning,
+			stacklevel=2,
+		)
+		max_matches = max_line_matches
 	if not search_names and not search_contents and not semantic_image_requested(semantic_image):
 		raise ValueError("Enable at least one of search_names, search_contents, or semantic_image")
 
@@ -491,7 +500,7 @@ def magic_file_search(
 				threshold=threshold,
 				max_file_size=max_file_size,
 				effective_line_threshold=effective_line_threshold,
-				max_line_matches=max_line_matches,
+				max_matches=max_matches,
 				skipped_files=skipped_files,
 				ocr=ocr,
 				transcribe=transcribe,
