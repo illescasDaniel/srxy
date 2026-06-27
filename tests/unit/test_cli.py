@@ -291,6 +291,7 @@ def test_given_semantic_all_without_ffmpeg_when_running_cli_then_exits_two_with_
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
 	with (
+		patch("srxy.cli.is_ocr_available", return_value=True),
 		patch("srxy.cli.transcribe_deps_installed", return_value=True),
 		patch("srxy.cli.ffmpeg_available", return_value=False),
 	):
