@@ -44,8 +44,8 @@ def test_given_content_match_when_formatting_grouped_then_shows_file_and_line(tm
 	# then
 	assert f"{file_path.as_posix()}  score=0.85  (content)" not in output
 	assert f"── {file_path.as_posix()} ──" in output
-	assert "score 0.85  ·  matched: content" in output
-	assert "line 42  ·  score 0.85" in output
+	assert "match 85%  ·  matched: content" in output
+	assert "line 42  ·  match 85%" in output
 	assert "│ «magic»" in output or "│ def «magic»" in output
 
 
@@ -63,7 +63,7 @@ def test_given_name_only_match_when_formatting_flat_then_uses_line_zero_sentinel
 	output = format_flat([result])
 
 	# then
-	assert output == f"{file_path.as_posix()}:name:0:0.92:budget-2024.md"
+	assert output == f"{file_path.as_posix()}:name:0:92%:budget-2024.md"
 
 
 def test_given_results_when_formatting_json_then_emits_serializable_payload(tmp_path: Path):
@@ -478,7 +478,7 @@ def test_given_transcript_match_when_formatting_grouped_then_shows_timestamp_in_
 	output = format_grouped([result], query="other boys")
 
 	# then
-	assert "transcript at 02:40  ·  score 0.34" in output
+	assert "transcript at 02:40  ·  match 34%" in output
 	assert "│ And all the «other boys»" in output
 	assert "[02:40]" not in output
 
@@ -528,7 +528,7 @@ def test_given_mp4_tag_match_when_formatting_grouped_then_shows_tag_label(tmp_pa
 
 	# then
 	assert 'for "revenue"' in output
-	assert "tag 1  ·  score 0.47" in output
+	assert "tag 1  ·  match 47%" in output
 	assert "│ [Title] Quarterly «revenue» recap" in output
 
 
@@ -550,7 +550,7 @@ def test_given_pdf_match_when_formatting_grouped_then_shows_page_label(tmp_path:
 
 	# then
 	assert 'for "revenue"' in output
-	assert "page 1  ·  score 0.47" in output
+	assert "page 1  ·  match 47%" in output
 	assert "│ quarterly «revenue» projections" in output
 
 
@@ -588,8 +588,8 @@ def test_given_repeated_line_previews_when_formatting_grouped_then_collapses_ide
 
 	# then
 	assert output.count("│ «fi»") == 1
-	assert "lines 15, 25, 34, 39, 42, 45  ·  score 0.31" in output
-	assert "line 15  ·  score 0.31" not in output
+	assert "lines 15, 25, 34, 39, 42, 45  ·  match 31%" in output
+	assert "line 15  ·  match 31%" not in output
 
 
 def test_given_consecutive_line_previews_when_formatting_grouped_then_uses_ranges(tmp_path: Path):
@@ -611,7 +611,7 @@ def test_given_consecutive_line_previews_when_formatting_grouped_then_uses_range
 	output = format_grouped_result(result, query="fi")
 
 	# then
-	assert "lines 10-12, 20  ·  score 0.50" in output
+	assert "lines 10-12, 20  ·  match 50%" in output
 	assert output.count("│ «fi»") == 1
 
 
@@ -634,8 +634,8 @@ def test_given_mixed_line_previews_when_formatting_grouped_then_keeps_distinct_g
 
 	# then
 	assert output.count("│") == 2
-	assert "lines 2-3  ·  score 0.80" in output
-	assert "line 1  ·  score 0.80" in output
+	assert "lines 2-3  ·  match 80%" in output
+	assert "line 1  ·  match 80%" in output
 
 
 def test_given_grouped_stream_when_running_cli_then_prints_summary_after_matches(

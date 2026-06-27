@@ -92,6 +92,10 @@ def match_labels(result: FileSearchResult) -> str:
 	return ", ".join(labels) if labels else "match"
 
 
+def format_score_percent(score: float) -> str:
+	return f"{round(score * 100)}%"
+
+
 def format_grouped_summary(*, match_count: int, query: str = "") -> str:
 	header = f"{match_count} file matched" if match_count == 1 else f"{match_count} files matched"
 	if query:
@@ -117,7 +121,7 @@ def _format_number_ranges(numbers: list[int]) -> str:
 	return ", ".join(parts)
 
 
-def _iter_grouped_line_displays(
+def iter_grouped_line_displays(
 	line_matches: list[LineMatch],
 	*,
 	query: str,
@@ -146,9 +150,9 @@ def format_grouped_result(result: FileSearchResult, *, query: str = "", separato
 	path_text = result.path.as_posix()
 	label_text = match_labels(result)
 	lines.append(f"── {path_text} ──")
-	lines.append(f"   score {result.score:.2f}  ·  matched: {label_text}")
-	for location, preview, score in _iter_grouped_line_displays(result.lines, query=query):
-		lines.append(f"   {location}  ·  score {score:.2f}")
+	lines.append(f"   match {format_score_percent(result.score)}  ·  matched: {label_text}")
+	for location, preview, score in iter_grouped_line_displays(result.lines, query=query):
+		lines.append(f"   {location}  ·  match {format_score_percent(score)}")
 		lines.append(f"   │ {preview}")
 	return "\n".join(lines)
 
@@ -170,10 +174,10 @@ def format_flat_result(result: FileSearchResult) -> list[str]:
 		for line_match in result.lines:
 			lines.append(
 				f"{path_text}:{line_match.location_kind}:{line_match.line_number}:"
-				f"{line_match.score:.2f}:{line_match.text}"
+				f"{format_score_percent(line_match.score)}:{line_match.text}"
 			)
 	elif "name" in result.breakdown and result.breakdown["name"] > 0.0:
-		lines.append(f"{path_text}:name:0:{result.score:.2f}:{result.path.name}")
+		lines.append(f"{path_text}:name:0:{format_score_percent(result.score)}:{result.path.name}")
 	return lines
 
 

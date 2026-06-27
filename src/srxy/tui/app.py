@@ -6,6 +6,7 @@ import os
 import platform
 import queue
 import subprocess
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -22,16 +23,16 @@ from textual.widgets import (
 	Input,
 	Label,
 	ProgressBar,
-	RichLog,
 	Static,
 )
 
 from srxy.cli import (
 	execute_search,
-	format_grouped_result,
 	format_grouped_summary,
 	format_no_matches_message,
+	format_score_percent,
 	format_skipped_file_warnings,
+	iter_grouped_line_displays,
 	match_labels,
 	sync_options_to_args,
 )
@@ -45,6 +46,12 @@ from srxy.tui.messages import (
 )
 from srxy.tui.modals import ErrorModal, HelpModal
 from srxy.tui.preflight import run_tui_preflight
+from srxy.tui.search_worker import (
+	file_result_from_dict,
+	iter_subprocess_search_events,
+	search_uses_subprocess,
+	skipped_file_from_dict,
+)
 from srxy.tui.theme import detect_app_theme
 
 
@@ -132,6 +139,7 @@ class SrxyApp(App[int]):
 	#filters-bar {
 		height: auto;
 		padding: 0 1 1 1;
+		margin-top: 1;
 	}
 
 	#filters-bar Label {
@@ -160,7 +168,7 @@ class SrxyApp(App[int]):
 
 	#options-bar {
 		grid-size: 4;
-		grid-gutter: 1 0;
+		grid-gutter: 1 1;
 		height: auto;
 		padding: 0 1;
 	}
@@ -210,9 +218,13 @@ class SrxyApp(App[int]):
 		height: 1fr;
 	}
 
-	#preview-log {
-		height: 1fr;
+	#preview-header {
+		height: auto;
 		padding: 0 1;
+	}
+
+	#preview-matches {
+		height: 1fr;
 	}
 
 	#status-bar {
@@ -287,13 +299,14 @@ class SrxyApp(App[int]):
 			limit_value = "" if self._args.limit is None else str(self._args.limit)
 			yield Label("Top files", id="filter-limit-label")
 			yield Input(placeholder="all", id="filter-limit", value=limit_value)
-			yield Label("Matches per file", id="filter-max-matches-label")
+			yield Label("Per file", id="filter-max-matches-label")
 			yield Input(id="filter-max-matches", value=str(self._args.max_matches), placeholder="")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
 			with Vertical(id="preview-panel"):
-				yield RichLog(id="preview-log", highlight=True, markup=True, wrap=True, auto_scroll=False)
+				yield Static("", id="preview-header")
+				yield DataTable(id="preview-matches", cursor_type="row", zebra_stripes=True)
 		yield Static("", id="warnings-log")
 		with Horizontal(id="status-bar"):
 			yield ProgressBar(total=100, show_eta=False, id="scan-progress")
@@ -302,7 +315,9 @@ class SrxyApp(App[int]):
 
 	def on_mount(self):
 		table = self.query_one("#results-table", DataTable)
-		table.add_columns("Score", "Path", "Matched")
+		table.add_columns("Match", "Path", "Matched")
+		preview_table = self.query_one("#preview-matches", DataTable)
+		preview_table.add_columns("Match", "Location", "Text")
 		if self._args.names_only:
 			self.query_one("#opt-names", Checkbox).value = True
 			self.query_one("#opt-content", Checkbox).value = False
@@ -394,7 +409,8 @@ class SrxyApp(App[int]):
 		self._result_index = {}
 		table = self.query_one("#results-table", DataTable)
 		table.clear(columns=False)
-		self.query_one("#preview-log", RichLog).clear()
+		self.query_one("#preview-header", Static).update("")
+		self.query_one("#preview-matches", DataTable).clear(columns=False)
 		self.query_one("#warnings-log", Static).update("")
 		self._warnings_text = ""
 
@@ -402,13 +418,19 @@ class SrxyApp(App[int]):
 		self.query_one("#status-message", Label).update(message)
 
 	def _update_preview(self, result: FileSearchResult | None):
-		log = self.query_one("#preview-log", RichLog)
-		log.clear()
+		header = self.query_one("#preview-header", Static)
+		table = self.query_one("#preview-matches", DataTable)
+		header.update("")
+		table.clear(columns=False)
 		if result is None:
 			return
 		query = self.query_one("#query-input", Input).value
-		log.write(format_grouped_result(result, query=query), scroll_end=False)
-		log.scroll_home(immediate=True, animate=False)
+		path_text = result.path.as_posix()
+		label_text = match_labels(result)
+		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
+		for location, preview, score in iter_grouped_line_displays(result.lines, query=query):
+			table.add_row(format_score_percent(score), location, preview)
+		table.scroll_home(immediate=True, animate=False)
 
 	def _trim_results_to_limit(self):
 		if self._active_file_limit is None:
@@ -425,7 +447,7 @@ class SrxyApp(App[int]):
 		select_row = 0
 		for index, item in enumerate(self._results):
 			path_text = item.path.as_posix()
-			table.add_row(f"{item.score:.2f}", path_text, match_labels(item), key=path_text)
+			table.add_row(format_score_percent(item.score), path_text, match_labels(item), key=path_text)
 			if select_path is not None and path_text == select_path:
 				select_row = index
 		if self._results:
@@ -503,6 +525,76 @@ class SrxyApp(App[int]):
 		await self._run_search_with_queue(args)
 
 	async def _run_search_with_queue(self, args: argparse.Namespace):
+		if search_uses_subprocess(args):
+			await self._run_search_in_subprocess(args)
+			return
+		await self._run_search_in_thread(args)
+
+	def _post_search_queue_event(self, message: _SearchEvent | object):
+		if message is _SEARCH_SENTINEL:
+			return
+		if isinstance(message, (ProgressUpdated, ActivityChanged, ResultFound, SearchError, SearchFinished)):
+			self.post_message(message)
+
+	def _post_subprocess_event(self, event: dict[str, object]):
+		kind = event.get("type")
+		if kind == "progress":
+			current = event.get("current")
+			total = event.get("total")
+			if isinstance(current, int) and isinstance(total, int):
+				self.post_message(ProgressUpdated(current, total))
+		elif kind == "activity":
+			message = event.get("message")
+			self.post_message(ActivityChanged(message if isinstance(message, str) else None))
+		elif kind == "result":
+			result_data = event.get("result")
+			if isinstance(result_data, dict):
+				self.post_message(ResultFound(file_result_from_dict(result_data)))
+		elif kind == "error":
+			message = event.get("message")
+			self.post_message(SearchError(str(message)))
+		elif kind == "finished":
+			results_data = event.get("results")
+			skipped_data = event.get("skipped_files")
+			results = [file_result_from_dict(item) for item in results_data] if isinstance(results_data, list) else []
+			skipped_files = (
+				[skipped_file_from_dict(item) for item in skipped_data] if isinstance(skipped_data, list) else []
+			)
+			self.post_message(SearchFinished(results=results, skipped_files=skipped_files))
+
+	async def _drain_search_events(
+		self,
+		*,
+		get_event: Callable[[], object | None],
+		is_done: Callable[[], bool],
+		post_event: Callable[[object], None],
+	):
+		while not self._cancel_search:
+			message = get_event()
+			if message is None:
+				if is_done():
+					break
+				await asyncio.sleep(0.05)
+				continue
+			if message is _SEARCH_SENTINEL:
+				break
+			post_event(message)
+
+		if self._cancel_search:
+			self._searching = False
+			self._set_status("Search cancelled")
+			self._save_search_snapshot()
+			return
+
+		while True:
+			message = get_event()
+			if message is None:
+				break
+			if message is _SEARCH_SENTINEL:
+				continue
+			post_event(message)
+
+	async def _run_search_in_thread(self, args: argparse.Namespace):
 		event_queue: queue.Queue[_SearchEvent | object] = queue.Queue()
 
 		def run_search():
@@ -527,11 +619,7 @@ class SrxyApp(App[int]):
 					on_activity=on_activity,
 					on_result=on_result,
 				)
-			except FileNotFoundError as error:
-				event_queue.put(SearchError(str(error)))
-				event_queue.put(_SEARCH_SENTINEL)
-				return
-			except ValueError as error:
+			except Exception as error:
 				event_queue.put(SearchError(str(error)))
 				event_queue.put(_SEARCH_SENTINEL)
 				return
@@ -540,35 +628,37 @@ class SrxyApp(App[int]):
 			event_queue.put(_SEARCH_SENTINEL)
 
 		search_task = asyncio.create_task(asyncio.to_thread(run_search))
-		while not self._cancel_search:
+
+		def get_event():
 			try:
-				message = event_queue.get_nowait()
+				return event_queue.get_nowait()
 			except queue.Empty:
-				if search_task.done():
+				return None
+
+		await self._drain_search_events(
+			get_event=get_event,
+			is_done=search_task.done,
+			post_event=self._post_search_queue_event,
+		)
+		if self._cancel_search:
+			return
+
+		await search_task
+
+	async def _run_search_in_subprocess(self, args: argparse.Namespace):
+		try:
+			async for event in iter_subprocess_search_events(args, cancel_check=lambda: self._cancel_search):
+				if self._cancel_search:
 					break
-				await asyncio.sleep(0.05)
-				continue
-			if message is _SEARCH_SENTINEL:
-				break
-			if isinstance(message, (ProgressUpdated, ActivityChanged, ResultFound, SearchError, SearchFinished)):
-				self.post_message(message)
+				self._post_subprocess_event(event)
+		except Exception as error:
+			self.post_message(SearchError(str(error)))
+			return
 
 		if self._cancel_search:
 			self._searching = False
 			self._set_status("Search cancelled")
 			self._save_search_snapshot()
-			return
-
-		await search_task
-		while True:
-			try:
-				message = event_queue.get_nowait()
-			except queue.Empty:
-				break
-			if message is _SEARCH_SENTINEL:
-				continue
-			if isinstance(message, (ProgressUpdated, ActivityChanged, ResultFound, SearchError, SearchFinished)):
-				self.post_message(message)
 
 	@on(ProgressUpdated)
 	def _on_progress_updated(self, message: ProgressUpdated):
@@ -624,7 +714,8 @@ class SrxyApp(App[int]):
 		progress.update(total=100, progress=100)
 		self._save_search_snapshot()
 
-	def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted):
+	@on(DataTable.RowHighlighted, "#results-table")
+	def _on_results_row_highlighted(self, event: DataTable.RowHighlighted):
 		if event.cursor_row < 0:
 			return
 		if event.cursor_row < len(self._results):

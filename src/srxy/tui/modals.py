@@ -79,11 +79,12 @@ class HelpModal(ModalScreen[None]):
 
 [b]Filters[/b]
   Top files          Max matched files (empty = all)
-  Matches per file   Max matches per file (lines, OCR, transcript, …)
+  Per file           Max matches per file (lines, OCR, transcript, …)
 
 [b]Results[/b]
   j / k          Move selection
   o              Open selected file
+  Scores         Shown as match percentages (e.g. 86%)
 
 [b]General[/b]
   ?              Show this help

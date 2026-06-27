@@ -139,6 +139,7 @@ def test_given_matches_when_tui_search_completes_then_lists_results(tmp_path: Pa
 						break
 				assert table.row_count == 1
 				assert app.exit_code == 0
+				assert str(table.get_row_at(0)[0]) == "85%"
 
 	# when / then
 	asyncio.run(run_app())
@@ -253,9 +254,9 @@ def test_given_result_with_many_lines_when_preview_updated_then_scrolls_to_top(t
 					await pilot.pause(delay=0.05)
 					if table.row_count == 1:
 						break
-				preview = app.query_one("#preview-log")
+				preview = app.query_one("#preview-matches", DataTable)
+				assert preview.row_count > 0
 				assert preview.scroll_y == 0
-				assert not preview.is_vertical_scroll_end
 
 	# when / then
 	asyncio.run(run_app())
