@@ -494,6 +494,7 @@ def test_given_mp3_with_artist_tag_when_searching_contents_then_returns_file(tmp
 	assert "Beatles" in results[0].lines[0].text
 
 
+@pytest.mark.transcribe
 def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcript_line(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

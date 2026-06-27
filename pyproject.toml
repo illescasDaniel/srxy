@@ -64,6 +64,7 @@ markers = [
 	"macos_finder: tests that require writable macOS Finder tag extended attributes",
 	"windows_tags: tests that require Windows Explorer tag support via pywin32",
 	"transcribe: tests requiring faster-whisper, transformers, and ffmpeg",
+	"semantic: tests requiring pip install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
 ]
 
 [tool.ruff]
@@ -104,6 +105,9 @@ reportUnknownParameterType = false
 reportAttributeAccessIssue = false
 executionEnvironments = [
 	{ root = "src/srxy/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
+	{ root = "src/srxy/device.py", reportMissingImports = "none" },
+	{ root = "src/srxy/semantic_image.py", reportMissingImports = "none" },
+	{ root = "src/srxy/matchers/semantic.py", reportMissingImports = "none" },
 	{ root = "src" },
 	{ root = "tests", extraPaths = ["src", "."] },
 ]

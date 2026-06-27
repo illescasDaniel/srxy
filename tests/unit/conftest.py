@@ -11,6 +11,7 @@ from srxy.matchers.registry import get_atomic_matcher
 
 @pytest.fixture(autouse=True)
 def isolated_unit_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	monkeypatch.delenv("SRXY_SEMANTIC", raising=False)
 	monkeypatch.delenv("SRXY_SEMANTIC_IMAGE", raising=False)
 	monkeypatch.delenv("SRXY_SEMANTIC_MODEL_PATH", raising=False)
 	monkeypatch.delenv("SRXY_SEMANTIC_IMAGE_MODEL_PATH", raising=False)
@@ -29,10 +30,16 @@ def isolated_unit_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	reset_run_file_hashes()
 
 
-@pytest.fixture(autouse=True)
+@pytest.fixture
 def mock_semantic_model(monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.setenv("SRXY_SEMANTIC", "1")
-	monkeypatch.setattr("srxy.matchers.semantic.sentence_transformers_installed", lambda: True)
+
+	def always_installed():
+		return True
+
+	monkeypatch.setattr("srxy.matchers.semantic.sentence_transformers_installed", always_installed)
+	monkeypatch.setattr("srxy.cli.sentence_transformers_installed", always_installed)
+	monkeypatch.setattr("srxy.semantic_image.sentence_transformers_installed", always_installed)
 	get_atomic_matcher.cache_clear()
 	mock_model = MagicMock()
 	mock_model.encode.side_effect = lambda texts: [[float(hash(text) % 1000), 0.1] for text in texts]
