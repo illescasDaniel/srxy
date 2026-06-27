@@ -11,9 +11,9 @@ def is_document_path(path: Path) -> bool:
 	return path.suffix.lower() in DOCUMENT_SUFFIXES
 
 
-def iter_document_lines(path: Path) -> Iterator[tuple[int, str]]:
+def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str]]:
 	suffix = path.suffix.lower()
-	extractors: dict[str, Callable[[Path], Iterator[tuple[int, str]]]] = {
+	extractors: dict[str, Callable[..., Iterator[tuple[int, str]]]] = {
 		".pdf": _iter_pdf_lines,
 		".docx": _iter_docx_lines,
 		".xlsx": _iter_xlsx_lines,
@@ -23,17 +23,39 @@ def iter_document_lines(path: Path) -> Iterator[tuple[int, str]]:
 	if extractor is None:
 		return
 	try:
-		yield from extractor(path)
+		if suffix == ".pdf":
+			yield from extractor(path, ocr=ocr)
+		else:
+			yield from extractor(path)
 	except Exception:
 		return
 
 
-def _iter_pdf_lines(path: Path) -> Iterator[tuple[int, str]]:
+def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str]]:
 	from pypdf import PdfReader
 
+	from srxy.ocr_text import is_ocr_active, ocr_max_file_size, ocr_pdf_page_images
+
 	reader = PdfReader(path)
+	ocr_active = is_ocr_active(ocr)
+	if ocr_active:
+		try:
+			limit = ocr_max_file_size()
+			if limit is not None and path.stat().st_size > limit:
+				ocr_active = False
+		except OSError:
+			ocr_active = False
+
 	for page_number, page in enumerate(reader.pages, start=1):
-		text = page.extract_text() or ""
+		embedded = (page.extract_text() or "").strip()
+		if ocr_active:
+			image_ocr = ocr_pdf_page_images(page).strip()
+			if embedded and image_ocr:
+				text = f"{embedded}\n{image_ocr}"
+			else:
+				text = embedded or image_ocr
+		else:
+			text = embedded
 		text = text.strip()
 		if text:
 			yield page_number, text
