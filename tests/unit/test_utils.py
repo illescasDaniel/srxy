@@ -34,3 +34,27 @@ def test_given_short_text_when_formatting_preview_then_highlights_full_match():
 
 	# then
 	assert preview == "quarterly «revenue» projections"
+
+
+def test_given_short_text_when_formatting_preview_with_bold_then_uses_rich_markup():
+	# given
+	text = "quarterly revenue projections"
+	query = "revenue"
+
+	# when
+	preview = format_match_preview(text, query, highlight="bold")
+
+	# then
+	assert preview == "quarterly [bold]revenue[/bold] projections"
+
+
+def test_given_short_text_when_formatting_preview_with_none_then_omits_highlight():
+	# given
+	text = "quarterly revenue projections"
+	query = "revenue"
+
+	# when
+	preview = format_match_preview(text, query, highlight="none")
+
+	# then
+	assert preview == "quarterly revenue projections"

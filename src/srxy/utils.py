@@ -2,7 +2,12 @@ from __future__ import annotations
 
 import dataclasses
 from collections.abc import Mapping
-from typing import Any
+from typing import Any, Literal
+
+from rich.markup import escape
+
+
+PreviewHighlight = Literal["guillemets", "bold", "none"]
 
 
 def normalize_text(value: Any) -> str:
@@ -42,7 +47,27 @@ def find_match_span(text: str, query: str) -> tuple[int, int]:
 	return 0, min(len(collapsed), 1)
 
 
-def format_match_preview(text: str, query: str, *, max_length: int = 100) -> str:
+def _wrap_match_highlight(match_text: str, *, highlight: PreviewHighlight) -> str:
+	if highlight == "bold":
+		return f"[bold]{escape(match_text)}[/bold]"
+	if highlight == "guillemets":
+		return f"«{match_text}»"
+	return match_text
+
+
+def _escape_preview_segment(text: str, *, highlight: PreviewHighlight) -> str:
+	if highlight == "bold":
+		return escape(text)
+	return text
+
+
+def format_match_preview(
+	text: str,
+	query: str,
+	*,
+	max_length: int = 100,
+	highlight: PreviewHighlight = "guillemets",
+) -> str:
 	collapsed = collapse_whitespace(text)
 	if not collapsed:
 		return ""
@@ -55,23 +80,37 @@ def format_match_preview(text: str, query: str, *, max_length: int = 100) -> str
 	if start >= end:
 		end = min(len(collapsed), start + 1)
 	match_text = collapsed[start:end]
-	highlighted = f"«{match_text}»"
+	highlighted = _wrap_match_highlight(match_text, highlight=highlight)
+
+	def assemble(prefix_start: int, suffix_end: int) -> str:
+		prefix = collapsed[prefix_start:start]
+		suffix = collapsed[end:suffix_end]
+		prefix_ellipsis = "…" if prefix_start > 0 else ""
+		suffix_ellipsis = "…" if suffix_end < len(collapsed) else ""
+		return (
+			f"{prefix_ellipsis}"
+			f"{_escape_preview_segment(prefix, highlight=highlight)}"
+			f"{highlighted}"
+			f"{_escape_preview_segment(suffix, highlight=highlight)}"
+			f"{suffix_ellipsis}"
+		)
+
+	if highlight == "guillemets" and len(collapsed) + 2 <= max_length:
+		return collapsed[:start] + highlighted + collapsed[end:]
+
+	full_preview = assemble(0, len(collapsed))
+	if len(full_preview) <= max_length:
+		return full_preview
+
 	if len(highlighted) >= max_length:
 		return highlighted[: max_length - 1] + "…"
-
-	if len(collapsed) + 2 <= max_length:
-		return collapsed[:start] + highlighted + collapsed[end:]
 
 	remaining = max_length - len(highlighted)
 	before_budget = remaining // 2
 	after_budget = remaining - before_budget
 	prefix_start = max(0, start - before_budget)
 	suffix_end = min(len(collapsed), end + after_budget)
-	prefix = collapsed[prefix_start:start]
-	suffix = collapsed[end:suffix_end]
-	prefix_ellipsis = "…" if prefix_start > 0 else ""
-	suffix_ellipsis = "…" if suffix_end < len(collapsed) else ""
-	return f"{prefix_ellipsis}{prefix}{highlighted}{suffix}{suffix_ellipsis}"
+	return assemble(prefix_start, suffix_end)
 
 
 def _is_public_field_name(name: str) -> bool:

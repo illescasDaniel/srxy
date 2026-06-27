@@ -19,6 +19,7 @@ from srxy.cli import (
 	format_json_result,
 	format_skipped_file_warning,
 	main,
+	match_labels,
 	render_progress,
 	resolve_search_modes,
 )
@@ -47,6 +48,82 @@ def test_given_content_match_when_formatting_grouped_then_shows_file_and_line(tm
 	assert "match 85%  ·  matched: content" in output
 	assert "line 42  ·  match 85%" in output
 	assert "│ «magic»" in output or "│ def «magic»" in output
+
+
+def test_given_ocr_only_match_when_match_labels_then_shows_ocr(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "scan.png",
+		score=0.8,
+		breakdown={"content": 0.8},
+		lines=[LineMatch(line_number=1, text="invoice total", score=0.8, location_kind="ocr")],
+	)
+
+	# when / then
+	assert match_labels(result) == "ocr"
+
+
+def test_given_name_and_ocr_match_when_match_labels_then_shows_both(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "scan.png",
+		score=0.8,
+		breakdown={"name": 0.5, "content": 0.8},
+		lines=[LineMatch(line_number=1, text="invoice total", score=0.8, location_kind="ocr")],
+	)
+
+	# when / then
+	assert match_labels(result) == "name, ocr"
+
+
+def test_given_transcript_only_match_when_match_labels_then_shows_transcript(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "song.flac",
+		score=0.34,
+		breakdown={"content": 0.34},
+		lines=[
+			LineMatch(
+				line_number=160,
+				text="And all the other boys",
+				score=0.34,
+				location_kind="transcript",
+			)
+		],
+	)
+
+	# when / then
+	assert match_labels(result) == "transcript"
+
+
+def test_given_tag_only_match_when_match_labels_then_shows_tag(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "clip.mp4",
+		score=0.47,
+		breakdown={"content": 0.47},
+		lines=[LineMatch(line_number=1, text="[Title] Quarterly revenue recap", score=0.47, location_kind="tag")],
+	)
+
+	# when / then
+	assert match_labels(result) == "tag"
+
+
+def test_given_ocr_match_when_formatting_grouped_then_shows_ocr_in_matched_label(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "scan.png",
+		score=0.8,
+		breakdown={"content": 0.8},
+		lines=[LineMatch(line_number=1, text="invoice total", score=0.8, location_kind="ocr")],
+	)
+
+	# when
+	output = format_grouped([result], query="invoice")
+
+	# then
+	assert "match 80%  ·  matched: ocr" in output
+	assert "ocr 1  ·  match 80%" in output
 
 
 def test_given_name_only_match_when_formatting_flat_then_uses_line_zero_sentinel(tmp_path: Path):
@@ -479,6 +556,7 @@ def test_given_transcript_match_when_formatting_grouped_then_shows_timestamp_in_
 
 	# then
 	assert "transcript at 02:40  ·  match 34%" in output
+	assert "match 34%  ·  matched: transcript" in output
 	assert "│ And all the «other boys»" in output
 	assert "[02:40]" not in output
 
@@ -528,6 +606,7 @@ def test_given_mp4_tag_match_when_formatting_grouped_then_shows_tag_label(tmp_pa
 
 	# then
 	assert 'for "revenue"' in output
+	assert "match 47%  ·  matched: tag" in output
 	assert "tag 1  ·  match 47%" in output
 	assert "│ [Title] Quarterly «revenue» recap" in output
 

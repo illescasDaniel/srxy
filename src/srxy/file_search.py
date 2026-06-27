@@ -171,7 +171,7 @@ def _iter_body_searchable_lines(
 	max_file_size: int | None,
 	*,
 	ocr: bool | None = None,
-) -> Iterator[tuple[int, str]]:
+) -> Iterator[tuple[int, str, str]]:
 	content_byte_limit = _effective_max_file_size(path, max_file_size, ocr=ocr)
 	if is_media_path(path):
 		return
@@ -182,7 +182,8 @@ def _iter_body_searchable_lines(
 		return
 	if not _is_probably_text(path, content_byte_limit):
 		return
-	yield from _iter_utf8_lines(path, content_byte_limit)
+	for line_number, raw_line in _iter_utf8_lines(path, content_byte_limit):
+		yield line_number, raw_line, "line"
 
 
 def _append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None):
@@ -244,9 +245,7 @@ def _iter_searchable_lines(
 					if on_activity is not None:
 						on_activity(None)
 	else:
-		body_kind = content_location_kind(path)
-		for line_number, raw_line in _iter_body_searchable_lines(path, max_file_size, ocr=ocr):
-			yield line_number, raw_line, body_kind
+		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr)
 
 	for line_number, raw_line in iter_xattr_metadata_lines(path):
 		yield line_number, raw_line, "tag"

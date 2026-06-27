@@ -856,7 +856,7 @@ def test_given_pdf_with_sparse_page_when_searching_with_ocr_then_uses_image_ocr(
 	ocr_images.assert_called_once_with(fake_page)
 	assert len(results) == 1
 	assert results[0].path.name == "scan.pdf"
-	assert results[0].lines[0].location_kind == "page"
+	assert results[0].lines[0].location_kind == "ocr"
 	assert "revenue" in results[0].lines[0].text
 
 
@@ -876,6 +876,21 @@ def test_given_pdf_with_embedded_text_when_searching_with_ocr_then_supplements_w
 	ocr_images.assert_called_once()
 	assert len(results) == 1
 	assert results[0].path.name == "report.pdf"
+	assert results[0].lines[0].location_kind == "page"
+	assert "embedded" in results[0].lines[0].text
+
+
+def test_given_embedded_pdf_when_searching_without_ocr_then_uses_page_kind(tmp_path: Path):
+	# given
+	write_pdf_with_text(tmp_path / "report.pdf", "quarterly revenue projections")
+	query = "revenue"
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, ocr=False)
+
+	# then
+	assert len(results) == 1
+	assert results[0].lines[0].location_kind == "page"
 
 
 def test_given_oversized_image_when_searching_with_ocr_then_records_skip(

@@ -38,7 +38,7 @@ from srxy.transcribe_text import (
 	transcribe_requested,
 	transcribe_unavailable_message,
 )
-from srxy.utils import format_match_preview
+from srxy.utils import PreviewHighlight, format_match_preview
 
 
 _LOCATION_LABELS = {
@@ -55,6 +55,7 @@ _LOCATION_LABELS = {
 _PROGRESS_BAR_WIDTH = 40
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+_CONTENT_LOCATION_KINDS = frozenset({"line", "page", "paragraph", "row", "slide"})
 
 
 def format_location_label(kind: str, number: int) -> str:
@@ -85,7 +86,16 @@ def match_labels(result: FileSearchResult) -> str:
 	labels: list[str] = []
 	if "name" in result.breakdown and result.breakdown["name"] > 0.0:
 		labels.append("name")
-	if result.lines or result.breakdown.get("content", 0.0) > 0.0:
+	line_kinds = {line.location_kind for line in result.lines}
+	if line_kinds & _CONTENT_LOCATION_KINDS:
+		labels.append("content")
+	if "ocr" in line_kinds:
+		labels.append("ocr")
+	if "transcript" in line_kinds:
+		labels.append("transcript")
+	if "tag" in line_kinds:
+		labels.append("tag")
+	if not result.lines and result.breakdown.get("content", 0.0) > 0.0:
 		labels.append("content")
 	if result.breakdown.get("semantic_image", 0.0) > 0.0:
 		labels.append("image semantic")
@@ -125,21 +135,24 @@ def iter_grouped_line_displays(
 	line_matches: list[LineMatch],
 	*,
 	query: str,
-) -> list[tuple[str, str, float]]:
+	highlight: PreviewHighlight = "guillemets",
+) -> list[tuple[str, str, float, str]]:
 	groups: dict[tuple[float, str, str], list[LineMatch]] = {}
 	group_order: list[tuple[float, str, str]] = []
 	for line_match in line_matches:
-		preview = format_match_preview(line_match.text, query)
-		key = (line_match.score, line_match.location_kind, preview)
+		plain_preview = format_match_preview(line_match.text, query, highlight="none")
+		preview = format_match_preview(line_match.text, query, highlight=highlight)
+		key = (line_match.score, line_match.location_kind, plain_preview)
 		if key not in groups:
 			groups[key] = []
 			group_order.append(key)
 		groups[key].append(line_match)
 
-	displays: list[tuple[str, str, float]] = []
-	for score, kind, preview in group_order:
-		numbers = [line_match.line_number for line_match in groups[(score, kind, preview)]]
-		displays.append((_format_locations(kind, numbers), preview, score))
+	displays: list[tuple[str, str, float, str]] = []
+	for score, kind, plain_preview in group_order:
+		numbers = [line_match.line_number for line_match in groups[(score, kind, plain_preview)]]
+		preview = format_match_preview(groups[(score, kind, plain_preview)][0].text, query, highlight=highlight)
+		displays.append((_format_locations(kind, numbers), preview, score, plain_preview))
 	return displays
 
 
@@ -151,7 +164,7 @@ def format_grouped_result(result: FileSearchResult, *, query: str = "", separato
 	label_text = match_labels(result)
 	lines.append(f"── {path_text} ──")
 	lines.append(f"   match {format_score_percent(result.score)}  ·  matched: {label_text}")
-	for location, preview, score in iter_grouped_line_displays(result.lines, query=query):
+	for location, preview, score, _plain in iter_grouped_line_displays(result.lines, query=query):
 		lines.append(f"   {location}  ·  match {format_score_percent(score)}")
 		lines.append(f"   │ {preview}")
 	return "\n".join(lines)

@@ -7,6 +7,8 @@ from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+from rich.text import Text
+from textual.coordinate import Coordinate
 from textual.widgets import DataTable, Footer
 
 from srxy.cli import build_parser, should_use_tui
@@ -342,3 +344,98 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 		patch("srxy.tui.app.execute_search", side_effect=fake_execute_search),
 	):
 		asyncio.run(run_app())
+
+
+def test_given_selected_result_when_copy_path_then_puts_path_on_clipboard(tmp_path: Path):
+	# given
+	file_path = tmp_path / "notes.txt"
+	file_path.write_text("transform model", encoding="utf-8")
+	result = FileSearchResult(
+		path=file_path,
+		score=0.85,
+		breakdown={"content": 0.85},
+		lines=[LineMatch(line_number=1, text="transform model", score=0.85)],
+	)
+	args = _build_args(["transform", str(tmp_path), "--content-only"])
+
+	async def run_app():
+		app = SrxyApp(args, auto_start=True)
+		with (
+			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+		):
+			async with app.run_test() as pilot:
+				for _ in range(30):
+					await pilot.pause(delay=0.05)
+					if app.query_one("#results-table", DataTable).row_count == 1:
+						break
+				app.action_copy_path()
+				copy_mock.assert_called_once_with(file_path.as_posix())
+
+	# when / then
+	asyncio.run(run_app())
+
+
+def test_given_preview_match_when_copy_match_button_pressed_then_copies_location_and_text(tmp_path: Path):
+	# given
+	file_path = tmp_path / "notes.txt"
+	file_path.write_text("transform model", encoding="utf-8")
+	result = FileSearchResult(
+		path=file_path,
+		score=0.85,
+		breakdown={"content": 0.85},
+		lines=[LineMatch(line_number=1, text="transform model", score=0.85)],
+	)
+	args = _build_args(["transform", str(tmp_path), "--content-only"])
+
+	async def run_app():
+		app = SrxyApp(args, auto_start=True)
+		with (
+			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+		):
+			async with app.run_test(size=(120, 30)) as pilot:
+				for _ in range(30):
+					await pilot.pause(delay=0.05)
+					if app.query_one("#preview-matches", DataTable).row_count == 1:
+						break
+				app.action_copy_match()
+				copy_mock.assert_called_once_with("line 1\ttransform model")
+
+	# when / then
+	asyncio.run(run_app())
+
+
+def test_given_preview_match_when_rendered_then_uses_bold_text_for_query_hit(tmp_path: Path):
+	# given
+	file_path = tmp_path / "notes.txt"
+	file_path.write_text("transform model", encoding="utf-8")
+	result = FileSearchResult(
+		path=file_path,
+		score=0.85,
+		breakdown={"content": 0.85},
+		lines=[LineMatch(line_number=1, text="transform model", score=0.85)],
+	)
+	args = _build_args(["transform", str(tmp_path), "--content-only"])
+
+	async def run_app():
+		app = SrxyApp(args, auto_start=True)
+		with (
+			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+		):
+			async with app.run_test() as pilot:
+				for _ in range(30):
+					await pilot.pause(delay=0.05)
+					if app.query_one("#preview-matches", DataTable).row_count == 1:
+						break
+				preview = app.query_one("#preview-matches", DataTable)
+				cell = preview.get_cell_at(Coordinate(0, 2))
+				assert isinstance(cell, Text)
+				assert cell.plain == "transform model"
+				assert any(span.style == "bold" for span in cell.spans)
+
+	# when / then
+	asyncio.run(run_app())

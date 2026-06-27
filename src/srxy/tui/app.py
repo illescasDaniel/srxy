@@ -10,6 +10,7 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
@@ -75,11 +76,21 @@ class _SearchSnapshot:
 	max_matches_text: str
 
 
+@dataclass(frozen=True, slots=True)
+class _PreviewRow:
+	location: str
+	plain_text: str
+	score: float
+
+
 class SrxyApp(App[int]):
 	TITLE = "Srxy"
 	BINDINGS = [
 		Binding("question_mark", "show_help", "Help", show=True, priority=True),
 		Binding("o", "open_file", "Open", show=True, priority=True),
+		Binding("y", "copy_path", "Copy path", show=True, priority=True),
+		Binding("m", "copy_match", "Copy match", show=True, priority=True),
+		Binding("M", "copy_all_matches", "Copy all", show=True, priority=True),
 		Binding("q", "request_quit", "Quit", show=True, priority=True),
 		Binding("ctrl+c", "request_quit", "Quit", show=True, priority=True),
 		Binding("slash", "focus_query", "Query", show=False),
@@ -241,6 +252,18 @@ class SrxyApp(App[int]):
 		width: 1fr;
 	}
 
+	#status-bar Button {
+		width: auto;
+		min-width: 8;
+		height: 1;
+		margin-left: 1;
+	}
+
+	#copy-actions {
+		width: auto;
+		height: auto;
+	}
+
 	#warnings-log {
 		height: auto;
 		max-height: 6;
@@ -267,6 +290,7 @@ class SrxyApp(App[int]):
 		self._warnings_text = ""
 		self._last_search_snapshot: _SearchSnapshot | None = None
 		self._active_file_limit: int | None = None
+		self._preview_rows: list[_PreviewRow] = []
 
 	@property
 	def exit_code(self) -> int:
@@ -311,6 +335,10 @@ class SrxyApp(App[int]):
 		with Horizontal(id="status-bar"):
 			yield ProgressBar(total=100, show_eta=False, id="scan-progress")
 			yield Label("Ready", id="status-message")
+			with Horizontal(id="copy-actions"):
+				yield Button("Path", id="copy-path-button")
+				yield Button("Match", id="copy-match-button")
+				yield Button("All", id="copy-all-button")
 		yield Footer(show_command_palette=False)
 
 	def on_mount(self):
@@ -413,6 +441,7 @@ class SrxyApp(App[int]):
 		self.query_one("#preview-matches", DataTable).clear(columns=False)
 		self.query_one("#warnings-log", Static).update("")
 		self._warnings_text = ""
+		self._preview_rows = []
 
 	def _set_status(self, message: str):
 		self.query_one("#status-message", Label).update(message)
@@ -422,14 +451,18 @@ class SrxyApp(App[int]):
 		table = self.query_one("#preview-matches", DataTable)
 		header.update("")
 		table.clear(columns=False)
+		self._preview_rows = []
 		if result is None:
 			return
 		query = self.query_one("#query-input", Input).value
 		path_text = result.path.as_posix()
 		label_text = match_labels(result)
 		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
-		for location, preview, score in iter_grouped_line_displays(result.lines, query=query):
-			table.add_row(format_score_percent(score), location, preview)
+		for location, preview, score, plain_text in iter_grouped_line_displays(
+			result.lines, query=query, highlight="bold"
+		):
+			self._preview_rows.append(_PreviewRow(location=location, plain_text=plain_text, score=score))
+			table.add_row(format_score_percent(score), location, Text.from_markup(preview))
 		table.scroll_home(immediate=True, animate=False)
 
 	def _trim_results_to_limit(self):
@@ -478,6 +511,59 @@ class SrxyApp(App[int]):
 		if row_index < 0 or row_index >= len(self._results):
 			return
 		self._open_path(self._results[row_index].path)
+
+	def _selected_result(self) -> FileSearchResult | None:
+		table = self.query_one("#results-table", DataTable)
+		if table.row_count == 0:
+			return None
+		row_index = table.cursor_row
+		if row_index < 0 or row_index >= len(self._results):
+			return None
+		return self._results[row_index]
+
+	def _copy_text(self, text: str, *, label: str):
+		if not text.strip():
+			self.notify(f"Nothing to copy ({label})", severity="warning")
+			return
+		self.copy_to_clipboard(text)
+		self.notify(f"Copied {label}", timeout=1.5)
+
+	def action_copy_path(self):
+		result = self._selected_result()
+		if result is None:
+			self.notify("No file selected", severity="warning")
+			return
+		self._copy_text(result.path.as_posix(), label="path")
+
+	def action_copy_match(self):
+		if not self._preview_rows:
+			self.notify("No preview match to copy", severity="warning")
+			return
+		table = self.query_one("#preview-matches", DataTable)
+		row_index = table.cursor_row
+		if row_index < 0 or row_index >= len(self._preview_rows):
+			row_index = 0
+		row = self._preview_rows[row_index]
+		self._copy_text(f"{row.location}\t{row.plain_text}", label="match")
+
+	def action_copy_all_matches(self):
+		if not self._preview_rows:
+			self.notify("No matches to copy", severity="warning")
+			return
+		lines = [f"{format_score_percent(row.score)}\t{row.location}\t{row.plain_text}" for row in self._preview_rows]
+		self._copy_text("\n".join(lines), label="all matches")
+
+	@on(Button.Pressed, "#copy-path-button")
+	def _on_copy_path_button(self):
+		self.action_copy_path()
+
+	@on(Button.Pressed, "#copy-match-button")
+	def _on_copy_match_button(self):
+		self.action_copy_match()
+
+	@on(Button.Pressed, "#copy-all-button")
+	def _on_copy_all_matches_button(self):
+		self.action_copy_all_matches()
 
 	def _open_path(self, path: Path):
 		system = platform.system()

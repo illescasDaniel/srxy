@@ -11,9 +11,9 @@ def is_document_path(path: Path) -> bool:
 	return path.suffix.lower() in DOCUMENT_SUFFIXES
 
 
-def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str]]:
+def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str, str]]:
 	suffix = path.suffix.lower()
-	extractors: dict[str, Callable[..., Iterator[tuple[int, str]]]] = {
+	extractors: dict[str, Callable[..., Iterator[tuple[int, str, str]]]] = {
 		".pdf": _iter_pdf_lines,
 		".docx": _iter_docx_lines,
 		".xlsx": _iter_xlsx_lines,
@@ -31,7 +31,7 @@ def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tupl
 		return
 
 
-def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str]]:
+def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str, str]]:
 	from pypdf import PdfReader
 
 	from srxy.ocr_text import is_ocr_active, ocr_max_file_size, ocr_pdf_page_images
@@ -48,30 +48,24 @@ def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[in
 
 	for page_number, page in enumerate(reader.pages, start=1):
 		embedded = (page.extract_text() or "").strip()
-		if ocr_active:
-			image_ocr = ocr_pdf_page_images(page).strip()
-			if embedded and image_ocr:
-				text = f"{embedded}\n{image_ocr}"
-			else:
-				text = embedded or image_ocr
-		else:
-			text = embedded
-		text = text.strip()
-		if text:
-			yield page_number, text
+		image_ocr = ocr_pdf_page_images(page).strip() if ocr_active else ""
+		if embedded:
+			yield page_number, embedded, "page"
+		if image_ocr:
+			yield page_number, image_ocr, "ocr"
 
 
-def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str]]:
+def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from docx import Document
 
 	document = Document(str(path))
 	for paragraph_number, paragraph in enumerate(document.paragraphs, start=1):
 		text = paragraph.text.strip()
 		if text:
-			yield paragraph_number, text
+			yield paragraph_number, text, "paragraph"
 
 
-def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str]]:
+def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from openpyxl import load_workbook
 
 	workbook = load_workbook(path, read_only=True, data_only=True)
@@ -83,12 +77,12 @@ def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str]]:
 				if not cells:
 					continue
 				line_number += 1
-				yield line_number, f"[{sheet.title}] " + " ".join(cells)
+				yield line_number, f"[{sheet.title}] " + " ".join(cells), "row"
 	finally:
 		workbook.close()
 
 
-def _iter_pptx_lines(path: Path) -> Iterator[tuple[int, str]]:
+def _iter_pptx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from pptx import Presentation
 
 	presentation = Presentation(str(path))
@@ -99,4 +93,4 @@ def _iter_pptx_lines(path: Path) -> Iterator[tuple[int, str]]:
 			if text:
 				parts.append(text)
 		if parts:
-			yield slide_number, " ".join(parts)
+			yield slide_number, " ".join(parts), "slide"
