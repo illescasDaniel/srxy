@@ -138,7 +138,7 @@ def magic_search(
 	query: str,
 	*,
 	fields: list[str] = _DEFAULT_MAGIC_SEARCH_FIELDS,
-	threshold: float = 0.25,
+	threshold: float = 0.35,
 ) -> list[SearchResult]:
 	field_names = fields
 	if not field_names:

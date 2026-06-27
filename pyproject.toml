@@ -1,37 +1,49 @@
 [project]
 name = "srxy"
-version = "1.1.0"
-description = "Composable Python search with per-field match strategies and a Q expression DSL"
+version = "1.2.0"
+description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 dependencies = [
+	"exifread>=3.5",
 	"jellyfish>=1.2",
+	"mutagen>=1.48",
 	"openpyxl>=3.1",
-	"pypdf>=6.0",
+	"pillow>=12.2",
+	"pillow-heif>=1.4",
+	"pypdf>=6.14",
+	"pytesseract>=0.3",
 	"python-docx>=1.2",
 	"python-pptx>=1.0",
 	"rapidfuzz>=3.14",
 ]
 
 [project.optional-dependencies]
+# Text + image semantic search (sentence-transformers → PyTorch, CLIP, MiniLM).
 semantic = [
-	"sentence-transformers>=5.0",
+	"faster-whisper>=1.2",
+	"nvidia-cublas-cu12; platform_system == 'Linux'",
+	"rawpy>=0.27",
+	"sentence-transformers>=5.6",
+]
+windows = [
+	"pywin32>=312",
 ]
 dev = [
 	"basedpyright>=1.39",
 	"pip-audit>=2.10",
-	"pytest>=9.0",
-	"pytest-cov>=7.0",
+	"pytest>=9.1",
+	"pytest-cov>=7.1",
 	"ruff>=0.15",
 ]
 uploader = [
 	"build>=1.5",
-	"twine>=6.0",
+	"twine>=6.2",
 ]
 
 [build-system]
-requires = ["setuptools>=82"]
+requires = ["setuptools>=82.0"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
@@ -47,6 +59,11 @@ pythonpath = ["."]
 markers = [
 	"unit: fast isolated tests",
 	"integration: tests using real models and fixture datasets",
+	"ocr: tests requiring a real OCR backend",
+	"linux_xattr: tests that require Linux extended attribute support",
+	"macos_finder: tests that require writable macOS Finder tag extended attributes",
+	"windows_tags: tests that require Windows Explorer tag support via pywin32",
+	"transcribe: tests requiring faster-whisper, transformers, and ffmpeg",
 ]
 
 [tool.ruff]
@@ -78,6 +95,7 @@ venvPath = "."
 venv = ".venv"
 extraPaths = ["src"]
 reportMissingTypeStubs = false
+reportMissingModuleSource = false
 reportUnknownMemberType = false
 reportUnknownLambdaType = false
 reportUnknownVariableType = false
@@ -85,6 +103,7 @@ reportUnknownArgumentType = false
 reportUnknownParameterType = false
 reportAttributeAccessIssue = false
 executionEnvironments = [
+	{ root = "src/srxy/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
 	{ root = "src" },
 	{ root = "tests", extraPaths = ["src", "."] },
 ]

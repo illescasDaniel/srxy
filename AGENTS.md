@@ -8,7 +8,7 @@ After writing or changing code, run the quality gate until it passes cleanly.
 2. **Verify** — run `./scripts/quality/checks.sh` (no `--fix`) and confirm a clean pass.
 3. **Repeat** — if either step fails, fix the reported problems (rerun `--fix` for Ruff/shell issues; fix basedpyright, pip-audit, and pytest failures in code) and go back to step 1 until both commands succeed.
 
-Use the project venv with dev dependencies installed (`pip install -e ".[dev]"`).
+Use the project venv with dev dependencies installed (`pip install -e ".[dev,semantic]"`).
 
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 

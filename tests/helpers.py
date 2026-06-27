@@ -9,6 +9,16 @@ from srxy import SearchResult
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+OCR_FIXTURES_DIR = FIXTURES_DIR / "ocr"
+OCR_IMAGE_FIXTURE = OCR_FIXTURES_DIR / "ocr_sample.png"
+OCR_PDF_FIXTURE = OCR_FIXTURES_DIR / "ocr_embedded.pdf"
+MINIMAL_JPEG_FIXTURE = FIXTURES_DIR / "minimal.jpg"
+MINIMAL_MP3_FIXTURE = FIXTURES_DIR / "minimal.mp3"
+MINIMAL_MP4_FIXTURE = FIXTURES_DIR / "minimal.mp4"
+
+
+def copy_media_fixture(name: str, destination: Path) -> None:
+	destination.write_bytes((FIXTURES_DIR / name).read_bytes())
 
 
 @dataclass(frozen=True)
@@ -107,3 +117,24 @@ def write_pptx_with_text(path: Path, text: str):
 	textbox = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1))
 	textbox.text_frame.text = text
 	presentation.save(str(path))
+
+
+def write_mp4_with_tags(path: Path, *, title: str | None = None, min_size: int = 0):
+	from mutagen.mp4 import MP4
+
+	copy_media_fixture("minimal.mp4", path)
+	if title is not None:
+		mp4 = MP4(path)
+		mp4["\xa9nam"] = [title]
+		mp4.save()
+	if min_size > 0:
+		current_size = path.stat().st_size
+		if current_size < min_size:
+			with path.open("ab") as handle:
+				handle.write(b"\x00" * (min_size - current_size))
+
+
+def set_windows_tags(path: Path, tags: list[str]) -> None:
+	from srxy.windows_metadata import write_windows_keywords
+
+	write_windows_keywords(path, tags)

@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 
+from srxy.device import resolve_torch_device
 from srxy.matchers.base import Matcher
 
 
@@ -38,14 +40,20 @@ def _model_source() -> str:
 def _load_model() -> object:
 	from sentence_transformers import SentenceTransformer  # type: ignore[reportMissingImports]
 
+	from srxy.model_store import ensure_semantic_text_model, is_model_installed, semantic_text_model_missing_message
+
+	if not ensure_semantic_text_model(interactive=sys.stdin.isatty()):
+		raise RuntimeError(semantic_text_model_missing_message())
+
 	source = _model_source()
 	model_path = Path(source)
+	device = resolve_torch_device()
 	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-	if model_path.is_dir():
+	if model_path.is_dir() and is_model_installed(model_path):
 		os.environ.setdefault("HF_HUB_OFFLINE", "1")
 		os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-		return SentenceTransformer(str(model_path), local_files_only=True)
-	return SentenceTransformer(source)
+		return SentenceTransformer(str(model_path), device=device, local_files_only=True)
+	return SentenceTransformer(source, device=device)
 
 
 def _get_model() -> object:

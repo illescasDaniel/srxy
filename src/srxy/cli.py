@@ -4,11 +4,40 @@ import argparse
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 from typing import IO, TextIO
 
 from srxy.file_search import magic_file_search, suggest_max_file_size
+from srxy.matchers.semantic import (
+	semantic_env_enabled,
+	sentence_transformers_installed,
+)
+from srxy.model_store import (
+	ensure_semantic_image_model,
+	ensure_semantic_text_model,
+	ensure_transcribe_model,
+	semantic_image_model_missing_message,
+	semantic_text_model_missing_message,
+	transcribe_model_missing_message,
+)
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
+from srxy.ocr_text import is_ocr_available, ocr_requested, ocr_unavailable_message
+from srxy.semantic_image import (
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	is_semantic_image_available,
+	semantic_image_requested,
+	semantic_image_unavailable_message,
+)
+from srxy.transcribe_text import (
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+	ffmpeg_available,
+	ffmpeg_unavailable_message,
+	format_transcript_timestamp,
+	transcribe_deps_installed,
+	transcribe_requested,
+	transcribe_unavailable_message,
+)
 from srxy.utils import format_match_preview
 
 
@@ -18,14 +47,37 @@ _LOCATION_LABELS = {
 	"paragraph": "paragraph",
 	"row": "row",
 	"slide": "slide",
+	"tag": "tag",
+	"ocr": "ocr",
+	"transcript": "transcript",
 }
 
 _PROGRESS_BAR_WIDTH = 40
+_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 
 
 def format_location_label(kind: str, number: int) -> str:
+	if kind == "transcript":
+		return f"transcript at {format_transcript_timestamp(number)}"
 	label = _LOCATION_LABELS.get(kind, kind)
 	return f"{label} {number}"
+
+
+def _format_transcript_locations(seconds_list: list[int]) -> str:
+	timestamps = [format_transcript_timestamp(seconds) for seconds in sorted(seconds_list)]
+	if len(timestamps) == 1:
+		return f"transcript at {timestamps[0]}"
+	return f"transcript at {', '.join(timestamps)}"
+
+
+def _format_locations(kind: str, numbers: list[int]) -> str:
+	if kind == "transcript":
+		return _format_transcript_locations(numbers)
+	label = _LOCATION_LABELS.get(kind, kind)
+	sorted_numbers = sorted(numbers)
+	if len(sorted_numbers) == 1:
+		return f"{label} {sorted_numbers[0]}"
+	return f"{label}s {_format_number_ranges(sorted_numbers)}"
 
 
 def _match_labels(result: FileSearchResult) -> str:
@@ -34,6 +86,8 @@ def _match_labels(result: FileSearchResult) -> str:
 		labels.append("name")
 	if result.lines or result.breakdown.get("content", 0.0) > 0.0:
 		labels.append("content")
+	if result.breakdown.get("semantic_image", 0.0) > 0.0:
+		labels.append("image semantic")
 	return ", ".join(labels) if labels else "match"
 
 
@@ -60,14 +114,6 @@ def _format_number_ranges(numbers: list[int]) -> str:
 		prev = number
 	parts.append(f"{start}-{prev}" if start != prev else str(start))
 	return ", ".join(parts)
-
-
-def _format_locations(kind: str, numbers: list[int]) -> str:
-	label = _LOCATION_LABELS.get(kind, kind)
-	sorted_numbers = sorted(numbers)
-	if len(sorted_numbers) == 1:
-		return f"{label} {sorted_numbers[0]}"
-	return f"{label}s {_format_number_ranges(sorted_numbers)}"
 
 
 def _iter_grouped_line_displays(
@@ -161,7 +207,32 @@ def format_json(results: list[FileSearchResult], *, query: str = "") -> str:
 	return json.dumps(payload, indent=2)
 
 
-def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int) -> str:
+def format_no_matches_message(query: str, path: Path | str) -> str:
+	return f'No matches for "{query}" in {Path(path).expanduser()}'
+
+
+def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int | None) -> str:
+	if skipped.reason == "ocr_too_large":
+		from srxy.ocr_text import ocr_max_file_size
+
+		limit = ocr_max_file_size()
+		limit_label = f"{limit:,}" if limit is not None else "limit"
+		return (
+			f"warning: skipped OCR in {skipped.path.as_posix()} "
+			f"({skipped.size_bytes:,} bytes > --max-ocr-file-size {limit_label})\n"
+			f"  hint: increase --max-ocr-file-size or unset SRXY_OCR_MAX_FILE_SIZE"
+		)
+	if skipped.reason == "transcribe_too_large":
+		from srxy.transcribe_text import transcribe_max_file_size
+
+		limit = transcribe_max_file_size()
+		limit_label = f"{limit:,}" if limit is not None else "limit"
+		return (
+			f"warning: skipped transcription in {skipped.path.as_posix()} "
+			f"({skipped.size_bytes:,} bytes > --max-transcribe-file-size {limit_label})\n"
+			f"  hint: increase --max-transcribe-file-size or unset SRXY_TRANSCRIBE_MAX_FILE_SIZE"
+		)
+
 	suggested = suggest_max_file_size(skipped.size_bytes)
 	return (
 		f"warning: skipped content search in {skipped.path.as_posix()} "
@@ -170,7 +241,7 @@ def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int) -> str
 	)
 
 
-def format_skipped_file_warnings(skipped_files: list[SkippedFile], max_file_size: int) -> str:
+def format_skipped_file_warnings(skipped_files: list[SkippedFile], max_file_size: int | None) -> str:
 	if not skipped_files:
 		return ""
 
@@ -197,12 +268,60 @@ class ProgressBar:
 		self._tty = self._stream.isatty()
 		self._current = 0
 		self._total = 0
+		self._activity_message: str | None = None
+		self._spinner_index = 0
+		self._spinner_stop = threading.Event()
+		self._spinner_thread: threading.Thread | None = None
+		self._match_flash = False
+
+	def flash_match(self):
+		self._match_flash = True
+		if self._tty and self._searching() and self._activity_message is None:
+			self.refresh()
+
+	def _stop_spinner(self):
+		if self._spinner_thread is None:
+			return
+		self._spinner_stop.set()
+		self._spinner_thread.join(timeout=1.0)
+		self._spinner_thread = None
+		self._spinner_stop.clear()
+
+	def set_activity(self, message: str | None):
+		if message == self._activity_message:
+			return
+		self._match_flash = False
+		self._stop_spinner()
+		self._activity_message = message
+		if message is None:
+			if self._tty and self._searching():
+				self.refresh()
+			return
+		if not self._tty:
+			return
+		self._spinner_thread = threading.Thread(target=self._run_spinner, daemon=True)
+		self._spinner_thread.start()
+
+	def _run_spinner(self):
+		while not self._spinner_stop.is_set():
+			frame = _SPINNER_FRAMES[self._spinner_index % len(_SPINNER_FRAMES)]
+			self._spinner_index += 1
+			columns, _ = _terminal_size(self._stream)
+			message = f"{frame} {self._activity_message}"
+			if len(message) > columns:
+				message = message[: max(0, columns - 3)] + "..."
+			self._stream.write(f"\r\x1b[2K{message}")
+			self._stream.flush()
+			if self._spinner_stop.wait(0.1):
+				break
 
 	def _format_message(self, *, width: int) -> str:
 		ratio = self._current / self._total if self._total else 0.0
 		filled = int(_PROGRESS_BAR_WIDTH * ratio)
 		bar = "█" * filled + "░" * (_PROGRESS_BAR_WIDTH - filled)
 		message = f"[{bar}] {self._current}/{self._total} files"
+		if self._match_flash:
+			message += " · match found"
 		if len(message) > width:
 			return message[: max(0, width - 3)] + "..."
 		return message
@@ -211,6 +330,7 @@ class ProgressBar:
 		return self._total > 0 and self._current < self._total
 
 	def clear(self):
+		self._stop_spinner()
 		if not self._tty:
 			return
 		self._stream.write("\r\x1b[2K")
@@ -225,6 +345,7 @@ class ProgressBar:
 		self._stream.flush()
 
 	def update(self, current: int, total: int):
+		self._match_flash = False
 		self._current = current
 		self._total = total
 		if total <= 0:
@@ -247,6 +368,7 @@ class ProgressBar:
 			self.refresh()
 
 	def finish(self):
+		self._activity_message = None
 		if not self._tty:
 			return
 		self.clear()
@@ -346,18 +468,25 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	parser.add_argument("query", help="Search string")
 	parser.add_argument("path", nargs="?", default=".", help="File or directory to search (default: .)")
-	parser.add_argument("--threshold", type=float, default=0.25, help="Minimum match score (default: 0.25)")
+	parser.add_argument("--threshold", type=float, default=0.35, help="Minimum match score (default: 0.35)")
 	parser.add_argument(
 		"--max-file-size",
 		type=int,
-		default=1_048_576,
-		help="Skip content search in files larger than this many bytes (default: 1048576)",
+		default=None,
+		help="Skip text and document content search in files larger than this many bytes (default: unlimited)",
 	)
 	parser.add_argument(
 		"--max-line-matches",
 		type=int,
 		default=50,
 		help="Maximum matching lines returned per file (default: 50)",
+	)
+	parser.add_argument(
+		"-l",
+		"--limit",
+		type=int,
+		default=None,
+		help="Maximum number of matched files to return (default: unlimited)",
 	)
 	parser.add_argument(
 		"--format",
@@ -367,6 +496,55 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 	parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON")
 	parser.add_argument("--semantic", action="store_true", help="Enable semantic matching (SRXY_SEMANTIC=1)")
+	parser.add_argument(
+		"--semantic-image",
+		action="store_true",
+		help="Enable CLIP image semantic search on raster images (SRXY_SEMANTIC_IMAGE=1)",
+	)
+	parser.add_argument(
+		"--semantic-image-threshold",
+		type=float,
+		default=DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+		help=(
+			f"Minimum CLIP image semantic score when it is the best match (default: {DEFAULT_SEMANTIC_IMAGE_THRESHOLD})"
+		),
+	)
+	parser.add_argument(
+		"--semantic-all",
+		action="store_true",
+		help="Enable text semantic, image semantic (CLIP), OCR, and transcription together",
+	)
+	parser.add_argument("--ocr", action="store_true", help="Enable OCR for images and PDF embedded images (SRXY_OCR=1)")
+	parser.add_argument(
+		"--max-ocr-file-size",
+		type=int,
+		default=None,
+		help="Skip OCR on files larger than this many bytes (no default limit)",
+	)
+	parser.add_argument(
+		"--transcribe",
+		action="store_true",
+		help="Enable audio/video transcription for searchable speech (SRXY_TRANSCRIBE=1)",
+	)
+	parser.add_argument(
+		"--max-transcribe-file-size",
+		type=int,
+		default=None,
+		help="Skip transcription on files larger than this many bytes (no default limit)",
+	)
+	parser.add_argument(
+		"--transcribe-model",
+		default=None,
+		help="Whisper model size/name for transcription (default: base; SRXY_TRANSCRIBE_MODEL)",
+	)
+	parser.add_argument(
+		"--transcribe-threshold",
+		type=float,
+		default=DEFAULT_TRANSCRIBE_THRESHOLD,
+		help=(
+			f"Minimum transcript score when transcription is the best match (default: {DEFAULT_TRANSCRIBE_THRESHOLD})"
+		),
+	)
 	parser.add_argument(
 		"--progress",
 		action=argparse.BooleanOptionalAction,
@@ -445,8 +623,59 @@ def main(argv: list[str] | None = None) -> int:
 	parser = build_parser()
 	args = parser.parse_args(argv)
 
+	if args.semantic_all:
+		os.environ["SRXY_SEMANTIC"] = "1"
+		os.environ["SRXY_OCR"] = "1"
+		os.environ["SRXY_SEMANTIC_IMAGE"] = "1"
+		os.environ["SRXY_TRANSCRIBE"] = "1"
 	if args.semantic:
 		os.environ["SRXY_SEMANTIC"] = "1"
+	if args.semantic_image:
+		os.environ["SRXY_SEMANTIC_IMAGE"] = "1"
+	if args.ocr:
+		os.environ["SRXY_OCR"] = "1"
+	if args.max_ocr_file_size is not None:
+		os.environ["SRXY_OCR_MAX_FILE_SIZE"] = str(args.max_ocr_file_size)
+	if args.transcribe:
+		os.environ["SRXY_TRANSCRIBE"] = "1"
+	if args.max_transcribe_file_size is not None:
+		os.environ["SRXY_TRANSCRIBE_MAX_FILE_SIZE"] = str(args.max_transcribe_file_size)
+	if args.transcribe_model is not None:
+		os.environ["SRXY_TRANSCRIBE_MODEL"] = args.transcribe_model
+	os.environ["SRXY_TRANSCRIBE_THRESHOLD"] = str(args.transcribe_threshold)
+
+	if ocr_requested(None) and not is_ocr_available():
+		print(ocr_unavailable_message(), file=sys.stderr)
+		return 2
+
+	if transcribe_requested(None) and not transcribe_deps_installed():
+		print(transcribe_unavailable_message(), file=sys.stderr)
+		return 2
+	if transcribe_requested(None) and not ffmpeg_available():
+		print(ffmpeg_unavailable_message(), file=sys.stderr)
+		return 2
+	if transcribe_requested(None) and not ensure_transcribe_model(interactive=sys.stdin.isatty()):
+		print(transcribe_model_missing_message(), file=sys.stderr)
+		return 2
+
+	if semantic_env_enabled():
+		if not sentence_transformers_installed():
+			print(
+				"Semantic matching requires the optional dependency: pip install 'srxy[semantic]'",
+				file=sys.stderr,
+			)
+			return 2
+		if not ensure_semantic_text_model(interactive=sys.stdin.isatty()):
+			print(semantic_text_model_missing_message(), file=sys.stderr)
+			return 2
+
+	if semantic_image_requested(None):
+		if not is_semantic_image_available():
+			print(semantic_image_unavailable_message(), file=sys.stderr)
+			return 2
+		if not ensure_semantic_image_model(interactive=sys.stdin.isatty()):
+			print(semantic_image_model_missing_message(), file=sys.stderr)
+			return 2
 
 	search_names, search_contents = resolve_search_modes(args)
 	skipped_files: list[SkippedFile] = []
@@ -463,10 +692,16 @@ def main(argv: list[str] | None = None) -> int:
 
 	def on_progress(current: int, total: int):
 		if progress is not None:
+			progress.set_activity(None)
 			progress.update(current, total)
 
-	def on_result(result: FileSearchResult):
-		writer.write_result(result)
+	def on_activity(message: str | None):
+		if progress is not None:
+			progress.set_activity(message)
+
+	def on_result(_result: FileSearchResult):
+		if progress is not None:
+			progress.flash_match()
 
 	try:
 		results = magic_file_search(
@@ -475,12 +710,20 @@ def main(argv: list[str] | None = None) -> int:
 			search_names=search_names,
 			search_contents=search_contents,
 			threshold=args.threshold,
+			semantic_image_threshold=args.semantic_image_threshold,
+			transcribe_threshold=args.transcribe_threshold,
+			limit=args.limit,
 			max_file_size=args.max_file_size,
 			max_line_matches=args.max_line_matches,
 			skip_hidden_folders=not args.include_hidden,
 			skip_noise_folders=not args.include_noise,
-			skipped_files=skipped_files if search_contents else None,
+			skipped_files=skipped_files
+			if search_contents or ocr_requested(None) or transcribe_requested(None)
+			else None,
+			ocr=ocr_requested(None),
+			transcribe=transcribe_requested(None),
 			on_progress=on_progress,
+			on_activity=on_activity,
 			on_result=on_result,
 		)
 	except FileNotFoundError as error:
@@ -496,14 +739,20 @@ def main(argv: list[str] | None = None) -> int:
 		print(error, file=sys.stderr)
 		return 2
 
-	for skipped in skipped_files:
-		print(format_skipped_file_warning(skipped, args.max_file_size), file=sys.stderr)
-
 	if progress is not None:
 		progress.finish()
 
+	for result in results:
+		writer.write_result(result)
 	writer.finalize()
 	writer.close()
+
+	skipped_warnings = format_skipped_file_warnings(skipped_files, args.max_file_size)
+	if skipped_warnings:
+		print(skipped_warnings, file=sys.stderr)
+
+	if not results:
+		print(format_no_matches_message(args.query, args.path), file=sys.stderr)
 
 	return 0 if results else 1
 

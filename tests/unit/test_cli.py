@@ -2,9 +2,12 @@ from __future__ import annotations
 
 import json
 import sys
+import time
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 import pytest
+from tests.helpers import copy_media_fixture
 
 from srxy.cli import (
 	ProgressBar,
@@ -13,11 +16,13 @@ from srxy.cli import (
 	format_grouped,
 	format_grouped_result,
 	format_json,
+	format_json_result,
+	format_skipped_file_warning,
 	main,
 	render_progress,
 	resolve_search_modes,
 )
-from srxy.models import FileSearchResult, LineMatch
+from srxy.models import FileSearchResult, LineMatch, SkippedFile
 
 
 pytestmark = pytest.mark.unit
@@ -108,6 +113,14 @@ def test_given_content_only_flag_when_resolving_modes_then_disables_name_search(
 	assert search_contents is True
 
 
+def test_given_default_args_when_parsing_then_max_file_size_is_unlimited():
+	# when
+	args = build_parser().parse_args(["token"])
+
+	# then
+	assert args.max_file_size is None
+
+
 def test_given_matching_directory_when_running_cli_then_prints_results(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
@@ -138,6 +151,8 @@ def test_given_no_matches_when_running_cli_then_returns_exit_code_one(
 	captured = capsys.readouterr()
 	assert exit_code == 1
 	assert captured.out == ""
+	assert 'No matches for "zzzzzzzz"' in captured.err
+	assert 'No matches for "zzzzzzzz"' in captured.err
 
 
 def test_given_missing_path_when_running_cli_then_returns_exit_code_two(
@@ -199,7 +214,7 @@ def test_given_oversized_file_when_running_cli_then_warns_on_stderr(tmp_path: Pa
 	large_file.write_text("needle " + ("x" * 2_000_000), encoding="utf-8")
 
 	# when
-	exit_code = main(["needle", str(large_file), "--content-only", "--max-file-size", "1024"])
+	exit_code = main(["needle", str(large_file), "--content-only", "--max-file-size", "1024", "--no-progress"])
 
 	# then
 	captured = capsys.readouterr()
@@ -207,6 +222,296 @@ def test_given_oversized_file_when_running_cli_then_warns_on_stderr(tmp_path: Pa
 	assert "warning: skipped content search" in captured.err
 	assert "--max-file-size" in captured.err
 	assert large_file.as_posix() in captured.err
+
+
+def test_given_match_and_skipped_file_when_running_cli_then_warnings_follow_summary(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	match_file = tmp_path / "match.txt"
+	match_file.write_text("needle here", encoding="utf-8")
+	large_file = tmp_path / "large.txt"
+	large_file.write_text("needle " + ("x" * 2_000_000), encoding="utf-8")
+
+	# when
+	exit_code = main(["needle", str(tmp_path), "--content-only", "--max-file-size", "1024", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	summary = '1 file matched for "needle"'
+	assert summary in captured.out
+	assert captured.out.index(summary) < len(captured.out)
+	assert "warning: skipped content search" in captured.err
+	assert large_file.as_posix() in captured.err
+
+
+def test_given_ocr_skip_when_formatting_warning_then_shows_ocr_limit(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setenv("SRXY_OCR_MAX_FILE_SIZE", "20971520")
+	skipped = SkippedFile(path=tmp_path / "large.png", size_bytes=25_000_000, reason="ocr_too_large")
+
+	# when
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	# then
+	assert "skipped OCR" in warning
+	assert "--max-ocr-file-size" in warning
+
+
+def test_given_ocr_flag_when_parsing_args_then_accepts_flag():
+	# when
+	args = build_parser().parse_args(["invoice", ".", "--ocr"])
+
+	# then
+	assert args.ocr is True
+
+
+def test_given_semantic_image_flag_when_parsing_args_then_accepts_flag():
+	# when
+	args = build_parser().parse_args(["sunset", ".", "--semantic-image"])
+
+	# then
+	assert args.semantic_image is True
+
+
+def test_given_semantic_all_flag_when_parsing_args_then_accepts_flag():
+	# when
+	args = build_parser().parse_args(["invoice", ".", "--semantic-all"])
+
+	# then
+	assert args.semantic_all is True
+
+
+def test_given_semantic_all_without_ffmpeg_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("quarterly earnings", encoding="utf-8")
+	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
+
+	with (
+		patch("srxy.cli.transcribe_deps_installed", return_value=True),
+		patch("srxy.cli.ffmpeg_available", return_value=False),
+	):
+		# when
+		exit_code = main(["earnings", str(tmp_path), "--semantic-all", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "ffmpeg" in captured.err
+
+
+def test_given_semantic_image_threshold_flag_when_parsing_args_then_accepts_value():
+	# when
+	args = build_parser().parse_args(["sunset", ".", "--semantic-image-threshold", "0.25"])
+
+	# then
+	assert args.semantic_image_threshold == 0.25
+
+
+def test_given_semantic_image_flag_without_dependency_when_running_cli_then_exits_two(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "photo.png").write_bytes(b"png")
+	monkeypatch.delenv("SRXY_SEMANTIC_IMAGE", raising=False)
+
+	with patch("srxy.cli.is_semantic_image_available", return_value=False):
+		# when
+		exit_code = main(["sunset", str(tmp_path), "--semantic-image", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "Image semantic search is disabled" in captured.err
+
+
+def test_given_semantic_flag_without_cached_model_when_user_declines_then_exits_two(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+
+	with (
+		patch("srxy.cli.sentence_transformers_installed", return_value=True),
+		patch("srxy.cli.ensure_semantic_text_model", return_value=False),
+	):
+		# when
+		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "Semantic text model is not cached" in captured.err
+
+
+def test_given_max_ocr_file_size_flag_when_parsing_args_then_accepts_value():
+	# when
+	args = build_parser().parse_args(["invoice", ".", "--ocr", "--max-ocr-file-size", "5000000"])
+
+	# then
+	assert args.max_ocr_file_size == 5_000_000
+
+
+def test_given_ocr_flag_without_tesseract_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
+	monkeypatch.delenv("SRXY_OCR", raising=False)
+
+	with patch("srxy.cli.is_ocr_available", return_value=False):
+		# when
+		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "Tesseract OCR is not available" in captured.err
+	assert "tesseract binary on PATH" in captured.err
+	assert captured.out == ""
+
+
+def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
+	monkeypatch.setenv("SRXY_OCR", "1")
+
+	with patch("srxy.cli.is_ocr_available", return_value=False):
+		# when
+		exit_code = main(["invoice", str(tmp_path), "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "Tesseract OCR is not available" in captured.err
+	assert captured.out == ""
+
+
+def test_given_transcribe_flag_without_deps_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("quarterly earnings", encoding="utf-8")
+	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
+
+	with patch("srxy.cli.transcribe_deps_installed", return_value=False):
+		# when
+		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "srxy[semantic]" in captured.err
+	assert captured.out == ""
+
+
+def test_given_transcribe_flag_without_ffmpeg_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("quarterly earnings", encoding="utf-8")
+	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
+
+	with (
+		patch("srxy.cli.transcribe_deps_installed", return_value=True),
+		patch("srxy.cli.ffmpeg_available", return_value=False),
+	):
+		# when
+		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "ffmpeg" in captured.err
+	assert captured.out == ""
+
+
+def test_given_transcribe_flag_when_parsing_args_then_accepts_flag():
+	# when
+	args = build_parser().parse_args(["earnings", ".", "--transcribe"])
+
+	# then
+	assert args.transcribe is True
+
+
+def test_given_transcript_match_when_formatting_grouped_then_shows_timestamp_in_header(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "song.flac",
+		score=0.34,
+		breakdown={"content": 0.34},
+		lines=[
+			LineMatch(
+				line_number=160,
+				text="And all the other boys",
+				score=0.34,
+				location_kind="transcript",
+			)
+		],
+	)
+
+	# when
+	output = format_grouped([result], query="other boys")
+
+	# then
+	assert "transcript at 02:40  ·  score 0.34" in output
+	assert "│ And all the «other boys»" in output
+	assert "[02:40]" not in output
+
+
+def test_given_transcript_match_when_formatting_json_then_uses_timestamp_label(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "song.flac",
+		score=0.34,
+		breakdown={"content": 0.34},
+		lines=[
+			LineMatch(
+				line_number=160,
+				text="And all the other boys",
+				score=0.34,
+				location_kind="transcript",
+			)
+		],
+	)
+
+	# when
+	payload = format_json_result(result, query="other boys")
+	lines = payload["lines"]
+	assert isinstance(lines, list)
+
+	# then
+	first_line = lines[0]
+	assert isinstance(first_line, dict)
+	assert first_line["location_label"] == "transcript at 02:40"
+	assert first_line["line_number"] == 160
+	assert "[02:40]" not in first_line["text"]
+
+
+def test_given_mp4_tag_match_when_formatting_grouped_then_shows_tag_label(tmp_path: Path):
+	# given
+	copy_media_fixture("minimal.mp4", tmp_path / "clip.mp4")
+	file_path = tmp_path / "clip.mp4"
+	result = FileSearchResult(
+		path=file_path,
+		score=0.47,
+		breakdown={"content": 0.47},
+		lines=[LineMatch(line_number=1, text="[Title] Quarterly revenue recap", score=0.47, location_kind="tag")],
+	)
+
+	# when
+	output = format_grouped([result], query="revenue")
+
+	# then
+	assert 'for "revenue"' in output
+	assert "tag 1  ·  score 0.47" in output
+	assert "│ [Title] Quarterly «revenue» recap" in output
 
 
 def test_given_pdf_match_when_formatting_grouped_then_shows_page_label(tmp_path: Path):
@@ -315,7 +620,7 @@ def test_given_mixed_line_previews_when_formatting_grouped_then_keeps_distinct_g
 	assert "line 1  ·  score 0.80" in output
 
 
-def test_given_grouped_stream_when_running_cli_then_prints_matches_before_summary(
+def test_given_grouped_stream_when_running_cli_then_prints_summary_after_matches(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
 	# given
@@ -327,8 +632,61 @@ def test_given_grouped_stream_when_running_cli_then_prints_matches_before_summar
 	# then
 	captured = capsys.readouterr()
 	assert exit_code == 0
-	assert captured.out.index("──") < captured.out.index("1 file matched")
+	assert captured.out.index("1 file matched") > captured.out.index("──")
 	assert 'for "revenue"' in captured.out
+
+
+def test_given_multiple_matches_when_running_cli_then_prints_highest_score_first(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "weak.txt").write_text("rev", encoding="utf-8")
+	(tmp_path / "strong.txt").write_text("quarterly revenue projections", encoding="utf-8")
+
+	# when
+	exit_code = main(["revenue", str(tmp_path), "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	weak_index = captured.out.index("weak.txt")
+	strong_index = captured.out.index("strong.txt")
+	assert strong_index < weak_index
+
+
+def test_given_limit_flag_when_running_cli_then_returns_top_matches_only(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "a.txt").write_text("revenue alpha", encoding="utf-8")
+	(tmp_path / "b.txt").write_text("revenue beta", encoding="utf-8")
+	(tmp_path / "c.txt").write_text("revenue gamma", encoding="utf-8")
+
+	# when
+	exit_code = main(["revenue", str(tmp_path), "--content-only", "--no-progress", "--limit", "2"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "2 files matched" in captured.out
+	assert captured.out.count(".txt ──") == 2
+
+
+def test_given_match_found_when_flashing_progress_then_shows_match_found_in_bar():
+	# given
+	stream = MagicMock()
+	stream.isatty.return_value = True
+	bar = ProgressBar(stream=stream)
+	bar.update(2, 5)
+
+	# when
+	bar.flash_match()
+	bar.refresh()
+
+	# then
+	written = "".join(call.args[0] for call in stream.write.call_args_list)
+	assert "match found" in written
+	assert "2/5 files" in written
 
 
 def test_given_results_when_running_cli_with_output_flag_then_writes_saved_file(
@@ -373,6 +731,7 @@ def test_given_no_matches_when_running_cli_with_json_then_prints_empty_array(
 	captured = capsys.readouterr()
 	assert exit_code == 1
 	assert captured.out.strip() == "[]"
+	assert 'No matches for "zzzzzzzz"' in captured.err
 
 
 def test_given_progress_bar_when_updating_on_tty_then_redraws_same_line(monkeypatch: pytest.MonkeyPatch):
@@ -464,3 +823,34 @@ def test_given_render_progress_when_completing_on_tty_then_finishes_bar(monkeypa
 	output = "".join(written)
 	assert "10/10 files" in output
 	assert output.endswith("\n")
+
+
+def test_given_progress_bar_when_setting_activity_then_renders_spinner(monkeypatch: pytest.MonkeyPatch):
+	# given
+	written: list[str] = []
+
+	class FakeTTY:
+		def fileno(self) -> int:
+			return 2
+
+		def isatty(self) -> bool:
+			return True
+
+		def write(self, text: str) -> None:
+			written.append(text)
+
+		def flush(self) -> None:
+			pass
+
+	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
+
+	# when
+	progress.set_activity("Encoding image query…")
+	time.sleep(0.15)
+	progress.set_activity(None)
+	progress.finish()
+
+	# then
+	output = "".join(written)
+	assert "Encoding image query" in output
