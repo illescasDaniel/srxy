@@ -38,6 +38,7 @@ from srxy.cli import (
 	match_labels,
 	sync_options_to_args,
 )
+from srxy.file_query import file_q_to_dict
 from srxy.models import FileSearchResult, SkippedFile
 from srxy.tui.messages import (
 	ActivityChanged,
@@ -48,6 +49,7 @@ from srxy.tui.messages import (
 )
 from srxy.tui.modals import ErrorModal, HelpModal
 from srxy.tui.preflight import run_tui_preflight
+from srxy.tui.query_builder import QueryBuilder
 from srxy.tui.search_worker import (
 	file_result_from_dict,
 	iter_subprocess_search_events,
@@ -110,13 +112,13 @@ class SrxyApp(App[int]):
 
 	#search-bar {
 		height: auto;
-		padding: 1 1;
+		padding: 0 1;
 	}
 
 	#search-bar Label {
 		width: auto;
 		min-width: 8;
-		height: 2;
+		height: 1;
 		padding: 0 1 0 0;
 		content-align: right middle;
 		color: $text-muted;
@@ -124,7 +126,7 @@ class SrxyApp(App[int]):
 
 	#search-bar Input {
 		width: 1fr;
-		height: 2;
+		height: 1;
 		margin-right: 1;
 		border: none;
 		padding: 0 1;
@@ -133,8 +135,13 @@ class SrxyApp(App[int]):
 		content-align: center middle;
 	}
 
+	#search-bar QueryBuilder {
+		width: 1fr;
+		margin-right: 1;
+	}
+
 	#search-bar Button {
-		height: 2;
+		height: 1;
 		min-width: 10;
 		border: none;
 		background: $primary;
@@ -157,7 +164,7 @@ class SrxyApp(App[int]):
 	#filters-bar Label {
 		width: auto;
 		min-width: 14;
-		height: 2;
+		height: 1;
 		padding: 0 1 0 0;
 		content-align: right middle;
 		color: $text-muted;
@@ -165,7 +172,7 @@ class SrxyApp(App[int]):
 
 	#filters-bar Input {
 		width: 1fr;
-		height: 2;
+		height: 1;
 		margin-right: 1;
 		border: none;
 		padding: 0 1;
@@ -192,7 +199,7 @@ class SrxyApp(App[int]):
 	#options-bar Checkbox {
 		width: 100%;
 		height: auto;
-		min-height: 2;
+		min-height: 1;
 		background: $surface;
 		color: $foreground;
 		border: none;
@@ -301,7 +308,7 @@ class SrxyApp(App[int]):
 		yield Header()
 		with Horizontal(id="search-bar"):
 			yield Label("Query", id="query-label")
-			yield Input(id="query-input", value=self._args.query or "", placeholder="")
+			yield QueryBuilder(id="query-builder", initial_query=self._args.query or "")
 			yield Label("Path", id="path-label")
 			yield Input(id="path-input", value=str(self._args.path), placeholder="")
 			yield Button("Search", variant="primary", id="search-button")
@@ -362,6 +369,9 @@ class SrxyApp(App[int]):
 		if self._auto_start and (self._args.query or "").strip():
 			self.call_after_refresh(self.action_start_search)
 
+	def _query_builder(self) -> QueryBuilder:
+		return self.query_one("#query-builder", QueryBuilder)
+
 	def on_resize(self):
 		self._update_options_layout()
 
@@ -382,8 +392,9 @@ class SrxyApp(App[int]):
 		return value
 
 	def _current_snapshot(self) -> _SearchSnapshot:
+		builder = self._query_builder()
 		return _SearchSnapshot(
-			query=self.query_one("#query-input", Input).value,
+			query=builder.to_query_string(),
 			path=self.query_one("#path-input", Input).value or ".",
 			search_names=self.query_one("#opt-names", Checkbox).value,
 			search_contents=self.query_one("#opt-content", Checkbox).value,
@@ -416,7 +427,9 @@ class SrxyApp(App[int]):
 		)
 		max_matches = self._parse_optional_positive_int(snapshot.max_matches_text, field_name="Matches per file") or 50
 		args = argparse.Namespace(**vars(self._args))
-		args.query = snapshot.query
+		builder = self._query_builder()
+		args.query = builder.to_query_string()
+		args.query_expr = file_q_to_dict(builder.to_file_query())
 		args.path = snapshot.path
 		args.limit = limit
 		args.max_matches = max_matches
@@ -455,7 +468,7 @@ class SrxyApp(App[int]):
 		self._preview_rows = []
 		if result is None:
 			return
-		query = self.query_one("#query-input", Input).value
+		query = self._query_builder().to_query_string()
 		path_text = result.path.as_posix()
 		label_text = match_labels(result)
 		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
@@ -499,7 +512,7 @@ class SrxyApp(App[int]):
 		self._rebuild_results_table(select_path=select_path)
 
 	def action_focus_query(self):
-		self.query_one("#query-input", Input).focus()
+		self._query_builder().focus_first_term()
 
 	def action_show_help(self):
 		self.push_screen(HelpModal())
@@ -586,7 +599,7 @@ class SrxyApp(App[int]):
 		except ValueError as error:
 			self.notify(str(error), severity="warning")
 			return
-		if not (args.query or "").strip():
+		if not self._query_builder().has_nonempty_term():
 			self.notify("Enter a search query", severity="warning")
 			return
 		self._active_file_limit = args.limit
@@ -786,7 +799,7 @@ class SrxyApp(App[int]):
 			self._insert_result_row(result)
 		self._trim_results_to_limit()
 		self._rebuild_results_table(select_path=self._results[0].path.as_posix() if self._results else None)
-		query = self.query_one("#query-input", Input).value
+		query = self._query_builder().to_query_string()
 		path = self.query_one("#path-input", Input).value or "."
 		warnings = format_skipped_file_warnings(message.skipped_files, self._sync_args_from_ui().max_file_size)
 		if warnings:
@@ -818,11 +831,12 @@ class SrxyApp(App[int]):
 
 	def on_input_changed(self, event: Input.Changed):
 		if event.input.id in {
-			"query-input",
 			"path-input",
 			"filter-limit",
 			"filter-max-matches",
 		}:
+			self._update_search_button_state()
+		elif event.input.id is not None and event.input.id.startswith("query-term-"):
 			self._update_search_button_state()
 
 	def on_checkbox_changed(self, event: Checkbox.Changed):
@@ -830,8 +844,12 @@ class SrxyApp(App[int]):
 			self._update_search_button_state()
 
 	def on_input_submitted(self, event: Input.Submitted):
-		if event.input.id in {"query-input", "path-input"}:
+		if event.input.id == "path-input" or (event.input.id is not None and event.input.id.startswith("query-term-")):
 			self.action_start_search()
+
+	@on(QueryBuilder.Changed)
+	def _on_query_builder_changed(self, _event: QueryBuilder.Changed):
+		self._update_search_button_state()
 
 	def action_request_quit(self):
 		if self._searching:

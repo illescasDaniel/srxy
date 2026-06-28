@@ -25,7 +25,65 @@ def collapse_whitespace(text: str) -> str:
 	return " ".join(text.split())
 
 
-def find_match_span(text: str, query: str) -> tuple[int, int]:
+_PREVIEW_ELLIPSIS = "..."
+
+
+def split_tag_label(text: str) -> tuple[str | None, str]:
+	collapsed = collapse_whitespace(text)
+	if not collapsed.startswith("["):
+		return None, collapsed
+	bracket_end = collapsed.find("]")
+	if bracket_end < 0:
+		return None, collapsed
+	label = collapsed[: bracket_end + 1]
+	# Only strip a metadata field label like [Lyrics], not inline [Intro: ...] markers.
+	if ":" in label[1:-1]:
+		return None, collapsed
+	body = collapsed[bracket_end + 1 :].strip()
+	return label, body
+
+
+def find_match_span(text: str, query: str, *, highlight_term: str | None = None) -> tuple[int, int]:
+	_body_label, body = split_tag_label(collapse_whitespace(text))
+	if not body:
+		return 0, 0
+
+	if highlight_term:
+		return _find_match_span_for_term(body, highlight_term)
+
+	from srxy.file_query import query_highlight_terms
+
+	terms = query_highlight_terms(query)
+	if not terms:
+		return _find_match_span_for_term(body, query)
+	if len(terms) == 1:
+		return _find_match_span_for_term(body, terms[0])
+	return _find_best_term_span(body, terms)
+
+
+def _find_best_term_span(body: str, terms: list[str]) -> tuple[int, int]:
+	best_span = (0, 0)
+	best_score = -1.0
+	for term in terms:
+		start, end = _find_match_span_for_term(body, term)
+		score = _span_match_score(body, start, end, term)
+		if score > best_score:
+			best_score = score
+			best_span = (start, end)
+	return best_span
+
+
+def _span_match_score(text: str, start: int, end: int, term: str) -> float:
+	from rapidfuzz.fuzz import partial_ratio
+
+	collapsed = collapse_whitespace(text)
+	if start >= end or not collapsed:
+		return 0.0
+	snippet = collapsed[start:end]
+	return float(partial_ratio(normalize_text(term), snippet.lower()))
+
+
+def _find_match_span_for_term(text: str, query: str) -> tuple[int, int]:
 	collapsed = collapse_whitespace(text)
 	normalized_text = collapsed.lower()
 	normalized_query = normalize_text(query)
@@ -40,15 +98,14 @@ def find_match_span(text: str, query: str) -> tuple[int, int]:
 
 	from rapidfuzz.fuzz import partial_ratio_alignment
 
-	alignment = partial_ratio_alignment(normalized_query, normalized_text, score_cutoff=1)
-	fuzzy_alignment_span: tuple[int, int] | None = None
+	alignment = partial_ratio_alignment(normalized_query, normalized_text, score_cutoff=60)
 	if alignment is not None and alignment.dest_start < alignment.dest_end:
-		fuzzy_alignment_span = (alignment.dest_start, alignment.dest_end)
+		return alignment.dest_start, alignment.dest_end
 
-	for word in normalized_query.split():
-		word_index = normalized_text.find(word)
+	if " " not in normalized_query:
+		word_index = normalized_text.find(normalized_query)
 		if word_index >= 0:
-			return word_index, word_index + len(word)
+			return word_index, word_index + len(normalized_query)
 
 	word_fuzzy_span = _find_word_fuzzy_span(collapsed, normalized_query)
 	if word_fuzzy_span is not None:
@@ -57,9 +114,6 @@ def find_match_span(text: str, query: str) -> tuple[int, int]:
 	word_semantic_span = _find_semantic_word_span(collapsed, query)
 	if word_semantic_span is not None:
 		return word_semantic_span
-
-	if fuzzy_alignment_span is not None:
-		return fuzzy_alignment_span
 
 	return 0, min(len(collapsed), 1)
 
@@ -121,49 +175,68 @@ def format_match_preview(
 	*,
 	max_length: int = 100,
 	highlight: PreviewHighlight = "guillemets",
+	highlight_term: str | None = None,
 ) -> str:
-	collapsed = collapse_whitespace(text)
-	if not collapsed:
-		return ""
+	tag_label, body = split_tag_label(collapse_whitespace(text))
+	if not body:
+		return tag_label or ""
 	if not query or highlight == "none":
-		if len(collapsed) <= max_length:
-			return collapsed
-		return collapsed[: max_length - 1] + "…"
+		plain = f"{tag_label} {body}".strip() if tag_label else body
+		if len(plain) <= max_length:
+			return plain
+		return plain[: max_length - len(_PREVIEW_ELLIPSIS)] + _PREVIEW_ELLIPSIS
 
-	start, end = find_match_span(collapsed, query)
+	if highlight_term:
+		start, end = _find_match_span_for_term(body, highlight_term)
+	elif query:
+		from srxy.file_query import query_highlight_terms
+
+		terms = query_highlight_terms(query)
+		if len(terms) > 1:
+			start, end = _find_best_term_span(body, terms)
+		elif len(terms) == 1:
+			start, end = _find_match_span_for_term(body, terms[0])
+		else:
+			start, end = _find_match_span_for_term(body, query)
+	else:
+		start, end = 0, min(len(body), 1)
 	if start >= end:
-		end = min(len(collapsed), start + 1)
-	match_text = collapsed[start:end]
+		end = min(len(body), start + 1)
+	match_text = body[start:end]
 	highlighted = _wrap_match_highlight(match_text, highlight=highlight)
 
 	def assemble(prefix_start: int, suffix_end: int) -> str:
-		prefix = collapsed[prefix_start:start]
-		suffix = collapsed[end:suffix_end]
-		prefix_ellipsis = "…" if prefix_start > 0 else ""
-		suffix_ellipsis = "…" if suffix_end < len(collapsed) else ""
-		return (
+		prefix = body[prefix_start:start]
+		suffix = body[end:suffix_end]
+		prefix_ellipsis = _PREVIEW_ELLIPSIS if prefix_start > 0 else ""
+		suffix_ellipsis = _PREVIEW_ELLIPSIS if suffix_end < len(body) else ""
+		body_preview = (
 			f"{prefix_ellipsis}"
 			f"{_escape_preview_segment(prefix, highlight=highlight)}"
 			f"{highlighted}"
 			f"{_escape_preview_segment(suffix, highlight=highlight)}"
 			f"{suffix_ellipsis}"
 		)
+		if tag_label:
+			return f"{tag_label} {body_preview}"
+		return body_preview
 
-	if highlight == "guillemets" and len(collapsed) + 2 <= max_length:
-		return collapsed[:start] + highlighted + collapsed[end:]
+	if highlight == "guillemets" and len(body) + 2 <= max_length:
+		core = body[:start] + highlighted + body[end:]
+		return f"{tag_label} {core}".strip() if tag_label else core
 
-	full_preview = assemble(0, len(collapsed))
+	full_preview = assemble(0, len(body))
 	if len(full_preview) <= max_length:
 		return full_preview
 
 	if len(highlighted) >= max_length:
-		return highlighted[: max_length - 1] + "…"
+		return highlighted[: max_length - len(_PREVIEW_ELLIPSIS)] + _PREVIEW_ELLIPSIS
 
 	remaining = max_length - len(highlighted)
 	before_budget = remaining // 2
 	after_budget = remaining - before_budget
 	prefix_start = max(0, start - before_budget)
-	suffix_end = min(len(collapsed), end + after_budget)
+	suffix_end = min(len(body), end + after_budget)
 	return assemble(prefix_start, suffix_end)
 
 

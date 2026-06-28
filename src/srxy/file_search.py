@@ -8,6 +8,15 @@ from pathlib import Path
 
 from srxy.cache import get_file_content_hash, reset_run_file_hashes
 from srxy.document_text import is_document_path, iter_document_lines
+from srxy.file_query import (
+	FileQ,
+	coerce_file_query,
+	format_file_query,
+	iter_terms,
+	query_is_compound,
+	score_file_query,
+	score_file_query_on_text,
+)
 from srxy.matchers.composite import CompositeMatcher
 from srxy.media_metadata import is_media_path, iter_media_metadata_lines
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
@@ -322,19 +331,31 @@ def _score_line(matcher: CompositeMatcher, query: str, raw_line: str, location_k
 	return matcher.score(query, normalize_text(raw_line))
 
 
-def _score_name(matcher: CompositeMatcher, query: str, file_path: Path, root: Path) -> float:
-	name_score = matcher.score(query, file_path.name)
+def _score_line_expr(matcher: CompositeMatcher, expr: FileQ, raw_line: str, location_kind: str) -> float:
+	def score_term(term: str, _text: str) -> float:
+		return _score_line(matcher, term, raw_line, location_kind)
+
+	return score_file_query_on_text(expr, score_term, "")
+
+
+def _score_name_term(matcher: CompositeMatcher, term: str, file_path: Path, root: Path) -> float:
+	name_score = matcher.score(term, file_path.name)
 	try:
 		relative_path = file_path.relative_to(root).as_posix()
 	except ValueError:
 		relative_path = file_path.as_posix()
-	path_score = matcher.score(query, relative_path)
+	path_score = matcher.score(term, relative_path)
 	return max(name_score, path_score)
+
+
+def _score_name(matcher: CompositeMatcher, expr: FileQ, file_path: Path, root: Path) -> float:
+	term_scores = {term: _score_name_term(matcher, term, file_path, root) for term in iter_terms(expr)}
+	return score_file_query(expr, term_scores)
 
 
 def _score_lines(
 	matcher: CompositeMatcher,
-	query: str,
+	expr: FileQ,
 	file_path: Path,
 	max_file_size: int | None,
 	line_threshold: float,
@@ -346,9 +367,11 @@ def _score_lines(
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: Callable[[str | None], None] | None = None,
-) -> tuple[float, list[LineMatch], LineMatch | None]:
+) -> tuple[float, list[LineMatch], LineMatch | None, dict[str, float]]:
 	matches: list[LineMatch] = []
 	best_near_match: LineMatch | None = None
+	term_best_scores: dict[str, float] = {term: 0.0 for term in iter_terms(expr)}
+	term_best_lines: dict[str, LineMatch] = {}
 	bytes_read = 0
 	content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
 
@@ -369,40 +392,66 @@ def _score_lines(
 		if not line_text:
 			continue
 
-		score = _score_line(matcher, query, raw_line, location_kind)
+		score = _score_line_expr(matcher, expr, raw_line, location_kind)
 		effective_threshold = transcribe_threshold if location_kind == "transcript" else line_threshold
-		if score >= effective_threshold:
-			matches.append(
-				LineMatch(
+		line_match = LineMatch(
+			line_number=line_number,
+			text=raw_line,
+			score=score,
+			location_kind=location_kind,
+		)
+		for term in iter_terms(expr):
+			term_score = _score_line(matcher, term, raw_line, location_kind)
+			if term_score > term_best_scores[term]:
+				term_best_scores[term] = term_score
+				term_best_lines[term] = LineMatch(
 					line_number=line_number,
 					text=raw_line,
-					score=score,
+					score=term_score,
 					location_kind=location_kind,
+					matched_term=term,
 				)
-			)
+
+		if score >= effective_threshold:
+			matches.append(line_match)
 		elif (
 			score >= preview_threshold
 			and location_kind in _PREVIEW_LOCATION_KINDS
 			and (best_near_match is None or score > best_near_match.score)
 		):
-			best_near_match = LineMatch(
-				line_number=line_number,
-				text=raw_line,
-				score=score,
-				location_kind=location_kind,
-			)
+			best_near_match = line_match
+
+	terms = list(iter_terms(expr))
+	if len(terms) > 1:
+		for term, line_match in term_best_lines.items():
+			if term_best_scores[term] < line_threshold:
+				continue
+			if any(
+				match.line_number == line_match.line_number and match.location_kind == line_match.location_kind
+				for match in matches
+			):
+				continue
+			matches.append(line_match)
 
 	matches.sort(key=lambda match: match.score, reverse=True)
-	matches = matches[:max_matches]
+	seen: set[tuple[int, str]] = set()
+	deduped_matches: list[LineMatch] = []
+	for match in matches:
+		key = (match.line_number, match.location_kind)
+		if key in seen:
+			continue
+		seen.add(key)
+		deduped_matches.append(match)
+	matches = deduped_matches[:max_matches]
 	content_score = matches[0].score if matches else 0.0
-	return content_score, matches, best_near_match
+	return content_score, matches, best_near_match, term_best_scores
 
 
 def _search_single_file(
 	file_path: Path,
 	*,
 	matcher: CompositeMatcher,
-	normalized_query: str,
+	query_expr: FileQ,
 	search_root: Path,
 	search_names: bool,
 	search_contents: bool,
@@ -423,14 +472,15 @@ def _search_single_file(
 		return None
 
 	breakdown: dict[str, float] = {}
-	scores: list[float] = []
+	term_bests: dict[str, float] = {term: 0.0 for term in iter_terms(query_expr)}
 	line_matches: list[LineMatch] = []
 	near_match: LineMatch | None = None
 
 	if search_names:
-		name_score = _score_name(matcher, normalized_query, file_path, search_root)
+		name_score = _score_name(matcher, query_expr, file_path, search_root)
 		breakdown["name"] = name_score
-		scores.append(name_score)
+		for term in iter_terms(query_expr):
+			term_bests[term] = max(term_bests[term], _score_name_term(matcher, term, file_path, search_root))
 
 	if search_contents:
 		content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
@@ -445,9 +495,9 @@ def _search_single_file(
 			if skipped_files is not None:
 				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
 		else:
-			content_score, line_matches, near_match = _score_lines(
+			content_score, line_matches, near_match, content_term_bests = _score_lines(
 				matcher,
-				normalized_query,
+				query_expr,
 				file_path,
 				max_file_size,
 				effective_line_threshold,
@@ -460,16 +510,18 @@ def _search_single_file(
 				on_activity=on_activity,
 			)
 			breakdown["content"] = content_score
-			scores.append(content_score)
+			for term, score in content_term_bests.items():
+				term_bests[term] = max(term_bests[term], score)
 
+	semantic_image_score = 0.0
 	if is_semantic_image_active(semantic_image) and is_semantic_image_path(file_path):
-		semantic_image_score = 0.0
 		if on_activity is not None:
 			on_activity(f"CLIP · {file_path.name}")
 		try:
 			file_hash = get_file_content_hash(file_path)
+			clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
 			semantic_image_score = score_image(
-				normalized_query,
+				clip_query,
 				file_path,
 				file_hash=file_hash,
 				query_embedding=query_image_embedding,
@@ -479,12 +531,15 @@ def _search_single_file(
 				on_activity(None)
 		if semantic_image_score > 0.0:
 			breakdown["semantic_image"] = semantic_image_score
-			scores.append(semantic_image_score)
+			for term in iter_terms(query_expr):
+				term_bests[term] = max(term_bests[term], semantic_image_score)
 
-	if not scores:
+	if not breakdown:
 		return None
 
-	score = max(scores)
+	boolean_score = score_file_query(query_expr, term_bests)
+	legacy_score = max(breakdown.values())
+	score = boolean_score if query_is_compound(query_expr) else legacy_score
 	cutoff = threshold
 	semantic_score = breakdown.get("semantic_image")
 	if semantic_score is not None and semantic_score >= score:
@@ -525,7 +580,7 @@ def _search_single_file(
 
 def magic_file_search(
 	path: Path | str,
-	query: str,
+	query: str | FileQ,
 	*,
 	search_names: bool = True,
 	search_contents: bool = True,
@@ -558,8 +613,8 @@ def magic_file_search(
 		raise ValueError("Enable at least one of search_names, search_contents, or semantic_image")
 
 	root = Path(path).expanduser().resolve()
-	normalized_query = normalize_text(query)
-	if not normalized_query:
+	query_expr = coerce_file_query(query)
+	if not any(iter_terms(query_expr)):
 		return []
 	if not root.exists():
 		raise FileNotFoundError(f"Path does not exist: {root}")
@@ -570,11 +625,12 @@ def magic_file_search(
 	matcher = CompositeMatcher()
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
+	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
 	if is_semantic_image_active(semantic_image):
 		if on_activity is not None:
 			on_activity("Encoding image query…")
 		try:
-			query_image_embedding = encode_semantic_image_query(normalized_query)
+			query_image_embedding = encode_semantic_image_query(clip_query)
 		finally:
 			if on_activity is not None:
 				on_activity(None)
@@ -592,7 +648,7 @@ def magic_file_search(
 			result = _search_single_file(
 				file_path,
 				matcher=matcher,
-				normalized_query=normalized_query,
+				query_expr=query_expr,
 				search_root=search_root,
 				search_names=search_names,
 				search_contents=search_contents,

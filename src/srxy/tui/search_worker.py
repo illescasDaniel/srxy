@@ -58,6 +58,7 @@ def file_result_to_dict(result: FileSearchResult) -> dict[str, Any]:
 				"text": line.text,
 				"score": line.score,
 				"location_kind": line.location_kind,
+				"matched_term": line.matched_term,
 			}
 			for line in result.lines
 		],

@@ -106,12 +106,12 @@ def test_given_tui_when_composed_then_search_row_has_padding_and_controls_are_sl
 			await pilot.pause()
 			search_bar = app.query_one("#search-bar")
 			search_button = app.query_one("#search-button")
-			query_input = app.query_one("#query-input")
+			query_input = app.query_one("#query-term-0")
 			names_chip = app.query_one("#opt-names")
 			assert search_bar.outer_size.height >= 2
-			assert search_button.outer_size.height == 2
-			assert query_input.outer_size.height == 2
-			assert names_chip.outer_size.height == 2
+			assert search_button.outer_size.height == 1
+			assert query_input.outer_size.height == 1
+			assert names_chip.outer_size.height >= 1
 			svg = app.export_screenshot(title="srxy-tui")
 			assert_labels_visible(svg, ("Search", "Names"))
 

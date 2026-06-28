@@ -329,7 +329,7 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 		async with app.run_test() as pilot:
 			await pilot.pause()
 			app.query_one("#filter-limit").value = "2"
-			app.query_one("#query-input").value = "token"
+			app.query_one("#query-term-0").value = "token"
 			await pilot.click("#search-button")
 			table = app.query_one("#results-table", DataTable)
 			for _ in range(40):

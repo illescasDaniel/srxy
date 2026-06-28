@@ -53,6 +53,7 @@ class LineMatch:
 	text: str
 	score: float
 	location_kind: str = "line"
+	matched_term: str | None = None
 
 
 @dataclass(frozen=True)

@@ -994,3 +994,17 @@ def test_given_progress_bar_when_setting_activity_then_renders_spinner(monkeypat
 	# then
 	output = "".join(written)
 	assert "Encoding image query" in output
+
+
+def test_given_invalid_boolean_query_when_running_cli_then_exits_with_error(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+
+	# when
+	exit_code = main(["(foo", str(tmp_path), "--content-only", "--no-progress"])
+
+	# then
+	assert exit_code == 2
+	assert "invalid query" in capsys.readouterr().err

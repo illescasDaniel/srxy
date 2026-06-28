@@ -8,6 +8,7 @@ import threading
 from pathlib import Path
 from typing import IO, Callable, TextIO
 
+from srxy.file_query import FileQ, FileQueryParseError, coerce_file_query, file_q_from_dict
 from srxy.file_search import magic_file_search, suggest_max_file_size
 from srxy.matchers.semantic import (
 	semantic_env_enabled,
@@ -132,6 +133,13 @@ def _format_number_ranges(numbers: list[int]) -> str:
 	return ", ".join(parts)
 
 
+def _format_match_location(kind: str, numbers: list[int], *, matched_term: str | None = None) -> str:
+	location = _format_locations(kind, numbers)
+	if matched_term:
+		return f'{location} · "{matched_term}"'
+	return location
+
+
 def iter_grouped_line_displays(
 	line_matches: list[LineMatch],
 	*,
@@ -142,8 +150,19 @@ def iter_grouped_line_displays(
 	group_order: list[tuple[float, str, str]] = []
 	for line_match in line_matches:
 		line_highlight: PreviewHighlight = "none" if line_match.location_kind == "semantic_image" else highlight
-		plain_preview = format_match_preview(line_match.text, query, highlight="none")
-		preview = format_match_preview(line_match.text, query, highlight=line_highlight)
+		highlight_term = line_match.matched_term
+		plain_preview = format_match_preview(
+			line_match.text,
+			query,
+			highlight="none",
+			highlight_term=highlight_term,
+		)
+		preview = format_match_preview(
+			line_match.text,
+			query,
+			highlight=line_highlight,
+			highlight_term=highlight_term,
+		)
 		key = (line_match.score, line_match.location_kind, plain_preview)
 		if key not in groups:
 			groups[key] = []
@@ -155,8 +174,20 @@ def iter_grouped_line_displays(
 		numbers = [line_match.line_number for line_match in groups[(score, kind, plain_preview)]]
 		first = groups[(score, kind, plain_preview)][0]
 		line_highlight = "none" if first.location_kind == "semantic_image" else highlight
-		preview = format_match_preview(first.text, query, highlight=line_highlight)
-		displays.append((_format_locations(kind, numbers), preview, score, plain_preview))
+		preview = format_match_preview(
+			first.text,
+			query,
+			highlight=line_highlight,
+			highlight_term=first.matched_term,
+		)
+		displays.append(
+			(
+				_format_match_location(kind, numbers, matched_term=first.matched_term),
+				preview,
+				score,
+				plain_preview,
+			)
+		)
 	return displays
 
 
@@ -492,7 +523,12 @@ def build_parser() -> argparse.ArgumentParser:
 		prog="srxy",
 		description="Fuzzy file and content search using composite matchers.",
 	)
-	parser.add_argument("query", nargs="?", default=None, help="Search string")
+	parser.add_argument(
+		"query",
+		nargs="?",
+		default=None,
+		help="Search string; use | for OR, & for AND, quotes for phrases (e.g. '(red|blue)&color')",
+	)
 	parser.add_argument("path", nargs="?", default=".", help="File or directory to search (default: .)")
 	parser.add_argument("--threshold", type=float, default=0.35, help="Minimum match score (default: 0.35)")
 	parser.add_argument(
@@ -750,6 +786,17 @@ def run_preflight(
 	return None
 
 
+def resolve_file_query(args: argparse.Namespace) -> FileQ:
+	if getattr(args, "query_expr", None) is not None:
+		value = args.query_expr
+		if isinstance(value, FileQ):
+			return value
+		if isinstance(value, dict):
+			return file_q_from_dict(value)
+	query = args.query or ""
+	return coerce_file_query(query)
+
+
 def execute_search(
 	args: argparse.Namespace,
 	*,
@@ -760,10 +807,10 @@ def execute_search(
 ) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 	search_names, search_contents = resolve_search_modes(args)
 	effective_skipped = skipped_files if skipped_files is not None else []
-	query = args.query or ""
+	query_expr = resolve_file_query(args)
 	results = magic_file_search(
 		args.path,
-		query,
+		query_expr,
 		search_names=search_names,
 		search_contents=search_contents,
 		threshold=args.threshold,
@@ -794,6 +841,12 @@ def run_plain(args: argparse.Namespace) -> int:
 	error = run_preflight(args, interactive=sys.stdin.isatty())
 	if error is not None:
 		print(error, file=sys.stderr)
+		return 2
+
+	try:
+		resolve_file_query(args)
+	except FileQueryParseError as error:
+		print(f"error: invalid query: {error}", file=sys.stderr)
 		return 2
 
 	skipped_files: list[SkippedFile] = []

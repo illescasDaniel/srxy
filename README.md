@@ -79,6 +79,25 @@ srxy "dog at the beach" ~/Pictures --semantic-image --content-only
 srxy revenue ./docs --semantic-all --content-only
 ```
 
+**Boolean queries** (`|` = OR, `&` = AND; `&` binds tighter). Quote phrases that contain spaces or operators:
+
+```bash
+srxy 'alpha|beta' ./docs
+srxy '(red|blue|green)&color' ./docs
+srxy '"my search text"|other' .
+```
+
+In Python, build the same logic with `FileQ`:
+
+```python
+from srxy import FileQ, magic_file_search
+
+magic_file_search(".", FileQ.leaf("foo") & FileQ.leaf("bar"))
+magic_file_search(".", (FileQ.leaf("red") | FileQ.leaf("blue")) & FileQ.leaf("color"))
+```
+
+The TUI query builder adds term rows with AND/OR joins; the preview line shows the equivalent CLI string.
+
 **Scope controls:**
 
 ```bash
@@ -310,7 +329,7 @@ Core dependencies (always installed): `rapidfuzz` and `jellyfish` (phonetic matc
 
 The same matchers and content types power the CLI. Import from `srxy`:
 
-`magic_file_search`, `magic_search`, `search`, `Q`, `FieldConfig`, `MatchType`, `SearchResult`
+`magic_file_search`, `magic_search`, `search`, `Q`, `FileQ`, `FieldConfig`, `MatchType`, `SearchResult`
 
 ### File search
 

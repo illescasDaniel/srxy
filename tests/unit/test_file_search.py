@@ -17,7 +17,7 @@ from tests.helpers import (
 	write_xlsx_with_text,
 )
 
-from srxy import magic_file_search
+from srxy import FileQ, magic_file_search
 from srxy.models import FileSearchResult, MatchType, SkippedFile
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, xattr_supported
@@ -1165,3 +1165,76 @@ def test_given_multiple_files_when_searching_with_limit_then_returns_top_scores_
 	assert len(results) == 2
 	assert results[0].score >= results[1].score
 	assert results[0].path.name == "revenue.txt"
+
+
+def test_given_or_query_when_searching_contents_then_matches_either_term(tmp_path: Path):
+	# given
+	(tmp_path / "alpha.txt").write_text("only alpha appears here", encoding="utf-8")
+	(tmp_path / "beta.txt").write_text("only beta appears here", encoding="utf-8")
+	(tmp_path / "gamma.txt").write_text("nothing useful", encoding="utf-8")
+	query = "alpha|beta"
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, threshold=0.35)
+
+	# then
+	names = {result.path.name for result in results}
+	assert names == {"alpha.txt", "beta.txt"}
+
+
+def test_given_and_query_when_searching_contents_then_requires_both_terms(tmp_path: Path):
+	# given
+	(tmp_path / "both.txt").write_text("alpha and beta together", encoding="utf-8")
+	(tmp_path / "alpha-only.txt").write_text("alpha alone", encoding="utf-8")
+	(tmp_path / "beta-only.txt").write_text("beta alone", encoding="utf-8")
+	query = "alpha&beta"
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, threshold=0.35)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "both.txt"
+
+
+def test_given_and_query_with_terms_on_different_lines_when_searching_then_matches_file(tmp_path: Path):
+	# given
+	(tmp_path / "notes.txt").write_text("alpha on line one\nbeta on line two\n", encoding="utf-8")
+	query = "alpha&beta"
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, threshold=0.35)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "notes.txt"
+	assert len(results[0].lines) >= 1
+
+
+def test_given_and_query_when_terms_match_different_lines_then_line_scores_use_term_scores(tmp_path: Path):
+	# given
+	(tmp_path / "song.txt").write_text("linkin park on one line\nlyrics mention in the end here\n", encoding="utf-8")
+	query = FileQ.leaf("linkin park") & FileQ.leaf("in the end")
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, threshold=0.35)
+
+	# then
+	assert len(results) == 1
+	assert len(results[0].lines) == 2
+	assert all(line.score > 0.0 for line in results[0].lines)
+
+
+def test_given_and_query_when_terms_match_different_surfaces_then_lines_record_matched_term(tmp_path: Path):
+	# given
+	(tmp_path / "song.txt").write_text("linkin park on one line\nlyrics mention in the end here\n", encoding="utf-8")
+	query = FileQ.leaf("linkin park") & FileQ.leaf("in the end")
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, threshold=0.35)
+
+	# then
+	assert len(results) == 1
+	terms = {line.matched_term for line in results[0].lines}
+	assert "linkin park" in terms
+	assert "in the end" in terms
