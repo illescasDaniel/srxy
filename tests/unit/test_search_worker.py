@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 from io import StringIO
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -90,3 +91,26 @@ def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypat
 		"skipped_files": [{"path": "big.png", "size_bytes": 99, "reason": "oversized"}],
 	}
 	assert events[-1] == {"type": "done"}
+
+
+def test_given_worker_args_when_run_worker_main_then_sets_worker_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	args = _build_args(["transform", ".", "--ocr", "--no-tui"])
+	stdout = StringIO()
+	for key in ("TQDM_DISABLE", "JOBLIB_MULTIPROCESSING"):
+		monkeypatch.delenv(key, raising=False)
+	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
+	monkeypatch.setattr("sys.stdout", stdout)
+	monkeypatch.setattr(
+		"srxy.tui.search_worker.execute_search",
+		MagicMock(return_value=([], [])),
+	)
+
+	# when
+	run_worker_main()
+
+	# then
+	assert os.environ["TQDM_DISABLE"] == "1"
+	assert os.environ["JOBLIB_MULTIPROCESSING"] == "0"

@@ -126,6 +126,49 @@ def test_given_ocr_match_when_formatting_grouped_then_shows_ocr_in_matched_label
 	assert "ocr 1  ·  match 80%" in output
 
 
+def test_given_semantic_image_match_when_formatting_grouped_then_shows_query_preview(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "family.jpg",
+		score=0.25,
+		breakdown={"semantic_image": 0.25},
+		lines=[LineMatch(line_number=1, text="Sister (=)", score=0.25, location_kind="ocr")],
+	)
+
+	# when
+	output = format_grouped([result], query="sibling")
+
+	# then
+	assert "match 25%  ·  matched: ocr, image semantic" in output
+	assert "ocr 1  ·  match 25%" in output
+	assert "│ «Sister» (=)" in output
+
+
+def test_given_visual_match_only_when_formatting_grouped_then_shows_image_preview(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "photo.jpg",
+		score=0.20,
+		breakdown={"semantic_image": 0.20},
+		lines=[
+			LineMatch(
+				line_number=1,
+				text="(visual match)",
+				score=0.20,
+				location_kind="semantic_image",
+			)
+		],
+	)
+
+	# when
+	output = format_grouped([result], query="sibling")
+
+	# then
+	assert "match 20%  ·  matched: image semantic" in output
+	assert "image 1  ·  match 20%" in output
+	assert "│ (visual match)" in output
+
+
 def test_given_name_only_match_when_formatting_flat_then_uses_line_zero_sentinel(tmp_path: Path):
 	# given
 	file_path = tmp_path / "budget-2024.md"

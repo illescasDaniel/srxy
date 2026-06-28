@@ -114,7 +114,7 @@ def demo_file_search():
 
 	repo_root = Path(__file__).resolve().parent.parent
 	results = magic_file_search(repo_root / "src" / "srxy", "registry", threshold=0.3)
-	print(f"\n=== magic_file_search (registry in src/srxy) ===")
+	print("\n=== magic_file_search (registry in src/srxy) ===")
 	if not results:
 		print("(no matches)")
 		return

@@ -49,6 +49,7 @@ _LOCATION_LABELS = {
 	"slide": "slide",
 	"tag": "tag",
 	"ocr": "ocr",
+	"semantic_image": "image",
 	"transcript": "transcript",
 }
 
@@ -140,8 +141,9 @@ def iter_grouped_line_displays(
 	groups: dict[tuple[float, str, str], list[LineMatch]] = {}
 	group_order: list[tuple[float, str, str]] = []
 	for line_match in line_matches:
+		line_highlight: PreviewHighlight = "none" if line_match.location_kind == "semantic_image" else highlight
 		plain_preview = format_match_preview(line_match.text, query, highlight="none")
-		preview = format_match_preview(line_match.text, query, highlight=highlight)
+		preview = format_match_preview(line_match.text, query, highlight=line_highlight)
 		key = (line_match.score, line_match.location_kind, plain_preview)
 		if key not in groups:
 			groups[key] = []
@@ -151,7 +153,9 @@ def iter_grouped_line_displays(
 	displays: list[tuple[str, str, float, str]] = []
 	for score, kind, plain_preview in group_order:
 		numbers = [line_match.line_number for line_match in groups[(score, kind, plain_preview)]]
-		preview = format_match_preview(groups[(score, kind, plain_preview)][0].text, query, highlight=highlight)
+		first = groups[(score, kind, plain_preview)][0]
+		line_highlight = "none" if first.location_kind == "semantic_image" else highlight
+		preview = format_match_preview(first.text, query, highlight=line_highlight)
 		displays.append((_format_locations(kind, numbers), preview, score, plain_preview))
 	return displays
 
@@ -211,7 +215,11 @@ def format_json_result(result: FileSearchResult, *, query: str = "") -> dict[str
 				"line_number": line_match.line_number,
 				"location_kind": line_match.location_kind,
 				"location_label": format_location_label(line_match.location_kind, line_match.line_number),
-				"preview": format_match_preview(line_match.text, query),
+				"preview": format_match_preview(
+					line_match.text,
+					query,
+					highlight="none" if line_match.location_kind == "semantic_image" else "guillemets",
+				),
 				"text": line_match.text,
 				"score": line_match.score,
 			}

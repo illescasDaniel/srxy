@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import dataclasses
+import re
 from collections.abc import Mapping
 from typing import Any, Literal
 
@@ -8,6 +9,10 @@ from rich.markup import escape
 
 
 PreviewHighlight = Literal["guillemets", "bold", "none"]
+
+_WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
+_WORD_FUZZY_SCORE_CUTOFF = 50.0
+_WORD_SEMANTIC_SCORE_CUTOFF = 0.5
 
 
 def normalize_text(value: Any) -> str:
@@ -36,15 +41,64 @@ def find_match_span(text: str, query: str) -> tuple[int, int]:
 	from rapidfuzz.fuzz import partial_ratio_alignment
 
 	alignment = partial_ratio_alignment(normalized_query, normalized_text, score_cutoff=1)
+	fuzzy_alignment_span: tuple[int, int] | None = None
 	if alignment is not None and alignment.dest_start < alignment.dest_end:
-		return alignment.dest_start, alignment.dest_end
+		fuzzy_alignment_span = (alignment.dest_start, alignment.dest_end)
 
 	for word in normalized_query.split():
 		word_index = normalized_text.find(word)
 		if word_index >= 0:
 			return word_index, word_index + len(word)
 
+	word_fuzzy_span = _find_word_fuzzy_span(collapsed, normalized_query)
+	if word_fuzzy_span is not None:
+		return word_fuzzy_span
+
+	word_semantic_span = _find_semantic_word_span(collapsed, query)
+	if word_semantic_span is not None:
+		return word_semantic_span
+
+	if fuzzy_alignment_span is not None:
+		return fuzzy_alignment_span
+
 	return 0, min(len(collapsed), 1)
+
+
+def _find_word_fuzzy_span(text: str, normalized_query: str) -> tuple[int, int] | None:
+	from rapidfuzz.fuzz import partial_ratio
+
+	best_span: tuple[int, int] | None = None
+	best_score = 0.0
+	for match in _WORD_PATTERN.finditer(text):
+		word = match.group()
+		word_score = float(partial_ratio(normalized_query, normalize_text(word)))
+		if word_score > best_score:
+			best_score = word_score
+			best_span = (match.start(), match.end())
+	if best_span is not None and best_score >= _WORD_FUZZY_SCORE_CUTOFF:
+		return best_span
+	return None
+
+
+def _find_semantic_word_span(text: str, query: str) -> tuple[int, int] | None:
+	from srxy.matchers.registry import get_atomic_matcher, is_matcher_available
+	from srxy.models import MatchType
+
+	if not is_matcher_available(MatchType.SEMANTIC):
+		return None
+
+	semantic = get_atomic_matcher(MatchType.SEMANTIC)
+	best_span: tuple[int, int] | None = None
+	best_score = 0.0
+	for match in _WORD_PATTERN.finditer(text):
+		word = match.group()
+		word_score = semantic.score(query, normalize_text(word))
+		if word_score > best_score:
+			best_score = word_score
+			best_span = (match.start(), match.end())
+	if best_span is not None and best_score >= _WORD_SEMANTIC_SCORE_CUTOFF:
+		return best_span
+	return None
 
 
 def _wrap_match_highlight(match_text: str, *, highlight: PreviewHighlight) -> str:
@@ -71,7 +125,7 @@ def format_match_preview(
 	collapsed = collapse_whitespace(text)
 	if not collapsed:
 		return ""
-	if not query:
+	if not query or highlight == "none":
 		if len(collapsed) <= max_length:
 			return collapsed
 		return collapsed[: max_length - 1] + "…"

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import multiprocessing
 import os
 import platform
 import queue
@@ -686,6 +687,10 @@ class SrxyApp(App[int]):
 		def run_search():
 			os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
 			os.environ.setdefault("OMP_NUM_THREADS", "1")
+			os.environ.setdefault("TQDM_DISABLE", "1")
+			os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+			os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+			os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
 			skipped_files: list[SkippedFile] = []
 
 			def on_progress(current: int, total: int):
@@ -835,6 +840,10 @@ class SrxyApp(App[int]):
 
 
 def run_tui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
+	try:
+		multiprocessing.set_start_method("fork", force=True)
+	except (RuntimeError, ValueError):
+		pass
 	app = SrxyApp(args, auto_start=auto_start)
 	result = app.run()
 	return result if result is not None else 0

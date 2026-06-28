@@ -85,7 +85,9 @@ def _load_model() -> object:
 	device = resolve_semantic_image_device()
 	warn_if_cpu_device(device, context="CLIP image semantic search")
 	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+	os.environ.setdefault("TQDM_DISABLE", "1")
 	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
 	if model_path.is_dir() and is_model_installed(model_path):
 		os.environ.setdefault("HF_HUB_OFFLINE", "1")
 		os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")

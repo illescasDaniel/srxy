@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -34,6 +35,14 @@ from srxy.transcribe_text import (
 from srxy.utils import normalize_text
 from srxy.windows_metadata import has_windows_tags, iter_windows_metadata_lines
 from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
+
+
+_MIN_SEARCHABLE_WORD_LENGTH = 3
+_SEMANTIC_WORD_MATCH_GATE = 0.5
+_WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
+_TOKEN_SCORING_LOCATION_KINDS = frozenset({"ocr", "tag", "transcript"})
+_TEXT_MATCH_LOCATION_KINDS = frozenset({"ocr", "transcript", "line", "page", "paragraph", "row", "slide"})
+_VISUAL_MATCH_PREVIEW = "(visual match)"
 
 
 _NOISE_DIR_NAMES = frozenset({"__pycache__", "node_modules"})
@@ -253,6 +262,66 @@ def _iter_searchable_lines(
 		yield line_number, raw_line, "tag"
 
 
+_PREVIEW_LOCATION_KINDS = frozenset({"ocr", "transcript"})
+
+
+def _tag_value_text(raw_line: str) -> str:
+	if raw_line.startswith("["):
+		bracket_end = raw_line.find("]")
+		if bracket_end >= 0:
+			return raw_line[bracket_end + 1 :].strip()
+	return raw_line
+
+
+def _is_meaningful_token(token: str) -> bool:
+	normalized = normalize_text(token)
+	if len(normalized) < _MIN_SEARCHABLE_WORD_LENGTH:
+		return False
+	return any(char.isalpha() for char in normalized)
+
+
+def _passes_semantic_word_gate(query: str, word: str, breakdown: dict[str, float]) -> bool:
+	if breakdown.get("exact", 0.0) > 0.0 or breakdown.get("contains", 0.0) > 0.0:
+		return True
+	if breakdown.get("partial", 0.0) > 0.0:
+		return True
+	normalized_query = normalize_text(query)
+	normalized_word = normalize_text(word)
+	if normalized_query and normalized_query in normalized_word.split():
+		return True
+	if normalized_query and normalized_query in normalized_word:
+		return True
+	from srxy.matchers.registry import is_matcher_available
+	from srxy.models import MatchType
+
+	if not is_matcher_available(MatchType.SEMANTIC):
+		return True
+	return breakdown.get("semantic", 0.0) >= _SEMANTIC_WORD_MATCH_GATE
+
+
+def _score_best_word(matcher: CompositeMatcher, query: str, text: str) -> float:
+	best_score = 0.0
+	found = False
+	for match in _WORD_PATTERN.finditer(text):
+		word = match.group()
+		if not _is_meaningful_token(word):
+			continue
+		score, breakdown = matcher.score_with_breakdown(query, normalize_text(word))
+		if not _passes_semantic_word_gate(query, word, breakdown):
+			continue
+		found = True
+		if score > best_score:
+			best_score = score
+	return best_score if found else 0.0
+
+
+def _score_line(matcher: CompositeMatcher, query: str, raw_line: str, location_kind: str) -> float:
+	searchable = _tag_value_text(raw_line) if location_kind == "tag" else raw_line
+	if location_kind in _TOKEN_SCORING_LOCATION_KINDS:
+		return _score_best_word(matcher, query, searchable)
+	return matcher.score(query, normalize_text(raw_line))
+
+
 def _score_name(matcher: CompositeMatcher, query: str, file_path: Path, root: Path) -> float:
 	name_score = matcher.score(query, file_path.name)
 	try:
@@ -271,13 +340,15 @@ def _score_lines(
 	line_threshold: float,
 	max_matches: int,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
+	preview_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	*,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: Callable[[str | None], None] | None = None,
-) -> tuple[float, list[LineMatch]]:
+) -> tuple[float, list[LineMatch], LineMatch | None]:
 	matches: list[LineMatch] = []
+	best_near_match: LineMatch | None = None
 	bytes_read = 0
 	content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
 
@@ -298,7 +369,7 @@ def _score_lines(
 		if not line_text:
 			continue
 
-		score = matcher.score(query, line_text)
+		score = _score_line(matcher, query, raw_line, location_kind)
 		effective_threshold = transcribe_threshold if location_kind == "transcript" else line_threshold
 		if score >= effective_threshold:
 			matches.append(
@@ -309,11 +380,22 @@ def _score_lines(
 					location_kind=location_kind,
 				)
 			)
+		elif (
+			score >= preview_threshold
+			and location_kind in _PREVIEW_LOCATION_KINDS
+			and (best_near_match is None or score > best_near_match.score)
+		):
+			best_near_match = LineMatch(
+				line_number=line_number,
+				text=raw_line,
+				score=score,
+				location_kind=location_kind,
+			)
 
 	matches.sort(key=lambda match: match.score, reverse=True)
 	matches = matches[:max_matches]
 	content_score = matches[0].score if matches else 0.0
-	return content_score, matches
+	return content_score, matches, best_near_match
 
 
 def _search_single_file(
@@ -343,6 +425,7 @@ def _search_single_file(
 	breakdown: dict[str, float] = {}
 	scores: list[float] = []
 	line_matches: list[LineMatch] = []
+	near_match: LineMatch | None = None
 
 	if search_names:
 		name_score = _score_name(matcher, normalized_query, file_path, search_root)
@@ -362,7 +445,7 @@ def _search_single_file(
 			if skipped_files is not None:
 				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
 		else:
-			content_score, line_matches = _score_lines(
+			content_score, line_matches, near_match = _score_lines(
 				matcher,
 				normalized_query,
 				file_path,
@@ -370,6 +453,7 @@ def _search_single_file(
 				effective_line_threshold,
 				max_matches,
 				transcribe_threshold,
+				semantic_image_threshold,
 				ocr=ocr,
 				transcribe=transcribe,
 				skipped_files=skipped_files,
@@ -415,6 +499,22 @@ def _search_single_file(
 		cutoff = transcribe_threshold
 	if score < cutoff:
 		return None
+	if not line_matches and near_match is not None:
+		line_matches = [near_match]
+	semantic_image_score = breakdown.get("semantic_image", 0.0)
+	if semantic_image_score > 0.0 and not any(
+		line.location_kind in _TEXT_MATCH_LOCATION_KINDS for line in line_matches
+	):
+		line_matches.append(
+			LineMatch(
+				line_number=1,
+				text=_VISUAL_MATCH_PREVIEW,
+				score=semantic_image_score,
+				location_kind="semantic_image",
+			)
+		)
+		line_matches.sort(key=lambda match: match.score, reverse=True)
+		line_matches = line_matches[:max_matches]
 	return FileSearchResult(
 		path=file_path,
 		score=score,

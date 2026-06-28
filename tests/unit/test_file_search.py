@@ -18,7 +18,7 @@ from tests.helpers import (
 )
 
 from srxy import magic_file_search
-from srxy.models import FileSearchResult, SkippedFile
+from srxy.models import FileSearchResult, MatchType, SkippedFile
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, xattr_supported
 
@@ -525,10 +525,11 @@ def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcr
 	# then
 	assert len(results) == 1
 	assert results[0].path.name == "podcast.mp3"
-	assert results[0].lines[0].location_kind == "transcript"
-	assert results[0].lines[0].line_number == 160
-	assert "all the other boys" in results[0].lines[0].text
-	assert "02:40" not in results[0].lines[0].text
+	transcript_lines = [line for line in results[0].lines if line.location_kind == "transcript"]
+	assert len(transcript_lines) == 1
+	assert transcript_lines[0].line_number == 160
+	assert "all the other boys" in transcript_lines[0].text
+	assert "02:40" not in transcript_lines[0].text
 
 
 def test_given_transcript_at_two_forty_when_searching_for_minute_token_then_does_not_match(
@@ -945,6 +946,128 @@ def test_given_image_when_searching_with_semantic_image_then_adds_breakdown_scor
 	assert len(results) == 1
 	assert results[0].path == image_path
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.71)
+	assert len(results[0].lines) == 1
+	assert results[0].lines[0].location_kind == "semantic_image"
+	assert results[0].lines[0].text == "(visual match)"
+
+
+def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview_line(tmp_path: Path):
+	# given
+	image_path = tmp_path / "family.jpg"
+	image_path.write_bytes(b"jpg")
+	query = "sibling"
+
+	with (
+		patch("srxy.file_search.is_semantic_image_active", return_value=True),
+		patch("srxy.file_search.is_semantic_image_path", return_value=True),
+		patch("srxy.file_search.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.file_search.score_image", return_value=0.27),
+		patch(
+			"srxy.file_search._iter_searchable_lines",
+			return_value=[(1, "Sister (=)", "ocr")],
+		),
+		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
+	):
+		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
+			(0.291, {"semantic": 0.75, "fuzzy": 0.4}) if value == "sister" else (0.0, {})
+		)
+
+		# when
+		results = magic_file_search(
+			tmp_path,
+			query,
+			search_names=False,
+			search_contents=True,
+			semantic_image=True,
+		)
+
+	# then
+	assert len(results) == 1
+	assert results[0].breakdown["semantic_image"] == pytest.approx(0.27)
+	assert len(results[0].lines) == 1
+	assert results[0].lines[0].text == "Sister (=)"
+	assert results[0].lines[0].location_kind == "ocr"
+	assert results[0].lines[0].score == pytest.approx(0.291)
+
+
+def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(tmp_path: Path):
+	# given
+	image_path = tmp_path / "photo.jpg"
+	image_path.write_bytes(b"jpg")
+	query = "sibling"
+
+	with patch(
+		"srxy.file_search._iter_searchable_lines",
+		return_value=[(11, "[Ycbcrpositioning] 1", "tag")],
+	):
+		# when
+		results = magic_file_search(
+			tmp_path,
+			query,
+			search_names=False,
+			search_contents=True,
+			threshold=0.18,
+		)
+
+	# then
+	assert results == []
+
+
+def test_given_short_transcript_when_searching_sibling_then_does_not_match(tmp_path: Path):
+	# given
+	audio_path = tmp_path / "song.flac"
+	audio_path.write_bytes(b"flac")
+	query = "sibling"
+
+	with patch(
+		"srxy.file_search._iter_searchable_lines",
+		return_value=[(0, "I", "transcript")],
+	):
+		# when
+		results = magic_file_search(
+			tmp_path,
+			query,
+			search_names=False,
+			search_contents=True,
+			threshold=0.18,
+		)
+
+	# then
+	assert results == []
+
+
+def test_given_focusing_transcript_when_searching_sibling_then_does_not_match(tmp_path: Path):
+	# given
+	audio_path = tmp_path / "song.flac"
+	audio_path.write_bytes(b"flac")
+	query = "sibling"
+
+	with (
+		patch(
+			"srxy.file_search._iter_searchable_lines",
+			return_value=[(40, "A little pace that they're focusing", "transcript")],
+		),
+		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
+		patch(
+			"srxy.matchers.registry.is_matcher_available",
+			lambda match_type: match_type == MatchType.SEMANTIC,
+		),
+	):
+		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
+			(0.297, {"semantic": 0.20, "fuzzy": 0.63}) if value == "focusing" else (0.0, {})
+		)
+
+		# when
+		results = magic_file_search(
+			tmp_path,
+			query,
+			search_names=False,
+			search_contents=True,
+			threshold=0.18,
+		)
+
+	# then
+	assert results == []
 
 
 def test_given_semantic_image_below_text_threshold_when_searching_then_uses_image_threshold(

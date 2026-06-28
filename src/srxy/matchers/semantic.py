@@ -49,6 +49,9 @@ def _load_model() -> object:
 	model_path = Path(source)
 	device = resolve_torch_device()
 	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+	os.environ.setdefault("TQDM_DISABLE", "1")
+	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
 	if model_path.is_dir() and is_model_installed(model_path):
 		os.environ.setdefault("HF_HUB_OFFLINE", "1")
 		os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")

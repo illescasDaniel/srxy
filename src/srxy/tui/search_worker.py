@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import json
+import multiprocessing
 import os
 import sys
 from collections.abc import AsyncIterator, Callable
@@ -11,6 +12,24 @@ from typing import Any
 
 from srxy.cli import apply_args_to_env, execute_search
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
+
+
+def _bootstrap_worker_env():
+	os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
+	os.environ.setdefault("OMP_NUM_THREADS", "1")
+	os.environ.setdefault("TQDM_DISABLE", "1")
+	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
+
+
+def _detach_worker_stdin():
+	devnull_fd = os.open(os.devnull, os.O_RDONLY)
+	try:
+		os.dup2(devnull_fd, 0)
+	finally:
+		os.close(devnull_fd)
+	sys.stdin = open(os.devnull)
 
 
 def search_uses_subprocess(args: argparse.Namespace) -> bool:
@@ -68,8 +87,11 @@ def _emit_event(event: dict[str, Any]):
 
 
 def run_worker_main():
-	os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-	os.environ.setdefault("OMP_NUM_THREADS", "1")
+	_bootstrap_worker_env()
+	try:
+		multiprocessing.set_start_method("fork", force=True)
+	except (RuntimeError, ValueError):
+		pass
 	line = sys.stdin.readline()
 	if not line:
 		_emit_event({"type": "error", "message": "missing search arguments"})
@@ -77,6 +99,7 @@ def run_worker_main():
 		return
 
 	args = argparse.Namespace(**json.loads(line))
+	_detach_worker_stdin()
 	apply_args_to_env(args)
 	skipped_files: list[SkippedFile] = []
 
@@ -125,8 +148,16 @@ async def iter_subprocess_search_events(
 	cancel_check: Callable[[], bool] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
 	env = os.environ.copy()
-	env.setdefault("TOKENIZERS_PARALLELISM", "false")
-	env.setdefault("OMP_NUM_THREADS", "1")
+	_bootstrap_worker_env()
+	for key in (
+		"TOKENIZERS_PARALLELISM",
+		"OMP_NUM_THREADS",
+		"TQDM_DISABLE",
+		"HF_HUB_DISABLE_PROGRESS_BARS",
+		"TRANSFORMERS_VERBOSITY",
+		"JOBLIB_MULTIPROCESSING",
+	):
+		env[key] = os.environ[key]
 
 	process = await asyncio.create_subprocess_exec(
 		sys.executable,
@@ -134,8 +165,9 @@ async def iter_subprocess_search_events(
 		"srxy.tui.search_worker",
 		stdin=asyncio.subprocess.PIPE,
 		stdout=asyncio.subprocess.PIPE,
-		stderr=asyncio.subprocess.DEVNULL,
+		stderr=asyncio.subprocess.PIPE,
 		env=env,
+		start_new_session=True,
 	)
 	if process.stdin is None or process.stdout is None:
 		raise RuntimeError("search worker subprocess missing stdio pipes")
@@ -152,6 +184,12 @@ async def iter_subprocess_search_events(
 
 			line = await process.stdout.readline()
 			if not line:
+				stderr = b""
+				if process.stderr is not None:
+					stderr = await process.stderr.read()
+				if stderr:
+					message = stderr.decode(errors="replace").strip().splitlines()[-1]
+					yield {"type": "error", "message": message or "search worker failed"}
 				break
 
 			text = line.decode().strip()

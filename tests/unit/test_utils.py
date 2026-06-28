@@ -58,3 +58,15 @@ def test_given_short_text_when_formatting_preview_with_none_then_omits_highlight
 
 	# then
 	assert preview == "quarterly revenue projections"
+
+
+def test_given_related_word_when_formatting_preview_then_highlights_best_word_match():
+	# given
+	text = "Sister (=)"
+	query = "sibling"
+
+	# when
+	preview = format_match_preview(text, query)
+
+	# then
+	assert preview == "«Sister» (=)"
