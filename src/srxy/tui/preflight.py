@@ -48,23 +48,23 @@ class TuiPreflightApp(Protocol):
 async def run_tui_preflight(app: Any, args: argparse.Namespace) -> str | None:
 	apply_args_to_env(args)
 
-	if ocr_requested(None) and not is_ocr_available():
+	if ocr_requested(args.ocr or args.semantic_all) and not is_ocr_available():
 		return ocr_unavailable_message()
 
-	if transcribe_requested(None) and not transcribe_deps_installed():
+	if transcribe_requested(args.transcribe or args.semantic_all) and not transcribe_deps_installed():
 		return transcribe_unavailable_message()
-	if transcribe_requested(None) and not ffmpeg_available():
+	if transcribe_requested(args.transcribe or args.semantic_all) and not ffmpeg_available():
 		return ffmpeg_unavailable_message()
-	if transcribe_requested(None) and not await _ensure_transcribe_model_tui(app):
+	if transcribe_requested(args.transcribe or args.semantic_all) and not await _ensure_transcribe_model_tui(app):
 		return transcribe_model_missing_message()
 
-	if semantic_env_enabled():
+	if semantic_env_enabled() and (args.semantic or args.semantic_all):
 		if not sentence_transformers_installed():
 			return "Semantic matching requires the optional dependency: pip install 'srxy[semantic]'"
 		if not await _ensure_semantic_text_model_tui(app):
 			return semantic_text_model_missing_message()
 
-	if semantic_image_requested(None):
+	if semantic_image_requested(args.semantic_image or args.semantic_all):
 		if not is_semantic_image_available():
 			return semantic_image_unavailable_message()
 		if not await _ensure_semantic_image_model_tui(app):

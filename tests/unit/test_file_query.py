@@ -40,6 +40,17 @@ def test_given_or_expression_when_parsing_query_then_builds_or_tree():
 	assert expr == FileQ.leaf("red") | FileQ.leaf("blue")
 
 
+def test_given_unquoted_or_phrases_when_parsing_query_then_preserves_spaces_in_terms():
+	# given
+	raw = "Linkin Park|Call Me"
+
+	# when
+	expr = parse_file_query(raw)
+
+	# then
+	assert expr == FileQ.leaf("linkin park") | FileQ.leaf("call me")
+
+
 def test_given_and_binds_tighter_than_or_when_parsing_query_then_groups_correctly():
 	# given
 	raw = "(red|blue|green)&color"

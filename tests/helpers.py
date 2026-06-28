@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -9,12 +10,67 @@ from srxy import SearchResult
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
+QA_CORPUS_DIR = FIXTURES_DIR / "qa_corpus"
 OCR_FIXTURES_DIR = FIXTURES_DIR / "ocr"
 OCR_IMAGE_FIXTURE = OCR_FIXTURES_DIR / "ocr_sample.png"
 OCR_PDF_FIXTURE = OCR_FIXTURES_DIR / "ocr_embedded.pdf"
 MINIMAL_JPEG_FIXTURE = FIXTURES_DIR / "minimal.jpg"
 MINIMAL_MP3_FIXTURE = FIXTURES_DIR / "minimal.mp3"
 MINIMAL_MP4_FIXTURE = FIXTURES_DIR / "minimal.mp4"
+
+
+def qa_corpus_dir() -> Path:
+	override = os.environ.get("SRXY_QA_CORPUS", "").strip()
+	if override:
+		return Path(override).expanduser()
+	return QA_CORPUS_DIR
+
+
+def qa_corpus_docs() -> Path:
+	return qa_corpus_dir() / "docs"
+
+
+def qa_corpus_downloads() -> Path:
+	return qa_corpus_dir() / "qa_downloads"
+
+
+def require_qa_corpus() -> Path:
+	root = qa_corpus_dir()
+	marker = root / "docs" / "notes.txt"
+	if not marker.is_file():
+		raise FileNotFoundError(
+			f"QA corpus not found at {root}. Expected tests/fixtures/qa_corpus/ in the repository checkout."
+		)
+	return root
+
+
+def cuda_available() -> bool:
+	try:
+		import importlib.util
+
+		if importlib.util.find_spec("torch") is None:
+			return False
+		import torch
+
+		return bool(torch.cuda.is_available())
+	except (ImportError, OSError, RuntimeError):
+		return False
+
+
+def qa_test_cpu_requested(config: object) -> bool:
+	getoption = getattr(config, "getoption", None)
+	if callable(getoption) and getoption("--qa-test-cpu"):
+		return True
+	value = os.environ.get("SRXY_QA_TEST_CPU", "").strip().lower()
+	return value in {"1", "true", "yes", "on"}
+
+
+def transcribe_device_matrix_devices(config: object) -> list[str]:
+	if cuda_available():
+		if qa_test_cpu_requested(config):
+			return ["cuda", "cpu"]
+		return ["cuda"]
+	return ["cpu"]
 
 
 def copy_media_fixture(name: str, destination: Path) -> None:

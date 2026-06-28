@@ -420,6 +420,23 @@ def test_given_semantic_all_flag_when_parsing_args_then_accepts_flag():
 	assert args.semantic_all is True
 
 
+def test_given_transcribe_env_without_flag_when_running_cli_then_does_not_require_model(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("the axolotl swims", encoding="utf-8")
+	monkeypatch.setenv("SRXY_TRANSCRIBE", "1")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "empty-cache"))
+
+	# when
+	exit_code = main(["axolotl", str(tmp_path), "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "axolotl" in captured.out.lower()
+
+
 def test_given_semantic_all_without_ffmpeg_when_running_cli_then_exits_two_with_message(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ):
@@ -522,7 +539,7 @@ def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_me
 
 	with patch("srxy.cli.is_ocr_available", return_value=False):
 		# when
-		exit_code = main(["invoice", str(tmp_path), "--content-only", "--no-progress"])
+		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
 	# then
 	captured = capsys.readouterr()

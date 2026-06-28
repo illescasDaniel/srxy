@@ -52,7 +52,7 @@ def test_given_cached_model_when_ensuring_text_model_then_skips_download(
 	model_dir = tmp_path / "semantic-model"
 	model_dir.mkdir()
 	(model_dir / "config.json").write_text("{}", encoding="utf-8")
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
 
 	with patch("srxy.model_store.download_model") as download:
 		# when
@@ -68,7 +68,7 @@ def test_given_missing_model_when_user_declines_then_ensure_returns_false(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 	stdin = io.StringIO("n\n")
 	stdout = io.StringIO()
 
@@ -86,7 +86,7 @@ def test_given_missing_model_when_user_accepts_then_downloads_to_cache(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
 	def fake_download(model_id: str, target_dir: Path):
 		target_dir.mkdir(parents=True, exist_ok=True)
@@ -108,7 +108,7 @@ def test_given_auto_download_when_ensuring_image_model_then_downloads_without_pr
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_IMAGE_MODEL_PATH", str(tmp_path / "semantic-image-model"))
 
 	def fake_download(model_id: str, target_dir: Path):
 		target_dir.mkdir(parents=True, exist_ok=True)
@@ -128,7 +128,7 @@ def test_given_download_cli_when_target_is_semantic_text_then_downloads_model(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
 	with patch("srxy.model_store.download_semantic_text_model") as download_text:
 		# when
@@ -144,7 +144,7 @@ def test_given_download_helper_when_called_then_sets_model_path_env(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
 	def fake_download(model_id: str, target_dir: Path):
 		target_dir.mkdir(parents=True, exist_ok=True)
@@ -163,7 +163,7 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
+	monkeypatch.setattr("srxy.model_store.default_cache_root", lambda: tmp_path)
 
 	def fake_download(model_id: str, target_dir: Path):
 		target_dir.mkdir(parents=True, exist_ok=True)

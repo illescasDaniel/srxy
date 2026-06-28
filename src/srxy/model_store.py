@@ -19,9 +19,6 @@ _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
 def default_cache_root() -> Path:
-	raw = os.environ.get("SRXY_CACHE_DIR", "").strip()
-	if raw:
-		return Path(raw).expanduser()
 	return Path.home() / ".cache" / "srxy"
 
 

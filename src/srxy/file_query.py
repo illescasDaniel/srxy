@@ -162,6 +162,24 @@ def parse_file_query(raw: str) -> FileQ:
 		return FileQ.leaf("")
 	if not _has_boolean_syntax(text):
 		return FileQ.leaf(text)
+	or_parts = _split_top_level(text, "|")
+	if len(or_parts) > 1:
+		expr: FileQ | None = None
+		for part in or_parts:
+			segment = _parse_boolean_segment(part.strip())
+			expr = segment if expr is None else expr | segment
+		return expr if expr is not None else FileQ.leaf("")
+	return _parse_boolean_segment(text)
+
+
+def _parse_boolean_segment(text: str) -> FileQ:
+	if not text:
+		return FileQ.leaf("")
+	if not _has_boolean_syntax(text):
+		tokens = _tokenize(text.strip())
+		if len(tokens) == 1 and tokens[0].kind == _TokenKind.TERM:
+			return FileQ.leaf(tokens[0].value)
+		return FileQ.leaf(text)
 	tokens = _tokenize(text)
 	if not tokens:
 		return FileQ.leaf("")
@@ -290,6 +308,34 @@ def _has_boolean_syntax(text: str) -> bool:
 		if char in "&|()":
 			return True
 	return False
+
+
+def _split_top_level(text: str, separator: str) -> list[str]:
+	if separator not in text:
+		return [text]
+	parts: list[str] = []
+	start = 0
+	depth = 0
+	in_quote: str | None = None
+	for index, char in enumerate(text):
+		if in_quote is not None:
+			if char == in_quote and (index == 0 or text[index - 1] != "\\"):
+				in_quote = None
+			continue
+		if char in {'"', "'"}:
+			in_quote = char
+			continue
+		if char == "(":
+			depth += 1
+			continue
+		if char == ")":
+			depth = max(0, depth - 1)
+			continue
+		if depth == 0 and char == separator:
+			parts.append(text[start:index])
+			start = index + 1
+	parts.append(text[start:])
+	return parts
 
 
 def _tokenize(text: str) -> list[_Token]:

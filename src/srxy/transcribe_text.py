@@ -320,7 +320,14 @@ def _transcribe_wav_segments(
 		return "transformers", _iter_transformers_segment_lines(wav_path, device)
 
 	try:
-		return "faster-whisper", _iter_faster_whisper_segment_lines(wav_path, device)
+		segments = _iter_faster_whisper_segment_lines(wav_path, device)
+		if segments:
+			return "faster-whisper", segments
+		print(
+			"warning: faster-whisper produced no speech segments; falling back to transformers.",
+			file=sys.stderr,
+		)
+		return "transformers", _iter_transformers_segment_lines(wav_path, device)
 	except RuntimeError as exc:
 		if device != "cuda":
 			raise
@@ -348,7 +355,8 @@ def _cached_transcript_lines(
 			item = _decode_transcript_cache_line(raw_line)
 			if item is not None:
 				lines.append(item)
-		return lines
+		if lines:
+			return lines
 
 	backend, segments = transcribe()
 	variant = _cache_variant(device, backend)
@@ -360,7 +368,15 @@ def _cached_transcript_lines(
 				item = _decode_transcript_cache_line(raw_line)
 				if item is not None:
 					lines.append(item)
-			return lines
+			if lines:
+				return lines
+
+	if not segments:
+		print(
+			f"warning: transcription produced no speech segments for cached content {content_hash[:12]}",
+			file=sys.stderr,
+		)
+		return []
 
 	payload = "\n".join(_encode_transcript_cache_line(seconds, text) for seconds, text in segments).encode("utf-8")
 	cache_put(CACHE_KIND_TRANSCRIPT, content_hash, variant, payload)

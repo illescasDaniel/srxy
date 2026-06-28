@@ -5,6 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
+from tests.helpers import qa_corpus_docs, require_qa_corpus
 
 from srxy.ocr_text import (
 	TesseractEngine,
@@ -213,9 +214,9 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 @pytest.mark.ocr
 def test_given_far_cry_cover_when_ocring_then_reads_composer_name():
 	# given
-	cover = Path("/home/daniel/Downloads/temp_docs/docs/folder.jpg")
-	if not cover.is_file():
-		pytest.skip("local folder.jpg fixture not available")
+	require_qa_corpus()
+	cover = qa_corpus_docs() / "folder.jpg"
+	assert cover.is_file(), f"missing QA cover fixture: {cover}"
 
 	# when
 	with Image.open(cover) as image:

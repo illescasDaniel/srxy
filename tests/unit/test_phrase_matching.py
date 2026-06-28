@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.helpers import qa_corpus_docs, require_qa_corpus
 
 from srxy.file_query import format_query_for_display
 from srxy.file_search import magic_file_search
@@ -48,18 +49,18 @@ def test_given_multi_word_query_when_formatting_transcript_preview_then_highligh
 	assert "[bold]far[/bold]" in preview
 
 
-def test_given_far_cry_query_when_searching_linkin_park_corpus_then_skips_unrelated_songs(tmp_path: Path):
-	# given
-	docs = Path("/home/daniel/Downloads/temp_docs/docs")
-	if not docs.is_dir():
-		pytest.skip("local temp_docs corpus not available")
+@pytest.mark.transcribe
+def test_given_far_cry_query_when_searching_unrelated_flac_then_does_not_match():
+	# given — single known false-positive candidate; avoid transcribing the whole corpus
+	require_qa_corpus()
+	flac = qa_corpus_docs() / "08 In The End.flac"
+	assert flac.is_file(), f"missing QA flac fixture: {flac}"
 
 	# when
-	results = magic_file_search(docs, "far cry", threshold=0.35, transcribe=True, limit=10)
-	names = [result.path.name for result in results]
+	results = magic_file_search(flac, "far cry", threshold=0.35, transcribe=True, limit=10)
 
 	# then
-	assert "08 In The End.flac" not in names
+	assert results == []
 
 
 def test_given_quoted_query_display_when_formatting_status_then_avoids_double_quotes():

@@ -105,9 +105,11 @@ lib_pytest_args() {
 	elif [[ -d "${LIB_REPO_ROOT}/test" ]]; then
 		LIB_PYTEST_ARGS+=(test)
 	fi
-	# Local checks.sh runs the full suite; CI runs fast unit tests without optional extras.
+	# Local checks.sh runs the full suite including QA bootstrap tests.
 	if [[ "${CI:-}" == "true" ]]; then
 		LIB_PYTEST_ARGS+=(-m "unit and not semantic and not transcribe")
+	else
+		export SRXY_QA_BOOTSTRAP=1
 	fi
 	LIB_PYTEST_COV=()
 	if [[ -d "${LIB_REPO_ROOT}/src" ]]; then

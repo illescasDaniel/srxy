@@ -19,6 +19,7 @@ def isolated_unit_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.delenv("SRXY_OCR", raising=False)
 	monkeypatch.delenv("SRXY_TRANSCRIBE_THRESHOLD", raising=False)
 	monkeypatch.delenv("SRXY_AUTO_DOWNLOAD", raising=False)
+	monkeypatch.delenv("CI", raising=False)
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "srxy-cache"))
 	monkeypatch.setattr("srxy.cli.ensure_semantic_text_model", lambda **_kwargs: True)
 	monkeypatch.setattr("srxy.cli.ensure_semantic_image_model", lambda **_kwargs: True)

@@ -11,7 +11,6 @@ from typing import IO, Callable, TextIO
 from srxy.file_query import FileQ, FileQueryParseError, coerce_file_query, file_q_from_dict
 from srxy.file_search import magic_file_search, suggest_max_file_size
 from srxy.matchers.semantic import (
-	semantic_env_enabled,
 	sentence_transformers_installed,
 )
 from srxy.model_store import (
@@ -27,7 +26,6 @@ from srxy.ocr_text import is_ocr_available, ocr_requested, ocr_unavailable_messa
 from srxy.semantic_image import (
 	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	is_semantic_image_available,
-	semantic_image_requested,
 	semantic_image_unavailable_message,
 )
 from srxy.transcribe_text import (
@@ -712,21 +710,41 @@ def apply_args_to_env(args: argparse.Namespace):
 		os.environ["SRXY_OCR"] = "1"
 		os.environ["SRXY_SEMANTIC_IMAGE"] = "1"
 		os.environ["SRXY_TRANSCRIBE"] = "1"
-	if args.semantic:
-		os.environ["SRXY_SEMANTIC"] = "1"
-	if args.semantic_image:
-		os.environ["SRXY_SEMANTIC_IMAGE"] = "1"
-	if args.ocr:
-		os.environ["SRXY_OCR"] = "1"
+	else:
+		_set_mode_env("SRXY_SEMANTIC", args.semantic)
+		_set_mode_env("SRXY_OCR", args.ocr)
+		_set_mode_env("SRXY_SEMANTIC_IMAGE", args.semantic_image)
+		_set_mode_env("SRXY_TRANSCRIBE", args.transcribe)
 	if args.max_ocr_file_size is not None:
 		os.environ["SRXY_OCR_MAX_FILE_SIZE"] = str(args.max_ocr_file_size)
-	if args.transcribe:
-		os.environ["SRXY_TRANSCRIBE"] = "1"
 	if args.max_transcribe_file_size is not None:
 		os.environ["SRXY_TRANSCRIBE_MAX_FILE_SIZE"] = str(args.max_transcribe_file_size)
 	if args.transcribe_model is not None:
 		os.environ["SRXY_TRANSCRIBE_MODEL"] = args.transcribe_model
 	os.environ["SRXY_TRANSCRIBE_THRESHOLD"] = str(args.transcribe_threshold)
+
+
+def _set_mode_env(name: str, enabled: bool):
+	if enabled:
+		os.environ[name] = "1"
+	else:
+		os.environ.pop(name, None)
+
+
+def _args_want_ocr(args: argparse.Namespace) -> bool:
+	return bool(args.ocr or args.semantic_all)
+
+
+def _args_want_transcribe(args: argparse.Namespace) -> bool:
+	return bool(args.transcribe or args.semantic_all)
+
+
+def _args_want_semantic_text(args: argparse.Namespace) -> bool:
+	return bool(args.semantic or args.semantic_all)
+
+
+def _args_want_semantic_image(args: argparse.Namespace) -> bool:
+	return bool(args.semantic_image or args.semantic_all)
 
 
 def sync_options_to_args(
@@ -762,26 +780,26 @@ def run_preflight(
 ) -> str | None:
 	apply_args_to_env(args)
 
-	if ocr_requested(None) and not is_ocr_available():
+	if _args_want_ocr(args) and not is_ocr_available():
 		return ocr_unavailable_message()
 
-	if transcribe_requested(None) and not transcribe_deps_installed():
+	if _args_want_transcribe(args) and not transcribe_deps_installed():
 		return transcribe_unavailable_message()
-	if transcribe_requested(None) and not ffmpeg_available():
+	if _args_want_transcribe(args) and not ffmpeg_available():
 		return ffmpeg_unavailable_message()
-	if transcribe_requested(None) and not ensure_transcribe_model(
+	if _args_want_transcribe(args) and not ensure_transcribe_model(
 		interactive=interactive,
 		prompt_yes=prompt_yes,
 	):
 		return transcribe_model_missing_message()
 
-	if semantic_env_enabled():
+	if _args_want_semantic_text(args):
 		if not sentence_transformers_installed():
 			return "Semantic matching requires the optional dependency: pip install 'srxy[semantic]'"
 		if not ensure_semantic_text_model(interactive=interactive, prompt_yes=prompt_yes):
 			return semantic_text_model_missing_message()
 
-	if semantic_image_requested(None):
+	if _args_want_semantic_image(args):
 		if not is_semantic_image_available():
 			return semantic_image_unavailable_message()
 		if not ensure_semantic_image_model(interactive=interactive, prompt_yes=prompt_yes):

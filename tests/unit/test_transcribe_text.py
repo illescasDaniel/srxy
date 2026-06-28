@@ -177,6 +177,39 @@ def test_given_cached_transcript_when_iterating_twice_then_transcribes_once(
 	transcribe_mock.assert_called_once()
 
 
+@pytest.mark.transcribe
+def test_given_empty_transcript_when_caching_then_does_not_store_empty_payload(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	audio = tmp_path / "clip.mp3"
+	audio.write_bytes(b"empty-audio")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	reset_transcribe_models()
+
+	def fake_transcribe(_wav_path: Path, *, device: str, backend: str):
+		return backend, []
+
+	with (
+		patch("srxy.transcribe_text._with_normalized_audio", return_value=iter([tmp_path / "audio.wav"])),
+		patch("srxy.transcribe_text._transcribe_wav_segments", side_effect=fake_transcribe) as transcribe_mock,
+	):
+		# when
+		first = list(iter_transcript_lines(audio))
+		second = list(iter_transcript_lines(audio))
+
+	# then
+	assert first == []
+	assert second == []
+	assert transcribe_mock.call_count >= 1
+	from srxy.cache import CACHE_KIND_TRANSCRIPT, cache_get, get_file_content_hash
+
+	content_hash = get_file_content_hash(audio)
+	cached = cache_get(CACHE_KIND_TRANSCRIPT, content_hash, "cpu:faster-whisper")
+	assert cached is None
+
+
 def test_given_cuda_faster_whisper_failure_when_transcribing_then_falls_back_to_transformers(
 	tmp_path: Path,
 	capsys: pytest.CaptureFixture[str],
@@ -206,6 +239,35 @@ def test_given_cuda_faster_whisper_failure_when_transcribing_then_falls_back_to_
 	assert backend == "transformers"
 	assert segments == [(0, "fallback transcript")]
 	assert "falling back to transformers on CUDA" in capsys.readouterr().err
+
+
+def test_given_cpu_faster_whisper_empty_when_transcribing_then_falls_back_to_transformers(
+	tmp_path: Path,
+	capsys: pytest.CaptureFixture[str],
+):
+	# given
+	wav = tmp_path / "audio.wav"
+	wav.write_bytes(b"wav")
+
+	def empty(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+		return []
+
+	def transformers(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+		return [(0, "quiet audio transcript")]
+
+	with (
+		patch("srxy.transcribe_text._iter_faster_whisper_segment_lines", side_effect=empty),
+		patch("srxy.transcribe_text._iter_transformers_segment_lines", side_effect=transformers),
+	):
+		from srxy.transcribe_text import _transcribe_wav_segments  # pyright: ignore[reportPrivateUsage]
+
+		# when
+		backend, segments = _transcribe_wav_segments(wav, device="cpu", backend="faster-whisper")
+
+	# then
+	assert backend == "transformers"
+	assert segments == [(0, "quiet audio transcript")]
+	assert "falling back to transformers" in capsys.readouterr().err
 
 
 def test_given_seconds_when_formatting_transcript_timestamp_then_uses_mm_ss():

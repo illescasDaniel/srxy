@@ -7,7 +7,8 @@ from tests.helpers import LabeledQuery, load_labeled_queries, load_search_corpus
 
 from srxy.matchers.registry import get_atomic_matcher
 from srxy.matchers.semantic import is_semantic_available, warmup_semantic_model
-from srxy.model_store import ensure_semantic_text_model
+from srxy.model_store import ensure_semantic_image_model, ensure_semantic_text_model
+from srxy.semantic_image import is_semantic_image_available, warmup_semantic_image_model
 
 
 pytestmark = pytest.mark.integration
@@ -29,6 +30,9 @@ def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[repo
 	if not ensure_semantic_text_model(interactive=False, auto_download=True):
 		pytest.skip("Integration tests require the semantic text model (download failed or unavailable)")
 	warmup_semantic_model()
+	if os.environ.get("SRXY_SEMANTIC_IMAGE", "").strip().lower() in {"1", "true", "yes", "on"}:
+		if is_semantic_image_available() and ensure_semantic_image_model(interactive=False, auto_download=True):
+			warmup_semantic_image_model()
 
 
 @pytest.fixture(scope="module")

@@ -79,13 +79,16 @@ srxy "dog at the beach" ~/Pictures --semantic-image --content-only
 srxy revenue ./docs --semantic-all --content-only
 ```
 
-**Boolean queries** (`|` = OR, `&` = AND; `&` binds tighter). Quote phrases that contain spaces or operators:
+**Boolean queries** (`|` = OR, `&` = AND; `&` binds tighter). Multi-word phrases in OR expressions can be written without quotes (`Linkin Park|Call Me`). Quote phrases when they contain operators:
 
 ```bash
 srxy 'alpha|beta' ./docs
+srxy 'Linkin Park|Call Me' ~/Music --content-only
 srxy '(red|blue|green)&color' ./docs
 srxy '"my search text"|other' .
 ```
+
+Each leaf in a boolean query matches against file content and names. A term like `notes` does not automatically match only filenames — use plain filename search or quote the basename if needed.
 
 In Python, build the same logic with `FileQ`:
 
@@ -427,13 +430,40 @@ pip install -e ".[dev,semantic]"
 
 Quality gate: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 
-- **Local** (`./scripts/quality/checks.sh`): runs all tests (unit + integration).
-- **CI**: runs only `pytest -m unit` (fast tests; no semantic model required).
+- **Local** (`./scripts/quality/checks.sh`): full suite including integration and QA tests against `tests/fixtures/qa_corpus/` (dev-only fixtures, not shipped in the wheel).
+- **CI**: unit tests only (`pytest -m unit`).
 
 Integration tests (requires `pip install -e ".[semantic]"` and `SRXY_SEMANTIC=1`, set automatically in `tests/integration/conftest.py`):
 
 ```bash
 pytest -m integration
+pytest -m qa          # release QA on committed corpus
+pytest -m qa_full     # extended QA (transcription, CLIP, cache timing)
+pytest --qa-test-cpu  # include forced-CPU transcribe device QA when CUDA is available
 ```
+
+Ad-hoc release scripts (optional; set `QA_RESULTS=path` or `QA_DEVICE_RESULTS=path` to save a log file):
+
+```bash
+./scripts/qa/run_qa_matrix.sh
+./scripts/qa/run_device_matrix.sh
+./scripts/qa/run_tui_manual.sh   # automated TUI pilot checks only
+```
+
+### Manual TUI checklist
+
+Automated TUI coverage lives in `pytest tests/tui/`. Before a release, verify these on a **real TTY** (not headless):
+
+| Check | What to verify |
+|-------|----------------|
+| Scope toggles | Turn **Content** off and **Names** on — results respect the selected scope |
+| OCR responsiveness | Enable **OCR**, search a photo/PDF folder — UI stays responsive during the scan |
+| Transcribe responsiveness | Enable **Transcribe**, search audio/video — UI stays responsive |
+| Clipboard | `y` / `m` / `M` copy path, match, or all matches (needs OSC 52 terminal support) |
+| Open file | `o` on a selected result opens the file in the OS default app |
+| Terminal resize | Shrink and expand the window — layout stays usable |
+| Missing tesseract | With tesseract unavailable, preflight shows a clear error before the scan |
+
+Example launch: `srxy ./tests/fixtures/qa_corpus/docs` or `srxy "axolotl" ./tests/fixtures/qa_corpus/docs`.
 
 Integration tests load a curated news-style corpus from `tests/fixtures/search_corpus.json` and measure top-k hit rates.
