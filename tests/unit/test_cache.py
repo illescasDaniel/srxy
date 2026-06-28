@@ -86,6 +86,27 @@ def test_given_same_path_twice_when_getting_file_hash_then_reuses_run_cache(tmp_
 	assert first == second
 
 
+def test_given_cache_debug_when_getting_then_logs_to_stderr(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+	capsys: pytest.CaptureFixture[str],
+):
+	# given
+	monkeypatch.setenv("SRXY_CACHE_DEBUG", "1")
+	content_hash = hash_bytes(b"debug-me")
+
+	# when
+	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", b"text")
+	cache_get(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1")
+	cache_get(CACHE_KIND_OCR_IMAGE, content_hash, "missing")
+
+	# then
+	err = capsys.readouterr().err
+	assert "srxy cache PUT ocr_image" in err
+	assert "srxy cache HIT ocr_image" in err
+	assert "srxy cache MISS ocr_image" in err
+
+
 def test_given_custom_cache_dir_when_resolving_db_path_then_uses_override(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

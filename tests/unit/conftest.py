@@ -42,7 +42,13 @@ def mock_semantic_model(monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.setattr("srxy.semantic_image.sentence_transformers_installed", always_installed)
 	get_atomic_matcher.cache_clear()
 	mock_model = MagicMock()
-	mock_model.encode.side_effect = lambda texts: [[float(hash(text) % 1000), 0.1] for text in texts]
+
+	def fake_encode(texts: str | list[str]):
+		if isinstance(texts, str):
+			return [float(hash(texts) % 1000), 0.1]
+		return [[float(hash(text) % 1000), 0.1] for text in texts]
+
+	mock_model.encode.side_effect = fake_encode
 	monkeypatch.setattr("srxy.matchers.semantic._get_model", lambda: mock_model)
 	monkeypatch.setattr(
 		"srxy.matchers.semantic._cosine_similarity",

@@ -11,6 +11,7 @@ from srxy.matchers.base import Matcher
 DEFAULT_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 _semantic_model: object | None = None
+_run_embedding_cache: dict[tuple[str, str], object] = {}
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
@@ -35,6 +36,10 @@ def _model_source() -> str:
 	if local_path:
 		return local_path
 	return os.environ.get("SRXY_SEMANTIC_MODEL", DEFAULT_MODEL_ID).strip() or DEFAULT_MODEL_ID
+
+
+def _model_variant() -> str:
+	return _model_source()
 
 
 def _load_model() -> object:
@@ -75,6 +80,7 @@ def reset_semantic_model():
 	"""Reset the cached semantic model. Intended for tests."""
 	global _semantic_model
 	_semantic_model = None
+	_run_embedding_cache.clear()
 
 
 def _cosine_similarity(left: object, right: object) -> float:
@@ -83,12 +89,38 @@ def _cosine_similarity(left: object, right: object) -> float:
 	return float(util.cos_sim(left, right)[0][0])  # type: ignore[index]
 
 
+def _encode_text_cached(text: str) -> object:
+	import numpy as np
+
+	from srxy.cache import CACHE_KIND_SEMANTIC_EMBED, cache_get, cache_put, hash_bytes
+
+	variant = _model_variant()
+	content_hash = hash_bytes(text.encode("utf-8"))
+	mem_key = (content_hash, variant)
+	cached_run = _run_embedding_cache.get(mem_key)
+	if cached_run is not None:
+		return cached_run
+
+	cached = cache_get(CACHE_KIND_SEMANTIC_EMBED, content_hash, variant)
+	if cached is not None:
+		array = np.frombuffer(cached, dtype=np.float32)
+		_run_embedding_cache[mem_key] = array
+		return array
+
+	model = _get_model()
+	embedding = model.encode(text)  # type: ignore[union-attr]
+	array = np.asarray(embedding, dtype=np.float32)
+	cache_put(CACHE_KIND_SEMANTIC_EMBED, content_hash, variant, array.tobytes())
+	_run_embedding_cache[mem_key] = array
+	return array
+
+
 class SemanticMatcher(Matcher):
 	def score(self, query: str, value: str) -> float:
 		if not query or not value:
 			return 0.0
 
-		model = _get_model()
-		embeddings = model.encode([query, value])
-		similarity = _cosine_similarity(embeddings[0], embeddings[1])
+		query_embedding = _encode_text_cached(query)
+		value_embedding = _encode_text_cached(value)
+		similarity = _cosine_similarity(query_embedding, value_embedding)
 		return max(0.0, min(1.0, similarity))

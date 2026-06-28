@@ -17,10 +17,11 @@ from srxy.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
-DEFAULT_MAX_IMAGE_DIMENSION = 2000
+DEFAULT_MAX_IMAGE_DIMENSION = 4000
+MIN_OCR_QUALITY_SCORE = 80.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
 SPARSE_TEXT_THRESHOLD = 20
-OCR_ENGINE_VARIANT = "tesseract-v2"
+OCR_ENGINE_VARIANT = "tesseract-v4"
 
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
@@ -41,14 +42,25 @@ class TesseractEngine(OcrEngine):
 	def recognize(self, image: Image.Image) -> str:
 		import pytesseract
 
-		text = str(pytesseract.image_to_string(image)).strip()
-		if text:
-			return text
-		for psm in (11, 6, 12):
+		best_text = ""
+		best_rank = (-1.0, 0)
+		for priority, psm in enumerate((3, 6, 11, 12)):
 			text = str(pytesseract.image_to_string(image, config=f"--psm {psm}")).strip()
-			if text:
+			if not text:
+				continue
+			score = _ocr_quality_score(text)
+			if psm == 3 and score >= MIN_OCR_QUALITY_SCORE:
 				return text
-		return ""
+			rank = (score, -priority)
+			if rank > best_rank:
+				best_rank = rank
+				best_text = text
+		default_text = str(pytesseract.image_to_string(image)).strip()
+		if default_text:
+			rank = (_ocr_quality_score(default_text), -4)
+			if rank > best_rank:
+				best_text = default_text
+		return best_text
 
 
 def ocr_env_enabled() -> bool:
@@ -119,15 +131,27 @@ def reset_ocr_engine():
 def preprocess_image(image: Image.Image) -> Image.Image:
 	from PIL import Image as PILImage
 
-	if image.mode != "L":
-		image = image.convert("L")
+	if image.mode not in {"RGB", "L"}:
+		image = image.convert("RGB")
 	width, height = image.size
 	max_dimension = max(width, height)
 	if max_dimension > DEFAULT_MAX_IMAGE_DIMENSION:
 		scale = DEFAULT_MAX_IMAGE_DIMENSION / max_dimension
 		new_size = (int(width * scale), int(height * scale))
-		image = image.resize(new_size, PILImage.Resampling.LANCZOS)
+		image = image.resize(new_size, PILImage.Resampling.BICUBIC)
 	return image
+
+
+def _ocr_quality_score(text: str) -> float:
+	import re
+
+	collapsed = " ".join(text.split())
+	long_words = re.findall(r"[a-z]{4,}", collapsed.lower())
+	if not long_words:
+		return 0.0
+	compactness = len(collapsed) / max(len(text), 1)
+	short_line_penalty = sum(1 for line in text.splitlines() if 0 < len(line.strip()) <= 2) * 10
+	return len(long_words) * 25 * compactness - short_line_penalty
 
 
 def ocr_pil_image(image: Image.Image) -> str:

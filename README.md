@@ -243,7 +243,7 @@ By default, images are searched via EXIF/metadata only; PDFs use embedded text f
 
 OCR uses **Tesseract** via `pytesseract` (installed with srxy). You still need the `tesseract` binary on `PATH` (e.g. `tesseract-ocr` on Debian/Ubuntu, `tesseract` on Arch). There is **no default OCR file-size cap**; use `--max-ocr-file-size` or `SRXY_OCR_MAX_FILE_SIZE` only when you want to limit OCR on very large files.
 
-OCR results are cached by file content hash in `~/.cache/srxy/cache.db` (override with `SRXY_CACHE_DIR`). Disable with `SRXY_CACHE_DISABLE=1`.
+OCR results are cached by file content hash in `~/.cache/srxy/cache.db` (override with `SRXY_CACHE_DIR`). Disable with `SRXY_CACHE_DISABLE=1`. Set `SRXY_CACHE_DEBUG=1` to log cache hits, misses, and writes to stderr. Extracted PDF and Office document text is cached by file hash as well.
 
 ### Text semantic
 
@@ -256,7 +256,7 @@ export SRXY_SEMANTIC=1
 
 With `SRXY_SEMANTIC=1`, composite matching includes semantic similarity. Explicit `Q.semantic(...)` or `MatchType.SEMANTIC` in the Python API raises a clear error if semantic is not enabled.
 
-Default model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. On first use, srxy offers to download and cache it under `~/.cache/srxy/semantic-model`.
+Default model: `sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2`. On first use, srxy offers to download and cache it under `~/.cache/srxy/semantic-model`. Text embeddings are cached by content hash in `~/.cache/srxy/cache.db` (same as OCR and transcripts). Cache keys include the model path or id; changing `SRXY_SEMANTIC_MODEL` or `SRXY_SEMANTIC_MODEL_PATH` starts a fresh variant.
 
 ### Image semantic (CLIP)
 

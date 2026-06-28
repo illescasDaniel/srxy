@@ -348,8 +348,7 @@ def _cached_transcript_lines(
 			item = _decode_transcript_cache_line(raw_line)
 			if item is not None:
 				lines.append(item)
-		if lines:
-			return lines
+		return lines
 
 	backend, segments = transcribe()
 	variant = _cache_variant(device, backend)
@@ -361,8 +360,7 @@ def _cached_transcript_lines(
 				item = _decode_transcript_cache_line(raw_line)
 				if item is not None:
 					lines.append(item)
-			if lines:
-				return lines
+			return lines
 
 	payload = "\n".join(_encode_transcript_cache_line(seconds, text) for seconds, text in segments).encode("utf-8")
 	cache_put(CACHE_KIND_TRANSCRIPT, content_hash, variant, payload)

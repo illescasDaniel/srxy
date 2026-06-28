@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -9,6 +10,31 @@ DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx", ".xlsx", ".pptx"})
 
 def is_document_path(path: Path) -> bool:
 	return path.suffix.lower() in DOCUMENT_SUFFIXES
+
+
+def _document_cache_variant(path: Path, *, ocr: bool | None = None) -> str:
+	from srxy.ocr_text import is_ocr_active
+
+	suffix = path.suffix.lower()
+	if suffix == ".pdf":
+		return f"{suffix}:ocr={int(is_ocr_active(ocr))}"
+	return suffix
+
+
+def _encode_document_lines(lines: list[tuple[int, str, str]]) -> bytes:
+	return "\n".join(
+		json.dumps([line_number, text, location_kind]) for line_number, text, location_kind in lines
+	).encode("utf-8")
+
+
+def _decode_document_lines(payload: bytes) -> list[tuple[int, str, str]]:
+	lines: list[tuple[int, str, str]] = []
+	for raw_line in payload.decode("utf-8").splitlines():
+		if not raw_line:
+			continue
+		line_number, text, location_kind = json.loads(raw_line)
+		lines.append((int(line_number), str(text), str(location_kind)))
+	return lines
 
 
 def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str, str]]:
@@ -22,11 +48,23 @@ def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tupl
 	extractor = extractors.get(suffix)
 	if extractor is None:
 		return
+
+	from srxy.cache import CACHE_KIND_DOCUMENT_TEXT, cache_get, cache_put, get_file_content_hash
+
 	try:
+		content_hash = get_file_content_hash(path)
+		variant = _document_cache_variant(path, ocr=ocr)
+		cached = cache_get(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant)
+		if cached is not None:
+			yield from _decode_document_lines(cached)
+			return
+
 		if suffix == ".pdf":
-			yield from extractor(path, ocr=ocr)
+			lines = list(extractor(path, ocr=ocr))
 		else:
-			yield from extractor(path)
+			lines = list(extractor(path))
+		cache_put(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant, _encode_document_lines(lines))
+		yield from lines
 	except Exception:
 		return
 

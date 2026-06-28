@@ -5,7 +5,7 @@ from dataclasses import dataclass
 from enum import Enum
 
 from srxy.models import QNodeType
-from srxy.utils import normalize_text
+from srxy.utils import normalize_text, query_words
 
 
 class FileQueryParseError(ValueError):
@@ -177,12 +177,33 @@ def query_highlight_terms(raw: str) -> list[str]:
 	if not text:
 		return []
 	if not _has_boolean_syntax(text):
+		words = query_words(text)
+		if len(words) > 1:
+			return words
 		return [text]
 	try:
 		terms = list(iter_terms(parse_file_query(text)))
 	except FileQueryParseError:
 		return [text]
 	return terms if terms else [text]
+
+
+def format_query_for_display(raw: str) -> str:
+	text = raw.strip()
+	if not text:
+		return ""
+	if text.startswith('"') and text.endswith('"') and len(text) >= 2:
+		return text[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+	try:
+		expr = parse_file_query(text)
+	except FileQueryParseError:
+		return text
+	if query_is_compound(expr):
+		return text
+	terms = list(iter_terms(expr))
+	if len(terms) == 1:
+		return terms[0]
+	return text
 
 
 class _TokenKind(Enum):

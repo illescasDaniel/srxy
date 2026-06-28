@@ -111,7 +111,9 @@ def format_score_percent(score: float) -> str:
 def format_grouped_summary(*, match_count: int, query: str = "") -> str:
 	header = f"{match_count} file matched" if match_count == 1 else f"{match_count} files matched"
 	if query:
-		header += f' for "{query}"'
+		from srxy.file_query import format_query_for_display
+
+		header += f' for "{format_query_for_display(query)}"'
 	return header
 
 
@@ -265,7 +267,9 @@ def format_json(results: list[FileSearchResult], *, query: str = "") -> str:
 
 
 def format_no_matches_message(query: str, path: Path | str) -> str:
-	return f'No matches for "{query}" in {Path(path).expanduser()}'
+	from srxy.file_query import format_query_for_display
+
+	return f'No matches for "{format_query_for_display(query)}" in {Path(path).expanduser()}'
 
 
 def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int | None) -> str:

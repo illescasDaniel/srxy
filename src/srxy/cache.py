@@ -3,6 +3,7 @@ from __future__ import annotations
 import hashlib
 import os
 import sqlite3
+import sys
 import time
 from pathlib import Path
 
@@ -11,6 +12,8 @@ CACHE_KIND_OCR_IMAGE = "ocr_image"
 CACHE_KIND_OCR_PDF_BLOB = "ocr_pdf_blob"
 CACHE_KIND_CLIP_EMBED = "clip_embed"
 CACHE_KIND_TRANSCRIPT = "transcript"
+CACHE_KIND_SEMANTIC_EMBED = "semantic_embed"
+CACHE_KIND_DOCUMENT_TEXT = "document_text"
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 _SCHEMA_VERSION = 1
@@ -22,6 +25,17 @@ _run_file_hashes: dict[Path, str] = {}
 def cache_disabled() -> bool:
 	value = os.environ.get("SRXY_CACHE_DISABLE", "").strip().lower()
 	return value in _TRUTHY_ENV_VALUES
+
+
+def cache_debug_enabled() -> bool:
+	value = os.environ.get("SRXY_CACHE_DEBUG", "").strip().lower()
+	return value in _TRUTHY_ENV_VALUES
+
+
+def _log_cache_event(event: str, kind: str, content_hash: str, variant: str):
+	if not cache_debug_enabled():
+		return
+	print(f"srxy cache {event} {kind} hash={content_hash[:12]} variant={variant}", file=sys.stderr)
 
 
 def cache_db_path() -> Path:
@@ -132,7 +146,9 @@ def cache_get(kind: str, content_hash: str, variant: str) -> bytes | None:
 		(key,),
 	).fetchone()
 	if row is None:
+		_log_cache_event("MISS", kind, content_hash, variant)
 		return None
+	_log_cache_event("HIT", kind, content_hash, variant)
 	now = time.time()
 	connection.execute("UPDATE cache_entries SET last_used = ? WHERE cache_key = ?", (now, key))
 	connection.commit()
@@ -142,6 +158,7 @@ def cache_get(kind: str, content_hash: str, variant: str) -> bytes | None:
 def cache_put(kind: str, content_hash: str, variant: str, payload: bytes):
 	if cache_disabled():
 		return
+	_log_cache_event("PUT", kind, content_hash, variant)
 	key = _cache_key(kind, content_hash, variant)
 	now = time.time()
 	size_bytes = len(payload)

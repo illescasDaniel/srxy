@@ -7,14 +7,18 @@ import pytest
 from PIL import Image
 
 from srxy.ocr_text import (
+	TesseractEngine,
 	ensure_ocr_available,
 	is_ocr_active,
 	is_ocr_available,
 	is_sparse_text,
+	iter_image_ocr_lines,
 	ocr_max_file_size,
 	ocr_pdf_page_images,
+	ocr_pil_image,
 	ocr_requested,
 	ocr_unavailable_message,
+	preprocess_image,
 	reset_ocr_engine,
 	tesseract_available,
 )
@@ -132,7 +136,7 @@ def test_given_cached_image_ocr_when_iterating_twice_then_runs_tesseract_once(
 	image_path = tmp_path / "scan.png"
 	Image.new("L", (20, 20), color=255).save(image_path)
 	from srxy.cache import reset_cache_connection
-	from srxy.ocr_text import iter_image_ocr_lines, reset_ocr_engine
+	from srxy.ocr_text import reset_ocr_engine
 
 	reset_cache_connection()
 	reset_ocr_engine()
@@ -155,6 +159,71 @@ def test_given_no_env_when_reading_ocr_max_file_size_then_returns_none(monkeypat
 
 	# when / then
 	assert ocr_max_file_size() is None
+
+
+def test_given_color_image_when_preprocessing_then_keeps_rgb():
+	# given
+	image = Image.new("RGB", (32, 32), color=(255, 0, 0))
+
+	# when
+	processed = preprocess_image(image)
+
+	# then
+	assert processed.mode == "RGB"
+
+
+def test_given_multiple_tesseract_outputs_when_selecting_best_then_prefers_readable_text():
+	# given
+	engine = TesseractEngine()
+	image = Image.new("RGB", (8, 8))
+	garbage = "-\n\nA\n\nf\\\n"
+	good = "MUSIC COMPOSED BY\nBRIAN TYLER"
+
+	def fake_to_string(img: Image.Image, config: str = "") -> str:
+		if "--psm 3" in config:
+			return good
+		return garbage
+
+	with patch("pytesseract.image_to_string", side_effect=fake_to_string):
+		# when
+		text = engine.recognize(image)
+
+	# then
+	assert text == good
+
+
+def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_candidate():
+	# given
+	engine = TesseractEngine()
+	image = Image.new("RGB", (8, 8))
+
+	def fake_to_string(img: Image.Image, config: str = "") -> str:
+		if "--psm 3" in config:
+			return "MUSIC COMPOSED BY\nBRIAN TYLER"
+		return "-\n\nA\n\nf\\\n"
+
+	with patch("pytesseract.image_to_string", side_effect=fake_to_string):
+		# when
+		text = engine.recognize(image)
+
+	# then
+	assert "BRIAN TYLER" in text
+
+
+@pytest.mark.ocr
+def test_given_far_cry_cover_when_ocring_then_reads_composer_name():
+	# given
+	cover = Path("/home/daniel/Downloads/temp_docs/docs/folder.jpg")
+	if not cover.is_file():
+		pytest.skip("local folder.jpg fixture not available")
+
+	# when
+	with Image.open(cover) as image:
+		text = ocr_pil_image(image)
+
+	# then
+	assert "brian" in text.lower()
+	assert "tyler" in text.lower()
 
 
 def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only():
@@ -182,8 +251,6 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 def test_given_ocr_image_fixture_when_running_tesseract_then_reads_revenue():
 	# given
 	from tests.helpers import OCR_IMAGE_FIXTURE
-
-	from srxy.ocr_text import iter_image_ocr_lines
 
 	# when
 	lines = list(iter_image_ocr_lines(OCR_IMAGE_FIXTURE))

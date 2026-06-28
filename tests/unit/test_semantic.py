@@ -39,7 +39,7 @@ def test_given_mocked_embeddings_when_semantic_matching_then_uses_cosine_similar
 ):
 	# given
 	mock_model = MagicMock()
-	mock_model.encode.return_value = [[1.0, 0.0], [1.0, 0.0]]
+	mock_model.encode.side_effect = lambda text: [1.0, 0.0]
 	mock_get_model.return_value = mock_model
 	matcher = SemanticMatcher()
 
@@ -48,6 +48,7 @@ def test_given_mocked_embeddings_when_semantic_matching_then_uses_cosine_similar
 
 	# then
 	assert score == pytest.approx(0.85)
+	assert mock_model.encode.call_count == 2
 
 
 @patch("srxy.matchers.semantic._cosine_similarity")
@@ -58,7 +59,7 @@ def test_given_out_of_range_cosine_values_when_semantic_matching_then_clamps_to_
 ):
 	# given
 	mock_model = MagicMock()
-	mock_model.encode.return_value = [[1.0], [1.0]]
+	mock_model.encode.side_effect = lambda text: [1.0]
 	mock_get_model.return_value = mock_model
 	matcher = SemanticMatcher()
 

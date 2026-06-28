@@ -13,6 +13,8 @@ PreviewHighlight = Literal["guillemets", "bold", "none"]
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _WORD_FUZZY_SCORE_CUTOFF = 50.0
 _WORD_SEMANTIC_SCORE_CUTOFF = 0.5
+_MIN_QUERY_WORD_LENGTH = 3
+_MIN_WORD_PAIR_RATIO = 80.0
 
 
 def normalize_text(value: Any) -> str:
@@ -23,6 +25,49 @@ def normalize_text(value: Any) -> str:
 
 def collapse_whitespace(text: str) -> str:
 	return " ".join(text.split())
+
+
+def query_words(text: str) -> list[str]:
+	words: list[str] = []
+	for match in _WORD_PATTERN.finditer(text):
+		word = match.group()
+		normalized = normalize_text(word)
+		if len(normalized) < _MIN_QUERY_WORD_LENGTH:
+			continue
+		if any(char.isalpha() for char in normalized):
+			words.append(word)
+	return words
+
+
+def word_pair_match_allowed(
+	query_word: str,
+	doc_word: str,
+	breakdown: Mapping[str, float],
+	*,
+	allow_semantic: bool = True,
+) -> bool:
+	if breakdown.get("exact", 0.0) > 0.0 or breakdown.get("contains", 0.0) > 0.0:
+		return True
+	if breakdown.get("partial", 0.0) > 0.0:
+		return True
+	normalized_query = normalize_text(query_word)
+	normalized_word = normalize_text(doc_word)
+	if normalized_query == normalized_word:
+		return True
+	if normalized_query in normalized_word.split():
+		return True
+	from srxy.matchers.registry import is_matcher_available
+	from srxy.models import MatchType
+
+	if (
+		allow_semantic
+		and is_matcher_available(MatchType.SEMANTIC)
+		and breakdown.get("semantic", 0.0) >= _WORD_SEMANTIC_SCORE_CUTOFF
+	):
+		return True
+	from rapidfuzz.fuzz import ratio
+
+	return ratio(normalized_query, normalized_word) >= _MIN_WORD_PAIR_RATIO
 
 
 _PREVIEW_ELLIPSIS = "..."
@@ -96,6 +141,17 @@ def _find_match_span_for_term(text: str, query: str) -> tuple[int, int]:
 	if exact_index >= 0:
 		return exact_index, exact_index + len(normalized_query)
 
+	if " " in normalized_query:
+		multi_word_span = _find_multi_word_highlight_span(collapsed, normalized_query)
+		if multi_word_span is not None:
+			return multi_word_span
+		terms = query_words(normalized_query)
+		if len(terms) >= 2:
+			best_term_span = _find_best_term_span(collapsed, terms)
+			if best_term_span != (0, 0):
+				return best_term_span
+			return 0, 0
+
 	from rapidfuzz.fuzz import partial_ratio_alignment
 
 	alignment = partial_ratio_alignment(normalized_query, normalized_text, score_cutoff=60)
@@ -116,6 +172,36 @@ def _find_match_span_for_term(text: str, query: str) -> tuple[int, int]:
 		return word_semantic_span
 
 	return 0, min(len(collapsed), 1)
+
+
+def _find_multi_word_highlight_span(collapsed: str, normalized_query: str) -> tuple[int, int] | None:
+	words = query_words(normalized_query)
+	if len(words) < 2:
+		return None
+	positions: list[tuple[int, int]] = []
+	for word in words:
+		normalized_word = normalize_text(word)
+		found: tuple[int, int] | None = None
+		for match in _WORD_PATTERN.finditer(collapsed):
+			candidate = match.group()
+			if normalize_text(candidate) == normalized_word:
+				found = (match.start(), match.end())
+				break
+		if found is None:
+			return None
+		positions.append(found)
+	start = min(position[0] for position in positions)
+	end = max(position[1] for position in positions)
+	return start, end
+
+
+def _find_any_query_word_span(collapsed: str, terms: list[str]) -> tuple[int, int]:
+	for term in terms:
+		normalized_term = normalize_text(term)
+		for match in _WORD_PATTERN.finditer(collapsed):
+			if normalize_text(match.group()) == normalized_term:
+				return match.start(), match.end()
+	return 0, 0
 
 
 def _find_word_fuzzy_span(text: str, normalized_query: str) -> tuple[int, int] | None:
@@ -189,17 +275,33 @@ def format_match_preview(
 	if highlight_term:
 		start, end = _find_match_span_for_term(body, highlight_term)
 	elif query:
-		from srxy.file_query import query_highlight_terms
+		from srxy.file_query import parse_file_query, query_highlight_terms, query_is_compound
 
 		terms = query_highlight_terms(query)
 		if len(terms) > 1:
-			start, end = _find_best_term_span(body, terms)
+			try:
+				phrase_words = not query_is_compound(parse_file_query(query))
+			except ValueError:
+				phrase_words = False
+			if phrase_words:
+				multi_word_span = _find_multi_word_highlight_span(body, " ".join(terms))
+				if multi_word_span is not None:
+					start, end = multi_word_span
+				else:
+					start, end = _find_any_query_word_span(body, terms)
+			else:
+				start, end = _find_best_term_span(body, terms)
 		elif len(terms) == 1:
 			start, end = _find_match_span_for_term(body, terms[0])
 		else:
 			start, end = _find_match_span_for_term(body, query)
 	else:
 		start, end = 0, min(len(body), 1)
+	if start >= end and query and len(query_words(query)) >= 2:
+		plain = f"{tag_label} {body}".strip() if tag_label else body
+		if len(plain) <= max_length:
+			return plain
+		return plain[: max_length - len(_PREVIEW_ELLIPSIS)] + _PREVIEW_ELLIPSIS
 	if start >= end:
 		end = min(len(body), start + 1)
 	match_text = body[start:end]

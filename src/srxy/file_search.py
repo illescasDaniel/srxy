@@ -41,7 +41,7 @@ from srxy.transcribe_text import (
 	iter_transcript_lines,
 	transcribe_max_file_size,
 )
-from srxy.utils import normalize_text
+from srxy.utils import normalize_text, query_words, word_pair_match_allowed
 from srxy.windows_metadata import has_windows_tags, iter_windows_metadata_lines
 from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
 
@@ -308,7 +308,29 @@ def _passes_semantic_word_gate(query: str, word: str, breakdown: dict[str, float
 	return breakdown.get("semantic", 0.0) >= _SEMANTIC_WORD_MATCH_GATE
 
 
+def _score_multi_word_query(matcher: CompositeMatcher, query: str, text: str) -> float:
+	terms = query_words(query)
+	if len(terms) < 2:
+		return 0.0
+	doc_tokens = [match.group() for match in _WORD_PATTERN.finditer(text) if _is_meaningful_token(match.group())]
+	if not doc_tokens:
+		return 0.0
+	word_scores: list[float] = []
+	for query_word in terms:
+		best_score = 0.0
+		for doc_word in doc_tokens:
+			score, breakdown = matcher.score_with_breakdown(query_word, normalize_text(doc_word))
+			if word_pair_match_allowed(query_word, doc_word, breakdown, allow_semantic=False):
+				best_score = max(best_score, score)
+		if best_score <= 0.0:
+			return 0.0
+		word_scores.append(best_score)
+	return min(word_scores)
+
+
 def _score_best_word(matcher: CompositeMatcher, query: str, text: str) -> float:
+	if len(query_words(query)) >= 2:
+		return _score_multi_word_query(matcher, query, text)
 	best_score = 0.0
 	found = False
 	for match in _WORD_PATTERN.finditer(text):
@@ -326,6 +348,8 @@ def _score_best_word(matcher: CompositeMatcher, query: str, text: str) -> float:
 
 def _score_line(matcher: CompositeMatcher, query: str, raw_line: str, location_kind: str) -> float:
 	searchable = _tag_value_text(raw_line) if location_kind == "tag" else raw_line
+	if len(query_words(query)) >= 2:
+		return _score_multi_word_query(matcher, query, searchable)
 	if location_kind in _TOKEN_SCORING_LOCATION_KINDS:
 		return _score_best_word(matcher, query, searchable)
 	return matcher.score(query, normalize_text(raw_line))
@@ -339,11 +363,16 @@ def _score_line_expr(matcher: CompositeMatcher, expr: FileQ, raw_line: str, loca
 
 
 def _score_name_term(matcher: CompositeMatcher, term: str, file_path: Path, root: Path) -> float:
-	name_score = matcher.score(term, file_path.name)
 	try:
 		relative_path = file_path.relative_to(root).as_posix()
 	except ValueError:
 		relative_path = file_path.as_posix()
+	if len(query_words(term)) >= 2:
+		return max(
+			_score_multi_word_query(matcher, term, file_path.name),
+			_score_multi_word_query(matcher, term, relative_path),
+		)
+	name_score = matcher.score(term, file_path.name)
 	path_score = matcher.score(term, relative_path)
 	return max(name_score, path_score)
 
