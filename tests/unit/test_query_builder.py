@@ -6,6 +6,7 @@ import pytest
 from tests.tui.helpers import normalized_svg_text
 from textual.app import App, ComposeResult
 from textual.css.query import NoMatches
+from textual.widgets import Button, Input, Static
 
 from srxy.file_query import FileQ, build_file_query_from_rows
 from srxy.tui.query_builder import QueryBuilder
@@ -178,5 +179,93 @@ def test_given_app_with_query_builder_when_adding_term_then_does_not_crash():
 			# then
 			builder = app.query_one("#query-builder", QueryBuilder)
 			assert builder.row_count() == 2
+
+	asyncio.run(run())
+
+
+def test_given_query_builder_when_switching_to_advanced_then_shows_raw_input():
+	# given
+	app = _QueryBuilderApp(initial_query="foo&bar")
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+
+			# when
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+
+			# then
+			assert builder.has_class("-advanced")
+			assert builder.query_one("#query-raw-input", Input).value == "foo & bar"
+			assert builder.query_one("#query-preview", Static).content == "foo & bar"
+
+	asyncio.run(run())
+
+
+def test_given_advanced_query_when_switching_to_builder_then_splits_rows():
+	# given
+	app = _QueryBuilderApp(initial_query="(red|blue)&color")
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause(delay=0.2)
+
+			# when
+			await pilot.click(builder.query_one("#mode-toggle-button", Button))
+			await pilot.pause(delay=0.2)
+
+			# then
+			assert not builder.has_class("-advanced")
+			assert builder.row_count() == 3
+			assert builder.query_one("#query-term-0").value == "red"
+			assert builder.query_one("#query-term-1").value == "blue"
+			assert builder.query_one("#query-term-2").value == "color"
+
+	asyncio.run(run())
+
+
+def test_given_invalid_advanced_query_when_editing_then_shows_parse_error():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+			builder.query_one("#query-raw-input", Input).value = "(foo"
+			await pilot.pause()
+
+			# when / then
+			assert "invalid:" in str(builder.query_one("#query-preview", Static).content)
+			assert not builder.has_nonempty_term()
+
+	asyncio.run(run())
+
+
+def test_given_grouped_advanced_query_when_building_file_query_then_matches_parser():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+			builder.query_one("#query-raw-input", Input).value = "(revenue|amphibian)&person"
+			await pilot.pause()
+
+			# when
+			expr = builder.to_file_query()
+
+			# then
+			assert expr == (FileQ.leaf("revenue") | FileQ.leaf("amphibian")) & FileQ.leaf("person")
 
 	asyncio.run(run())

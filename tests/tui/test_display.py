@@ -62,7 +62,7 @@ def test_given_tui_when_screenshot_exported_then_status_and_footer_labels_are_vi
 	asyncio.run(run())
 
 
-_FILTER_LABELS = ("Top files", "Per file", "Query", "Path")
+_FILTER_LABELS = ("Top files", "Per file", "Query", "Path", "Advanced")
 
 
 @pytest.mark.parametrize("theme", ["textual-light", "textual-dark"])

@@ -1,0 +1,19 @@
+query-builder-round-trip
+red
+OR
+▼
+blue
+▔▔▔
+▁▁▁
+AND
+▼
+color
+▔▔▔
+▁▁▁
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
++ Term
+Advanced
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+(red | blue) & color

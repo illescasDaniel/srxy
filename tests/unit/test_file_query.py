@@ -85,6 +85,38 @@ def test_given_expression_when_formatting_then_round_trips():
 	assert parsed == expr
 
 
+def test_given_nested_or_chain_when_formatting_then_flattens_operators():
+	# given
+	expr = ((FileQ.leaf("revenue") | FileQ.leaf("amphibian")) | FileQ.leaf("person")) | FileQ.leaf("thank you")
+
+	# when
+	formatted = format_file_query(expr)
+
+	# then
+	assert formatted == 'revenue | amphibian | person | "thank you"'
+
+
+def test_given_uniform_or_rows_when_building_query_then_uses_flat_or_node():
+	# given
+	rows: list[tuple[str, str | None]] = [
+		("revenue", None),
+		("amphibian", "or"),
+		("person", "or"),
+		("thank you", "or"),
+	]
+
+	# when
+	expr = build_file_query_from_rows(rows)
+
+	# then
+	assert expr == FileQ.any(
+		FileQ.leaf("revenue"),
+		FileQ.leaf("amphibian"),
+		FileQ.leaf("person"),
+		FileQ.leaf("thank you"),
+	)
+
+
 def test_given_term_scores_when_scoring_and_expression_then_uses_min():
 	# given
 	expr = FileQ.leaf("foo") & FileQ.leaf("bar")

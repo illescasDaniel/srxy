@@ -45,3 +45,7 @@ pytest --integration-test-cpu
 Gate mapping: default `checks.sh` ≈ `pytest -m "not integration_full and not transcribe_device_matrix"`; `--full` ≈ `pytest tests/`.
 
 Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`srxy[windows]`).
+
+### TUI snapshots
+
+New or changed TUI elements need snapshot coverage in `tests/tui/` (`assert_svg_snapshot`). Refresh: `UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/…`. See [AGENTS.md](../AGENTS.md).

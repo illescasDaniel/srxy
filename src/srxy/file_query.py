@@ -70,7 +70,7 @@ def iter_terms(expr: FileQ) -> Iterable[str]:
 		yield from iter_terms(child)
 
 
-def format_file_query(expr: FileQ) -> str:
+def format_file_query(expr: FileQ, *, _parent: QNodeType | None = None) -> str:
 	if expr.node_type == QNodeType.LEAF:
 		term = expr.value or ""
 		if not term:
@@ -79,17 +79,41 @@ def format_file_query(expr: FileQ) -> str:
 			return f'"{_escape_term(term)}"'
 		return term
 
-	child_texts = [format_file_query(child) for child in expr.children]
+	flat_children = _flatten_same_op(expr)
+	child_texts = [format_file_query(child, _parent=expr.node_type) for child in flat_children]
 	operator = " & " if expr.node_type == QNodeType.AND else " | "
 	combined = operator.join(child_texts)
-	if len(expr.children) > 1:
+	if _parent is None:
+		return combined
+	if expr.node_type == QNodeType.AND and _parent == QNodeType.OR:
+		return f"({combined})"
+	if expr.node_type == QNodeType.OR and _parent == QNodeType.AND:
 		return f"({combined})"
 	return combined
+
+
+def _flatten_same_op(expr: FileQ) -> list[FileQ]:
+	if expr.node_type == QNodeType.LEAF:
+		return [expr]
+	flat: list[FileQ] = []
+	for child in expr.children:
+		if child.node_type == expr.node_type:
+			flat.extend(_flatten_same_op(child))
+		else:
+			flat.append(child)
+	return flat
 
 
 def build_file_query_from_rows(rows: list[tuple[str, str | None]]) -> FileQ:
 	if not rows:
 		return FileQ.leaf("")
+	joins = [join for _term, join in rows[1:] if join is not None]
+	if joins and all(join == joins[0] for join in joins):
+		leaves = [FileQ.leaf(term) for term, _join in rows]
+		if joins[0] == "and":
+			return FileQ.all(*leaves)
+		if joins[0] == "or":
+			return FileQ.any(*leaves)
 	expr = FileQ.leaf(rows[0][0])
 	for term, join in rows[1:]:
 		leaf = FileQ.leaf(term)

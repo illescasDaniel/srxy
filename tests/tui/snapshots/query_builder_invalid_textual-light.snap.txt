@@ -1,0 +1,8 @@
+query-builder-invalid
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+Builder
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+(f
+o
+o
+invalid: missing closing parenthesis

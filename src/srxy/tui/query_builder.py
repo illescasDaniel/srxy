@@ -6,12 +6,18 @@ from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.widgets import Button, Input, Select, Static
 
-from srxy.file_query import FileQ, build_file_query_from_rows, format_file_query, parse_file_query
+from srxy.file_query import (
+	FileQ,
+	FileQueryParseError,
+	build_file_query_from_rows,
+	format_file_query,
+	parse_file_query,
+)
 from srxy.models import QNodeType
 
 
 class QueryBuilder(Vertical):
-	"""Dynamic term rows with AND/OR joins between consecutive terms."""
+	"""Dynamic term rows with AND/OR joins, or Advanced raw boolean text."""
 
 	DEFAULT_CSS = """
 	QueryBuilder {
@@ -49,6 +55,23 @@ class QueryBuilder(Vertical):
 		margin-left: 1;
 	}
 
+	QueryBuilder #query-raw-input {
+		display: none;
+		width: 1fr;
+		height: 1;
+		border: none;
+		padding: 0 1;
+	}
+
+	QueryBuilder.-advanced .query-row,
+	QueryBuilder.-advanced #add-term-button {
+		display: none;
+	}
+
+	QueryBuilder.-advanced #query-raw-input {
+		display: block;
+	}
+
 	QueryBuilder #query-preview {
 		height: 1;
 		color: $text-muted;
@@ -66,13 +89,21 @@ class QueryBuilder(Vertical):
 
 	def __init__(self, *, initial_query: str = "", id: str | None = None):
 		super().__init__(id=id)
-		self._initial_rows = _rows_from_query(initial_query)
+		self._initial_query = initial_query.strip()
+		self._initial_rows = _rows_from_query(self._initial_query)
+		self._advanced_mode = False
 
 	def compose(self) -> ComposeResult:
 		for index, (term, join) in enumerate(self._initial_rows):
 			yield from self._compose_row(index, term=term, join=join or "and")
 		with Horizontal(id="query-actions"):
 			yield Button("+ Term", id="add-term-button", variant="default")
+			yield Button("Advanced", id="mode-toggle-button", variant="default")
+		yield Input(
+			value=self._initial_query,
+			placeholder="query (|, &, parentheses)",
+			id="query-raw-input",
+		)
 		yield Static("", id="query-preview")
 
 	def on_mount(self):
@@ -110,6 +141,9 @@ class QueryBuilder(Vertical):
 				indices.append(int(child.id.removeprefix("query-row-")))
 		return sorted(indices)
 
+	def _raw_query_value(self) -> str:
+		return self.query_one("#query-raw-input", Input).value
+
 	def _read_rows(self) -> list[tuple[str, str | None]]:
 		rows: list[tuple[str, str | None]] = []
 		for index in self._row_indices():
@@ -123,21 +157,50 @@ class QueryBuilder(Vertical):
 		return rows
 
 	def to_file_query(self) -> FileQ:
+		if self._advanced_mode:
+			return parse_file_query(self._raw_query_value())
 		return build_file_query_from_rows(self._read_rows())
 
 	def to_query_string(self) -> str:
+		if self._advanced_mode:
+			raw = self._raw_query_value().strip()
+			if not raw:
+				return ""
+			return format_file_query(parse_file_query(raw))
 		return format_file_query(self.to_file_query())
 
 	def has_nonempty_term(self) -> bool:
+		if self._advanced_mode:
+			raw = self._raw_query_value().strip()
+			if not raw:
+				return False
+			try:
+				parse_file_query(raw)
+			except FileQueryParseError:
+				return False
+			return True
 		return any(term.strip() for term, _join in self._read_rows())
 
 	def focus_first_term(self):
+		if self._advanced_mode:
+			self.query_one("#query-raw-input", Input).focus()
+			return
 		indices = self._row_indices()
 		if indices:
 			self.query_one(f"#query-term-{indices[0]}", Input).focus()
 
 	def _update_preview(self):
 		preview = self.query_one("#query-preview", Static)
+		if self._advanced_mode:
+			raw = self._raw_query_value().strip()
+			if not raw:
+				preview.update("")
+				return
+			try:
+				preview.update(format_file_query(parse_file_query(raw)))
+			except FileQueryParseError as exc:
+				preview.update(f"invalid: {exc}")
+			return
 		try:
 			preview.update(self.to_query_string())
 		except ValueError:
@@ -150,6 +213,11 @@ class QueryBuilder(Vertical):
 	@on(Input.Changed, ".query-row Input")
 	def _on_term_changed(self, _event: Input.Changed):
 		self._post_change()
+
+	@on(Input.Changed, "#query-raw-input")
+	def _on_raw_query_changed(self, _event: Input.Changed):
+		if self._advanced_mode:
+			self._post_change()
 
 	@on(Select.Changed, ".query-row Select")
 	def _on_join_changed(self, _event: Select.Changed):
@@ -164,6 +232,51 @@ class QueryBuilder(Vertical):
 		await row.mount(*self._row_widgets(next_index, join="and"))
 		self.query_one(f"#query-term-{next_index}", Input).focus()
 		self._post_change()
+
+	@on(Button.Pressed, "#mode-toggle-button")
+	def _on_mode_toggle(self, _event: Button.Pressed):
+		if self._advanced_mode:
+			self._switch_to_builder()
+		else:
+			self._switch_to_advanced()
+
+	def _switch_to_advanced(self):
+		raw_input = self.query_one("#query-raw-input", Input)
+		raw_input.value = format_file_query(build_file_query_from_rows(self._read_rows()))
+		self._advanced_mode = True
+		self.add_class("-advanced")
+		self.query_one("#mode-toggle-button", Button).label = "Builder"
+		raw_input.focus()
+		self._post_change()
+
+	def _switch_to_builder(self):
+		raw = self._raw_query_value().strip()
+		try:
+			expr = parse_file_query(raw) if raw else FileQ.leaf("")
+		except FileQueryParseError:
+			return
+		rows: list[tuple[str, str | None]] = _rows_from_expr(expr) if raw else [("", None)]
+		self._set_rows(rows)
+		self._advanced_mode = False
+		self.remove_class("-advanced")
+		self.query_one("#mode-toggle-button", Button).label = "Advanced"
+		self.focus_first_term()
+		self._post_change()
+
+	def _set_rows(self, rows: list[tuple[str, str | None]]):
+		current = self._row_indices()
+		for index in reversed(current):
+			if index >= len(rows):
+				self.query_one(f"#query-row-{index}").remove()
+		for index, (term, join) in enumerate(rows):
+			if index not in self._row_indices():
+				row = Horizontal(classes="query-row", id=f"query-row-{index}")
+				self.mount(row, before="#query-actions")
+				row.mount(*self._row_widgets(index, term=term, join=join or "and"))
+				continue
+			self.query_one(f"#query-term-{index}", Input).value = term
+			if index > 0:
+				self.query_one(f"#query-join-{index}", Select).value = join or "and"
 
 	@on(Button.Pressed)
 	def _on_remove_term(self, event: Button.Pressed):

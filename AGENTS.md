@@ -18,6 +18,18 @@ Locally, pytest runs integration and TUI tests (excluding `integration_full` unl
 
 Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity). Full details: [docs/development.md](docs/development.md).
 
+## TUI changes
+
+When adding or changing TUI widgets, layout, or visible labels, add snapshot tests under [`tests/tui/`](tests/tui/) using `assert_svg_snapshot` from [`tests/tui/helpers.py`](tests/tui/helpers.py). Snapshots live in [`tests/tui/snapshots/`](tests/tui/snapshots/) as `*.snap.txt` files (visible SVG text).
+
+Regenerate after intentional UI changes:
+
+```bash
+UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/test_query_builder_display.py
+```
+
+Run the full local gate (`./scripts/quality/checks.sh`) so integration and TUI tests execute; CI (`CI=true`) runs unit tests only.
+
 ## Typing
 
 Do not annotate functions that return `None` with `-> None`. Omit the return type instead.
