@@ -10,6 +10,7 @@ import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
 
 from rich.text import Text
 from textual import on, work
@@ -84,6 +85,17 @@ class _PreviewRow:
 	location: str
 	plain_text: str
 	score: float
+
+
+_PREVIEW_MATCH_WIDTH = 7
+_PREVIEW_LOCATION_WIDTH = 32
+_PREVIEW_LOCATION_DISPLAY_MAX = 32
+
+
+def _preview_location_cell(location: str, *, max_len: int = _PREVIEW_LOCATION_DISPLAY_MAX) -> str:
+	if len(location) <= max_len:
+		return location
+	return location[: max_len - 1] + "…"
 
 
 class SrxyApp(App[int]):
@@ -352,8 +364,7 @@ class SrxyApp(App[int]):
 	def on_mount(self):
 		table = self.query_one("#results-table", DataTable)
 		table.add_columns("Match", "Path", "Matched")
-		preview_table = self.query_one("#preview-matches", DataTable)
-		preview_table.add_columns("Match", "Location", "Text")
+		self._setup_preview_columns(self.query_one("#preview-matches", DataTable))
 		if self._args.names_only:
 			self.query_one("#opt-names", Checkbox).value = True
 			self.query_one("#opt-content", Checkbox).value = False
@@ -368,6 +379,15 @@ class SrxyApp(App[int]):
 		self._update_search_button_state()
 		if self._auto_start and (self._args.query or "").strip():
 			self.call_after_refresh(self.action_start_search)
+
+	def _setup_preview_columns(self, table: DataTable[Any]):
+		table.add_column("Match", width=_PREVIEW_MATCH_WIDTH)
+		table.add_column("Location", width=_PREVIEW_LOCATION_WIDTH)
+		table.add_column("Text")
+
+	def _reset_preview_table(self, table: DataTable[Any]):
+		table.clear(columns=True)
+		self._setup_preview_columns(table)
 
 	def _query_builder(self) -> QueryBuilder:
 		return self.query_one("#query-builder", QueryBuilder)
@@ -452,7 +472,7 @@ class SrxyApp(App[int]):
 		table = self.query_one("#results-table", DataTable)
 		table.clear(columns=False)
 		self.query_one("#preview-header", Static).update("")
-		self.query_one("#preview-matches", DataTable).clear(columns=False)
+		self._reset_preview_table(self.query_one("#preview-matches", DataTable))
 		self.query_one("#warnings-log", Static).update("")
 		self._warnings_text = ""
 		self._preview_rows = []
@@ -464,7 +484,7 @@ class SrxyApp(App[int]):
 		header = self.query_one("#preview-header", Static)
 		table = self.query_one("#preview-matches", DataTable)
 		header.update("")
-		table.clear(columns=False)
+		self._reset_preview_table(table)
 		self._preview_rows = []
 		if result is None:
 			return
@@ -476,7 +496,11 @@ class SrxyApp(App[int]):
 			result.lines, query=query, highlight="bold"
 		):
 			self._preview_rows.append(_PreviewRow(location=location, plain_text=plain_text, score=score))
-			table.add_row(format_score_percent(score), location, Text.from_markup(preview))
+			table.add_row(
+				format_score_percent(score),
+				_preview_location_cell(location),
+				Text.from_markup(preview),
+			)
 		table.scroll_home(immediate=True, animate=False)
 
 	def _trim_results_to_limit(self):

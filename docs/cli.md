@@ -5,15 +5,15 @@ Same flags in TUI (pre-filled on launch) and plain CLI (`--no-tui` or non-TTY).
 ## Quick examples
 
 ```bash
-srxy registry ./src
-srxy registry ./src --no-tui
-srxy revenue ./docs --json
-srxy revenue ./docs --content-only
-srxy budget . --format flat
-srxy invoice ./photos --ocr --content-only
+srxy "registry" ./src
+srxy "registry" ./src --no-tui
+srxy "revenue" ./docs --json
+srxy "revenue" ./docs --content-only
+srxy "budget" . --format flat
+srxy "invoice" ./photos --ocr --content-only
 srxy "call me maybe" ~/Music --transcribe --content-only
 srxy "dog at the beach" ~/Pictures --semantic-image --content-only
-srxy revenue ./docs --semantic-all --content-only
+srxy "revenue" ./docs --semantic-all --content-only
 ```
 
 Grouped output (default on plain CLI):
@@ -31,10 +31,10 @@ Grouped output (default on plain CLI):
 `|` = OR, `&` = AND (`&` binds tighter). Multi-word OR phrases work without quotes; quote when operators appear inside phrases.
 
 ```bash
-srxy 'alpha|beta' ./docs
-srxy 'Linkin Park|Call Me' ~/Music --content-only
-srxy '(red|blue|green)&color' ./docs
-srxy '"my search text"|other' .
+srxy "alpha|beta" ./docs
+srxy "Linkin Park|Call Me" ~/Music --content-only
+srxy "(red|blue|green)&color" ./docs
+srxy "\"my search text\"|other" .
 ```
 
 Each leaf matches content and names. `notes` does not auto-match filenames only.
@@ -44,9 +44,9 @@ Python equivalent: `FileQ.leaf("foo") & FileQ.leaf("bar")`. TUI query builder sh
 ## Scope
 
 ```bash
-srxy token . --names-only
-srxy token . --include-hidden
-srxy token . --include-noise
+srxy "token" . --names-only
+srxy "token" . --include-hidden
+srxy "token" . --include-noise
 ```
 
 Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`).

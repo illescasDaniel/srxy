@@ -26,8 +26,8 @@ You also need **ffmpeg** (transcription) and **tesseract** (OCR) on `PATH` — s
 
 ```bash
 srxy                          # empty query/path
-srxy registry ./src           # pre-filled; auto-starts
-srxy transform ./docs --ocr
+srxy "registry" ./src         # pre-filled; auto-starts
+srxy "transform" ./docs --ocr
 ```
 
 ![srxy TUI](docs/images/tui.png)
@@ -37,10 +37,10 @@ Live scan progress, sortable results, preview pane, option chips, clipboard copy
 **Plain CLI:**
 
 ```bash
-srxy registry ./src --no-tui
-srxy revenue ./docs --json
+srxy "registry" ./src --no-tui
+srxy "revenue" ./docs --json
 srxy "dog at the beach" ~/Pictures --semantic-image --content-only
-srxy revenue ./docs --semantic-all --content-only
+srxy "revenue" ./docs --semantic-all --content-only
 ```
 
 Boolean queries (`|`, `&`), scope flags, format table: [docs/cli.md](docs/cli.md).

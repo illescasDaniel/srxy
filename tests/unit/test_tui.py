@@ -439,3 +439,64 @@ def test_given_preview_match_when_rendered_then_uses_bold_text_for_query_hit(tmp
 
 	# when / then
 	asyncio.run(run_app())
+
+
+def test_given_long_location_preview_when_switching_to_short_preview_then_location_column_stays_capped(
+	tmp_path: Path,
+):
+	# given
+	long_path = tmp_path / "long.txt"
+	short_path = tmp_path / "short.txt"
+	long_term = "x" * 80
+	long_result = FileSearchResult(
+		path=long_path,
+		score=0.9,
+		breakdown={"content": 0.9},
+		lines=[
+			LineMatch(
+				line_number=1,
+				text="hello",
+				score=0.9,
+				matched_term=long_term,
+			)
+		],
+	)
+	short_result = FileSearchResult(
+		path=short_path,
+		score=0.85,
+		breakdown={"content": 0.85},
+		lines=[LineMatch(line_number=104, text="thank you", score=0.85)],
+	)
+	args = _build_args(["test", str(tmp_path), "--content-only"])
+	app = SrxyApp(args, auto_start=True)
+
+	async def run_app():
+		with (
+			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.tui.app.execute_search", return_value=([long_result, short_result], [])),
+			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+		):
+			async with app.run_test(size=(120, 30)) as pilot:
+				for _ in range(30):
+					await pilot.pause(delay=0.05)
+					if app.query_one("#results-table", DataTable).row_count >= 2:
+						break
+				preview = app.query_one("#preview-matches", DataTable)
+				column_widths = [column.width for column in preview.columns.values()]
+				assert column_widths[1] == 32
+				displayed = str(preview.get_cell_at(Coordinate(0, 1)))
+				assert displayed.endswith("…")
+
+				app.action_copy_match()
+				copied = copy_mock.call_args.args[0]
+				assert long_term in copied
+				assert displayed not in copied
+
+				app.query_one("#results-table", DataTable).move_cursor(row=1)
+				await pilot.pause()
+				column_widths = [column.width for column in preview.columns.values()]
+				assert column_widths[1] == 32
+				assert preview.get_cell_at(Coordinate(0, 1)) == "line 104"
+
+	# when / then
+	asyncio.run(run_app())

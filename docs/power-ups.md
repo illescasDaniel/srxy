@@ -7,7 +7,7 @@ Off by default. Enable per run (flags) or persist (`SRXY_*` env vars).
 Text in photos and embedded PDF images.
 
 ```bash
-srxy invoice ./photos --ocr --content-only
+srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```
 
@@ -20,7 +20,7 @@ Cache: `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). `SRXY_CACHE_DISABLE=1` to of
 Meaning-based text match (`srxy[semantic]` required):
 
 ```bash
-srxy revenue ./docs --semantic --content-only
+srxy "revenue" ./docs --semantic --content-only
 export SRXY_SEMANTIC=1
 ```
 
