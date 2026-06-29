@@ -10,36 +10,37 @@ from srxy import SearchResult
 
 
 FIXTURES_DIR = Path(__file__).resolve().parent / "fixtures"
-QA_CORPUS_DIR = FIXTURES_DIR / "qa_corpus"
-OCR_FIXTURES_DIR = FIXTURES_DIR / "ocr"
+CORPUS_DIR = FIXTURES_DIR / "corpus"
+FILE_SEARCH_DIR = FIXTURES_DIR / "file_search"
+OCR_FIXTURES_DIR = FILE_SEARCH_DIR / "ocr"
 OCR_IMAGE_FIXTURE = OCR_FIXTURES_DIR / "ocr_sample.png"
 OCR_PDF_FIXTURE = OCR_FIXTURES_DIR / "ocr_embedded.pdf"
-MINIMAL_JPEG_FIXTURE = FIXTURES_DIR / "minimal.jpg"
-MINIMAL_MP3_FIXTURE = FIXTURES_DIR / "minimal.mp3"
-MINIMAL_MP4_FIXTURE = FIXTURES_DIR / "minimal.mp4"
+MINIMAL_JPEG_FIXTURE = FILE_SEARCH_DIR / "minimal.jpg"
+MINIMAL_MP3_FIXTURE = FILE_SEARCH_DIR / "minimal.mp3"
+MINIMAL_MP4_FIXTURE = FILE_SEARCH_DIR / "minimal.mp4"
 
 
-def qa_corpus_dir() -> Path:
-	override = os.environ.get("SRXY_QA_CORPUS", "").strip()
+def file_search_root() -> Path:
+	override = os.environ.get("SRXY_FILE_SEARCH_FIXTURES", "").strip()
 	if override:
 		return Path(override).expanduser()
-	return QA_CORPUS_DIR
+	return FILE_SEARCH_DIR
 
 
-def qa_corpus_docs() -> Path:
-	return qa_corpus_dir() / "docs"
+def file_search_docs() -> Path:
+	return file_search_root()
 
 
-def qa_corpus_downloads() -> Path:
-	return qa_corpus_dir() / "qa_downloads"
+def file_search_samples() -> Path:
+	return file_search_root() / "samples"
 
 
-def require_qa_corpus() -> Path:
-	root = qa_corpus_dir()
-	marker = root / "docs" / "notes.txt"
+def require_file_search_fixtures() -> Path:
+	root = file_search_root()
+	marker = root / "notes.txt"
 	if not marker.is_file():
 		raise FileNotFoundError(
-			f"QA corpus not found at {root}. Expected tests/fixtures/qa_corpus/ in the repository checkout."
+			f"File-search fixtures not found at {root}. Expected tests/fixtures/file_search/ in the repository checkout."
 		)
 	return root
 
@@ -57,24 +58,24 @@ def cuda_available() -> bool:
 		return False
 
 
-def qa_test_cpu_requested(config: object) -> bool:
+def integration_test_cpu_requested(config: object) -> bool:
 	getoption = getattr(config, "getoption", None)
-	if callable(getoption) and getoption("--qa-test-cpu"):
+	if callable(getoption) and getoption("--integration-test-cpu"):
 		return True
-	value = os.environ.get("SRXY_QA_TEST_CPU", "").strip().lower()
+	value = os.environ.get("SRXY_INTEGRATION_TEST_CPU", "").strip().lower()
 	return value in {"1", "true", "yes", "on"}
 
 
 def transcribe_device_matrix_devices(config: object) -> list[str]:
 	if cuda_available():
-		if qa_test_cpu_requested(config):
+		if integration_test_cpu_requested(config):
 			return ["cuda", "cpu"]
 		return ["cuda"]
 	return ["cpu"]
 
 
 def copy_media_fixture(name: str, destination: Path) -> None:
-	destination.write_bytes((FIXTURES_DIR / name).read_bytes())
+	destination.write_bytes((FILE_SEARCH_DIR / name).read_bytes())
 
 
 @dataclass(frozen=True)
@@ -96,12 +97,12 @@ class Product:
 
 
 def load_search_corpus() -> list[dict[str, Any]]:
-	path = FIXTURES_DIR / "search_corpus.json"
+	path = CORPUS_DIR / "search_corpus.json"
 	return json.loads(path.read_text(encoding="utf-8"))
 
 
 def load_labeled_queries() -> list[LabeledQuery]:
-	path = FIXTURES_DIR / "labeled_queries.json"
+	path = CORPUS_DIR / "labeled_queries.json"
 	raw = json.loads(path.read_text(encoding="utf-8"))
 	return [LabeledQuery(**entry) for entry in raw]
 

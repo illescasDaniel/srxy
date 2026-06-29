@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
-from tests.helpers import qa_corpus_docs, require_qa_corpus
+from tests.helpers import file_search_root, require_file_search_fixtures
 
 from srxy.ocr_text import (
 	TesseractEngine,
@@ -212,19 +212,20 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 
 
 @pytest.mark.ocr
-def test_given_far_cry_cover_when_ocring_then_reads_composer_name():
+def test_given_cover_image_when_ocring_then_reads_embedded_text():
 	# given
-	require_qa_corpus()
-	cover = qa_corpus_docs() / "folder.jpg"
-	assert cover.is_file(), f"missing QA cover fixture: {cover}"
+	require_file_search_fixtures()
+	cover = file_search_root() / "cover.jpg"
+	assert cover.is_file(), f"missing cover fixture: {cover}"
 
 	# when
 	with Image.open(cover) as image:
 		text = ocr_pil_image(image)
 
 	# then
-	assert "brian" in text.lower()
-	assert "tyler" in text.lower()
+	lowered = text.lower()
+	assert "fixture" in lowered
+	assert "composer" in lowered
 
 
 def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only():

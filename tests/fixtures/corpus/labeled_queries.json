@@ -1,0 +1,52 @@
+[
+	{
+		"query": "mars rover space exploration",
+		"expected_id": "sci-mars-rover",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "climate warming emissions",
+		"expected_id": "sci-climate-report",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "football championship final goal",
+		"expected_id": "sport-football-final",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "olympic sprint record",
+		"expected_id": "sport-olympics-track",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "stock market technology shares",
+		"expected_id": "biz-market-rally",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "cyber breach cloud storage",
+		"expected_id": "tech-cyber-breach",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "multilingual ai assistant translation",
+		"expected_id": "tech-ai-assistant",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "vaccine immune response trial",
+		"expected_id": "health-vaccine-study",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "election voter turnout parliament",
+		"expected_id": "pol-election-turnout",
+		"min_top_score": 0.25
+	},
+	{
+		"query": "refugee humanitarian aid winter",
+		"expected_id": "world-refugee-aid",
+		"min_top_score": 0.25
+	}
+]

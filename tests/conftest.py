@@ -8,10 +8,10 @@ from tests.helpers import Product
 
 def pytest_addoption(parser: pytest.Parser):
 	parser.addoption(
-		"--qa-test-cpu",
+		"--integration-test-cpu",
 		action="store_true",
 		default=False,
-		help="Also run forced-CPU transcribe device QA when CUDA is available",
+		help="Also run forced-CPU transcribe device matrix when CUDA is available",
 	)
 
 

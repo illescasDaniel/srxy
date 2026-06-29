@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
-from tests.helpers import LabeledQuery, load_labeled_queries, load_search_corpus
+from tests.helpers import LabeledQuery, load_labeled_queries, load_search_corpus, require_file_search_fixtures
 
 from srxy.matchers.registry import get_atomic_matcher
 from srxy.matchers.semantic import is_semantic_available, warmup_semantic_model
@@ -12,6 +13,32 @@ from srxy.semantic_image import is_semantic_image_available, warmup_semantic_ima
 
 
 pytestmark = pytest.mark.integration
+
+
+@pytest.fixture(scope="session")
+def file_search_root() -> Path:
+	if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes", "on"}:
+		pytest.skip("File-search fixture tests are disabled in CI")
+	return require_file_search_fixtures()
+
+
+@pytest.fixture(scope="session")
+def file_search_samples(file_search_root: Path) -> Path:
+	return file_search_root / "samples"
+
+
+@pytest.fixture(scope="session", autouse=True)
+def file_search_semantic_image_env():
+	if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes", "on"}:
+		yield
+		return
+	previous = os.environ.get("SRXY_SEMANTIC_IMAGE")
+	os.environ["SRXY_SEMANTIC_IMAGE"] = "1"
+	yield
+	if previous is None:
+		os.environ.pop("SRXY_SEMANTIC_IMAGE", None)
+	else:
+		os.environ["SRXY_SEMANTIC_IMAGE"] = previous
 
 
 @pytest.fixture(scope="session", autouse=True)

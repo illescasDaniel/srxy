@@ -105,11 +105,14 @@ lib_pytest_args() {
 	elif [[ -d "${LIB_REPO_ROOT}/test" ]]; then
 		LIB_PYTEST_ARGS+=(test)
 	fi
-	# Local checks.sh runs the full suite including QA bootstrap tests.
+	# Local checks.sh runs integration tests; integration_full requires --full.
 	if [[ "${CI:-}" == "true" ]]; then
 		LIB_PYTEST_ARGS+=(-m "unit and not semantic and not transcribe")
-	else
-		export SRXY_QA_BOOTSTRAP=1
+	elif [[ "${LIB_PYTEST_FULL:-}" != "true" ]]; then
+		LIB_PYTEST_ARGS+=(-m "not integration_full and not transcribe_device_matrix")
+	fi
+	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
+		LIB_PYTEST_ARGS+=(--integration-test-cpu)
 	fi
 	LIB_PYTEST_COV=()
 	if [[ -d "${LIB_REPO_ROOT}/src" ]]; then

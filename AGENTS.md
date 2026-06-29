@@ -12,9 +12,11 @@ Use the project venv with dev dependencies installed (`pip install -e ".[dev,sem
 
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 
-Locally, pytest runs the **full suite** including integration, QA (`tests/integration/qa/`), and TUI tests. QA tests use the committed corpus at `tests/fixtures/qa_corpus/` (dev-only, not installed with the package). Override with `SRXY_QA_CORPUS` if needed. CI runs unit tests only (`CI=true`).
+Locally, pytest runs integration and TUI tests (excluding `integration_full` unless you pass `--full`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs unit tests only (`CI=true`).
 
-`--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix` is ignored when `CI=true`.
+`--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `CI=true`.
+
+Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity).
 
 ## Typing
 

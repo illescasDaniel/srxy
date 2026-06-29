@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
-from tests.helpers import qa_corpus_docs, require_qa_corpus
+from tests.helpers import file_search_root, require_file_search_fixtures
 
 from srxy.file_query import format_query_for_display
 from srxy.file_search import magic_file_search
@@ -52,8 +52,8 @@ def test_given_multi_word_query_when_formatting_transcript_preview_then_highligh
 @pytest.mark.transcribe
 def test_given_far_cry_query_when_searching_unrelated_audio_then_does_not_match():
 	# given — single known false-positive candidate; avoid transcribing the whole corpus
-	require_qa_corpus()
-	audio = qa_corpus_docs() / "minimal.mp3"
+	require_file_search_fixtures()
+	audio = file_search_root() / "minimal.mp3"
 	assert audio.is_file(), f"missing QA audio fixture: {audio}"
 
 	# when

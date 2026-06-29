@@ -425,30 +425,46 @@ python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev,semantic]"
 ./scripts/quality/checks.sh --fix
-./scripts/quality/checks.sh
+./scripts/quality/checks.sh              # day-to-day gate (faster; skips heaviest tests)
+./scripts/quality/checks.sh --full       # before release — all tests
+./scripts/quality/checks.sh --full+cpu   # release + forced-CPU transcribe device matrix (when CUDA is available)
 ```
 
-Quality gate: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
+### Quality gate
 
-- **Local** (`./scripts/quality/checks.sh`): full suite including integration and QA tests against `tests/fixtures/qa_corpus/` (dev-only fixtures, not shipped in the wheel).
-- **CI**: unit tests only (`pytest -m unit`).
+`./scripts/quality/checks.sh` runs, in order: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 
-Integration tests (requires `pip install -e ".[semantic]"` and `SRXY_SEMANTIC=1`, set automatically in `tests/integration/conftest.py`):
+| Command | When to use | pytest selection |
+|---------|-------------|------------------|
+| `./scripts/quality/checks.sh` | Day-to-day development | Integration + TUI; **excludes** `integration_full` and `transcribe_device_matrix` |
+| `./scripts/quality/checks.sh --full` | Before a release | Full local suite (all markers) |
+| `./scripts/quality/checks.sh --full+cpu` | Release + transcribe parity | Same as `--full`, plus `--integration-test-cpu` (CUDA **and** forced CPU device-matrix when GPU is available) |
+| `CI=true ./scripts/quality/checks.sh` | CI (GitHub Actions) | Unit tests only (`pytest -m unit`). `--fix`, `--full`, and `--full+cpu` are **ignored**. |
+
+`--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix` is also ignored when `CI=true`.
+
+### Test fixtures
+
+Dev-only assets under `tests/fixtures/` (not shipped in the wheel). See [`tests/fixtures/README.md`](tests/fixtures/README.md) for layout.
+
+| Path | Used by |
+|------|---------|
+| `tests/fixtures/corpus/` | In-memory semantic eval (`search_corpus.json`, `labeled_queries.json`) — `magic_search` / `search`, not filesystem search |
+| `tests/fixtures/file_search/` | Filesystem integration tests (`magic_file_search`); override with `SRXY_FILE_SEARCH_FIXTURES` |
+
+Try the file-search tree manually: `srxy "axolotl" ./tests/fixtures/file_search`.
+
+### Running pytest directly
+
+Integration tests require `pip install -e ".[semantic]"` and `SRXY_SEMANTIC=1` (set automatically in `tests/integration/conftest.py`):
 
 ```bash
 pytest -m integration
-pytest -m qa          # release QA on committed corpus
-pytest -m qa_full     # extended QA (transcription, CLIP, cache timing)
-pytest --qa-test-cpu  # include forced-CPU transcribe device QA when CUDA is available
+pytest -m integration_full          # heavy file-search fixtures (transcription, CLIP, cache timing)
+pytest --integration-test-cpu       # include forced-CPU transcribe device matrix when CUDA is available
 ```
 
-Ad-hoc release scripts (optional; set `QA_RESULTS=path` or `QA_DEVICE_RESULTS=path` to save a log file):
-
-```bash
-./scripts/qa/run_qa_matrix.sh
-./scripts/qa/run_device_matrix.sh
-./scripts/qa/run_tui_manual.sh   # automated TUI pilot checks only
-```
+Equivalent to the quality gate: default `checks.sh` ≈ `pytest -m "not integration_full and not transcribe_device_matrix"`; `checks.sh --full` ≈ full `pytest tests/`.
 
 ### Manual TUI checklist
 
@@ -464,6 +480,4 @@ Automated TUI coverage lives in `pytest tests/tui/`. Before a release, verify th
 | Terminal resize | Shrink and expand the window — layout stays usable |
 | Missing tesseract | With tesseract unavailable, preflight shows a clear error before the scan |
 
-Example launch: `srxy ./tests/fixtures/qa_corpus/docs` or `srxy "axolotl" ./tests/fixtures/qa_corpus/docs`.
-
-Integration tests load a curated news-style corpus from `tests/fixtures/search_corpus.json` and measure top-k hit rates.
+Example TUI launch: `srxy ./tests/fixtures/file_search` or `srxy "axolotl" ./tests/fixtures/file_search`.

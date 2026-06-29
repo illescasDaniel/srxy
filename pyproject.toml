@@ -53,7 +53,7 @@ srxy = "srxy.cli:main"
 [tool.setuptools.packages.find]
 where = ["src"]
 
-# tests/ (including tests/fixtures/qa_corpus/) are dev-only and not packaged in the wheel.
+# tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -72,9 +72,8 @@ markers = [
 	"windows_tags: tests that require Windows Explorer tag support via pywin32",
 	"transcribe: tests requiring faster-whisper, transformers, and ffmpeg",
 	"semantic: tests requiring pip install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
-	"qa: release QA tests using tests/fixtures/qa_corpus/",
-	"qa_full: extended QA tests using large binary fixtures from tests/fixtures/qa_corpus/",
-	"transcribe_device_matrix: parametrized transcribe device QA (CUDA only when available; use --qa-test-cpu to force CPU too)",
+	"integration_full: extended integration tests using committed binary fixtures from tests/fixtures/file_search/",
+	"transcribe_device_matrix: parametrized transcribe device matrix (CUDA only when available; use --integration-test-cpu to force CPU too)",
 ]
 
 [tool.ruff]
@@ -97,7 +96,7 @@ lines-after-imports = 2
 [tool.ruff.lint.per-file-ignores]
 "scripts/**" = ["S603", "S607"]
 "tests/**" = ["S101"]
-"tests/integration/qa/**" = ["S603", "S607"]
+"tests/integration/test_file_search_fixtures.py" = ["S603", "S607"]
 "tests/tui/test_qa_integration.py" = ["S108"]
 
 [tool.basedpyright]

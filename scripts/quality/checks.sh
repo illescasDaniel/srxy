@@ -15,10 +15,19 @@ source "${internal_dir}/gate.sh"
 source "${internal_dir}/lib.sh"
 
 FIX=false
+FULL=false
+FULL_CPU=false
 for arg in "$@"; do
 	case "${arg}" in
 	--fix)
 		FIX=true
+		;;
+	--full)
+		FULL=true
+		;;
+	--full+cpu)
+		FULL=true
+		FULL_CPU=true
 		;;
 	esac
 done
@@ -27,6 +36,15 @@ if [[ "${CI:-}" == "true" && "${FIX}" == true ]]; then
 	echo "note: --fix ignored in CI (check-only mode)"
 	FIX=false
 fi
+
+if [[ "${CI:-}" == "true" && ("${FULL}" == true || "${FULL_CPU}" == true) ]]; then
+	echo "note: --full/--full+cpu ignored in CI"
+	FULL=false
+	FULL_CPU=false
+fi
+
+export LIB_PYTEST_FULL="${FULL}"
+export LIB_PYTEST_FULL_CPU="${FULL_CPU}"
 
 GATE_PLANNED_STEPS=5
 if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
