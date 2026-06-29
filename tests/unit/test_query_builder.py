@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
+from tests.tui.helpers import normalized_svg_text
 from textual.app import App, ComposeResult
 from textual.css.query import NoMatches
 
@@ -118,6 +119,42 @@ def test_given_compound_initial_query_when_mounted_then_splits_into_rows():
 			assert builder.row_count() == 2
 			assert builder.query_one("#query-term-0").value == "foo"
 			assert builder.query_one("#query-term-1").value == "bar"
+
+	asyncio.run(run())
+
+
+def test_given_compound_initial_query_when_mounted_then_shows_and_join_label():
+	# given
+	app = _QueryBuilderApp(initial_query="foo&bar")
+
+	async def run():
+		async with app.run_test(size=(80, 12)) as pilot:
+			await pilot.pause()
+
+			# when
+			svg = app.export_screenshot(title="query-builder-and")
+
+			# then
+			assert "AND" in normalized_svg_text(svg)
+
+	asyncio.run(run())
+
+
+def test_given_query_builder_when_adding_term_then_shows_and_join_label():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test(size=(80, 12)) as pilot:
+			await pilot.pause()
+
+			# when
+			await pilot.click("#add-term-button")
+			await pilot.pause()
+			svg = app.export_screenshot(title="query-builder-add-term")
+
+			# then
+			assert "AND" in normalized_svg_text(svg)
 
 	asyncio.run(run())
 

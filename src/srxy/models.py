@@ -69,6 +69,7 @@ class FileSearchResult:
 	score: float
 	breakdown: dict[str, float] = field(default_factory=dict)
 	lines: list[LineMatch] = field(default_factory=list)
+	term_surfaces: dict[str, dict[str, float]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

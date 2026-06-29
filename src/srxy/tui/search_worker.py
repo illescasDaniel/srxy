@@ -52,6 +52,7 @@ def file_result_to_dict(result: FileSearchResult) -> dict[str, Any]:
 		"path": str(result.path),
 		"score": result.score,
 		"breakdown": result.breakdown,
+		"term_surfaces": result.term_surfaces,
 		"lines": [
 			{
 				"line_number": line.line_number,
@@ -71,6 +72,7 @@ def file_result_from_dict(data: dict[str, Any]) -> FileSearchResult:
 		score=data["score"],
 		breakdown=data.get("breakdown", {}),
 		lines=[LineMatch(**line) for line in data.get("lines", [])],
+		term_surfaces=data.get("term_surfaces", {}),
 	)
 
 

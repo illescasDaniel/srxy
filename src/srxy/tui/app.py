@@ -480,6 +480,13 @@ class SrxyApp(App[int]):
 	def _set_status(self, message: str):
 		self.query_one("#status-message", Label).update(message)
 
+	def _match_labels(self, result: FileSearchResult) -> str:
+		return match_labels(
+			result,
+			threshold=self._args.threshold,
+			semantic_image_threshold=self._args.semantic_image_threshold,
+		)
+
 	def _update_preview(self, result: FileSearchResult | None):
 		header = self.query_one("#preview-header", Static)
 		table = self.query_one("#preview-matches", DataTable)
@@ -490,7 +497,7 @@ class SrxyApp(App[int]):
 			return
 		query = self._query_builder().to_query_string()
 		path_text = result.path.as_posix()
-		label_text = match_labels(result)
+		label_text = self._match_labels(result)
 		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
 		for location, preview, score, plain_text in iter_grouped_line_displays(
 			result.lines, query=query, highlight="bold"
@@ -518,7 +525,7 @@ class SrxyApp(App[int]):
 		select_row = 0
 		for index, item in enumerate(self._results):
 			path_text = item.path.as_posix()
-			table.add_row(format_score_percent(item.score), path_text, match_labels(item), key=path_text)
+			table.add_row(format_score_percent(item.score), path_text, self._match_labels(item), key=path_text)
 			if select_path is not None and path_text == select_path:
 				select_row = index
 		if self._results:

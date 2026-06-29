@@ -9,6 +9,8 @@ import pytest
 from PIL import Image
 from tests.helpers import (
 	copy_media_fixture,
+	file_search_root,
+	require_file_search_fixtures,
 	set_windows_tags,
 	write_docx_with_text,
 	write_mp4_with_tags,
@@ -18,6 +20,7 @@ from tests.helpers import (
 )
 
 from srxy import FileQ, magic_file_search
+from srxy.cli import match_labels
 from srxy.models import FileSearchResult, MatchType, SkippedFile
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, xattr_supported
@@ -1238,3 +1241,19 @@ def test_given_and_query_when_terms_match_different_surfaces_then_lines_record_m
 	terms = {line.matched_term for line in results[0].lines}
 	assert "linkin park" in terms
 	assert "in the end" in terms
+
+
+def test_given_or_query_on_fixtures_when_match_labels_then_uses_per_term_surfaces():
+	# given
+	require_file_search_fixtures()
+	query = "amphibianis|minimal"
+
+	# when
+	results = magic_file_search(file_search_root(), query, threshold=0.35)
+	by_name = {result.path.name: result for result in results}
+
+	# then
+	assert "minimal.mp3" in by_name
+	assert match_labels(by_name["minimal.mp3"]) == "name"
+	assert "notes.txt" in by_name
+	assert match_labels(by_name["notes.txt"]) == "content"

@@ -36,6 +36,10 @@ class QueryBuilder(Vertical):
 		width: 8;
 		height: 1;
 		margin-right: 1;
+		border: none;
+		padding: 0 1;
+		color: $foreground;
+		background: $surface;
 	}
 
 	QueryBuilder .query-row Button {
@@ -83,6 +87,7 @@ class QueryBuilder(Vertical):
 					value=join,
 					id=f"query-join-{index}",
 					allow_blank=False,
+					compact=True,
 				)
 			)
 		widgets.append(Input(value=term, placeholder="search term", id=f"query-term-{index}"))

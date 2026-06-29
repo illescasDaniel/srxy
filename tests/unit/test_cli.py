@@ -109,6 +109,71 @@ def test_given_tag_only_match_when_match_labels_then_shows_tag(tmp_path: Path):
 	assert match_labels(result) == "tag"
 
 
+def test_given_or_query_with_weak_name_and_strong_content_when_match_labels_then_shows_content_only(
+	tmp_path: Path,
+):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "notes.txt",
+		score=0.38,
+		breakdown={"name": 0.12, "content": 0.38},
+		term_surfaces={
+			"amphibianis": {"name": 0.12, "content": 0.38},
+			"minimal": {"name": 0.08},
+		},
+		lines=[
+			LineMatch(
+				line_number=5,
+				text="Unlike most amphibians, it reaches adulthood without",
+				score=0.38,
+				location_kind="line",
+				matched_term="amphibianis",
+			)
+		],
+	)
+
+	# when / then
+	assert match_labels(result) == "content"
+
+
+def test_given_or_query_with_name_hit_when_match_labels_then_shows_name(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "minimal.mp3",
+		score=0.86,
+		breakdown={"name": 0.86},
+		term_surfaces={"minimal": {"name": 0.86}},
+	)
+
+	# when / then
+	assert match_labels(result) == "name"
+
+
+def test_given_and_query_with_mixed_surfaces_when_match_labels_then_shows_name_and_content(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "minimal_notes.txt",
+		score=0.86,
+		breakdown={"name": 0.86, "content": 0.38},
+		term_surfaces={
+			"minimal": {"name": 0.86, "content": 0.0},
+			"amphibianis": {"name": 0.12, "content": 0.38},
+		},
+		lines=[
+			LineMatch(
+				line_number=5,
+				text="Unlike most amphibians, it reaches adulthood without",
+				score=0.38,
+				location_kind="line",
+				matched_term="amphibianis",
+			)
+		],
+	)
+
+	# when / then
+	assert match_labels(result) == "name, content"
+
+
 def test_given_ocr_match_when_formatting_grouped_then_shows_ocr_in_matched_label(tmp_path: Path):
 	# given
 	result = FileSearchResult(

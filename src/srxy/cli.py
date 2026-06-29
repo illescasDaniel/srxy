@@ -82,9 +82,14 @@ def _format_locations(kind: str, numbers: list[int]) -> str:
 	return f"{label}s {_format_number_ranges(sorted_numbers)}"
 
 
-def match_labels(result: FileSearchResult) -> str:
+def match_labels(
+	result: FileSearchResult,
+	*,
+	threshold: float = 0.35,
+	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+) -> str:
 	labels: list[str] = []
-	if "name" in result.breakdown and result.breakdown["name"] > 0.0:
+	if _name_matched(result, threshold=threshold):
 		labels.append("name")
 	line_kinds = {line.location_kind for line in result.lines}
 	if line_kinds & _CONTENT_LOCATION_KINDS:
@@ -95,11 +100,23 @@ def match_labels(result: FileSearchResult) -> str:
 		labels.append("transcript")
 	if "tag" in line_kinds:
 		labels.append("tag")
-	if not result.lines and result.breakdown.get("content", 0.0) > 0.0:
+	if not result.lines and _content_matched_from_terms(result, threshold=threshold):
 		labels.append("content")
-	if result.breakdown.get("semantic_image", 0.0) > 0.0:
+	if result.breakdown.get("semantic_image", 0.0) >= semantic_image_threshold:
 		labels.append("image semantic")
 	return ", ".join(labels) if labels else "match"
+
+
+def _name_matched(result: FileSearchResult, *, threshold: float) -> bool:
+	if result.term_surfaces:
+		return any(scores.get("name", 0.0) >= threshold for scores in result.term_surfaces.values())
+	return result.breakdown.get("name", 0.0) >= threshold
+
+
+def _content_matched_from_terms(result: FileSearchResult, *, threshold: float) -> bool:
+	if result.term_surfaces:
+		return any(scores.get("content", 0.0) >= threshold for scores in result.term_surfaces.values())
+	return result.breakdown.get("content", 0.0) >= threshold
 
 
 def format_score_percent(score: float) -> str:
@@ -215,7 +232,7 @@ def format_grouped(results: list[FileSearchResult], *, query: str = "") -> str:
 	return "\n".join(lines)
 
 
-def format_flat_result(result: FileSearchResult) -> list[str]:
+def format_flat_result(result: FileSearchResult, *, threshold: float = 0.35) -> list[str]:
 	path_text = result.path.as_posix()
 	lines: list[str] = []
 	if result.lines:
@@ -224,7 +241,7 @@ def format_flat_result(result: FileSearchResult) -> list[str]:
 				f"{path_text}:{line_match.location_kind}:{line_match.line_number}:"
 				f"{format_score_percent(line_match.score)}:{line_match.text}"
 			)
-	elif "name" in result.breakdown and result.breakdown["name"] > 0.0:
+	elif _name_matched(result, threshold=threshold):
 		lines.append(f"{path_text}:name:0:{format_score_percent(result.score)}:{result.path.name}")
 	return lines
 
@@ -241,6 +258,7 @@ def format_json_result(result: FileSearchResult, *, query: str = "") -> dict[str
 		"path": result.path.as_posix(),
 		"score": result.score,
 		"breakdown": result.breakdown,
+		"term_surfaces": result.term_surfaces,
 		"lines": [
 			{
 				"line_number": line_match.line_number,

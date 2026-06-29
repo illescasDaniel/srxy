@@ -502,6 +502,7 @@ def _search_single_file(
 
 	breakdown: dict[str, float] = {}
 	term_bests: dict[str, float] = {term: 0.0 for term in iter_terms(query_expr)}
+	term_surfaces: dict[str, dict[str, float]] = {term: {} for term in iter_terms(query_expr)}
 	line_matches: list[LineMatch] = []
 	near_match: LineMatch | None = None
 
@@ -509,7 +510,9 @@ def _search_single_file(
 		name_score = _score_name(matcher, query_expr, file_path, search_root)
 		breakdown["name"] = name_score
 		for term in iter_terms(query_expr):
-			term_bests[term] = max(term_bests[term], _score_name_term(matcher, term, file_path, search_root))
+			name_term_score = _score_name_term(matcher, term, file_path, search_root)
+			term_surfaces[term]["name"] = name_term_score
+			term_bests[term] = max(term_bests[term], name_term_score)
 
 	if search_contents:
 		content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
@@ -540,6 +543,7 @@ def _search_single_file(
 			)
 			breakdown["content"] = content_score
 			for term, score in content_term_bests.items():
+				term_surfaces[term]["content"] = score
 				term_bests[term] = max(term_bests[term], score)
 
 	semantic_image_score = 0.0
@@ -561,6 +565,7 @@ def _search_single_file(
 		if semantic_image_score > 0.0:
 			breakdown["semantic_image"] = semantic_image_score
 			for term in iter_terms(query_expr):
+				term_surfaces[term]["semantic_image"] = semantic_image_score
 				term_bests[term] = max(term_bests[term], semantic_image_score)
 
 	if not breakdown:
@@ -604,6 +609,7 @@ def _search_single_file(
 		score=score,
 		breakdown=breakdown,
 		lines=line_matches,
+		term_surfaces=term_surfaces,
 	)
 
 
