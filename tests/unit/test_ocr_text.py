@@ -8,6 +8,7 @@ from PIL import Image
 from tests.helpers import file_search_root, require_file_search_fixtures
 
 from srxy.ocr_text import (
+	DEFAULT_OCR_MAX_FILE_SIZE,
 	TesseractEngine,
 	ensure_ocr_available,
 	is_ocr_active,
@@ -154,12 +155,12 @@ def test_given_cached_image_ocr_when_iterating_twice_then_runs_tesseract_once(
 	reset_cache_connection()
 
 
-def test_given_no_env_when_reading_ocr_max_file_size_then_returns_none(monkeypatch: pytest.MonkeyPatch):
+def test_given_no_env_when_reading_ocr_max_file_size_then_returns_default(monkeypatch: pytest.MonkeyPatch):
 	# given
 	monkeypatch.delenv("SRXY_OCR_MAX_FILE_SIZE", raising=False)
 
 	# when / then
-	assert ocr_max_file_size() is None
+	assert ocr_max_file_size() == DEFAULT_OCR_MAX_FILE_SIZE
 
 
 def test_given_color_image_when_preprocessing_then_keeps_rgb():
@@ -212,6 +213,7 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 
 
 @pytest.mark.ocr
+@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
 def test_given_cover_image_when_ocring_then_reads_embedded_text():
 	# given
 	require_file_search_fixtures()

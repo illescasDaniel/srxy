@@ -13,6 +13,7 @@ import pytest
 from srxy.cache import reset_cache_connection, reset_run_file_hashes
 from srxy.file_search import magic_file_search
 from srxy.matchers.semantic import reset_semantic_model
+from srxy.ocr_text import tesseract_available
 from srxy.semantic_image import reset_semantic_image_model
 
 
@@ -71,6 +72,7 @@ def test_given_minimal_jpeg_when_semantic_image_photo_then_finds_image(file_sear
 
 
 @pytest.mark.ocr
+@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
 def test_given_ocr_pdf_fixture_when_searching_revenue_then_finds_ocr(file_search_root: Path):
 	# when
 	results = magic_file_search(
@@ -120,6 +122,7 @@ def test_given_minimal_mp3_when_transcribe_then_finds_audio_metadata(file_search
 
 
 @pytest.mark.ocr
+@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
 def test_given_generated_ocr_image_when_searching_token_then_finds_ocr_line(file_search_samples: Path):
 	# when
 	results = magic_file_search(file_search_samples / "ocr", "fixture_ocr_token", search_names=False, ocr=True)

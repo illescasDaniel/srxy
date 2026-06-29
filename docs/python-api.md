@@ -18,7 +18,31 @@ for result in results:
 
 results = magic_file_search(Path("."), "token", skip_hidden_folders=False)
 results = magic_file_search(Path("."), "token", skip_noise_folders=False)
+
+# Boolean file query (same syntax as CLI)
+from srxy import FileQ
+
+results = magic_file_search(Path("./docs"), FileQ.leaf("foo") | FileQ.leaf("bar"))
+
+# Power-ups and streaming callbacks
+results = magic_file_search(
+    Path("./photos"),
+    "invoice",
+    ocr=True,
+    semantic=True,
+    semantic_image=True,
+    transcribe=True,
+    limit=20,
+    max_matches=10,
+    max_file_size=50_000_000,
+    skipped_files=[],
+    on_progress=lambda current, total: None,
+    on_activity=lambda message: None,
+    on_result=lambda result: None,
+)
 ```
+
+`--json` / file output include full matched line text — treat results as sensitive when sharing logs.
 
 ## In-memory search
 

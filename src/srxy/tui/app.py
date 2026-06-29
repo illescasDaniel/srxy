@@ -8,6 +8,7 @@ import platform
 import queue
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -732,9 +733,6 @@ class SrxyApp(App[int]):
 			post_event(message)
 
 		if self._cancel_search:
-			self._searching = False
-			self._set_status("Search cancelled")
-			self._save_search_snapshot()
 			return
 
 		while True:
@@ -790,24 +788,36 @@ class SrxyApp(App[int]):
 			except queue.Empty:
 				return None
 
-		await self._drain_search_events(
-			get_event=get_event,
-			is_done=search_task.done,
-			post_event=self._post_search_queue_event,
-		)
-		if self._cancel_search:
-			return
+		try:
+			await self._drain_search_events(
+				get_event=get_event,
+				is_done=search_task.done,
+				post_event=self._post_search_queue_event,
+			)
+		finally:
+			await search_task
 
-		await search_task
+		if self._cancel_search:
+			self._searching = False
+			self._set_status("Search cancelled")
+			self._save_search_snapshot()
 
 	async def _run_search_in_subprocess(self, args: argparse.Namespace):
+		terminal_event = False
 		try:
 			async for event in iter_subprocess_search_events(args, cancel_check=lambda: self._cancel_search):
 				if self._cancel_search:
 					break
+				event_type = event.get("type")
+				if event_type in {"finished", "error"}:
+					terminal_event = True
 				self._post_subprocess_event(event)
 		except Exception as error:
 			self.post_message(SearchError(str(error)))
+			return
+
+		if not terminal_event and not self._cancel_search:
+			self.post_message(SearchError("search worker exited unexpectedly"))
 			return
 
 		if self._cancel_search:
@@ -909,10 +919,11 @@ class SrxyApp(App[int]):
 
 
 def run_tui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
-	try:
-		multiprocessing.set_start_method("fork", force=True)
-	except (RuntimeError, ValueError):
-		pass
+	if sys.platform != "win32":
+		try:
+			multiprocessing.set_start_method("fork", force=True)
+		except (RuntimeError, ValueError):
+			pass
 	app = SrxyApp(args, auto_start=auto_start)
 	result = app.run()
 	return result if result is not None else 0

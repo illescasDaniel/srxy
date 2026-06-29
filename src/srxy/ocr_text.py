@@ -18,6 +18,7 @@ from srxy.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_MAX_IMAGE_DIMENSION = 4000
+DEFAULT_OCR_MAX_FILE_SIZE = 50 * 1024 * 1024
 MIN_OCR_QUALITY_SCORE = 80.0
 MIN_INDEXED_OCR_QUALITY_SCORE = 40.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
@@ -92,11 +93,11 @@ def is_ocr_active(ocr: bool | None = None) -> bool:
 def ocr_max_file_size() -> int | None:
 	raw = os.environ.get("SRXY_OCR_MAX_FILE_SIZE", "").strip()
 	if not raw:
-		return None
+		return DEFAULT_OCR_MAX_FILE_SIZE
 	try:
 		return int(raw)
 	except ValueError:
-		return None
+		return DEFAULT_OCR_MAX_FILE_SIZE
 
 
 def is_sparse_text(text: str) -> bool:

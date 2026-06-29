@@ -22,6 +22,7 @@ from srxy.media_metadata import AUDIO_SUFFIXES, VIDEO_SUFFIXES
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_TRANSCRIBE_MODEL = "base"
 DEFAULT_TRANSCRIBE_THRESHOLD = 0.25
+DEFAULT_TRANSCRIBE_MAX_FILE_SIZE = 500 * 1024 * 1024
 TRANSCRIBE_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
 
 _TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE = "Transcription requires the optional dependency: pip install 'srxy[semantic]'"
@@ -68,11 +69,11 @@ def is_transcribe_active(transcribe: bool | None = None) -> bool:
 def transcribe_max_file_size() -> int | None:
 	raw = os.environ.get("SRXY_TRANSCRIBE_MAX_FILE_SIZE", "").strip()
 	if not raw:
-		return None
+		return DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
 	try:
 		return int(raw)
 	except ValueError:
-		return None
+		return DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
 
 
 def transcribe_model_name() -> str:

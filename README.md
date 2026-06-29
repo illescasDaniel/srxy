@@ -24,7 +24,7 @@ srxy "registry" ./src         # pre-filled; auto-starts
 srxy "transform" ./docs --ocr
 ```
 
-![srxy TUI](docs/images/tui.png)
+![srxy TUI](docs/images/tui.svg)
 
 Live scan progress, sortable results, preview pane, option chips, clipboard copy. Full walkthrough: [docs/tui.md](docs/tui.md).
 
@@ -72,7 +72,7 @@ pip install -e ".[dev,semantic]"
 ./scripts/quality/checks.sh --full+cpu   # + forced-CPU transcribe matrix
 ```
 
-CI runs unit tests only. Details: [docs/development.md](docs/development.md).
+CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).
 
 Try fixtures: `srxy "axolotl" ./tests/fixtures/file_search`
 

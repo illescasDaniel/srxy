@@ -85,10 +85,6 @@ def warn_if_cpu_device(device: str, *, context: str):
 	_CPU_WARNING_CONTEXTS.add(context)
 
 
-def reset_device_warnings():
-	_CPU_WARNING_CONTEXTS.clear()
-
-
 def resolve_transcribe_device() -> str:
 	for env_var in ("SRXY_TRANSCRIBE_DEVICE", "SRXY_SEMANTIC_DEVICE"):
 		forced = os.environ.get(env_var, "").strip().lower()

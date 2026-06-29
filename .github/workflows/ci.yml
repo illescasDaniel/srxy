@@ -28,12 +28,7 @@ jobs:
 
       - name: Install shell linting tools
         run: |
-          sudo apt-get install -y shellcheck
-          SHFMT_VER=3.13.1
-          curl -sSL \
-            "https://github.com/mvdan/sh/releases/download/v${SHFMT_VER}/shfmt_v${SHFMT_VER}_linux_amd64" \
-            -o /usr/local/bin/shfmt
-          chmod +x /usr/local/bin/shfmt
+          sudo apt-get install -y shellcheck shfmt
 
       - name: Quality gate
         env:

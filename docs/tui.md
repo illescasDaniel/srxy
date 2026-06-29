@@ -2,7 +2,7 @@
 
 On an interactive terminal (no `--json`, `--format flat`, or `-o`), srxy opens a **Textual** full-screen TUI by default.
 
-![srxy TUI](images/tui.png)
+![srxy TUI](images/tui.svg)
 
 The screenshot above uses this compound OR query against the repo fixtures — one branch per power-up:
 
@@ -86,7 +86,7 @@ Uses OSC 52; most modern terminals support it.
 
 ## When the TUI is skipped
 
-Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, or stdout is **not a TTY**.
+Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`).
 
 ## Manual release checklist
 

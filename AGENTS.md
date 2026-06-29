@@ -12,7 +12,7 @@ Use the project venv with dev dependencies installed (`pip install -e ".[dev,sem
 
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 
-Locally, pytest runs integration and TUI tests (excluding `integration_full` unless you pass `--full`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs unit tests only (`CI=true`).
+Locally, pytest runs integration and TUI tests (excluding `integration_full` unless you pass `--full`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs `unit` tests only, excluding `semantic` and `transcribe` markers (`CI=true`).
 
 `--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `CI=true`.
 
@@ -28,7 +28,7 @@ Regenerate after intentional UI changes:
 UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/test_query_builder_display.py
 ```
 
-Run the full local gate (`./scripts/quality/checks.sh`) so integration and TUI tests execute; CI (`CI=true`) runs unit tests only.
+Run the full local gate (`./scripts/quality/checks.sh`) so integration and TUI tests execute; CI (`CI=true`) runs `unit` tests excluding `semantic` and `transcribe`.
 
 ## Typing
 
