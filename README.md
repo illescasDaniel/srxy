@@ -10,15 +10,9 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 ## Installation
 
-```bash
-pipx install 'srxy[semantic]'   # recommended
-pip install 'srxy[semantic]'
-pip install srxy                   # core only (no PyTorch / semantic / transcription)
-```
+Recommended: `pipx install 'srxy[semantic]'`. Core-only: `pip install srxy`. On Windows, add `[windows]` for Explorer tag search.
 
-`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux `nvidia-cublas-cu12` for GPU transcription. Models download on first use.
-
-You also need **ffmpeg** (transcription) and **tesseract** (OCR) on `PATH` — see [Power-ups](docs/power-ups.md).
+**Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md)
 
 ## Quick start
 
@@ -61,6 +55,7 @@ API reference: [docs/python-api.md](docs/python-api.md).
 
 | Guide | Contents |
 |-------|----------|
+| [Installation](docs/installation.md) | pipx/pip, macOS/Linux/Windows, ffmpeg, tesseract |
 | [TUI](docs/tui.md) | Layout, keybindings, clipboard, release checklist |
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |

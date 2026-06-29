@@ -11,7 +11,7 @@ srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```
 
-Default: images via EXIF; PDFs via `pypdf` embedded text. `--ocr` adds Tesseract on top (needs `tesseract` on `PATH`). PDF body text still from `pypdf`; matches show page number.
+Default: images via EXIF; PDFs via `pypdf` embedded text. `--ocr` adds Tesseract on top — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
 
 Cache: `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. `--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE` optional cap.
 
@@ -39,7 +39,7 @@ CLIP `clip-ViT-B-32`. Default threshold **0.18** (`--semantic-image-threshold`).
 
 ## Transcription
 
-Spoken words in audio/video (`srxy[semantic]` + **ffmpeg**):
+Spoken words in audio/video (`srxy[semantic]` + ffmpeg — see [Installation](installation.md)):
 
 ```bash
 srxy "quarterly earnings" ~/Recordings --transcribe --content-only

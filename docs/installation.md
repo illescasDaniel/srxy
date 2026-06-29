@@ -1,0 +1,132 @@
+# Installation
+
+Requires **Python 3.11+**.
+
+## Recommended
+
+```bash
+pipx install 'srxy[semantic]'
+```
+
+`pipx` installs srxy in an isolated environment and puts the `srxy` command on your `PATH`.
+
+Alternatives:
+
+```bash
+pip install 'srxy[semantic]'   # inside a venv or project
+pip install srxy                 # core only (no PyTorch / semantic / transcription)
+```
+
+`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux `nvidia-cublas-cu12` for GPU transcription. Models download on first use — see [Model prefetch](power-ups.md#model-prefetch) in the power-ups guide.
+
+## System dependencies
+
+**ffmpeg** (transcription) and **tesseract** (OCR) must be on `PATH` when you use `--transcribe`, `--ocr`, or `--semantic-all`. Verify with:
+
+```bash
+ffmpeg -version
+tesseract --version
+```
+
+On Windows, use `where ffmpeg` and `where tesseract` instead of `which`.
+
+### macOS
+
+[Homebrew](https://brew.sh/):
+
+```bash
+brew install ffmpeg tesseract
+pipx install 'srxy[semantic]'
+```
+
+### Linux
+
+Install ffmpeg and tesseract with your package manager, then install srxy:
+
+| Distro | ffmpeg | tesseract |
+|--------|--------|-----------|
+| Debian / Ubuntu | `sudo apt install ffmpeg` | `sudo apt install tesseract-ocr` |
+| Arch | `sudo pacman -S ffmpeg` | `sudo pacman -S tesseract` |
+| Fedora | `sudo dnf install ffmpeg` | `sudo dnf install tesseract` |
+
+```bash
+pipx install 'srxy[semantic]'
+```
+
+### Windows
+
+1. Install **Python 3.11+** from [python.org](https://www.python.org/downloads/) or `winget install Python.Python.3.12`.
+2. Install **pipx** and ensure it is on `PATH`:
+
+   ```powershell
+   python -m pip install pipx
+   pipx ensurepath
+   ```
+
+   Restart your terminal after `pipx ensurepath`.
+
+3. Install system binaries (pick one package manager per tool):
+
+   ```powershell
+   winget install Gyan.FFmpeg
+   winget install UB-Mannheim.TesseractOCR
+   ```
+
+   Or with [Chocolatey](https://chocolatey.org/):
+
+   ```powershell
+   choco install ffmpeg
+   choco install tesseract
+   ```
+
+   Restart your terminal so `PATH` picks up the new binaries.
+
+4. Install srxy with Windows Explorer tag support:
+
+   ```powershell
+   pipx install 'srxy[semantic,windows]'
+   ```
+
+   `[windows]` adds `pywin32` for `System.Keywords` tag search — see [CLI reference](cli.md).
+
+## Core-only install
+
+When you do not need semantic search, OCR, or transcription:
+
+```bash
+pipx install srxy
+```
+
+Filename fuzzy/phonetic search, document text extraction, and the TUI still work.
+
+## Verify
+
+```bash
+srxy --version
+which ffmpeg      # where ffmpeg on Windows
+which tesseract   # where tesseract on Windows
+```
+
+## TestPyPI (testers)
+
+To install a specific release candidate from TestPyPI (dependencies still come from production PyPI).
+
+`pipx` accepts `--index-url` but not `--extra-index-url`; pass the extra index through `--pip-args`:
+
+```bash
+pipx install \
+  --index-url https://test.pypi.org/simple/ \
+  --pip-args='--extra-index-url https://pypi.org/simple/' \
+  'srxy[semantic]==1.3.0'
+```
+
+Or with `pip` in a venv (both index flags work directly):
+
+```bash
+pip install \
+  --index-url https://test.pypi.org/simple/ \
+  --extra-index-url https://pypi.org/simple/ \
+  'srxy[semantic]==1.3.0'
+```
+
+Replace `1.3.0` with the version you want to test.
