@@ -78,6 +78,51 @@ python -m srxy.model_store all
 
 `SRXY_AUTO_DOWNLOAD=1` for non-interactive download.
 
+## Managing cache
+
+Downloaded model weights and scan results are stored separately under `~/.cache/srxy/`:
+
+| Path | Contents |
+|------|----------|
+| `semantic-model/` | Text semantic model weights |
+| `semantic-image-model/` | CLIP model weights |
+| `transcribe-model/` | Whisper / faster-whisper weights |
+| `cache.db` | OCR, transcripts, embeddings, document-text cache |
+
+Custom paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_*_MODEL_PATH`, and `SRXY_CACHE_DIR`.
+
+### Clear downloaded models
+
+Removes model weights only. Models re-download on next use (or run [Model prefetch](#model-prefetch) again).
+
+```bash
+./scripts/clear_models.sh                    # all models
+./scripts/clear_models.sh semantic-text
+./scripts/clear_models.sh semantic-image
+./scripts/clear_models.sh transcribe
+```
+
+Or without the script:
+
+```bash
+python -m srxy.model_store clear all
+python -m srxy.model_store clear semantic-text
+```
+
+### Clear results cache
+
+Removes `cache.db`. Scan results rebuild on the next run.
+
+```bash
+./scripts/clear_results_cache.sh
+```
+
+Or:
+
+```bash
+python -m srxy.cache clear
+```
+
 Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE`.
 
 Core deps (always): `rapidfuzz`, `jellyfish`.

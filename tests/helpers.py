@@ -18,6 +18,7 @@ OCR_PDF_FIXTURE = OCR_FIXTURES_DIR / "ocr_embedded.pdf"
 MINIMAL_JPEG_FIXTURE = FILE_SEARCH_DIR / "minimal.jpg"
 MINIMAL_MP3_FIXTURE = FILE_SEARCH_DIR / "minimal.mp3"
 MINIMAL_MP4_FIXTURE = FILE_SEARCH_DIR / "minimal.mp4"
+PHOTOSHOP_XMP_JPEG_FIXTURE = FILE_SEARCH_DIR / "samples" / "images" / "photoshop_xmp.jpg"
 
 
 def file_search_root() -> Path:
@@ -76,6 +77,45 @@ def transcribe_device_matrix_devices(config: object) -> list[str]:
 
 def copy_media_fixture(name: str, destination: Path) -> None:
 	destination.write_bytes((FILE_SEARCH_DIR / name).read_bytes())
+
+
+def build_photoshop_xmp_jpeg_fixture(
+	source: Path,
+	destination: Path,
+	*,
+	max_dimension: int = 256,
+	quality: int = 75,
+):
+	from PIL import Image
+	from tests.fixture_xmp import sanitize_exif, sanitize_xmp_packet
+
+	if not source.is_file():
+		raise FileNotFoundError(f"source image not found: {source}")
+
+	destination.parent.mkdir(parents=True, exist_ok=True)
+	with Image.open(source) as image:
+		xmp_raw = image.info.get("xmp") or image.info.get("XML:com.adobe.xmp")
+		if not xmp_raw:
+			raise ValueError(f"source image has no XMP packet: {source}")
+
+		rgb = image.convert("RGB")
+		width, height = rgb.size
+		largest = max(width, height)
+		if largest > max_dimension:
+			scale = max_dimension / largest
+			new_size = (max(int(width * scale), 1), max(int(height * scale), 1))
+			rgb = rgb.resize(new_size, Image.Resampling.LANCZOS)
+
+		exif = sanitize_exif(image.getexif())
+		xmp = sanitize_xmp_packet(xmp_raw)
+		rgb.save(
+			destination,
+			format="JPEG",
+			quality=quality,
+			optimize=True,
+			exif=exif,
+			xmp=xmp,
+		)
 
 
 @dataclass(frozen=True)

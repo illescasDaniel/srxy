@@ -100,7 +100,12 @@ def _prompt_yes(
 	return answer in {"y", "yes"}
 
 
-def download_model(model_id: str, target_dir: Path):
+def download_model(
+	model_id: str,
+	target_dir: Path,
+	*,
+	on_progress: Callable[[int, int, str], None] | None = None,
+):
 	if not huggingface_hub_installed():
 		raise RuntimeError("huggingface_hub is required to download models. Install with: pip install 'srxy[semantic]'")
 
@@ -109,26 +114,56 @@ def download_model(model_id: str, target_dir: Path):
 	target_dir.parent.mkdir(parents=True, exist_ok=True)
 	if target_dir.exists():
 		shutil.rmtree(target_dir)
-	snapshot_download(repo_id=model_id, local_dir=str(target_dir))
+	kwargs: dict[str, object] = {"repo_id": model_id, "local_dir": str(target_dir)}
+	if on_progress is not None:
+		kwargs["tqdm_class"] = _make_progress_tqdm(on_progress)
+	snapshot_download(**kwargs)  # type: ignore[arg-type]
 
 
-def download_semantic_text_model(*, target_dir: Path | None = None):
+def _make_progress_tqdm(on_progress: Callable[[int, int, str], None]):
+	from tqdm import tqdm
+
+	class ProgressTqdm(tqdm):  # type: ignore[misc, type-arg]
+		def update(self, n: float | None = 1) -> bool | None:  # type: ignore[override]
+			result = super().update(n)
+			current = int(self.n or 0)
+			total = int(self.total or 0)
+			desc = str(self.desc or "Downloading…")
+			on_progress(current, total, desc)
+			return result
+
+	return ProgressTqdm  # type: ignore[return-value]
+
+
+def download_semantic_text_model(
+	*,
+	target_dir: Path | None = None,
+	on_progress: Callable[[int, int, str], None] | None = None,
+):
 	directory = target_dir or semantic_text_model_dir()
 	print(f"Downloading {SEMANTIC_TEXT_MODEL_ID} into {directory}", file=sys.stderr)
-	download_model(SEMANTIC_TEXT_MODEL_ID, directory)
+	download_model(SEMANTIC_TEXT_MODEL_ID, directory, on_progress=on_progress)
 	os.environ["SRXY_SEMANTIC_MODEL_PATH"] = str(directory)
 	print(f"Semantic text model cached at {directory}", file=sys.stderr)
 
 
-def download_semantic_image_model(*, target_dir: Path | None = None):
+def download_semantic_image_model(
+	*,
+	target_dir: Path | None = None,
+	on_progress: Callable[[int, int, str], None] | None = None,
+):
 	directory = target_dir or semantic_image_model_dir()
 	print(f"Downloading {SEMANTIC_IMAGE_MODEL_ID} into {directory}", file=sys.stderr)
-	download_model(SEMANTIC_IMAGE_MODEL_ID, directory)
+	download_model(SEMANTIC_IMAGE_MODEL_ID, directory, on_progress=on_progress)
 	os.environ["SRXY_SEMANTIC_IMAGE_MODEL_PATH"] = str(directory)
 	print(f"Semantic image model cached at {directory}", file=sys.stderr)
 
 
-def download_transcribe_model(*, target_dir: Path | None = None):
+def download_transcribe_model(
+	*,
+	target_dir: Path | None = None,
+	on_progress: Callable[[int, int, str], None] | None = None,
+):
 	from srxy.device import resolve_transcribe_device, transcribe_backend_for_device
 
 	device = resolve_transcribe_device()
@@ -142,7 +177,7 @@ def download_transcribe_model(*, target_dir: Path | None = None):
 		model_id = transcribe_faster_whisper_repo_id()
 		env_var = "SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH"
 	print(f"Downloading {model_id} into {directory}", file=sys.stderr)
-	download_model(model_id, directory)
+	download_model(model_id, directory, on_progress=on_progress)
 	os.environ[env_var] = str(directory)
 	print(f"Transcription model cached at {directory}", file=sys.stderr)
 
@@ -295,34 +330,96 @@ def ensure_transcribe_model(
 	)
 
 
+def _remove_dir_if_present(path: Path, label: str):
+	if not path.exists():
+		print(f"{label} is not cached at {path}", file=sys.stderr)
+		return
+	shutil.rmtree(path)
+	print(f"Removed {label} at {path}", file=sys.stderr)
+
+
+def clear_semantic_text_model():
+	_remove_dir_if_present(semantic_text_model_dir(), "Semantic text model")
+
+
+def clear_semantic_image_model():
+	_remove_dir_if_present(semantic_image_model_dir(), "Semantic image model")
+
+
+def clear_transcribe_model():
+	_remove_dir_if_present(transcribe_model_root(), "Transcription model")
+
+
+def clear_all_models():
+	clear_semantic_text_model()
+	clear_semantic_image_model()
+	clear_transcribe_model()
+
+
+_MODEL_TARGETS = ("semantic-text", "semantic-image", "transcribe", "all")
+
+
 def _build_download_parser():
 	import argparse
 
 	parser = argparse.ArgumentParser(description="Download srxy semantic models for offline use.")
 	parser.add_argument(
 		"target",
-		choices=("semantic-text", "semantic-image", "transcribe", "all"),
+		choices=_MODEL_TARGETS,
 		help="Which model bundle to download into ~/.cache/srxy/",
 	)
 	return parser
 
 
-def main(argv: list[str] | None = None) -> int:
-	parser = _build_download_parser()
-	args = parser.parse_args(argv)
+def _build_clear_parser():
+	import argparse
 
+	parser = argparse.ArgumentParser(description="Remove cached srxy model weights.")
+	parser.add_argument(
+		"target",
+		choices=_MODEL_TARGETS,
+		nargs="?",
+		default="all",
+		help="Which model bundle to remove (default: all)",
+	)
+	return parser
+
+
+def _run_download(target: str) -> int:
 	try:
-		if args.target in {"semantic-text", "all"}:
+		if target in {"semantic-text", "all"}:
 			download_semantic_text_model()
-		if args.target in {"semantic-image", "all"}:
+		if target in {"semantic-image", "all"}:
 			download_semantic_image_model()
-		if args.target in {"transcribe", "all"}:
+		if target in {"transcribe", "all"}:
 			download_transcribe_model()
 	except RuntimeError as error:
 		print(error, file=sys.stderr)
 		return 2
-
 	return 0
+
+
+def _run_clear(target: str) -> int:
+	if target in {"semantic-text", "all"}:
+		clear_semantic_text_model()
+	if target in {"semantic-image", "all"}:
+		clear_semantic_image_model()
+	if target in {"transcribe", "all"}:
+		clear_transcribe_model()
+	return 0
+
+
+def main(argv: list[str] | None = None) -> int:
+	if argv is None:
+		argv = sys.argv[1:]
+	if argv and argv[0] == "clear":
+		parser = _build_clear_parser()
+		args = parser.parse_args(argv[1:])
+		return _run_clear(args.target)
+
+	parser = _build_download_parser()
+	args = parser.parse_args(argv)
+	return _run_download(args.target)
 
 
 if __name__ == "__main__":

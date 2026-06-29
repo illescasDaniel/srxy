@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import argparse
+import asyncio
+from collections.abc import Callable
 from pathlib import Path
 from typing import Any, Protocol
 
@@ -38,11 +40,17 @@ from srxy.transcribe_text import (
 	transcribe_requested,
 	transcribe_unavailable_message,
 )
-from srxy.tui.modals import DownloadConfirmModal
+from srxy.tui.modals import DownloadConfirmModal, DownloadProgressModal
 
 
 class TuiPreflightApp(Protocol):
 	async def push_screen_wait(self, screen: DownloadConfirmModal) -> bool: ...
+
+	def push_screen(self, screen: DownloadProgressModal, *, wait_for_dismiss: bool = False) -> object: ...
+
+	def pop_screen(self) -> None: ...
+
+	def call_from_thread(self, callback: Callable[..., object], *args: object, **kwargs: object) -> None: ...
 
 
 async def run_tui_preflight(app: Any, args: argparse.Namespace) -> str | None:
@@ -73,6 +81,23 @@ async def run_tui_preflight(app: Any, args: argparse.Namespace) -> str | None:
 	return None
 
 
+async def _run_download_with_progress(
+	app: TuiPreflightApp,
+	label: str,
+	download_fn: Callable[..., None],
+):
+	modal = DownloadProgressModal(label)
+	app.push_screen(modal, wait_for_dismiss=False)
+
+	def on_progress(current: int, total: int, message: str):
+		app.call_from_thread(modal.update_progress, current, total, message)
+
+	try:
+		await asyncio.to_thread(download_fn, on_progress=on_progress)
+	finally:
+		app.pop_screen()
+
+
 async def _ensure_semantic_text_model_tui(app: TuiPreflightApp) -> bool:
 	if ensure_semantic_text_model(interactive=False):
 		return True
@@ -80,7 +105,7 @@ async def _ensure_semantic_text_model_tui(app: TuiPreflightApp) -> bool:
 		DownloadConfirmModal(_download_prompt("Semantic text model", semantic_text_model_dir()))
 	):
 		return False
-	download_semantic_text_model()
+	await _run_download_with_progress(app, "Downloading semantic text model…", download_semantic_text_model)
 	return True
 
 
@@ -91,7 +116,7 @@ async def _ensure_semantic_image_model_tui(app: TuiPreflightApp) -> bool:
 		DownloadConfirmModal(_download_prompt("Semantic image model", semantic_image_model_dir()))
 	):
 		return False
-	download_semantic_image_model()
+	await _run_download_with_progress(app, "Downloading semantic image model…", download_semantic_image_model)
 	return True
 
 
@@ -114,7 +139,7 @@ async def _ensure_transcribe_model_tui(app: TuiPreflightApp) -> bool:
 		return True
 	if not await app.push_screen_wait(DownloadConfirmModal(_download_prompt(label, target, size_hint=size_hint))):
 		return False
-	download_transcribe_model()
+	await _run_download_with_progress(app, f"Downloading {label}…", download_transcribe_model)
 	return True
 
 

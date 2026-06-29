@@ -3,7 +3,7 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, Static
+from textual.widgets import Button, Label, ProgressBar, Static
 
 
 class DownloadConfirmModal(ModalScreen[bool]):
@@ -51,6 +51,60 @@ class DownloadConfirmModal(ModalScreen[bool]):
 			self.dismiss(True)
 		else:
 			self.dismiss(False)
+
+
+class DownloadProgressModal(ModalScreen[None]):
+	DEFAULT_CSS = """
+	DownloadProgressModal {
+		align: center middle;
+	}
+
+	#download-progress-dialog {
+		width: 72;
+		height: auto;
+		max-height: 80%;
+		border: thick $accent;
+		background: $surface;
+		padding: 1 2;
+	}
+
+	#download-progress-title {
+		width: 100%;
+		height: auto;
+		margin-bottom: 1;
+	}
+
+	#download-progress-bar {
+		width: 100%;
+		height: 1;
+		margin-bottom: 1;
+	}
+
+	#download-progress-status {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+	}
+	"""
+
+	def __init__(self, label: str):
+		super().__init__()
+		self._label = label
+
+	def compose(self) -> ComposeResult:
+		with Vertical(id="download-progress-dialog"):
+			yield Static(self._label, id="download-progress-title")
+			yield ProgressBar(total=100, show_eta=False, id="download-progress-bar")
+			yield Label("Preparing download…", id="download-progress-status")
+
+	def update_progress(self, current: int, total: int, message: str):
+		progress = self.query_one("#download-progress-bar", ProgressBar)
+		status = self.query_one("#download-progress-status", Label)
+		if total > 0:
+			progress.update(total=total, progress=min(current, total))
+		else:
+			progress.update(total=100, progress=0)
+		status.update(message or "Downloading…")
 
 
 class HelpModal(ModalScreen[None]):

@@ -17,7 +17,7 @@ pip install 'srxy[semantic]'   # inside a venv or project
 pip install srxy                 # core only (no PyTorch / semantic / transcription)
 ```
 
-`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux `nvidia-cublas-cu12` for GPU transcription. Models download on first use — see [Model prefetch](power-ups.md#model-prefetch) in the power-ups guide.
+`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux `nvidia-cublas-cu12` for GPU transcription. Models download on first use — see [Model prefetch](power-ups.md#model-prefetch) in the power-ups guide. To remove cached models or scan results, see [Managing cache](power-ups.md#managing-cache).
 
 ## System dependencies
 

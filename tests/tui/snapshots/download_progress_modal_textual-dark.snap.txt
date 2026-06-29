@@ -1,0 +1,24 @@
+download-progress-modal
+host
+█
+█
+█
+█
+█
+Downloading semantic text model…
+█
+█
+█
+█
+╺
+42%
+█
+█
+█
+█
+Downloading model files
+█
+█
+█
+█
+█

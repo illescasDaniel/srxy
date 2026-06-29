@@ -1257,3 +1257,62 @@ def test_given_or_query_on_fixtures_when_match_labels_then_uses_per_term_surface
 	assert match_labels(by_name["minimal.mp3"]) == "name"
 	assert "notes.txt" in by_name
 	assert match_labels(by_name["notes.txt"]) == "content"
+
+
+def test_given_xmp_seq_token_when_searching_sig_on_tag_then_does_not_match(tmp_path: Path):
+	# given
+	image = tmp_path / "photo.png"
+	Image.new("RGB", (8, 8), "white").save(image)
+
+	# when
+	with patch(
+		"srxy.file_search.iter_media_metadata_lines",
+		return_value=iter([(1, "[Metadata] Seq")]),
+	):
+		results = magic_file_search(
+			tmp_path,
+			"sig",
+			search_names=False,
+			search_contents=True,
+			threshold=0.18,
+		)
+
+	# then
+	assert results == []
+
+
+def test_given_low_quality_ocr_text_when_searching_image_then_skips_match(tmp_path: Path):
+	# given
+	image = tmp_path / "chart.png"
+	Image.new("RGB", (8, 8), "white").save(image)
+	query = "sig"
+
+	# when
+	with (
+		patch("srxy.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.ocr_text.ocr_pil_image", return_value="e gl A\n.\n¥\n| SRR LA 56 T P ) > e \\"),
+	):
+		results = magic_file_search(tmp_path, query, search_names=False, ocr=True, threshold=0.18)
+
+	# then
+	assert results == []
+
+
+def test_given_photoshop_xmp_fixture_when_searching_sig_then_does_not_match(tmp_path: Path):
+	# given
+	require_file_search_fixtures()
+	copy_media_fixture("samples/images/photoshop_xmp.jpg", tmp_path / "tree.jpg")
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"SIG",
+		search_names=False,
+		search_contents=True,
+		ocr=False,
+		semantic_image=False,
+		threshold=0.18,
+	)
+
+	# then
+	assert results == []

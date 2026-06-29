@@ -8,10 +8,12 @@ from pathlib import Path
 from srxy.cache import CACHE_KIND_CLIP_EMBED, cache_get, cache_put, get_file_content_hash
 from srxy.device import resolve_semantic_image_device, warn_if_cpu_device
 from srxy.image_formats import is_semantic_image_path, open_image_for_vision
+from srxy.utils import normalize_text
 
 
 DEFAULT_MODEL_ID = "sentence-transformers/clip-ViT-B-32"
 DEFAULT_SEMANTIC_IMAGE_THRESHOLD = 0.18
+MIN_SEMANTIC_IMAGE_QUERY_LENGTH = 4
 
 _semantic_image_model: object | None = None
 _query_embedding_cache: dict[str, object] = {}
@@ -158,6 +160,8 @@ def score_image(
 	query_embedding: object | None = None,
 ) -> float:
 	if not query or not path.is_file() or not is_semantic_image_path(path):
+		return 0.0
+	if len(normalize_text(query)) < MIN_SEMANTIC_IMAGE_QUERY_LENGTH:
 		return 0.0
 
 	try:

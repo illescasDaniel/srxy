@@ -76,3 +76,12 @@ def test_given_dng_path_when_checking_semantic_image_path_then_returns_true(tmp_
 
 	# when / then
 	assert is_semantic_image_path(dng_path) is True
+
+
+def test_given_short_query_when_scoring_image_then_returns_zero(tmp_path: Path):
+	# given
+	image_path = tmp_path / "tree.png"
+	image_path.write_bytes(b"png")
+
+	# when / then
+	assert score_image("sig", image_path) == 0.0

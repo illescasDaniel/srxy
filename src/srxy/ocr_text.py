@@ -19,6 +19,7 @@ from srxy.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_MAX_IMAGE_DIMENSION = 4000
 MIN_OCR_QUALITY_SCORE = 80.0
+MIN_INDEXED_OCR_QUALITY_SCORE = 40.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
 SPARSE_TEXT_THRESHOLD = 20
 OCR_ENGINE_VARIANT = "tesseract-v4"
@@ -222,5 +223,8 @@ def iter_image_ocr_lines(path: Path) -> Iterator[tuple[int, str]]:
 	except Exception:
 		return
 	text = text.strip()
-	if text:
-		yield 1, text
+	if not text:
+		return
+	if _ocr_quality_score(text) < MIN_INDEXED_OCR_QUALITY_SCORE:
+		return
+	yield 1, text

@@ -47,6 +47,7 @@ from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
 
 
 _MIN_SEARCHABLE_WORD_LENGTH = 3
+_SHORT_QUERY_PHONETIC_SKIP_LENGTH = 3
 _SEMANTIC_WORD_MATCH_GATE = 0.5
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _TOKEN_SCORING_LOCATION_KINDS = frozenset({"ocr", "tag", "transcript"})
@@ -289,12 +290,27 @@ def _is_meaningful_token(token: str) -> bool:
 	return any(char.isalpha() for char in normalized)
 
 
-def _passes_semantic_word_gate(query: str, word: str, breakdown: dict[str, float]) -> bool:
+def _passes_semantic_word_gate(
+	query: str,
+	word: str,
+	breakdown: dict[str, float],
+	*,
+	location_kind: str | None = None,
+) -> bool:
+	normalized_query = normalize_text(query)
+	if (
+		location_kind in _TOKEN_SCORING_LOCATION_KINDS
+		and len(normalized_query) <= _SHORT_QUERY_PHONETIC_SKIP_LENGTH
+		and breakdown.get("phonetic", 0.0) > 0.0
+		and breakdown.get("exact", 0.0) <= 0.0
+		and breakdown.get("contains", 0.0) <= 0.0
+		and breakdown.get("partial", 0.0) <= 0.0
+	):
+		return False
 	if breakdown.get("exact", 0.0) > 0.0 or breakdown.get("contains", 0.0) > 0.0:
 		return True
 	if breakdown.get("partial", 0.0) > 0.0:
 		return True
-	normalized_query = normalize_text(query)
 	normalized_word = normalize_text(word)
 	if normalized_query and normalized_query in normalized_word.split():
 		return True
@@ -328,7 +344,7 @@ def _score_multi_word_query(matcher: CompositeMatcher, query: str, text: str) ->
 	return min(word_scores)
 
 
-def _score_best_word(matcher: CompositeMatcher, query: str, text: str) -> float:
+def _score_best_word(matcher: CompositeMatcher, query: str, text: str, *, location_kind: str | None = None) -> float:
 	if len(query_words(query)) >= 2:
 		return _score_multi_word_query(matcher, query, text)
 	best_score = 0.0
@@ -338,7 +354,7 @@ def _score_best_word(matcher: CompositeMatcher, query: str, text: str) -> float:
 		if not _is_meaningful_token(word):
 			continue
 		score, breakdown = matcher.score_with_breakdown(query, normalize_text(word))
-		if not _passes_semantic_word_gate(query, word, breakdown):
+		if not _passes_semantic_word_gate(query, word, breakdown, location_kind=location_kind):
 			continue
 		found = True
 		if score > best_score:
@@ -351,7 +367,7 @@ def _score_line(matcher: CompositeMatcher, query: str, raw_line: str, location_k
 	if len(query_words(query)) >= 2:
 		return _score_multi_word_query(matcher, query, searchable)
 	if location_kind in _TOKEN_SCORING_LOCATION_KINDS:
-		return _score_best_word(matcher, query, searchable)
+		return _score_best_word(matcher, query, searchable, location_kind=location_kind)
 	return matcher.score(query, normalize_text(raw_line))
 
 

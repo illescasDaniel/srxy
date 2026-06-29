@@ -76,7 +76,7 @@ Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. 
 |----------|---------|----------|-------|
 | Plain text | any | line-by-line body | `--max-file-size` applies |
 | Documents | `.pdf`, `.docx`, `.xlsx`, `.pptx` | extracted text | page / paragraph / row / slide |
-| Images | `.jpg`, `.jpeg`, `.png`, `.webp`, `.tif`, `.tiff`, `.heic`, `.heif` | EXIF + metadata | |
+| Images | `.jpg`, `.jpeg`, `.png`, `.webp`, `.tif`, `.tiff`, `.heic`, `.heif` | EXIF + metadata; XMP parsed into title/description/keywords (raw XML not indexed) | |
 | Camera RAW | `.arw`, `.cr2`, `.cr3`, `.dng`, `.nef`, … | EXIF from preview | CLIP via `rawpy` |
 | Audio | `.mp3`, `.flac`, `.ogg`, `.oga`, `.opus`, `.m4a`, `.aac` | tags; speech with `--transcribe` | |
 | Video | `.mp4`, `.m4v`, `.mov` | metadata; speech with `--transcribe` | |

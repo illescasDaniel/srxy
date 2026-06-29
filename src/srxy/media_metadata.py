@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -44,6 +45,43 @@ _MP4_ATOM_NAMES: dict[str, str] = {
 
 _SKIP_TAG_KEYS = frozenset({"\xa9too", "too", "encoder"})
 _EXIFREAD_SKIP_PREFIXES = ("JPEGThumbnail", "Thumbnail", "MakerNote")
+_XMP_INFO_KEYS = frozenset({"xmp", "xml:com.adobe.xmp"})
+_XMP_XML_PREFIXES = ("<?x", "<x:xmpmeta", "<rdf:", "<xmp:")
+_XMP_FIELD_LABELS: dict[str, str] = {
+	"title": "Title",
+	"description": "Description",
+	"creator": "Creator",
+	"subject": "Keywords",
+	"headline": "Headline",
+	"credit": "Credit",
+	"source": "Source",
+	"creatortool": "Software",
+	"imagedescription": "ImageDescription",
+}
+_XMP_SKIP_LOCAL_NAMES = frozenset(
+	{
+		"format",
+		"metadataDate",
+		"modifyDate",
+		"createDate",
+		"instanceID",
+		"documentID",
+		"originalDocumentID",
+		"history",
+		"orientation",
+		"colormode",
+		"iccprofile",
+		"action",
+		"when",
+		"changed",
+		"softwareAgent",
+		"seq",
+		"li",
+		"bag",
+		"alt",
+	}
+)
+_XMP_UUID_VALUE_RE = re.compile(r"^xmp\.(iid|did):", re.IGNORECASE)
 
 
 def is_media_path(path: Path) -> bool:
@@ -181,11 +219,20 @@ def _collect_pillow_image_tags(path: Path) -> dict[str, str]:
 
 	register_image_openers()
 	tags: dict[str, str] = {}
+	xmp_packets: list[str] = []
 	with open_image(path) as image:
 		for key, value in image.info.items():
 			if not isinstance(key, str):
 				continue
+			if _is_xmp_info_key(key):
+				packet = _coerce_xmp_packet(value)
+				if packet:
+					xmp_packets.append(packet)
+				continue
 			if isinstance(value, str) and value.strip():
+				if _is_xmp_xml(value):
+					xmp_packets.append(value.strip())
+					continue
 				tags[_normalize_tag_key(key)] = value.strip()
 
 		exif = image.getexif()
@@ -207,7 +254,86 @@ def _collect_pillow_image_tags(path: Path) -> dict[str, str]:
 				if gps:
 					tags["GPS"] = gps
 
+	for packet in xmp_packets:
+		_merge_parsed_xmp_tags(tags, packet)
+
 	return tags
+
+
+def _is_xmp_info_key(key: str) -> bool:
+	normalized = key.strip().lower()
+	return normalized in _XMP_INFO_KEYS or normalized.endswith("xmp")
+
+
+def _is_xmp_xml(text: str) -> bool:
+	stripped = text.lstrip()
+	return any(stripped.startswith(prefix) for prefix in _XMP_XML_PREFIXES)
+
+
+def _coerce_xmp_packet(value: object) -> str | None:
+	if isinstance(value, bytes):
+		try:
+			text = value.decode("utf-8").strip()
+		except UnicodeDecodeError:
+			return None
+		return text or None
+	if isinstance(value, str):
+		text = value.strip()
+		return text or None
+	return None
+
+
+def _should_skip_xmp_value(local_name: str, value: str) -> bool:
+	if not value or not value.strip():
+		return True
+	if local_name.lower() in _XMP_SKIP_LOCAL_NAMES:
+		return True
+	if _XMP_UUID_VALUE_RE.match(value.strip()):
+		return True
+	if value.strip().isdigit():
+		return True
+	return False
+
+
+def _parse_xmp_fields(xmp_xml: str) -> dict[str, str]:
+	parsed: dict[str, list[str]] = {}
+	pattern = re.compile(r"<([\w]+):([\w]+)[^>]*>([^<]+)</\1:\2>")
+	for _prefix, local_name, raw_value in pattern.findall(xmp_xml):
+		label = _XMP_FIELD_LABELS.get(local_name.lower())
+		if label is None:
+			continue
+		value = raw_value.strip()
+		if _should_skip_xmp_value(local_name, value):
+			continue
+		parsed.setdefault(label, []).append(value)
+
+	result: dict[str, str] = {}
+	for label, values in parsed.items():
+		joined = ", ".join(dict.fromkeys(values))
+		if joined:
+			result[label] = joined
+	return result
+
+
+def _merge_parsed_xmp_tags(tags: dict[str, str], xmp_xml: str):
+	for label, value in _parse_xmp_fields(xmp_xml).items():
+		if _tag_value_present(tags, label, value):
+			continue
+		tags[label] = value
+
+
+def _tag_value_present(tags: dict[str, str], label: str, value: str) -> bool:
+	normalized = value.strip().lower()
+	for existing_label, existing_value in tags.items():
+		if existing_label == label and existing_value.strip().lower() == normalized:
+			return True
+		if existing_label == "Software" and label == "Software":
+			if existing_value.strip().lower() == normalized:
+				return True
+		if existing_label == "ImageDescription" and label in {"Description", "ImageDescription"}:
+			if existing_value.strip().lower() == normalized:
+				return True
+	return False
 
 
 def _collect_exifread_tags(path: Path) -> dict[str, str]:

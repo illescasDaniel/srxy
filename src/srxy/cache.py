@@ -194,3 +194,33 @@ def _evict_if_needed(connection: sqlite3.Connection):
 		connection.execute("DELETE FROM cache_entries WHERE cache_key = ?", (cache_key,))
 		current -= size_bytes
 	connection.commit()
+
+
+def clear_results_cache():
+	db_path = cache_db_path()
+	reset_cache_connection()
+	if not db_path.exists():
+		print(f"Results cache is not present at {db_path}", file=sys.stderr)
+		return
+	db_path.unlink()
+	print(f"Removed results cache at {db_path}", file=sys.stderr)
+
+
+def main(argv: list[str] | None = None) -> int:
+	import argparse
+
+	if argv is None:
+		argv = sys.argv[1:]
+
+	parser = argparse.ArgumentParser(description="Manage srxy results cache (OCR, transcripts, embeddings).")
+	subparsers = parser.add_subparsers(dest="command", required=True)
+	subparsers.add_parser("clear", help="Remove cache.db")
+	args = parser.parse_args(argv)
+
+	if args.command == "clear":
+		clear_results_cache()
+	return 0
+
+
+if __name__ == "__main__":
+	sys.exit(main())

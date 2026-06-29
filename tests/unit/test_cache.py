@@ -9,9 +9,11 @@ from srxy.cache import (
 	cache_db_path,
 	cache_get,
 	cache_put,
+	clear_results_cache,
 	get_file_content_hash,
 	hash_bytes,
 	hash_file,
+	main,
 	reset_cache_connection,
 	reset_run_file_hashes,
 )
@@ -115,3 +117,40 @@ def test_given_custom_cache_dir_when_resolving_db_path_then_uses_override(
 
 	# when / then
 	assert cache_db_path() == tmp_path / "custom" / "cache.db"
+
+
+def test_given_cached_results_when_clearing_then_removes_cache_db(tmp_path: Path):
+	# given
+	content_hash = hash_bytes(b"clear me")
+	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", b"payload")
+	assert cache_db_path().exists()
+
+	# when
+	clear_results_cache()
+
+	# then
+	assert not cache_db_path().exists()
+
+
+def test_given_missing_cache_when_clearing_then_is_noop(tmp_path: Path):
+	# given
+	db_path = cache_db_path()
+	if db_path.exists():
+		db_path.unlink()
+
+	# when / then
+	clear_results_cache()
+	assert not db_path.exists()
+
+
+def test_given_clear_cli_when_invoked_then_removes_cache_db(tmp_path: Path):
+	# given
+	content_hash = hash_bytes(b"cli clear")
+	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", b"payload")
+
+	# when
+	exit_code = main(["clear"])
+
+	# then
+	assert exit_code == 0
+	assert not cache_db_path().exists()

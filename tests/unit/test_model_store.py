@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import os
 from pathlib import Path
+from typing import Any, cast
 from unittest.mock import patch
 
 import pytest
@@ -10,6 +11,7 @@ import pytest
 from srxy.model_store import (
 	SEMANTIC_IMAGE_MODEL_ID,
 	SEMANTIC_TEXT_MODEL_ID,
+	clear_semantic_text_model,
 	download_semantic_text_model,
 	ensure_semantic_image_model,
 	ensure_semantic_text_model,
@@ -88,7 +90,7 @@ def test_given_missing_model_when_user_accepts_then_downloads_to_cache(
 	# given
 	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
-	def fake_download(model_id: str, target_dir: Path):
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 		assert model_id == SEMANTIC_TEXT_MODEL_ID
@@ -110,7 +112,7 @@ def test_given_auto_download_when_ensuring_image_model_then_downloads_without_pr
 	# given
 	monkeypatch.setenv("SRXY_SEMANTIC_IMAGE_MODEL_PATH", str(tmp_path / "semantic-image-model"))
 
-	def fake_download(model_id: str, target_dir: Path):
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 		assert model_id == SEMANTIC_IMAGE_MODEL_ID
@@ -146,7 +148,7 @@ def test_given_download_helper_when_called_then_sets_model_path_env(
 	# given
 	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
-	def fake_download(model_id: str, target_dir: Path):
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 
@@ -165,7 +167,7 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 	# given
 	monkeypatch.setattr("srxy.model_store.default_cache_root", lambda: tmp_path)
 
-	def fake_download(model_id: str, target_dir: Path):
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "model.bin").write_bytes(b"model")
 		assert model_id == transcribe_faster_whisper_repo_id()
@@ -181,3 +183,102 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 	assert ready is True
 	download.assert_called_once()
 	assert is_model_installed(transcribe_faster_whisper_model_dir())
+
+
+def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_path: Path):
+	# given
+	from srxy.model_store import download_model
+
+	progress: list[tuple[int, int, str]] = []
+	captured: dict[str, object] = {}
+
+	def on_progress(current: int, total: int, message: str):
+		progress.append((current, total, message))
+
+	def fake_snapshot_download(**_kwargs: object):
+		captured.update(_kwargs)
+		tqdm_class = _kwargs.get("tqdm_class")
+		if tqdm_class is not None:
+			factory = cast(Any, tqdm_class)
+			bar = factory(total=100, desc="Fetching files")
+			bar.update(40)
+
+	with (
+		patch("srxy.model_store.huggingface_hub_installed", return_value=True),
+		patch("huggingface_hub.snapshot_download", fake_snapshot_download),
+	):
+		# when
+		download_model(SEMANTIC_TEXT_MODEL_ID, tmp_path / "model", on_progress=on_progress)
+
+	# then
+	assert captured.get("tqdm_class") is not None
+	assert progress
+
+
+def test_given_cached_model_when_clearing_semantic_text_then_removes_directory(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	model_dir = tmp_path / "semantic-model"
+	model_dir.mkdir()
+	(model_dir / "modules.json").write_text("{}", encoding="utf-8")
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
+
+	# when
+	clear_semantic_text_model()
+
+	# then
+	assert not model_dir.exists()
+
+
+def test_given_missing_model_when_clearing_semantic_text_then_is_noop(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	model_dir = tmp_path / "semantic-model"
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
+
+	# when / then
+	clear_semantic_text_model()
+	assert not model_dir.exists()
+
+
+def test_given_clear_cli_when_target_is_semantic_text_then_removes_model(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	model_dir = tmp_path / "semantic-model"
+	model_dir.mkdir()
+	(model_dir / "modules.json").write_text("{}", encoding="utf-8")
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
+
+	# when
+	exit_code = main(["clear", "semantic-text"])
+
+	# then
+	assert exit_code == 0
+	assert not model_dir.exists()
+
+
+def test_given_module_argv_when_clearing_without_explicit_argv_then_removes_model(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	import sys
+
+	model_dir = tmp_path / "semantic-model"
+	model_dir.mkdir()
+	(model_dir / "modules.json").write_text("{}", encoding="utf-8")
+	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
+	monkeypatch.setattr(sys, "argv", ["model_store", "clear", "semantic-text"])
+
+	# when
+	exit_code = main()
+
+	# then
+	assert exit_code == 0
+	assert not model_dir.exists()

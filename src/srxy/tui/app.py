@@ -645,7 +645,10 @@ class SrxyApp(App[int]):
 
 	@work(exclusive=True)
 	async def _start_search_flow(self, args: argparse.Namespace):
-		error = await run_tui_preflight(self, args)
+		try:
+			error = await run_tui_preflight(self, args)
+		except Exception as exc:
+			error = str(exc)
 		if error is not None:
 			self.push_screen(ErrorModal(error))
 			self._exit_code = 2
