@@ -50,14 +50,14 @@ def test_given_multi_word_query_when_formatting_transcript_preview_then_highligh
 
 
 @pytest.mark.transcribe
-def test_given_far_cry_query_when_searching_unrelated_flac_then_does_not_match():
+def test_given_far_cry_query_when_searching_unrelated_audio_then_does_not_match():
 	# given — single known false-positive candidate; avoid transcribing the whole corpus
 	require_qa_corpus()
-	flac = qa_corpus_docs() / "08 In The End.flac"
-	assert flac.is_file(), f"missing QA flac fixture: {flac}"
+	audio = qa_corpus_docs() / "minimal.mp3"
+	assert audio.is_file(), f"missing QA audio fixture: {audio}"
 
 	# when
-	results = magic_file_search(flac, "far cry", threshold=0.35, transcribe=True, limit=10)
+	results = magic_file_search(audio, "far cry", threshold=0.35, transcribe=True, limit=10)
 
 	# then
 	assert results == []

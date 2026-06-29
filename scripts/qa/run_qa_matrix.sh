@@ -99,10 +99,10 @@ assert_match S1.7 notes.txt axolotl "$DOCS" --format flat --content-only
 
 echo "=== Suite 2: Playbook ==="
 assert_match P2.1 notes.txt axolotl "$DOCS" --content-only
-assert_match P2.2 "02 Heat" "Linkin Park" "$DOCS" --content-only
+assert_match P2.2 minimal "Beatles" "$DOCS" --content-only
 assert_match P2.3 IMG "person" "$DOCS" --semantic-image --content-only
-assert_match P2.4 Normalize "transforms.Normalize" "$DOCS" --ocr --content-only
-assert_match P2.5 flac "all i know" "$DOCS" --transcribe --content-only
+assert_match P2.4 revenue "revenue" "$DOCS/ocr" --ocr --content-only
+log_result P2.5 SKIP "pending replacement transcribe audio fixture"
 assert_match P2.6 jpg "sibling" "$DOCS" --semantic-all --content-only
 
 echo "=== Suite 2: Filters ==="
@@ -123,7 +123,7 @@ else
 fi
 
 echo "=== Suite 2: Boolean ==="
-assert_match B2.1 Heat 'Linkin Park|Call Me' "$DOCS" --content-only
+assert_match B2.1 axolotl 'axolotl|Beatles' "$DOCS" --content-only
 assert_match B2.4 notes '(axolotl|dragon)&notes' "$DOCS" --content-only
 
 echo "=== Suite 3: Documents ==="
@@ -138,8 +138,8 @@ assert_match O4.2 qa_ocr_token qa_ocr_token "$QA_DL/ocr" --ocr --content-only
 assert_match O4.6 qa_png_token qa_png_token "$QA_DL/images" --ocr --content-only
 
 echo "=== Suite 5: Audio ==="
-assert_match A5.1 Linkin "Linkin Park" "$DOCS" --content-only
-assert_match A5.2 flac "all i know" "$DOCS" --transcribe --content-only
+assert_match A5.1 Beatles "Beatles" "$DOCS" --content-only
+log_result A5.2 SKIP "pending replacement transcribe audio fixture"
 
 echo "=== Suite 6: Video ==="
 assert_match V6.1 mp4 "all i know" "$TEMP_DOCS" --transcribe --content-only
@@ -148,7 +148,7 @@ echo "=== Suite 8: Semantic image ==="
 assert_match IMG8.1 IMG "person" "$DOCS" --semantic-image --content-only
 
 echo "=== Suite 9: semantic-all ==="
-assert_match SA9.1 Linkin linkin "$DOCS" --semantic-all --content-only
+log_result SA9.1 SKIP "pending replacement semantic audio fixture"
 
 echo "=== Suite 10: Output ==="
 run_srxy axolotl "$DOCS" --json --content-only >/tmp/srxy-qa-stdout.txt
