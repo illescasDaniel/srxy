@@ -75,15 +75,26 @@ lib_ruff_targets() {
 	fi
 }
 
+_lib_find_shell_scripts() {
+	find "${LIB_REPO_ROOT}" -name "*.sh" \
+		-not -path "*/.venv/*" \
+		-not -path "*/node_modules/*" \
+		-not -path "*/templates/*" \
+		| sort
+}
+
 lib_shell_targets() {
 	# shellcheck disable=SC2034  # consumed by callers after sourcing
-	mapfile -t LIB_SHELL_TARGETS < <(
-		find "${LIB_REPO_ROOT}" -name "*.sh" \
-			-not -path "*/.venv/*" \
-			-not -path "*/node_modules/*" \
-			-not -path "*/templates/*" \
-			| sort
-	)
+	LIB_SHELL_TARGETS=()
+	# mapfile needs Bash 4+. macOS still ships /bin/bash 3.2 (even when your login shell is zsh).
+	if ((BASH_VERSINFO[0] >= 4)); then
+		mapfile -t LIB_SHELL_TARGETS < <(_lib_find_shell_scripts)
+	else
+		local line
+		while IFS= read -r line; do
+			LIB_SHELL_TARGETS+=("${line}")
+		done < <(_lib_find_shell_scripts)
+	fi
 }
 
 lib_require_shell_tools() {

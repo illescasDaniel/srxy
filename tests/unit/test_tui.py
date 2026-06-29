@@ -408,6 +408,41 @@ def test_given_preview_match_when_copy_match_button_pressed_then_copies_location
 	asyncio.run(run_app())
 
 
+def test_given_darwin_when_copy_to_clipboard_then_uses_pbcopy():
+	# given
+	app = SrxyApp(_build_args(["query", "."]))
+
+	# when
+	with (
+		patch("srxy.tui.app.platform.system", return_value="Darwin"),
+		patch("srxy.tui.app.shutil.which", return_value="/usr/bin/pbcopy"),
+		patch("srxy.tui.app.subprocess.run") as run_mock,
+	):
+		app.copy_to_clipboard("hello there")
+
+	# then
+	run_mock.assert_called_once()
+	assert run_mock.call_args.args[0] == ["/usr/bin/pbcopy"]
+	assert run_mock.call_args.kwargs["input"] == b"hello there"
+
+
+def test_given_darwin_when_pbcopy_fails_then_falls_back_to_textual_clipboard():
+	# given
+	app = SrxyApp(_build_args(["query", "."]))
+
+	# when
+	with (
+		patch("srxy.tui.app.platform.system", return_value="Darwin"),
+		patch("srxy.tui.app.shutil.which", return_value="/usr/bin/pbcopy"),
+		patch("srxy.tui.app.subprocess.run", side_effect=OSError("pbcopy failed")),
+		patch.object(SrxyApp.__bases__[0], "copy_to_clipboard") as super_mock,
+	):
+		app.copy_to_clipboard("fallback text")
+
+	# then
+	super_mock.assert_called_once_with("fallback text")
+
+
 def test_given_preview_match_when_rendered_then_uses_bold_text_for_query_hit(tmp_path: Path):
 	# given
 	file_path = tmp_path / "notes.txt"

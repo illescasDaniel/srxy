@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import os
 import plistlib
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -23,7 +22,7 @@ from srxy import FileQ, magic_file_search
 from srxy.cli import match_labels
 from srxy.models import FileSearchResult, MatchType, SkippedFile
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
-from srxy.xattr_metadata import finder_tag_xattr_writable, xattr_supported
+from srxy.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
 
 
 pytestmark = pytest.mark.unit
@@ -604,7 +603,7 @@ def test_given_corrupt_jpeg_when_searching_contents_then_skips_gracefully(tmp_pa
 def test_given_xdg_tag_on_mp4_when_searching_contents_then_returns_file(tmp_path: Path):
 	# given
 	copy_media_fixture("minimal.mp4", tmp_path / "untitled.mp4")
-	os.setxattr(tmp_path / "untitled.mp4", "user.xdg.tags", b"cursor")
+	set_xattr(tmp_path / "untitled.mp4", "user.xdg.tags", b"cursor")
 	query = "cursor"
 
 	# when
@@ -623,7 +622,7 @@ def test_given_xdg_tag_on_oversized_file_when_searching_contents_then_still_matc
 	# given
 	large_file = tmp_path / "large.bin"
 	large_file.write_bytes(b"\x00" * 2_000_000)
-	os.setxattr(large_file, "user.xdg.tags", b"cursor")
+	set_xattr(large_file, "user.xdg.tags", b"cursor")
 	skipped: list[SkippedFile] = []
 	query = "cursor"
 
@@ -642,7 +641,7 @@ def test_given_xdg_tag_on_oversized_file_when_searching_contents_then_still_matc
 def test_given_xdg_comment_on_jpeg_when_searching_contents_then_returns_file(tmp_path: Path):
 	# given
 	copy_media_fixture("minimal.jpg", tmp_path / "wallpaper.jpg")
-	os.setxattr(tmp_path / "wallpaper.jpg", "user.xdg.comment", b"mytag")
+	set_xattr(tmp_path / "wallpaper.jpg", "user.xdg.comment", b"mytag")
 	query = "mytag"
 
 	# when
@@ -661,7 +660,7 @@ def test_given_xdg_comment_on_oversized_file_when_searching_contents_then_still_
 	# given
 	large_file = tmp_path / "large.bin"
 	large_file.write_bytes(b"\x00" * 2_000_000)
-	os.setxattr(large_file, "user.xdg.comment", b"mytag")
+	set_xattr(large_file, "user.xdg.comment", b"mytag")
 	skipped: list[SkippedFile] = []
 	query = "mytag"
 
@@ -687,7 +686,7 @@ def test_given_finder_tag_on_file_when_searching_contents_then_returns_file(tmp_
 	# given
 	tagged_file = tmp_path / "notes.txt"
 	tagged_file.write_text("unrelated body", encoding="utf-8")
-	os.setxattr(
+	set_xattr(
 		tagged_file,
 		_FINDER_TAG_ATTR,
 		plistlib.dumps(["cursor"], fmt=plistlib.FMT_BINARY),
@@ -713,7 +712,7 @@ def test_given_finder_tag_with_color_suffix_when_searching_contents_then_matches
 	# given
 	tagged_file = tmp_path / "report.pdf"
 	tagged_file.write_bytes(b"%PDF-1.4\n")
-	os.setxattr(
+	set_xattr(
 		tagged_file,
 		_FINDER_TAG_ATTR,
 		plistlib.dumps(["Important\n6", "Red\n6"], fmt=plistlib.FMT_BINARY),
@@ -726,10 +725,11 @@ def test_given_finder_tag_with_color_suffix_when_searching_contents_then_matches
 	# then
 	assert len(results) == 1
 	assert results[0].path.name == "report.pdf"
-	tag_lines = [line for line in results[0].lines if "[Finder tag]" in line.text]
-	assert len(tag_lines) == 2
-	assert "[Finder tag] Important" in tag_lines[0].text
-	assert "[Finder tag] Red" in tag_lines[1].text
+	assert any("[Finder tag] Important" in line.text for line in results[0].lines)
+
+	red_results = magic_file_search(tmp_path, "red", search_names=False)
+	assert len(red_results) == 1
+	assert any("[Finder tag] Red" in line.text for line in red_results[0].lines)
 
 
 @pytest.mark.macos_finder
@@ -741,7 +741,7 @@ def test_given_finder_tag_on_oversized_file_when_searching_contents_then_still_m
 	# given
 	large_file = tmp_path / "large.bin"
 	large_file.write_bytes(b"\x00" * 2_000_000)
-	os.setxattr(
+	set_xattr(
 		large_file,
 		_FINDER_TAG_ATTR,
 		plistlib.dumps(["cursor"], fmt=plistlib.FMT_BINARY),

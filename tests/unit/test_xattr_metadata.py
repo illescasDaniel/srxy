@@ -30,8 +30,8 @@ def test_given_binary_plist_tags_when_iterating_xattr_lines_then_yields_finder_t
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -52,8 +52,8 @@ def test_given_invalid_plist_when_iterating_xattr_lines_then_yields_nothing(tmp_
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -74,8 +74,8 @@ def test_given_comma_separated_xdg_tags_when_iterating_xattr_lines_then_splits_v
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -100,8 +100,8 @@ def test_given_xdg_comment_when_iterating_xattr_lines_then_yields_full_text(tmp_
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -122,10 +122,33 @@ def test_given_finder_comment_when_iterating_xattr_lines_then_yields_full_text(t
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
 	# then
 	assert lines == [(1, "[Finder comment] project notes")]
+
+
+def test_given_binary_plist_finder_comment_when_iterating_xattr_lines_then_yields_plain_text(tmp_path: Path):
+	# given
+	file_path = tmp_path / "file.txt"
+	file_path.write_text("x", encoding="utf-8")
+	raw = plistlib.dumps("hello there", fmt=plistlib.FMT_BINARY)
+
+	def fake_listxattr(path: Path, follow_symlinks: bool = False) -> list[str]:
+		return ["com.apple.metadata:kMDItemFinderComment"]
+
+	def fake_getxattr(path: Path, name: str, follow_symlinks: bool = False) -> bytes:
+		return raw
+
+	# when
+	with (
+		patch("srxy.xattr_metadata._listxattr", fake_listxattr),
+		patch("srxy.xattr_metadata._getxattr", fake_getxattr),
+	):
+		lines = list(iter_xattr_metadata_lines(file_path))
+
+	# then
+	assert lines == [(1, "[Finder comment] hello there")]

@@ -6,6 +6,7 @@ import multiprocessing
 import os
 import platform
 import queue
+import shutil
 import subprocess
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -572,6 +573,22 @@ class SrxyApp(App[int]):
 			return
 		self.copy_to_clipboard(text)
 		self.notify(f"Copied {label}", timeout=1.5)
+
+	def copy_to_clipboard(self, text: str) -> None:
+		if platform.system() == "Darwin":
+			pbcopy = shutil.which("pbcopy")
+			if pbcopy is not None:
+				try:
+					subprocess.run(  # noqa: S603
+						[pbcopy],
+						input=text.encode("utf-8"),
+						check=True,
+						timeout=3,
+					)
+					return
+				except (OSError, subprocess.SubprocessError):
+					pass
+		super().copy_to_clipboard(text)
 
 	def action_copy_path(self):
 		result = self._selected_result()
