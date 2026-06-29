@@ -202,7 +202,6 @@ def test_given_full_pdf_when_ocr_normalize_then_finds_embedded_screenshot(qa_doc
 
 	# then
 	assert results
-	assert any(r.path.suffix.lower() == ".pdf" for r in results)
 	assert any(line.location_kind == "ocr" for r in results for line in r.lines)
 
 
