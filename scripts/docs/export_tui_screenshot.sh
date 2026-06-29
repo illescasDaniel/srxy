@@ -25,7 +25,7 @@ from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
 from textual.widgets import DataTable
 
-TERMINAL_SIZE = (120, 32)
+TERMINAL_SIZE = (120, 36)
 DOCS_THEME = "textual-light"
 SCREENSHOT_CSS = """
 #search-button {
@@ -41,39 +41,41 @@ PRIMARY_BLUE = "#0178d4"
 SEARCH_TEXT_WHITE = "#ffffff"
 MUTED_PRIMARY = "#3a3a3a"
 
-def doc_path(relative: str) -> Path:
-    return Path("file_search") / relative
+def fixture_path(relative: str) -> Path:
+    return Path("tests/fixtures/file_search") / relative
 
 
 results = [
     FileSearchResult(
-        path=doc_path("ocr.pdf"),
+        path=fixture_path("ocr/ocr_sample.png"),
         score=0.93,
         breakdown={"ocr": 0.93},
         lines=[
             LineMatch(
                 line_number=1,
-                text="Total revenue increased 12% year over year",
+                text="quarterly revenue scan",
                 score=0.93,
                 location_kind="ocr",
+                matched_term="revenue",
             )
         ],
     ),
     FileSearchResult(
-        path=doc_path("notes.txt"),
+        path=fixture_path("notes.txt"),
         score=0.91,
         breakdown={"content": 0.91},
         lines=[
             LineMatch(
-                line_number=4,
-                text="The axolotl is a paedomorphic salamander native to lakes around",
+                line_number=5,
+                text="Unlike most amphibians, it reaches adulthood without",
                 score=0.91,
                 location_kind="line",
+                matched_term="amphibian",
             )
         ],
     ),
     FileSearchResult(
-        path=doc_path("portrait.jpg"),
+        path=fixture_path("portrait.jpg"),
         score=0.82,
         breakdown={"semantic_image": 0.82},
         lines=[
@@ -82,11 +84,12 @@ results = [
                 text="person",
                 score=0.82,
                 location_kind="semantic_image",
+                matched_term="person",
             )
         ],
     ),
     FileSearchResult(
-        path=doc_path("speech.wav"),
+        path=fixture_path("samples/audio/speech_sample.mp3"),
         score=0.78,
         breakdown={"transcript": 0.78},
         lines=[
@@ -95,14 +98,15 @@ results = [
                 text="thank you very much",
                 score=0.78,
                 location_kind="transcript",
+                matched_term="thank you",
             )
         ],
     ),
 ]
 args = build_parser().parse_args(
     [
-        "revenue|axolotl|thank you",
-        "file_search",
+        "revenue|amphibian|person|thank you",
+        "tests/fixtures/file_search",
         "--semantic-all",
         "--content-only",
     ]

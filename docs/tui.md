@@ -4,6 +4,25 @@ On an interactive terminal (no `--json`, `--format flat`, or `-o`), srxy opens a
 
 ![srxy TUI](images/tui.png)
 
+The screenshot above uses this compound OR query against the repo fixtures — one branch per power-up:
+
+```bash
+srxy "revenue|amphibian|person|thank you" ./tests/fixtures/file_search --semantic-all --content-only
+```
+
+Plain CLI (same flags, no TUI): add `--no-tui`.
+
+| OR term | Typical match | Source |
+|---------|---------------|--------|
+| `revenue` | `ocr/ocr_sample.png` | OCR |
+| `amphibian` | `notes.txt` | content / semantic |
+| `person` | `portrait.jpg` | image semantic |
+| `thank you` | `samples/audio/speech_sample.mp3` | transcript |
+
+First run with `--semantic-all` downloads models; OCR and transcribe need **tesseract** and **ffmpeg** on `PATH`. The transcript branch expects an `.mp3` under `samples/audio/` (see `tests/fixtures/README.md`).
+
+Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
+
 ## Layout
 
 | Area | What it shows |
@@ -70,5 +89,3 @@ Automated coverage: `pytest tests/tui/`. On a **real TTY** before release:
 srxy ./tests/fixtures/file_search
 srxy "axolotl" ./tests/fixtures/file_search
 ```
-
-Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
