@@ -32,12 +32,51 @@ On Windows, use `where ffmpeg` and `where tesseract` instead of `which`.
 
 ### macOS
 
-[Homebrew](https://brew.sh/):
+macOS `python3` often **3.9–3.10** or missing. srxy needs **3.11+**. Install newer Python before `pipx`.
 
-```bash
-brew install ffmpeg tesseract
-pipx install 'srxy[semantic]'
-```
+1. **Python 3.11+** (pick one):
+
+   **pyenv** (version management):
+
+   ```bash
+   brew install pyenv
+   pyenv install 3.12
+   pyenv global 3.12   # or pyenv local 3.12 in a project dir
+   python3 --version   # expect 3.12.x
+   ```
+
+   Still old `python3`? [pyenv shell setup](https://github.com/pyenv/pyenv#set-up-your-shell-environment-for-pyenv) — `eval "$(pyenv init -)"` in `~/.zshrc`.
+
+   **Homebrew** (one version):
+
+   ```bash
+   brew install python@3.12
+   ```
+
+   Put `python3.12` or linked `python3` on `PATH`.
+
+2. **pipx** on `PATH`:
+
+   ```bash
+   python3 -m pip install pipx
+   pipx ensurepath
+   ```
+
+   Restart terminal after `pipx ensurepath`.
+
+3. System binaries ([Homebrew](https://brew.sh/)):
+
+   ```bash
+   brew install ffmpeg tesseract
+   ```
+
+4. Install srxy — pin interpreter (avoid old `python3`):
+
+   ```bash
+   pipx install --python "$(which python3)" 'srxy[semantic]'
+   ```
+
+   Homebrew versioned binary: `pipx install --python python3.12 'srxy[semantic]'`.
 
 ### Linux
 

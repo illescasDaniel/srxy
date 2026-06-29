@@ -10,7 +10,7 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 ## Installation
 
-Recommended: `pipx install 'srxy[semantic]'`. Core-only: `pip install srxy`. On Windows, add `[windows]` for Explorer tag search.
+Needs **Python 3.11+**. `pipx install 'srxy[semantic]'` recommended; `pip install srxy` for core-only. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
 
 **Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md)
 
