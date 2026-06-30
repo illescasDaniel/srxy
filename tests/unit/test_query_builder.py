@@ -84,6 +84,30 @@ def test_given_two_terms_when_removing_second_row_then_keeps_first_row():
 	asyncio.run(run())
 
 
+def test_given_term_when_adding_and_removing_extra_row_then_preview_matches_single_term():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+			builder.query_one("#query-term-0").value = "thank you"
+			await pilot.pause()
+			await pilot.click("#add-term-button")
+			await pilot.pause()
+
+			# when
+			await pilot.click("#query-remove-1")
+			await pilot.pause()
+
+			# then
+			assert builder.query_one("#query-preview", Static).content == '"thank you"'
+			assert builder.to_query_string() == '"thank you"'
+
+	asyncio.run(run())
+
+
 def test_given_two_terms_when_editing_rows_then_updates_query_string():
 	# given
 	app = _QueryBuilderApp()

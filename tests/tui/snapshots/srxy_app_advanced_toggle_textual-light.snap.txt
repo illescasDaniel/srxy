@@ -3,13 +3,13 @@ srxy-tui-advanced-toggle
 Srxy
 ┌
 ┐
-Path
-.
-Search
 │
 Query
 revenue
 │
+Path
+.
+Search
 │
 OR
 ▼

@@ -3,13 +3,13 @@ srxy-tui-filters-open
 Srxy
 ┌
 ┐
-Path
-.
-Search
 │
 Query
 hello
 │
+Path
+.
+Search
 │
 hello
 │

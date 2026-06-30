@@ -157,6 +157,12 @@ class SrxyApp(App[int]):
 		margin-right: 1;
 	}
 
+	#search-bar #path-label,
+	#search-bar #path-input,
+	#search-bar #search-button {
+		margin-top: 1;
+	}
+
 	#search-bar Button {
 		height: 1;
 		min-width: 10;

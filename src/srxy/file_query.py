@@ -105,6 +105,7 @@ def _flatten_same_op(expr: FileQ) -> list[FileQ]:
 
 
 def build_file_query_from_rows(rows: list[tuple[str, str | None]]) -> FileQ:
+	rows = [(term, join) for term, join in rows if term.strip()]
 	if not rows:
 		return FileQ.leaf("")
 	joins = [join for _term, join in rows[1:] if join is not None]

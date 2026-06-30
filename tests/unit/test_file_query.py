@@ -152,6 +152,17 @@ def test_given_builder_rows_when_building_query_then_left_associates_joins():
 	assert expr == (FileQ.leaf("foo") & FileQ.leaf("bar")) | FileQ.leaf("baz")
 
 
+def test_given_empty_builder_rows_when_building_query_then_ignores_blank_terms():
+	# given
+	rows: list[tuple[str, str | None]] = [("thank you", None), ("", "and")]
+
+	# when
+	expr = build_file_query_from_rows(rows)
+
+	# then
+	assert expr == FileQ.leaf("thank you")
+
+
 def test_given_plain_phrase_without_operators_when_parsing_query_then_keeps_whole_phrase():
 	# given
 	raw = "sunset beach"

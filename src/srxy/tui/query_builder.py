@@ -297,13 +297,13 @@ class QueryBuilder(Horizontal):
 				self.query_one(f"#query-join-{index}", Select).value = join or "and"
 
 	@on(Button.Pressed)
-	def _on_remove_term(self, event: Button.Pressed):
+	async def _on_remove_term(self, event: Button.Pressed):
 		if event.button.id is None or not event.button.id.startswith("query-remove-"):
 			return
 		index = int(event.button.id.removeprefix("query-remove-"))
 		if index == 0:
 			return
-		self.query_one(f"#query-row-{index}").remove()
+		await self.query_one(f"#query-row-{index}").remove()
 		self._post_change()
 
 

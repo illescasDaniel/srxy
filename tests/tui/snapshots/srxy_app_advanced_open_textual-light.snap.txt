@@ -3,13 +3,13 @@ srxy-tui-advanced-open
 Srxy
 ┌
 ┐
-Path
-.
-Search
 │
 Query
 hello
 │
+Path
+.
+Search
 │
 hello
 █

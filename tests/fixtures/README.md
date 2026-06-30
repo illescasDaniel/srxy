@@ -12,6 +12,6 @@ Dev-only assets for pytest. Not installed with the `srxy` package.
 | `file_search/samples/images/photoshop_xmp.jpg` | Sanitized JPEG with EXIF+XMP (fake author/software); XMP parsing / SIG regression tests |
 | `file_search/samples/audio/` | `speech_sample.mp3` for transcribe integration tests |
 
-Regenerate office documents or token images with helpers in `tests/helpers.py` (`write_docx_with_text`, etc.). Regenerate `photoshop_xmp.jpg` with `python scripts/fixtures/build_photoshop_xmp_fixture.py --source <path-to-sample1.png>` (sanitization applied automatically).
+Regenerate office documents or token images with helpers in `tests/helpers.py` (`write_docx_with_text`, etc.).
 
 Override the search tree with `SRXY_FILE_SEARCH_FIXTURES`.
