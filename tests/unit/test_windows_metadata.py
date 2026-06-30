@@ -55,11 +55,35 @@ def test_given_keyword_list_when_iterating_windows_lines_then_yields_tags(tmp_pa
 	file_path = tmp_path / "clip.mp4"
 
 	# when
-	with patch("srxy.windows_metadata._read_windows_keywords", return_value=["cursor", "quarterly"]):
+	with patch(
+		"srxy.windows_metadata._read_searchable_property_entries",
+		return_value=[("Windows tag", "cursor"), ("Windows tag", "quarterly")],
+	):
 		lines = list(iter_windows_metadata_lines(file_path))
 
 	# then
 	assert lines == [(1, "[Windows tag] cursor"), (2, "[Windows tag] quarterly")]
+
+
+def test_given_property_entries_when_iterating_windows_lines_then_yields_labeled_values(tmp_path: Path):
+	# given
+	file_path = tmp_path / "report.docx"
+
+	# when
+	with patch(
+		"srxy.windows_metadata._read_searchable_property_entries",
+		return_value=[
+			("Program name", "Microsoft Office Word"),
+			("Last saved by", "Daniel Illescas"),
+		],
+	):
+		lines = list(iter_windows_metadata_lines(file_path))
+
+	# then
+	assert lines == [
+		(1, "[Program name] Microsoft Office Word"),
+		(2, "[Last saved by] Daniel Illescas"),
+	]
 
 
 def test_given_property_store_error_when_reading_keywords_then_returns_empty(tmp_path: Path):
@@ -69,7 +93,7 @@ def test_given_property_store_error_when_reading_keywords_then_returns_empty(tmp
 	# when
 	with (
 		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
-		patch("srxy.windows_metadata._read_keywords_via_property_store", side_effect=OSError("access denied")),
+		patch("srxy.windows_metadata._open_property_store", side_effect=OSError("access denied")),
 	):
 		tags = list(iter_windows_metadata_lines(file_path))
 
@@ -113,7 +137,7 @@ def test_given_winerror_10106_when_reading_keywords_then_returns_empty(tmp_path:
 	with (
 		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
 		patch(
-			"srxy.windows_metadata._read_keywords_via_property_store",
+			"srxy.windows_metadata._read_property_value",
 			side_effect=OSError("[WinError 10106] The requested service provider could not be loaded or initialized"),
 		),
 	):
@@ -224,13 +248,13 @@ def test_given_changed_mode_runtime_when_scanning_files_then_does_not_crash(tmp_
 	(search_root / "notes.txt").write_text("hello world", encoding="utf-8")
 	(search_root / "clip.mp4").write_bytes(b"\x00")
 
-	def fake_has_windows_tags(path: Path) -> bool:
+	def fake_has_windows_metadata(path: Path) -> bool:
 		_ensure_com_initialized()
 		return path.suffix.lower() == ".mp4"
 
 	# when
 	with (
-		patch("srxy.file_search.has_windows_tags", side_effect=fake_has_windows_tags),
+		patch("srxy.file_search.has_windows_searchable_metadata", side_effect=fake_has_windows_metadata),
 		patch("srxy.file_search.iter_windows_metadata_lines", return_value=iter([])),
 		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
 	):

@@ -84,7 +84,7 @@ Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. 
 | Video (limited) | `.mkv`, `.avi`, `.webm` | filename only | |
 | Linux tags | any | xattrs (`xdg.tags`, etc.) | |
 | macOS tags | any | Finder tags + comments | |
-| Windows tags | any | `System.Keywords` | `srxy[windows]` |
+| Windows metadata | any | file properties (tags, author, program name, …) | `srxy[windows]` |
 
 Media metadata and OS tags ignore `--max-file-size`. Plain text and office docs default to a **100 MiB** content cap (`--max-file-size 0` for unlimited). Binary-looking files (null in first 8 KiB) skip body text.
 

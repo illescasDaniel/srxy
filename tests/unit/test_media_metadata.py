@@ -182,7 +182,10 @@ def test_given_utf16le_xp_comment_when_collecting_tags_then_decodes_searchable_t
 	image_path.write_bytes(b"\xff\xd8\xff")
 
 	class FakeImage:
-		info = {"xpcomment": "a\x00c\x00o\x00m\x00m\x00e\x00n\x00t", "xptitle": "s\x00o\x00m\x00e\x00w\x00h\x00e\x00r\x00e"}
+		info = {
+			"xpcomment": "a\x00c\x00o\x00m\x00m\x00e\x00n\x00t",
+			"xptitle": "s\x00o\x00m\x00e\x00w\x00h\x00e\x00r\x00e",
+		}
 
 		def __enter__(self):
 			return self

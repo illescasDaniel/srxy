@@ -15,7 +15,7 @@ from srxy.archive_search import (
 	list_archive_members,
 )
 from srxy.cache import get_file_content_hash, reset_run_file_hashes
-from srxy.document_text import is_document_path, iter_document_lines
+from srxy.document_text import is_document_path, iter_document_lines, iter_document_metadata_lines
 from srxy.file_query import (
 	FileQ,
 	coerce_file_query,
@@ -50,7 +50,7 @@ from srxy.transcribe_text import (
 	transcribe_max_file_size,
 )
 from srxy.utils import normalize_text, query_words, word_pair_match_allowed
-from srxy.windows_metadata import has_windows_tags, iter_windows_metadata_lines
+from srxy.windows_metadata import has_windows_searchable_metadata, iter_windows_metadata_lines
 from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
 
 
@@ -165,7 +165,7 @@ def _effective_max_file_size(path: Path, max_file_size: int | None, *, ocr: bool
 
 
 def _can_search_without_reading_body(path: Path) -> bool:
-	return is_media_path(path) or has_searchable_xattrs(path) or has_windows_tags(path)
+	return is_media_path(path) or has_searchable_xattrs(path) or has_windows_searchable_metadata(path)
 
 
 def _file_within_size_limit(path: Path, max_file_size: int | None) -> bool:
@@ -313,6 +313,8 @@ def _iter_searchable_lines(
 		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr)
 
 	for line_number, raw_line in iter_xattr_metadata_lines(path):
+		yield line_number, raw_line, "tag"
+	for line_number, raw_line in iter_document_metadata_lines(path):
 		yield line_number, raw_line, "tag"
 	for line_number, raw_line in iter_windows_metadata_lines(path):
 		yield line_number, raw_line, "tag"
