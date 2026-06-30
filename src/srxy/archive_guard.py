@@ -12,13 +12,18 @@ class ArchiveGuardError(ValueError):
 	"""Raised when an office archive exceeds safe extraction limits."""
 
 
+def validate_archive_members(members: list[tuple[str, int]]):
+	if len(members) > MAX_ZIP_ENTRIES:
+		raise ArchiveGuardError("too many archive entries")
+	uncompressed = 0
+	for _name, size in members:
+		uncompressed += size
+		if uncompressed > MAX_ZIP_UNCOMPRESSED_BYTES:
+			raise ArchiveGuardError("uncompressed archive size too large")
+
+
 def validate_zip_archive(path: Path):
 	with zipfile.ZipFile(path) as archive:
 		entries = archive.infolist()
-		if len(entries) > MAX_ZIP_ENTRIES:
-			raise ArchiveGuardError(f"too many entries in {path.name}")
-		uncompressed = 0
-		for info in entries:
-			uncompressed += info.file_size
-			if uncompressed > MAX_ZIP_UNCOMPRESSED_BYTES:
-				raise ArchiveGuardError(f"uncompressed size too large in {path.name}")
+		members = [(info.filename, info.file_size) for info in entries]
+	validate_archive_members(members)

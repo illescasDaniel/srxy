@@ -47,9 +47,10 @@ Python equivalent: `FileQ.leaf("foo") & FileQ.leaf("bar")`. TUI query builder sh
 srxy "token" . --names-only
 srxy "token" . --include-hidden
 srxy "token" . --include-noise
+srxy "token" . --include-archives
 ```
 
-Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`).
+Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`). Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
 
 ## Flags
 
@@ -59,7 +60,7 @@ Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, 
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
 | **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
-| **Walk** | `--include-hidden`, `--include-noise` |
+| **Walk** | `--include-hidden`, `--include-noise`, `--include-archives` |
 | **UX** | `--progress` / `--no-progress`, `--no-tui`, `--version` |
 
 `--max-line-matches` is deprecated; use `--max-matches`.

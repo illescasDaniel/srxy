@@ -430,6 +430,27 @@ def test_given_noise_directory_when_running_cli_with_include_noise_then_searches
 	assert "visible.txt:line:1:" in captured.out
 
 
+def test_given_zip_with_text_member_when_running_cli_with_include_archives_then_searches_inner_file(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	import io
+	import zipfile
+
+	buffer = io.BytesIO()
+	with zipfile.ZipFile(buffer, "w") as archive:
+		archive.writestr("inner.txt", "needle inside archive")
+	(tmp_path / "bundle.zip").write_bytes(buffer.getvalue())
+
+	# when
+	exit_code = main(["needle", str(tmp_path), "--content-only", "--format", "flat", "--include-archives"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "bundle.zip::inner.txt:line:1:" in captured.out
+
+
 def test_given_oversized_file_when_running_cli_then_warns_on_stderr(tmp_path: Path, capsys: pytest.CaptureFixture[str]):
 	# given
 	large_file = tmp_path / "large.txt"

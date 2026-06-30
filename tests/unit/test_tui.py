@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+from dataclasses import replace
 from pathlib import Path
 from typing import Any
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -14,6 +15,7 @@ from textual.widgets import DataTable, Footer
 from srxy.cli import build_parser, should_use_tui
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
+from srxy.tui.modals import SearchOptionsModal
 from srxy.tui.theme import detect_app_theme
 
 
@@ -289,7 +291,12 @@ def test_given_completed_search_when_option_changes_then_search_button_becomes_s
 					if not button.has_class("-stale"):
 						break
 				assert not button.has_class("-stale")
-				await pilot.click("#opt-names")
+				await pilot.click("#search-options-button")
+				await pilot.pause()
+				assert isinstance(app.screen, SearchOptionsModal)
+				await pilot.click("#so-names")
+				await pilot.pause()
+				await pilot.click("#search-options-apply")
 				await pilot.pause()
 				assert button.has_class("-stale")
 
@@ -328,7 +335,7 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 		app = SrxyApp(args, auto_start=False)
 		async with app.run_test() as pilot:
 			await pilot.pause()
-			app.query_one("#filter-limit").value = "2"
+			app.search_filters = replace(app.search_filters, top_files="2")
 			app.query_one("#query-term-0").value = "token"
 			await pilot.click("#search-button")
 			table = app.query_one("#results-table", DataTable)
