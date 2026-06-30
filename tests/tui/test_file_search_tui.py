@@ -185,3 +185,43 @@ def test_given_semantic_transcribe_ocr_flags_when_launched_then_option_chips_ref
 			assert_labels_visible(svg, ("Semantic", "Transcribe", "OCR"))
 
 	asyncio.run(run())
+
+
+def test_given_tui_when_size_limits_applied_then_search_becomes_stale(tmp_path: Path):
+	# given
+	app = _build_app(argv=["hello", str(tmp_path)])
+
+	async def run():
+		async with app.run_test(size=(120, 30)) as pilot:
+			await pilot.pause()
+			button = app.query_one("#search-button")
+			await pilot.click("#size-limits-button")
+			await pilot.pause()
+			from srxy.tui.modals import SizeLimitsModal
+
+			assert isinstance(app.screen, SizeLimitsModal)
+			app.screen.query_one("#size-limit-text").value = "200"
+			await pilot.click("#size-limits-apply")
+			await pilot.pause()
+			assert app.size_limits.text_mib == "200"
+			assert button.has_class("-stale")
+
+	asyncio.run(run())
+
+
+def test_given_tui_when_size_limits_cancelled_then_values_unchanged(tmp_path: Path):
+	# given
+	app = _build_app(argv=["hello", str(tmp_path)])
+	original = app.size_limits
+
+	async def run():
+		async with app.run_test(size=(120, 30)) as pilot:
+			await pilot.pause()
+			await pilot.click("#size-limits-button")
+			await pilot.pause()
+			app.screen.query_one("#size-limit-text").value = "999"
+			await pilot.click("#size-limits-cancel")
+			await pilot.pause()
+			assert app.size_limits == original
+
+	asyncio.run(run())

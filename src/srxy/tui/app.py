@@ -50,7 +50,7 @@ from srxy.tui.messages import (
 	SearchError,
 	SearchFinished,
 )
-from srxy.tui.modals import ErrorModal, HelpModal
+from srxy.tui.modals import ErrorModal, HelpModal, SizeLimitsModal
 from srxy.tui.preflight import run_tui_preflight
 from srxy.tui.query_builder import QueryBuilder
 from srxy.tui.search_worker import (
@@ -59,6 +59,7 @@ from srxy.tui.search_worker import (
 	search_uses_subprocess,
 	skipped_file_from_dict,
 )
+from srxy.tui.size_limits import SizeLimits, parse_size_limits, size_limits_from_args
 from srxy.tui.theme import detect_app_theme
 
 
@@ -80,6 +81,7 @@ class _SearchSnapshot:
 	include_noise: bool
 	limit_text: str
 	max_matches_text: str
+	size_limits: SizeLimits
 
 
 @dataclass(frozen=True, slots=True)
@@ -195,8 +197,18 @@ class SrxyApp(App[int]):
 		content-align: center middle;
 	}
 
-	#filters-bar Input:last-child {
-		margin-right: 0;
+	#filters-bar Input:last-of-type {
+		margin-right: 1;
+	}
+
+	#filters-bar Button {
+		height: 1;
+		min-width: 14;
+		border: none;
+		background: $surface;
+		color: $foreground;
+		padding: 0 1;
+		content-align: center middle;
 	}
 
 	#options-bar {
@@ -313,6 +325,7 @@ class SrxyApp(App[int]):
 		self._last_search_snapshot: _SearchSnapshot | None = None
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
+		self.size_limits = size_limits_from_args(args)
 
 	@property
 	def exit_code(self) -> int:
@@ -347,6 +360,7 @@ class SrxyApp(App[int]):
 			yield Input(placeholder="all", id="filter-limit", value=limit_value)
 			yield Label("Per file", id="filter-max-matches-label")
 			yield Input(id="filter-max-matches", value=str(self._args.max_matches), placeholder="")
+			yield Button("Size limits", id="size-limits-button")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
@@ -428,6 +442,7 @@ class SrxyApp(App[int]):
 			include_noise=self.query_one("#opt-noise", Checkbox).value,
 			limit_text=self.query_one("#filter-limit", Input).value,
 			max_matches_text=self.query_one("#filter-max-matches", Input).value,
+			size_limits=self.size_limits,
 		)
 
 	def _update_search_button_state(self):
@@ -448,6 +463,7 @@ class SrxyApp(App[int]):
 			else None
 		)
 		max_matches = self._parse_optional_positive_int(snapshot.max_matches_text, field_name="Matches per file") or 50
+		max_file_size, max_ocr_file_size, max_transcribe_file_size = parse_size_limits(snapshot.size_limits)
 		args = argparse.Namespace(**vars(self._args))
 		builder = self._query_builder()
 		args.query = builder.to_query_string()
@@ -455,6 +471,9 @@ class SrxyApp(App[int]):
 		args.path = snapshot.path
 		args.limit = limit
 		args.max_matches = max_matches
+		args.max_file_size = max_file_size
+		args.max_ocr_file_size = max_ocr_file_size
+		args.max_transcribe_file_size = max_transcribe_file_size
 		sync_options_to_args(
 			args,
 			search_names=snapshot.search_names,
@@ -549,6 +568,13 @@ class SrxyApp(App[int]):
 
 	def action_show_help(self):
 		self.push_screen(HelpModal())
+
+	@work
+	async def action_open_size_limits(self):
+		limits = await self.push_screen_wait(SizeLimitsModal(self.size_limits))
+		if limits is not None:
+			self.size_limits = limits
+			self._update_search_button_state()
 
 	def action_open_file(self):
 		table = self.query_one("#results-table", DataTable)
@@ -889,6 +915,8 @@ class SrxyApp(App[int]):
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "search-button":
 			self.action_start_search()
+		elif event.button.id == "size-limits-button":
+			self.action_open_size_limits()
 
 	def on_input_changed(self, event: Input.Changed):
 		if event.input.id in {
