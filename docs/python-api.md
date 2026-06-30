@@ -18,6 +18,7 @@ for result in results:
 
 results = magic_file_search(Path("."), "token", skip_hidden_folders=False)
 results = magic_file_search(Path("."), "token", skip_noise_folders=False)
+results = magic_file_search(Path("."), "token", include_archives=True)
 
 # Boolean file query (same syntax as CLI)
 from srxy import FileQ

@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 from textual.app import ComposeResult
-from textual.containers import Grid, Vertical
+from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Input, Label, ProgressBar, Static
+from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Static
 
+from srxy.tui.search_options import SearchOptions
 from srxy.tui.size_limits import SizeLimits, validate_size_limits
 
 
@@ -137,6 +138,7 @@ class HelpModal(ModalScreen[None]):
   Top files          Max matched files (empty = all)
   Per file           Max matches per file (lines, OCR, transcript, …)
   Size limits        Max file sizes for text, OCR, and transcribe (MiB)
+  Advanced           Search modes (names, content, semantic, archives, …)
 
 [b]Results[/b]
   j / k          Move selection
@@ -257,6 +259,106 @@ class SizeLimitsModal(ModalScreen[SizeLimits | None]):
 			return
 		error.update("")
 		self.dismiss(limits)
+
+
+class SearchOptionsModal(ModalScreen[SearchOptions | None]):
+	DEFAULT_CSS = """
+	SearchOptionsModal {
+		align: center middle;
+	}
+
+	#search-options-dialog {
+		width: 48;
+		height: auto;
+		max-height: 80%;
+		border: thick $accent;
+		background: $surface;
+		padding: 1 2;
+	}
+
+	#search-options-title {
+		width: 100%;
+		height: auto;
+		margin-bottom: 1;
+	}
+
+	#search-options-scroll {
+		width: 100%;
+		height: auto;
+		max-height: 18;
+		margin-bottom: 1;
+	}
+
+	#search-options-scroll Checkbox {
+		width: 100%;
+		height: auto;
+		min-height: 1;
+		background: $surface;
+		color: $foreground;
+		border: none;
+		padding: 0 1;
+		content-align: left middle;
+	}
+
+	#search-options-scroll Checkbox:focus {
+		background: $accent;
+		color: $button-foreground;
+	}
+
+	#search-options-scroll Checkbox.-on {
+		background: $primary;
+		color: $button-foreground;
+		border: none;
+	}
+
+	#search-options-buttons {
+		grid-size: 2;
+		grid-gutter: 1 2;
+		width: 100%;
+		height: auto;
+	}
+	"""
+
+	def __init__(self, initial: SearchOptions):
+		super().__init__()
+		self._initial = initial
+
+	def compose(self) -> ComposeResult:
+		with Vertical(id="search-options-dialog"):
+			yield Static("Search options", id="search-options-title")
+			with VerticalScroll(id="search-options-scroll"):
+				yield Checkbox("Names", id="so-names", value=self._initial.search_names)
+				yield Checkbox("Content", id="so-content", value=self._initial.search_contents)
+				yield Checkbox("Semantic", id="so-semantic", value=self._initial.semantic)
+				yield Checkbox("Image semantic", id="so-semantic-image", value=self._initial.semantic_image)
+				yield Checkbox("OCR", id="so-ocr", value=self._initial.ocr)
+				yield Checkbox("Transcribe", id="so-transcribe", value=self._initial.transcribe)
+				yield Checkbox("Hidden", id="so-hidden", value=self._initial.include_hidden)
+				yield Checkbox("Noise", id="so-noise", value=self._initial.include_noise)
+				yield Checkbox("Archives", id="so-archives", value=self._initial.include_archives)
+			with Grid(id="search-options-buttons"):
+				yield Button("Apply", variant="primary", id="search-options-apply")
+				yield Button("Cancel", id="search-options-cancel")
+
+	def _current_options(self) -> SearchOptions:
+		return SearchOptions(
+			search_names=self.query_one("#so-names", Checkbox).value,
+			search_contents=self.query_one("#so-content", Checkbox).value,
+			semantic=self.query_one("#so-semantic", Checkbox).value,
+			semantic_image=self.query_one("#so-semantic-image", Checkbox).value,
+			ocr=self.query_one("#so-ocr", Checkbox).value,
+			transcribe=self.query_one("#so-transcribe", Checkbox).value,
+			include_hidden=self.query_one("#so-hidden", Checkbox).value,
+			include_noise=self.query_one("#so-noise", Checkbox).value,
+			include_archives=self.query_one("#so-archives", Checkbox).value,
+		)
+
+	def on_button_pressed(self, event: Button.Pressed):
+		if event.button.id == "search-options-cancel":
+			self.dismiss(None)
+			return
+		if event.button.id == "search-options-apply":
+			self.dismiss(self._current_options())
 
 
 class ErrorModal(ModalScreen[None]):

@@ -14,6 +14,7 @@ from textual.widgets import DataTable, Footer
 from srxy.cli import build_parser, should_use_tui
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
+from srxy.tui.modals import SearchOptionsModal
 from srxy.tui.theme import detect_app_theme
 
 
@@ -289,7 +290,12 @@ def test_given_completed_search_when_option_changes_then_search_button_becomes_s
 					if not button.has_class("-stale"):
 						break
 				assert not button.has_class("-stale")
-				await pilot.click("#opt-names")
+				await pilot.click("#search-options-button")
+				await pilot.pause()
+				assert isinstance(app.screen, SearchOptionsModal)
+				await pilot.click("#so-names")
+				await pilot.pause()
+				await pilot.click("#search-options-apply")
 				await pilot.pause()
 				assert button.has_class("-stale")
 

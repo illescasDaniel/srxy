@@ -18,10 +18,9 @@ from rich.text import Text
 from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.containers import Grid, Horizontal, Vertical
+from textual.containers import Horizontal, Vertical
 from textual.widgets import (
 	Button,
-	Checkbox,
 	DataTable,
 	Footer,
 	Header,
@@ -39,7 +38,6 @@ from srxy.cli import (
 	format_skipped_file_warnings,
 	iter_grouped_line_displays,
 	match_labels,
-	sync_options_to_args,
 )
 from srxy.file_query import file_q_to_dict
 from srxy.models import FileSearchResult, SkippedFile
@@ -50,9 +48,15 @@ from srxy.tui.messages import (
 	SearchError,
 	SearchFinished,
 )
-from srxy.tui.modals import ErrorModal, HelpModal, SizeLimitsModal
+from srxy.tui.modals import ErrorModal, HelpModal, SearchOptionsModal, SizeLimitsModal
 from srxy.tui.preflight import run_tui_preflight
 from srxy.tui.query_builder import QueryBuilder
+from srxy.tui.search_options import (
+	SearchOptions,
+	apply_search_options_to_args,
+	format_search_options_summary,
+	search_options_from_args,
+)
 from srxy.tui.search_worker import (
 	file_result_from_dict,
 	iter_subprocess_search_events,
@@ -71,14 +75,7 @@ _SearchEvent = ProgressUpdated | ActivityChanged | ResultFound | SearchError | S
 class _SearchSnapshot:
 	query: str
 	path: str
-	search_names: bool
-	search_contents: bool
-	semantic: bool
-	semantic_image: bool
-	ocr: bool
-	transcribe: bool
-	include_hidden: bool
-	include_noise: bool
+	search_options: SearchOptions
 	limit_text: str
 	max_matches_text: str
 	size_limits: SizeLimits
@@ -212,36 +209,26 @@ class SrxyApp(App[int]):
 	}
 
 	#options-bar {
-		grid-size: 4;
-		grid-gutter: 1 1;
 		height: auto;
-		padding: 0 1;
+		padding: 0 1 1 1;
 	}
 
-	#options-bar.-narrow {
-		grid-size: 3;
-	}
-
-	#options-bar Checkbox {
-		width: 100%;
-		height: auto;
-		min-height: 1;
+	#search-options-button {
+		height: 1;
+		min-width: 12;
+		border: none;
 		background: $surface;
 		color: $foreground;
-		border: none;
 		padding: 0 1;
+		content-align: center middle;
+		margin-right: 1;
+	}
+
+	#options-summary {
+		width: 1fr;
+		height: 1;
+		color: $text-muted;
 		content-align: left middle;
-	}
-
-	#options-bar Checkbox:focus {
-		background: $accent;
-		color: $button-foreground;
-	}
-
-	#options-bar Checkbox.-on {
-		background: $primary;
-		color: $button-foreground;
-		border: none;
 	}
 
 	#main-pane {
@@ -325,7 +312,9 @@ class SrxyApp(App[int]):
 		self._last_search_snapshot: _SearchSnapshot | None = None
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
+		self.search_options = search_options_from_args(args)
 		self.size_limits = size_limits_from_args(args)
+		apply_search_options_to_args(self._args, self.search_options)
 		apply_size_limits_to_args(self._args, self.size_limits)
 
 	@property
@@ -340,21 +329,9 @@ class SrxyApp(App[int]):
 			yield Label("Path", id="path-label")
 			yield Input(id="path-input", value=str(self._args.path), placeholder="")
 			yield Button("Search", variant="primary", id="search-button")
-		with Grid(id="options-bar"):
-			yield Checkbox("Names", id="opt-names", value=True)
-			yield Checkbox("Content", id="opt-content", value=True)
-			yield Checkbox("Semantic", id="opt-semantic", value=bool(self._args.semantic or self._args.semantic_all))
-			yield Checkbox(
-				"Image semantic",
-				id="opt-semantic-image",
-				value=bool(self._args.semantic_image or self._args.semantic_all),
-			)
-			yield Checkbox("OCR", id="opt-ocr", value=bool(self._args.ocr or self._args.semantic_all))
-			yield Checkbox(
-				"Transcribe", id="opt-transcribe", value=bool(self._args.transcribe or self._args.semantic_all)
-			)
-			yield Checkbox("Hidden", id="opt-hidden", value=bool(self._args.include_hidden))
-			yield Checkbox("Noise", id="opt-noise", value=bool(self._args.include_noise))
+		with Horizontal(id="options-bar"):
+			yield Button("Advanced", id="search-options-button")
+			yield Static(format_search_options_summary(self.search_options), id="options-summary")
 		with Horizontal(id="filters-bar"):
 			limit_value = "" if self._args.limit is None else str(self._args.limit)
 			yield Label("Top files", id="filter-limit-label")
@@ -382,17 +359,7 @@ class SrxyApp(App[int]):
 		table = self.query_one("#results-table", DataTable)
 		table.add_columns("Match", "Path", "Matched")
 		self._setup_preview_columns(self.query_one("#preview-matches", DataTable))
-		if self._args.names_only:
-			self.query_one("#opt-names", Checkbox).value = True
-			self.query_one("#opt-content", Checkbox).value = False
-		elif self._args.content_only:
-			self.query_one("#opt-names", Checkbox).value = False
-			self.query_one("#opt-content", Checkbox).value = True
-		if self._args.search_names is False:
-			self.query_one("#opt-names", Checkbox).value = False
-		if self._args.search_contents is False:
-			self.query_one("#opt-content", Checkbox).value = False
-		self._update_options_layout()
+		self._refresh_options_summary()
 		self._update_search_button_state()
 		if self._auto_start and (self._args.query or "").strip():
 			self.call_after_refresh(self.action_start_search)
@@ -409,12 +376,8 @@ class SrxyApp(App[int]):
 	def _query_builder(self) -> QueryBuilder:
 		return self.query_one("#query-builder", QueryBuilder)
 
-	def on_resize(self):
-		self._update_options_layout()
-
-	def _update_options_layout(self):
-		options = self.query_one("#options-bar", Grid)
-		options.set_class(self.size.width < 100, "-narrow")
+	def _refresh_options_summary(self):
+		self.query_one("#options-summary", Static).update(format_search_options_summary(self.search_options))
 
 	def _parse_optional_positive_int(self, raw: str, *, field_name: str) -> int | None:
 		text = raw.strip()
@@ -433,14 +396,7 @@ class SrxyApp(App[int]):
 		return _SearchSnapshot(
 			query=builder.to_query_string(),
 			path=self.query_one("#path-input", Input).value or ".",
-			search_names=self.query_one("#opt-names", Checkbox).value,
-			search_contents=self.query_one("#opt-content", Checkbox).value,
-			semantic=self.query_one("#opt-semantic", Checkbox).value,
-			semantic_image=self.query_one("#opt-semantic-image", Checkbox).value,
-			ocr=self.query_one("#opt-ocr", Checkbox).value,
-			transcribe=self.query_one("#opt-transcribe", Checkbox).value,
-			include_hidden=self.query_one("#opt-hidden", Checkbox).value,
-			include_noise=self.query_one("#opt-noise", Checkbox).value,
+			search_options=self.search_options,
 			limit_text=self.query_one("#filter-limit", Input).value,
 			max_matches_text=self.query_one("#filter-max-matches", Input).value,
 			size_limits=self.size_limits,
@@ -475,17 +431,7 @@ class SrxyApp(App[int]):
 		args.max_file_size = max_file_size
 		args.max_ocr_file_size = max_ocr_file_size
 		args.max_transcribe_file_size = max_transcribe_file_size
-		sync_options_to_args(
-			args,
-			search_names=snapshot.search_names,
-			search_contents=snapshot.search_contents,
-			semantic=snapshot.semantic,
-			semantic_image=snapshot.semantic_image,
-			ocr=snapshot.ocr,
-			transcribe=snapshot.transcribe,
-			include_hidden=snapshot.include_hidden,
-			include_noise=snapshot.include_noise,
-		)
+		apply_search_options_to_args(args, snapshot.search_options)
 		return args
 
 	def _reset_results(self):
@@ -572,6 +518,15 @@ class SrxyApp(App[int]):
 
 	def _current_applied_size_limits(self) -> SizeLimits:
 		return size_limits_from_args(self._sync_args_from_ui())
+
+	@work
+	async def action_open_search_options(self):
+		options = await self.push_screen_wait(SearchOptionsModal(self.search_options))
+		if options is not None:
+			self.search_options = options
+			apply_search_options_to_args(self._args, options)
+			self._refresh_options_summary()
+			self._update_search_button_state()
 
 	@work
 	async def action_open_size_limits(self):
@@ -661,16 +616,20 @@ class SrxyApp(App[int]):
 		self.action_copy_all_matches()
 
 	def _open_path(self, path: Path):
+		from srxy.archive_search import split_archive_member_path
+
+		archive_path, member = split_archive_member_path(path)
+		open_target = archive_path if member is not None else path
 		system = platform.system()
 		try:
 			if system == "Darwin":
-				subprocess.run(["open", str(path)], check=False)  # noqa: S603, S607
+				subprocess.run(["open", str(open_target)], check=False)  # noqa: S603, S607
 			elif system == "Windows":
-				os.startfile(str(path))  # type: ignore[attr-defined]  # noqa: S606
+				os.startfile(str(open_target))  # type: ignore[attr-defined]  # noqa: S606
 			else:
-				subprocess.run(["xdg-open", str(path)], check=False)  # noqa: S603, S607
+				subprocess.run(["xdg-open", str(open_target)], check=False)  # noqa: S603, S607
 		except OSError:
-			self.notify(f"Could not open {path}", severity="error")
+			self.notify(f"Could not open {open_target}", severity="error")
 
 	def action_start_search(self):
 		if self._searching:
@@ -921,6 +880,8 @@ class SrxyApp(App[int]):
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "search-button":
 			self.action_start_search()
+		elif event.button.id == "search-options-button":
+			self.action_open_search_options()
 		elif event.button.id == "size-limits-button":
 			self.action_open_size_limits()
 
@@ -932,10 +893,6 @@ class SrxyApp(App[int]):
 		}:
 			self._update_search_button_state()
 		elif event.input.id is not None and event.input.id.startswith("query-term-"):
-			self._update_search_button_state()
-
-	def on_checkbox_changed(self, event: Checkbox.Changed):
-		if event.checkbox.id is not None and event.checkbox.id.startswith("opt-"):
 			self._update_search_button_state()
 
 	def on_input_submitted(self, event: Input.Submitted):

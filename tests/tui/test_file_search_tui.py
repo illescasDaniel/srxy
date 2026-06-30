@@ -9,11 +9,13 @@ from unittest.mock import AsyncMock, patch
 import pytest
 from tests.helpers import file_search_root, require_file_search_fixtures
 from tests.tui.helpers import assert_labels_visible
-from textual.widgets import Checkbox, DataTable
+from textual.widgets import DataTable
 
 from srxy.cli import build_parser
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
+from srxy.tui.modals import SearchOptionsModal
+from srxy.tui.search_options import format_search_options_summary
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]
@@ -26,7 +28,7 @@ def _build_app(*, argv: list[str], theme: str = "textual-light", auto_start: boo
 	return app
 
 
-def test_given_tui_when_option_chips_toggled_then_search_becomes_stale(tmp_path: Path):
+def test_given_tui_when_search_options_toggled_then_search_becomes_stale(tmp_path: Path):
 	# given
 	app = _build_app(argv=["hello", str(tmp_path)])
 
@@ -34,14 +36,18 @@ def test_given_tui_when_option_chips_toggled_then_search_becomes_stale(tmp_path:
 		async with app.run_test(size=(100, 30)) as pilot:
 			await pilot.pause()
 			button = app.query_one("#search-button")
-			ocr = app.query_one("#opt-ocr", Checkbox)
-			assert not ocr.value
-			await pilot.click("#opt-ocr")
+			assert not app.search_options.ocr
+			await pilot.click("#search-options-button")
 			await pilot.pause()
-			assert ocr.value
+			assert isinstance(app.screen, SearchOptionsModal)
+			await pilot.click("#so-ocr")
+			await pilot.pause()
+			await pilot.click("#search-options-apply")
+			await pilot.pause()
+			assert app.search_options.ocr
 			assert button.has_class("-stale")
 			svg = app.export_screenshot(title="srxy-tui-ocr-toggle")
-			assert_labels_visible(svg, ("OCR", "Search"))
+			assert_labels_visible(svg, ("Advanced", "OCR", "Search"))
 
 	asyncio.run(run())
 
@@ -70,7 +76,12 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 					await pilot.pause(delay=0.05)
 					if not button.has_class("-stale"):
 						break
-				await pilot.click("#opt-content")
+				await pilot.click("#search-options-button")
+				await pilot.pause()
+				assert isinstance(app.screen, SearchOptionsModal)
+				await pilot.click("#so-content")
+				await pilot.pause()
+				await pilot.click("#search-options-apply")
 				await pilot.pause()
 				assert button.has_class("-stale")
 
@@ -165,24 +176,26 @@ def test_given_semantic_image_flag_when_search_completes_then_results_table_popu
 						break
 				assert app.query_one("#results-table", DataTable).row_count >= 1
 				svg = app.export_screenshot(title="srxy-tui-semantic-image")
-				assert_labels_visible(svg, ("Search", "Image semantic"))
+				assert_labels_visible(svg, ("Search", "Advanced"))
 
 	asyncio.run(run())
 
 
-def test_given_semantic_transcribe_ocr_flags_when_launched_then_option_chips_reflect_args():
+def test_given_semantic_transcribe_ocr_flags_when_launched_then_search_options_reflect_args():
 	# given
 	app = _build_app(argv=["test", ".", "--semantic-all"])
 
 	async def run():
 		async with app.run_test(size=(100, 30)) as pilot:
 			await pilot.pause()
-			assert app.query_one("#opt-semantic", Checkbox).value
-			assert app.query_one("#opt-semantic-image", Checkbox).value
-			assert app.query_one("#opt-ocr", Checkbox).value
-			assert app.query_one("#opt-transcribe", Checkbox).value
-			svg = app.export_screenshot(title="srxy-tui-semantic-all")
-			assert_labels_visible(svg, ("Semantic", "Transcribe", "OCR"))
+			assert app.search_options.semantic
+			assert app.search_options.semantic_image
+			assert app.search_options.ocr
+			assert app.search_options.transcribe
+			summary = format_search_options_summary(app.search_options)
+			assert "Semantic" in summary
+			assert "Transcribe" in summary
+			assert "OCR" in summary
 
 	asyncio.run(run())
 

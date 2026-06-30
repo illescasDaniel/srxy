@@ -28,7 +28,7 @@ Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
 | Area | What it shows |
 |------|----------------|
 | **Query / Path** | Search string and root directory; **Search** runs the scan |
-| **Options** | Names, Content, Semantic, Image semantic, OCR, Transcribe, Hidden, Noise |
+| **Options** | **Advanced** dialog: Names, Content, Semantic, Image semantic, OCR, Transcribe, Hidden, Noise, Archives (off by default) |
 | **Filters** | **Top files** (`-l` / `--limit`), **Per file** (`--max-matches`), and **Size limits** (text/OCR/transcribe caps in MiB) |
 | **Results** | Sortable table: match %, path, sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
 | **Preview** | Selected file path, score, sources, hit table (location + **bold** query highlights) |

@@ -695,6 +695,11 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Search noise directories like __pycache__ and node_modules (default: skip)",
 	)
 	parser.add_argument(
+		"--include-archives",
+		action="store_true",
+		help="Search inside compressed archives (.zip, .tar, .tar.gz, .gz) (default: skip)",
+	)
+	parser.add_argument(
 		"--no-tui",
 		action="store_true",
 		help="Force plain-text output even on an interactive terminal",
@@ -798,6 +803,7 @@ def sync_options_to_args(
 	transcribe: bool,
 	include_hidden: bool,
 	include_noise: bool,
+	include_archives: bool,
 ):
 	args.names_only = search_names and not search_contents
 	args.content_only = search_contents and not search_names
@@ -810,6 +816,7 @@ def sync_options_to_args(
 	args.transcribe = transcribe
 	args.include_hidden = include_hidden
 	args.include_noise = include_noise
+	args.include_archives = include_archives
 
 
 def run_preflight(
@@ -883,6 +890,7 @@ def execute_search(
 		max_matches=args.max_matches,
 		skip_hidden_folders=not args.include_hidden,
 		skip_noise_folders=not args.include_noise,
+		include_archives=bool(getattr(args, "include_archives", False)),
 		skipped_files=effective_skipped
 		if search_contents or ocr_requested(None) or transcribe_requested(None)
 		else None,

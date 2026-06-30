@@ -13,22 +13,8 @@ amphibian
 + Term
 Advanced
 revenue | amphibian
-X
-Names
-X
-Content
-X
-Semantic
-X
-Image semantic
-X
-OCR
-X
-Transcribe
-X
-Hidden
-X
-Noise
+Advanced
+Names, Content
 Top files
 all
 Per file
@@ -51,6 +37,10 @@ Matched
 Match
 Location
 Text
+│
+│
+│
+│
 │
 │
 │

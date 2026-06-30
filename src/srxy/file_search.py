@@ -6,6 +6,14 @@ import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from srxy.archive_search import (
+	archive_member_path,
+	is_archive_member_path,
+	is_searchable_path,
+	is_standalone_archive,
+	iter_archive_member_lines,
+	list_archive_members,
+)
 from srxy.cache import get_file_content_hash, reset_run_file_hashes
 from srxy.document_text import is_document_path, iter_document_lines
 from srxy.file_query import (
@@ -81,6 +89,7 @@ def _iter_files(
 	*,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
+	include_archives: bool = False,
 ) -> Iterator[Path]:
 	if root.is_file():
 		yield root
@@ -102,7 +111,11 @@ def _iter_files(
 		for filename in filenames:
 			if skip_hidden_folders and _is_hidden_path_part(filename):
 				continue
-			yield current / filename
+			file_path = current / filename
+			yield file_path
+			if include_archives and is_standalone_archive(file_path):
+				for member in list_archive_members(file_path):
+					yield archive_member_path(file_path, member)
 
 
 def _collect_files(
@@ -110,12 +123,14 @@ def _collect_files(
 	*,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
+	include_archives: bool = False,
 ) -> list[Path]:
 	return list(
 		_iter_files(
 			root,
 			skip_hidden_folders=skip_hidden_folders,
 			skip_noise_folders=skip_noise_folders,
+			include_archives=include_archives,
 		)
 	)
 
@@ -154,6 +169,17 @@ def _can_search_without_reading_body(path: Path) -> bool:
 
 
 def _file_within_size_limit(path: Path, max_file_size: int | None) -> bool:
+	if is_archive_member_path(path):
+		from srxy.archive_search import archive_member_size_bytes
+
+		size = archive_member_size_bytes(path)
+		if size is None:
+			return False
+		if size == 0:
+			return True
+		if max_file_size is not None and size > max_file_size:
+			return False
+		return True
 	try:
 		size = path.stat().st_size
 	except OSError:
@@ -166,6 +192,13 @@ def _file_within_size_limit(path: Path, max_file_size: int | None) -> bool:
 
 
 def _is_probably_text(path: Path, max_file_size: int | None) -> bool:
+	if is_archive_member_path(path):
+		from srxy.archive_search import read_archive_member_bytes
+
+		if not _file_within_size_limit(path, max_file_size):
+			return False
+		sample = read_archive_member_bytes(path, max_bytes=_TEXT_SAMPLE_SIZE)
+		return sample is not None and b"\x00" not in sample
 	if not _file_within_size_limit(path, max_file_size):
 		return False
 	try:
@@ -194,6 +227,13 @@ def _iter_body_searchable_lines(
 	*,
 	ocr: bool | None = None,
 ) -> Iterator[tuple[int, str, str]]:
+	if is_archive_member_path(path):
+		content_byte_limit = max_file_size
+		if not _file_within_size_limit(path, content_byte_limit):
+			return
+		for line_number, raw_line in iter_archive_member_lines(path, content_byte_limit):
+			yield line_number, raw_line, "line"
+		return
 	content_byte_limit = _effective_max_file_size(path, max_file_size, ocr=ocr)
 	if is_media_path(path):
 		return
@@ -237,6 +277,9 @@ def _iter_searchable_lines(
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: Callable[[str | None], None] | None = None,
 ) -> Iterator[tuple[int, str, str]]:
+	if is_archive_member_path(path):
+		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr)
+		return
 	if is_media_path(path):
 		for line_number, raw_line in iter_media_metadata_lines(path):
 			yield line_number, raw_line, "tag"
@@ -516,8 +559,9 @@ def _search_single_file(
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	on_activity: Callable[[str | None], None] | None = None,
 ) -> FileSearchResult | None:
-	if not file_path.is_file():
+	if not is_searchable_path(file_path):
 		return None
+	archive_member = is_archive_member_path(file_path)
 
 	breakdown: dict[str, float] = {}
 	term_bests: dict[str, float] = {term: 0.0 for term in iter_terms(query_expr)}
@@ -539,10 +583,16 @@ def _search_single_file(
 			file_path, content_byte_limit
 		)
 		if exceeds_size_limit and not _can_search_without_reading_body(file_path):
-			try:
-				size_bytes = file_path.stat().st_size
-			except OSError:
-				size_bytes = 0
+			size_bytes = 0
+			if archive_member:
+				from srxy.archive_search import archive_member_size_bytes
+
+				size_bytes = archive_member_size_bytes(file_path) or 0
+			else:
+				try:
+					size_bytes = file_path.stat().st_size
+				except OSError:
+					size_bytes = 0
 			if skipped_files is not None:
 				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
 		else:
@@ -566,7 +616,7 @@ def _search_single_file(
 				term_bests[term] = max(term_bests[term], score)
 
 	semantic_image_score = 0.0
-	if is_semantic_image_active(semantic_image) and is_semantic_image_path(file_path):
+	if not archive_member and is_semantic_image_active(semantic_image) and is_semantic_image_path(file_path):
 		if on_activity is not None:
 			on_activity(f"CLIP · {file_path.name}")
 		try:
@@ -643,6 +693,7 @@ def magic_file_search(
 	max_matches: int = 50,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
+	include_archives: bool = False,
 	skipped_files: list[SkippedFile] | None = None,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
@@ -691,6 +742,7 @@ def magic_file_search(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
+		include_archives=include_archives,
 	)
 	total_files = len(files)
 
