@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import importlib.util
 import sys
+import threading
 from collections.abc import Iterator
 from pathlib import Path
 
 
 _KEYWORDS_PROPERTY = "System.Keywords"
 _TAG_LABEL = "Windows tag"
+# COM was already initialized on this thread with a different apartment model.
+_RPC_E_CHANGED_MODE = -2147417850
+# CoInitializeEx returns S_FALSE when COM is already initialized compatibly.
+_COM_ALREADY_INITIALIZED = 1
+
+_COM_STATE = threading.local()
 
 
 def windows_tags_supported() -> bool:
@@ -52,12 +59,39 @@ def _read_windows_keywords(path: Path) -> list[str]:
 	return normalize_windows_keywords(keywords)
 
 
+def reset_thread_com_state_for_tests():
+	"""Clear per-thread COM init flags. For unit tests only."""
+	for attr in ("ready", "failed"):
+		if hasattr(_COM_STATE, attr):
+			delattr(_COM_STATE, attr)
+
+
+def _ensure_com_initialized():
+	if getattr(_COM_STATE, "ready", False):
+		return
+	if getattr(_COM_STATE, "failed", False):
+		raise OSError("COM is not available on this thread")
+
+	import pythoncom
+
+	try:
+		pythoncom.CoInitializeEx(pythoncom.COINIT_APARTMENTTHREADED)
+	except pythoncom.com_error as error:
+		hresult = error.hresult
+		if hresult in (_COM_ALREADY_INITIALIZED, _RPC_E_CHANGED_MODE):
+			_COM_STATE.ready = True
+			return
+		_COM_STATE.failed = True
+		raise OSError(str(error)) from error
+	_COM_STATE.ready = True
+
+
 def _read_keywords_via_property_store(path: Path) -> object:
 	import pythoncom
 	from win32com.propsys import propsys
 	from win32com.shell import shellcon
 
-	pythoncom.CoInitialize()
+	_ensure_com_initialized()
 	try:
 		property_key = propsys.PSGetPropertyKeyFromName(_KEYWORDS_PROPERTY)
 		store = propsys.SHGetPropertyStoreFromParsingName(
@@ -71,10 +105,10 @@ def _read_keywords_via_property_store(path: Path) -> object:
 			return variant.GetValue()
 		except AttributeError:
 			return None
+	except pythoncom.com_error as error:
+		raise OSError(str(error)) from error
 	except Exception as error:
 		raise OSError(str(error)) from error
-	finally:
-		pythoncom.CoUninitialize()
 
 
 def write_windows_keywords(path: Path, tags: list[str]) -> None:
@@ -82,7 +116,7 @@ def write_windows_keywords(path: Path, tags: list[str]) -> None:
 	from win32com.propsys import propsys
 	from win32com.shell import shellcon
 
-	pythoncom.CoInitialize()
+	_ensure_com_initialized()
 	try:
 		property_key = propsys.PSGetPropertyKeyFromName(_KEYWORDS_PROPERTY)
 		store = propsys.SHGetPropertyStoreFromParsingName(
@@ -97,10 +131,10 @@ def write_windows_keywords(path: Path, tags: list[str]) -> None:
 			value = propsys.PROPVARIANTType(None, pythoncom.VT_EMPTY)
 		store.SetValue(property_key, value)
 		store.Commit()
+	except pythoncom.com_error as error:
+		raise OSError(str(error)) from error
 	except Exception as error:
 		raise OSError(str(error)) from error
-	finally:
-		pythoncom.CoUninitialize()
 
 
 def normalize_windows_keywords(value: object) -> list[str]:
