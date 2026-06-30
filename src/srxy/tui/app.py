@@ -924,7 +924,7 @@ class SrxyApp(App[int]):
 		if transport is not None:
 			try:
 				transport.close()
-			except Exception:
+			except Exception:  # noqa: S110
 				pass
 
 	def action_request_quit(self):
