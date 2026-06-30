@@ -174,6 +174,7 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		width: 56;
 		height: auto;
 		max-height: 80%;
+		overflow: hidden;
 		border: thick $accent;
 		background: $surface;
 		padding: 1 2;
@@ -187,8 +188,8 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 
 	#search-filters-scroll {
 		width: 100%;
-		height: auto;
-		max-height: 16;
+		height: 1fr;
+		min-height: 1;
 		margin-bottom: 1;
 	}
 
@@ -219,7 +220,22 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		grid-size: 2;
 		grid-gutter: 1 2;
 		width: 100%;
-		height: auto;
+		height: 1;
+	}
+
+	#search-filters-buttons Button {
+		height: 1;
+		min-width: 10;
+		border: none;
+		padding: 0 1;
+		content-align: center middle;
+		background: $surface;
+		color: $foreground;
+	}
+
+	#search-filters-buttons Button.-primary {
+		background: $primary;
+		color: $button-foreground;
 	}
 	"""
 
@@ -243,8 +259,8 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 				yield Input(id="sf-size-transcribe", classes="search-filters-input")
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
-				yield Button("Apply", variant="primary", id="search-filters-apply")
 				yield Button("Cancel", id="search-filters-cancel")
+				yield Button("Apply", variant="primary", id="search-filters-apply")
 
 	def on_mount(self):
 		self.query_one("#sf-top-files", Input).value = self._initial.top_files
@@ -291,6 +307,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		width: 48;
 		height: auto;
 		max-height: 80%;
+		overflow: hidden;
 		border: thick $accent;
 		background: $surface;
 		padding: 1 2;
@@ -304,8 +321,8 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	#search-options-scroll {
 		width: 100%;
-		height: auto;
-		max-height: 18;
+		height: 1fr;
+		min-height: 1;
 		margin-bottom: 1;
 	}
 
@@ -335,7 +352,22 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		grid-size: 2;
 		grid-gutter: 1 2;
 		width: 100%;
-		height: auto;
+		height: 1;
+	}
+
+	#search-options-buttons Button {
+		height: 1;
+		min-width: 10;
+		border: none;
+		padding: 0 1;
+		content-align: center middle;
+		background: $surface;
+		color: $foreground;
+	}
+
+	#search-options-buttons Button.-primary {
+		background: $primary;
+		color: $button-foreground;
 	}
 	"""
 
@@ -357,8 +389,8 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 				yield Checkbox("Noise", id="so-noise", value=self._initial.include_noise)
 				yield Checkbox("Archives", id="so-archives", value=self._initial.include_archives)
 			with Grid(id="search-options-buttons"):
-				yield Button("Apply", variant="primary", id="search-options-apply")
 				yield Button("Cancel", id="search-options-cancel")
+				yield Button("Apply", variant="primary", id="search-options-apply")
 
 	def _current_options(self) -> SearchOptions:
 		return SearchOptions(

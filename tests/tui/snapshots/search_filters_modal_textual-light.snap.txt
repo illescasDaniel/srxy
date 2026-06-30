@@ -44,12 +44,12 @@ OCR (MiB)
 █
 █
 █
-Transcribe (MiB)
 █
 █
-500
 █
 █
+Cancel
+Apply
 █
 █
 █
