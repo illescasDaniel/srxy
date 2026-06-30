@@ -5,8 +5,9 @@ from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Static
 
+from srxy.tui.search_filters import SearchFilters, validate_search_filters
 from srxy.tui.search_options import SearchOptions
-from srxy.tui.size_limits import SizeLimits, validate_size_limits
+from srxy.tui.size_limits import SizeLimits
 
 
 class DownloadConfirmModal(ModalScreen[bool]):
@@ -135,9 +136,7 @@ class HelpModal(ModalScreen[None]):
   Orange Search  Settings changed since last run — search again
 
 [b]Filters[/b]
-  Top files          Max matched files (empty = all)
-  Per file           Max matches per file (lines, OCR, transcript, …)
-  Size limits        Max file sizes for text, OCR, and transcribe (MiB)
+  Filters            Top files, per-file match cap, and size limits (MiB)
   Advanced           Search modes (names, content, semantic, archives, …)
 
 [b]Results[/b]
@@ -164,13 +163,13 @@ class HelpModal(ModalScreen[None]):
 			self.dismiss(None)
 
 
-class SizeLimitsModal(ModalScreen[SizeLimits | None]):
+class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 	DEFAULT_CSS = """
-	SizeLimitsModal {
+	SearchFiltersModal {
 		align: center middle;
 	}
 
-	#size-limits-dialog {
+	#search-filters-dialog {
 		width: 56;
 		height: auto;
 		max-height: 80%;
@@ -179,20 +178,27 @@ class SizeLimitsModal(ModalScreen[SizeLimits | None]):
 		padding: 1 2;
 	}
 
-	#size-limits-title {
+	#search-filters-title {
 		width: 100%;
 		height: auto;
 		margin-bottom: 1;
 	}
 
-	.size-limits-label {
+	#search-filters-scroll {
+		width: 100%;
+		height: auto;
+		max-height: 16;
+		margin-bottom: 1;
+	}
+
+	.search-filters-label {
 		width: 100%;
 		height: auto;
 		color: $text-muted;
 		margin-top: 1;
 	}
 
-	.size-limits-input {
+	.search-filters-input {
 		width: 100%;
 		height: 1;
 		margin-bottom: 1;
@@ -201,64 +207,77 @@ class SizeLimitsModal(ModalScreen[SizeLimits | None]):
 		background: $background;
 	}
 
-	#size-limits-error {
+	#search-filters-error {
 		width: 100%;
 		height: auto;
 		color: $error;
 		margin-bottom: 1;
 	}
 
-	#size-limits-buttons {
+	#search-filters-buttons {
 		grid-size: 2;
 		grid-gutter: 1 2;
 		width: 100%;
 		height: auto;
-		margin-top: 1;
 	}
 	"""
 
-	def __init__(self, initial: SizeLimits):
+	def __init__(self, initial: SearchFilters):
 		super().__init__()
 		self._initial = initial
 
 	def compose(self) -> ComposeResult:
-		with Vertical(id="size-limits-dialog"):
-			yield Static("File size limits (MiB)", id="size-limits-title")
-			yield Label("Text & documents (0 = unlimited)", classes="size-limits-label")
-			yield Input(id="size-limit-text", classes="size-limits-input")
-			yield Label("OCR", classes="size-limits-label")
-			yield Input(id="size-limit-ocr", classes="size-limits-input")
-			yield Label("Transcribe", classes="size-limits-label")
-			yield Input(id="size-limit-transcribe", classes="size-limits-input")
-			yield Label("", id="size-limits-error")
-			with Grid(id="size-limits-buttons"):
-				yield Button("Apply", variant="primary", id="size-limits-apply")
-				yield Button("Cancel", id="size-limits-cancel")
+		with Vertical(id="search-filters-dialog"):
+			yield Static("Search filters", id="search-filters-title")
+			with VerticalScroll(id="search-filters-scroll"):
+				yield Label("Top files (empty = all)", classes="search-filters-label")
+				yield Input(id="sf-top-files", classes="search-filters-input", placeholder="all")
+				yield Label("Matches per file", classes="search-filters-label")
+				yield Input(id="sf-max-matches", classes="search-filters-input")
+				yield Label("Text & documents (MiB, 0 = unlimited)", classes="search-filters-label")
+				yield Input(id="sf-size-text", classes="search-filters-input")
+				yield Label("OCR (MiB)", classes="search-filters-label")
+				yield Input(id="sf-size-ocr", classes="search-filters-input")
+				yield Label("Transcribe (MiB)", classes="search-filters-label")
+				yield Input(id="sf-size-transcribe", classes="search-filters-input")
+			yield Label("", id="search-filters-error")
+			with Grid(id="search-filters-buttons"):
+				yield Button("Apply", variant="primary", id="search-filters-apply")
+				yield Button("Cancel", id="search-filters-cancel")
 
 	def on_mount(self):
-		self.query_one("#size-limit-text", Input).value = self._initial.text_mib
-		self.query_one("#size-limit-ocr", Input).value = self._initial.ocr_mib
-		self.query_one("#size-limit-transcribe", Input).value = self._initial.transcribe_mib
+		self.query_one("#sf-top-files", Input).value = self._initial.top_files
+		self.query_one("#sf-max-matches", Input).value = self._initial.max_matches
+		self.query_one("#sf-size-text", Input).value = self._initial.size_limits.text_mib
+		self.query_one("#sf-size-ocr", Input).value = self._initial.size_limits.ocr_mib
+		self.query_one("#sf-size-transcribe", Input).value = self._initial.size_limits.transcribe_mib
+
+	def _current_filters(self) -> SearchFilters:
+		return SearchFilters(
+			top_files=self.query_one("#sf-top-files", Input).value,
+			max_matches=self.query_one("#sf-max-matches", Input).value,
+			size_limits=SizeLimits(
+				text_mib=self.query_one("#sf-size-text", Input).value,
+				ocr_mib=self.query_one("#sf-size-ocr", Input).value,
+				transcribe_mib=self.query_one("#sf-size-transcribe", Input).value,
+			),
+		)
 
 	def on_button_pressed(self, event: Button.Pressed):
-		if event.button.id == "size-limits-cancel":
+		if event.button.id == "search-filters-cancel":
 			self.dismiss(None)
 			return
-		if event.button.id != "size-limits-apply":
+		if event.button.id != "search-filters-apply":
 			return
-		error = self.query_one("#size-limits-error", Label)
-		limits = SizeLimits(
-			text_mib=self.query_one("#size-limit-text", Input).value,
-			ocr_mib=self.query_one("#size-limit-ocr", Input).value,
-			transcribe_mib=self.query_one("#size-limit-transcribe", Input).value,
-		)
+		error = self.query_one("#search-filters-error", Label)
+		filters = self._current_filters()
 		try:
-			validate_size_limits(limits)
+			validate_search_filters(filters)
 		except ValueError as exc:
 			error.update(str(exc))
 			return
 		error.update("")
-		self.dismiss(limits)
+		self.dismiss(filters)
 
 
 class SearchOptionsModal(ModalScreen[SearchOptions | None]):

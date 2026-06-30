@@ -48,9 +48,15 @@ from srxy.tui.messages import (
 	SearchError,
 	SearchFinished,
 )
-from srxy.tui.modals import ErrorModal, HelpModal, SearchOptionsModal, SizeLimitsModal
+from srxy.tui.modals import ErrorModal, HelpModal, SearchFiltersModal, SearchOptionsModal
 from srxy.tui.preflight import run_tui_preflight
 from srxy.tui.query_builder import QueryBuilder
+from srxy.tui.search_filters import (
+	SearchFilters,
+	apply_search_filters_to_args,
+	format_search_filters_summary,
+	search_filters_from_args,
+)
 from srxy.tui.search_options import (
 	SearchOptions,
 	apply_search_options_to_args,
@@ -63,7 +69,6 @@ from srxy.tui.search_worker import (
 	search_uses_subprocess,
 	skipped_file_from_dict,
 )
-from srxy.tui.size_limits import SizeLimits, apply_size_limits_to_args, parse_size_limits, size_limits_from_args
 from srxy.tui.theme import detect_app_theme
 
 
@@ -76,9 +81,7 @@ class _SearchSnapshot:
 	query: str
 	path: str
 	search_options: SearchOptions
-	limit_text: str
-	max_matches_text: str
-	size_limits: SizeLimits
+	search_filters: SearchFilters
 
 
 @dataclass(frozen=True, slots=True)
@@ -171,41 +174,24 @@ class SrxyApp(App[int]):
 	#filters-bar {
 		height: auto;
 		padding: 0 1 1 1;
-		margin-top: 1;
 	}
 
-	#filters-bar Label {
-		width: auto;
-		min-width: 14;
+	#search-filters-button {
 		height: 1;
-		padding: 0 1 0 0;
-		content-align: right middle;
-		color: $text-muted;
+		min-width: 12;
+		border: none;
+		background: $surface;
+		color: $foreground;
+		padding: 0 1;
+		content-align: center middle;
+		margin-right: 1;
 	}
 
-	#filters-bar Input {
+	#filters-summary {
 		width: 1fr;
 		height: 1;
-		margin-right: 1;
-		border: none;
-		padding: 0 1;
-		color: $foreground;
-		background: $surface;
-		content-align: center middle;
-	}
-
-	#filters-bar Input:last-of-type {
-		margin-right: 1;
-	}
-
-	#filters-bar Button {
-		height: 1;
-		min-width: 14;
-		border: none;
-		background: $surface;
-		color: $foreground;
-		padding: 0 1;
-		content-align: center middle;
+		color: $text-muted;
+		content-align: left middle;
 	}
 
 	#options-bar {
@@ -313,9 +299,9 @@ class SrxyApp(App[int]):
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
 		self.search_options = search_options_from_args(args)
-		self.size_limits = size_limits_from_args(args)
+		self.search_filters = search_filters_from_args(args)
 		apply_search_options_to_args(self._args, self.search_options)
-		apply_size_limits_to_args(self._args, self.size_limits)
+		apply_search_filters_to_args(self._args, self.search_filters)
 
 	@property
 	def exit_code(self) -> int:
@@ -333,12 +319,8 @@ class SrxyApp(App[int]):
 			yield Button("Advanced", id="search-options-button")
 			yield Static(format_search_options_summary(self.search_options), id="options-summary")
 		with Horizontal(id="filters-bar"):
-			limit_value = "" if self._args.limit is None else str(self._args.limit)
-			yield Label("Top files", id="filter-limit-label")
-			yield Input(placeholder="all", id="filter-limit", value=limit_value)
-			yield Label("Per file", id="filter-max-matches-label")
-			yield Input(id="filter-max-matches", value=str(self._args.max_matches), placeholder="")
-			yield Button("Size limits", id="size-limits-button")
+			yield Button("Filters", id="search-filters-button")
+			yield Static(format_search_filters_summary(self.search_filters), id="filters-summary")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
@@ -360,6 +342,7 @@ class SrxyApp(App[int]):
 		table.add_columns("Match", "Path", "Matched")
 		self._setup_preview_columns(self.query_one("#preview-matches", DataTable))
 		self._refresh_options_summary()
+		self._refresh_filters_summary()
 		self._update_search_button_state()
 		if self._auto_start and (self._args.query or "").strip():
 			self.call_after_refresh(self.action_start_search)
@@ -379,17 +362,8 @@ class SrxyApp(App[int]):
 	def _refresh_options_summary(self):
 		self.query_one("#options-summary", Static).update(format_search_options_summary(self.search_options))
 
-	def _parse_optional_positive_int(self, raw: str, *, field_name: str) -> int | None:
-		text = raw.strip()
-		if not text:
-			return None
-		try:
-			value = int(text)
-		except ValueError as error:
-			raise ValueError(f"{field_name} must be a positive integer") from error
-		if value < 1:
-			raise ValueError(f"{field_name} must be at least 1")
-		return value
+	def _refresh_filters_summary(self):
+		self.query_one("#filters-summary", Static).update(format_search_filters_summary(self.search_filters))
 
 	def _current_snapshot(self) -> _SearchSnapshot:
 		builder = self._query_builder()
@@ -397,9 +371,7 @@ class SrxyApp(App[int]):
 			query=builder.to_query_string(),
 			path=self.query_one("#path-input", Input).value or ".",
 			search_options=self.search_options,
-			limit_text=self.query_one("#filter-limit", Input).value,
-			max_matches_text=self.query_one("#filter-max-matches", Input).value,
-			size_limits=self.size_limits,
+			search_filters=self.search_filters,
 		)
 
 	def _update_search_button_state(self):
@@ -413,14 +385,14 @@ class SrxyApp(App[int]):
 		self._update_search_button_state()
 
 	def _sync_args_from_ui(self) -> argparse.Namespace:
+		from srxy.tui.search_filters import parse_search_filter_limits, validate_search_filters
+
 		snapshot = self._current_snapshot()
-		limit = (
-			self._parse_optional_positive_int(snapshot.limit_text, field_name="Top files")
-			if snapshot.limit_text.strip()
-			else None
-		)
-		max_matches = self._parse_optional_positive_int(snapshot.max_matches_text, field_name="Matches per file") or 50
-		max_file_size, max_ocr_file_size, max_transcribe_file_size = parse_size_limits(snapshot.size_limits)
+		try:
+			validate_search_filters(snapshot.search_filters)
+		except ValueError as error:
+			raise ValueError(str(error)) from error
+		limit, max_matches = parse_search_filter_limits(snapshot.search_filters)
 		args = argparse.Namespace(**vars(self._args))
 		builder = self._query_builder()
 		args.query = builder.to_query_string()
@@ -428,9 +400,7 @@ class SrxyApp(App[int]):
 		args.path = snapshot.path
 		args.limit = limit
 		args.max_matches = max_matches
-		args.max_file_size = max_file_size
-		args.max_ocr_file_size = max_ocr_file_size
-		args.max_transcribe_file_size = max_transcribe_file_size
+		apply_search_filters_to_args(args, snapshot.search_filters)
 		apply_search_options_to_args(args, snapshot.search_options)
 		return args
 
@@ -516,8 +486,14 @@ class SrxyApp(App[int]):
 	def action_show_help(self):
 		self.push_screen(HelpModal())
 
-	def _current_applied_size_limits(self) -> SizeLimits:
-		return size_limits_from_args(self._sync_args_from_ui())
+	@work
+	async def action_open_search_filters(self):
+		filters = await self.push_screen_wait(SearchFiltersModal(self.search_filters))
+		if filters is not None:
+			self.search_filters = filters
+			apply_search_filters_to_args(self._args, filters)
+			self._refresh_filters_summary()
+			self._update_search_button_state()
 
 	@work
 	async def action_open_search_options(self):
@@ -526,15 +502,6 @@ class SrxyApp(App[int]):
 			self.search_options = options
 			apply_search_options_to_args(self._args, options)
 			self._refresh_options_summary()
-			self._update_search_button_state()
-
-	@work
-	async def action_open_size_limits(self):
-		current = self._current_applied_size_limits()
-		limits = await self.push_screen_wait(SizeLimitsModal(current))
-		if limits is not None:
-			self.size_limits = limits
-			apply_size_limits_to_args(self._args, limits)
 			self._update_search_button_state()
 
 	def action_open_file(self):
@@ -882,15 +849,11 @@ class SrxyApp(App[int]):
 			self.action_start_search()
 		elif event.button.id == "search-options-button":
 			self.action_open_search_options()
-		elif event.button.id == "size-limits-button":
-			self.action_open_size_limits()
+		elif event.button.id == "search-filters-button":
+			self.action_open_search_filters()
 
 	def on_input_changed(self, event: Input.Changed):
-		if event.input.id in {
-			"path-input",
-			"filter-limit",
-			"filter-max-matches",
-		}:
+		if event.input.id == "path-input":
 			self._update_search_button_state()
 		elif event.input.id is not None and event.input.id.startswith("query-term-"):
 			self._update_search_button_state()

@@ -1,0 +1,133 @@
+srxy-tui-filters-open
+⭘
+Srxy
+Query
+hello
+Path
+.
+Search
++ Term
+Advanced
+hello
+█
+█
+Advanced
+Names, C
+█
+█
+█
+Search filters
+█
+Filters
+All file
+█
+█
+█
+█
+┌
+█
+Top files (empty = all)
+█
+┐
+│
+Match
+Path
+Matched
+█
+all
+█
+│
+│
+█
+█
+Text
+│
+│
+█
+Matches per file
+█
+│
+│
+█
+50
+█
+│
+│
+█
+█
+│
+│
+█
+Text & documents (MiB, 0 = unlimited)
+█
+│
+│
+█
+100
+█
+│
+│
+█
+█
+│
+│
+█
+OCR (MiB)
+█
+│
+│
+█
+50
+█
+│
+│
+█
+█
+│
+│
+█
+Transcribe (MiB)
+█
+│
+│
+█
+500
+█
+│
+│
+█
+█
+│
+│
+█
+█
+│
+│
+█
+█
+│
+└
+█
+█
+┘
+█
+█
+Ready
+▔▔▔▔▔▔▔▔
+▔▔▔▔▔▔▔▔
+▔▔▔▔▔▔▔▔
+▁▁▁▁▁▁▁▁
+▁▁▁▁▁▁▁▁
+▁▁▁▁▁▁▁▁
+^c
+Quit
+?
+Help
+o
+Open
+y
+Copy path
+m
+Copy match
+M
+Copy all

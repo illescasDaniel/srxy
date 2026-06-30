@@ -32,10 +32,6 @@ SCREENSHOT_CSS = """
     background: #0178d4;
     color: #ffffff;
 }
-#options-bar Checkbox.-on {
-    background: #0178d4;
-    color: #ffffff;
-}
 """
 PRIMARY_BLUE = "#0178d4"
 SEARCH_TEXT_WHITE = "#ffffff"

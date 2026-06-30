@@ -11,6 +11,7 @@ from textual.widgets import DataTable
 from srxy.cli import build_parser
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
+from srxy.tui.search_filters import format_search_filters_summary
 from srxy.tui.search_options import format_search_options_summary
 
 
@@ -19,8 +20,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.tui]
 _CONTROL_LABELS = (
 	"Search",
 	"Advanced",
-	"Names",
-	"Content",
+	"Filters",
 )
 _STATUS_LABELS = ("Match", "Path", "Matched", "Ready", "Quit")
 
@@ -58,7 +58,7 @@ def test_given_tui_when_screenshot_exported_then_status_and_footer_labels_are_vi
 	asyncio.run(run())
 
 
-_FILTER_LABELS = ("Top files", "Per file", "Size limits", "Query", "Path", "Advanced")
+_FIELD_LABELS = ("Query", "Path", "Advanced", "Filters")
 
 
 @pytest.mark.parametrize("theme", ["textual-light", "textual-dark"])
@@ -70,8 +70,7 @@ def test_given_tui_when_screenshot_exported_then_field_labels_are_always_visible
 		async with app.run_test(size=(100, 30)) as pilot:
 			await pilot.pause()
 			svg = app.export_screenshot(title="srxy-tui")
-			assert_labels_visible(svg, _FILTER_LABELS)
-			assert app.query_one("#filter-max-matches").value == "50"
+			assert_labels_visible(svg, _FIELD_LABELS)
 
 	# when / then
 	asyncio.run(run())
@@ -92,6 +91,21 @@ def test_given_options_summary_when_composed_then_shows_enabled_modes():
 	asyncio.run(run())
 
 
+def test_given_filters_summary_when_composed_then_shows_default_limits():
+	# given
+	app = _build_app(theme="textual-light")
+
+	async def run():
+		async with app.run_test(size=(100, 30)) as pilot:
+			await pilot.pause()
+			summary = format_search_filters_summary(app.search_filters)
+			assert "All files" in summary
+			assert "50/file" in summary
+
+	# when / then
+	asyncio.run(run())
+
+
 def test_given_tui_when_composed_then_search_row_has_padding_and_controls_are_slightly_taller():
 	# given
 	app = _build_app(theme="textual-light")
@@ -103,12 +117,14 @@ def test_given_tui_when_composed_then_search_row_has_padding_and_controls_are_sl
 			search_button = app.query_one("#search-button")
 			query_input = app.query_one("#query-term-0")
 			options_button = app.query_one("#search-options-button")
+			filters_button = app.query_one("#search-filters-button")
 			assert search_bar.outer_size.height >= 2
 			assert search_button.outer_size.height == 1
 			assert query_input.outer_size.height == 1
 			assert options_button.outer_size.height == 1
+			assert filters_button.outer_size.height == 1
 			svg = app.export_screenshot(title="srxy-tui")
-			assert_labels_visible(svg, ("Search", "Advanced"))
+			assert_labels_visible(svg, ("Search", "Advanced", "Filters"))
 
 	# when / then
 	asyncio.run(run())

@@ -15,11 +15,8 @@ Advanced
 revenue | amphibian
 Advanced
 Names, Content
-Top files
-all
-Per file
-50
-Size limits
+Filters
+All files · 50/file · text 100 MiB
 ┌
 ┐
 ┌
@@ -37,6 +34,10 @@ Matched
 Match
 Location
 Text
+│
+│
+│
+│
 │
 │
 │
