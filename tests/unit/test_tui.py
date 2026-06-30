@@ -254,7 +254,7 @@ def test_given_result_with_many_lines_when_preview_updated_then_scrolls_to_top(t
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				table = app.query_one("#results-table", DataTable)
-				for _ in range(30):
+				for _ in range(60):
 					await pilot.pause(delay=0.05)
 					if table.row_count == 1:
 						break

@@ -7,7 +7,7 @@ import pytest
 from srxy.matchers.semantic import SemanticMatcher, reset_semantic_model
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("mock_semantic_model")]
+pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
 
 
 def setup_function():

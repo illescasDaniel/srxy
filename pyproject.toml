@@ -121,6 +121,7 @@ executionEnvironments = [
 	{ root = "src/srxy/device.py", reportMissingImports = "none" },
 	{ root = "src/srxy/semantic_image.py", reportMissingImports = "none" },
 	{ root = "src/srxy/matchers/semantic.py", reportMissingImports = "none" },
+	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
 	{ root = "src" },
 	{ root = "tests", extraPaths = ["src", "."] },
 ]

@@ -52,7 +52,7 @@ def cuda_available() -> bool:
 
 		if importlib.util.find_spec("torch") is None:
 			return False
-		import torch
+		import torch  # type: ignore[reportMissingImports]
 
 		return bool(torch.cuda.is_available())
 	except (ImportError, OSError, RuntimeError):
