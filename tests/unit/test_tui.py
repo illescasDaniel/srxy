@@ -247,14 +247,12 @@ def test_given_result_with_many_lines_when_preview_updated_then_scrolls_to_top(t
 	args = _build_args(["match", str(tmp_path), "--content-only"])
 
 	async def run_app():
-		app = SrxyApp(args, auto_start=False)
+		app = SrxyApp(args, auto_start=True)
 		with (
 			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
 			patch("srxy.tui.app.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
-				await pilot.pause()
-				app.action_start_search()
 				table = app.query_one("#results-table", DataTable)
 				for _ in range(60):
 					await pilot.pause(delay=0.05)

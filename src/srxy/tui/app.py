@@ -19,6 +19,7 @@ from textual import on, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.containers import Horizontal, Vertical
+from textual.css.query import NoMatches
 from textual.widgets import (
 	Button,
 	DataTable,
@@ -409,8 +410,11 @@ class SrxyApp(App[int]):
 		self._result_index = {}
 		table = self.query_one("#results-table", DataTable)
 		table.clear(columns=False)
-		self.query_one("#preview-header", Static).update("")
-		self._reset_preview_table(self.query_one("#preview-matches", DataTable))
+		try:
+			self.query_one("#preview-header", Static).update("")
+			self._reset_preview_table(self.query_one("#preview-matches", DataTable))
+		except NoMatches:
+			pass
 		self.query_one("#warnings-log", Static).update("")
 		self._warnings_text = ""
 		self._preview_rows = []
@@ -426,8 +430,11 @@ class SrxyApp(App[int]):
 		)
 
 	def _update_preview(self, result: FileSearchResult | None):
-		header = self.query_one("#preview-header", Static)
-		table = self.query_one("#preview-matches", DataTable)
+		try:
+			header = self.query_one("#preview-header", Static)
+			table = self.query_one("#preview-matches", DataTable)
+		except NoMatches:
+			return
 		header.update("")
 		self._reset_preview_table(table)
 		self._preview_rows = []
