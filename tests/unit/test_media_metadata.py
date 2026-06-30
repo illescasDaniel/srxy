@@ -176,6 +176,35 @@ def test_given_existing_software_tag_when_merging_xmp_then_skips_duplicate_softw
 	assert len(software_lines) == 1
 
 
+def test_given_utf16le_xp_comment_when_collecting_tags_then_decodes_searchable_text(tmp_path: Path):
+	# given
+	image_path = tmp_path / "photo.jpg"
+	image_path.write_bytes(b"\xff\xd8\xff")
+
+	class FakeImage:
+		info = {"xpcomment": "a\x00c\x00o\x00m\x00m\x00e\x00n\x00t", "xptitle": "s\x00o\x00m\x00e\x00w\x00h\x00e\x00r\x00e"}
+
+		def __enter__(self):
+			return self
+
+		def __exit__(self, *_args: object):
+			return False
+
+		def getexif(self):
+			return {}
+
+	# when
+	with (
+		patch("srxy.media_metadata.open_image", lambda _path: FakeImage()),
+		patch("srxy.media_metadata.register_image_openers"),
+	):
+		lines = [text for _line, text in iter_media_metadata_lines(image_path)]
+
+	# then
+	assert any(line == "[Comment] acomment" for line in lines)
+	assert any(line == "[Title] somewhere" for line in lines)
+
+
 def test_given_photoshop_xmp_fixture_when_iterating_metadata_then_indexes_sanitized_fields_not_raw_xml():
 	# given
 	require_file_search_fixtures()

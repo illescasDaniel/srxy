@@ -82,6 +82,12 @@ _XMP_SKIP_LOCAL_NAMES = frozenset(
 	}
 )
 _XMP_UUID_VALUE_RE = re.compile(r"^xmp\.(iid|did):", re.IGNORECASE)
+_WINDOWS_XP_FIELD_NAMES: dict[str, str] = {
+	"xpcomment": "Comment",
+	"xptitle": "Title",
+	"xpkeywords": "Keywords",
+	"xpauthor": "Author",
+}
 
 
 def is_media_path(path: Path) -> bool:
@@ -122,6 +128,9 @@ def _normalize_tag_key(key: str) -> str:
 	if key in _MP4_ATOM_NAMES:
 		return _MP4_ATOM_NAMES[key]
 	normalized = key.strip()
+	lowered = normalized.lower()
+	if lowered in _WINDOWS_XP_FIELD_NAMES:
+		return _WINDOWS_XP_FIELD_NAMES[lowered]
 	if normalized.startswith("----:"):
 		parts = normalized.split(":", 2)
 		if len(parts) == 3:
@@ -135,21 +144,38 @@ def _should_skip_tag(key: str) -> bool:
 	return _normalize_tag_key(key).lower() in _SKIP_TAG_KEYS
 
 
-def _stringify_exif_value(value: object) -> str | None:
+def _decode_metadata_text(value: object) -> str | None:
 	if value is None:
 		return None
 	if isinstance(value, bytes):
-		try:
-			text = value.decode("utf-8").strip("\x00")
-		except UnicodeDecodeError:
-			return None
-		return text or None
+		for encoding in ("utf-16-le", "utf-16", "utf-8"):
+			try:
+				text = value.decode(encoding).strip("\x00").strip()
+			except UnicodeDecodeError:
+				continue
+			else:
+				if text:
+					return text
+		return None
 	if isinstance(value, (tuple, list)):
-		parts = [_stringify_exif_value(part) for part in value]
+		parts = [_decode_metadata_text(part) for part in value]
 		joined = ", ".join(part for part in parts if part)
 		return joined or None
+	if isinstance(value, str):
+		if "\x00" in value:
+			try:
+				text = value.encode("latin-1").decode("utf-16-le").strip("\x00").strip()
+			except UnicodeDecodeError:
+				text = value.replace("\x00", "").strip()
+			return text or None
+		text = value.strip()
+		return text or None
 	text = str(value).strip()
 	return text or None
+
+
+def _stringify_exif_value(value: object) -> str | None:
+	return _decode_metadata_text(value)
 
 
 def _format_gps_coordinates(gps_ifd: dict[int, object]) -> str | None:
@@ -233,7 +259,9 @@ def _collect_pillow_image_tags(path: Path) -> dict[str, str]:
 				if _is_xmp_xml(value):
 					xmp_packets.append(value.strip())
 					continue
-				tags[_normalize_tag_key(key)] = value.strip()
+				decoded = _decode_metadata_text(value)
+				if decoded:
+					tags[_normalize_tag_key(key)] = decoded
 
 		exif = image.getexif()
 		if exif:

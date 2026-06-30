@@ -14,32 +14,6 @@ from srxy.cli import apply_args_to_env, execute_search
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
 
 
-_WORKER_ENV_KEYS = frozenset(
-	{
-		"PATH",
-		"HOME",
-		"USER",
-		"LANG",
-		"LC_ALL",
-		"LC_CTYPE",
-		"LC_MESSAGES",
-		"TMPDIR",
-		"TEMP",
-		"TMP",
-		"XDG_CACHE_HOME",
-		"XDG_CONFIG_HOME",
-		"CUDA_VISIBLE_DEVICES",
-		"PYTHONIOENCODING",
-		"PYTHONUTF8",
-		"TOKENIZERS_PARALLELISM",
-		"OMP_NUM_THREADS",
-		"TQDM_DISABLE",
-		"HF_HUB_DISABLE_PROGRESS_BARS",
-		"TRANSFORMERS_VERBOSITY",
-		"JOBLIB_MULTIPROCESSING",
-	}
-)
-
 _worker_stdin: TextIO | None = None
 
 
@@ -53,10 +27,9 @@ def _bootstrap_worker_env():
 
 
 def build_worker_env() -> dict[str, str]:
-	env: dict[str, str] = {}
-	for key, value in os.environ.items():
-		if key.startswith("SRXY_") or key.startswith("HF_") or key in _WORKER_ENV_KEYS:
-			env[key] = value
+	# Inherit the full parent environment so Windows subprocesses can load
+	# Winsock (_overlapped/asyncio) and locate system DLLs (SystemRoot, etc.).
+	env = dict(os.environ)
 	_bootstrap_worker_env()
 	for key in (
 		"TOKENIZERS_PARALLELISM",
