@@ -209,6 +209,36 @@ def test_given_tui_when_size_limits_applied_then_search_becomes_stale(tmp_path: 
 	asyncio.run(run())
 
 
+def test_given_cli_size_flags_when_opening_modal_then_shows_applied_limits(tmp_path: Path):
+	# given
+	app = _build_app(
+		argv=[
+			"hello",
+			str(tmp_path),
+			"--max-file-size",
+			"0",
+			"--max-ocr-file-size",
+			str(100 * 1024 * 1024),
+			"--max-transcribe-file-size",
+			str(250 * 1024 * 1024),
+		]
+	)
+
+	async def run():
+		async with app.run_test(size=(120, 30)) as pilot:
+			await pilot.pause()
+			await pilot.click("#size-limits-button")
+			await pilot.pause()
+			from srxy.tui.modals import SizeLimitsModal
+
+			assert isinstance(app.screen, SizeLimitsModal)
+			assert app.screen.query_one("#size-limit-text").value == "0"
+			assert app.screen.query_one("#size-limit-ocr").value == "100"
+			assert app.screen.query_one("#size-limit-transcribe").value == "250"
+
+	asyncio.run(run())
+
+
 def test_given_tui_when_size_limits_cancelled_then_values_unchanged(tmp_path: Path):
 	# given
 	app = _build_app(argv=["hello", str(tmp_path)])

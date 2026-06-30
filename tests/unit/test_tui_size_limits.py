@@ -55,3 +55,40 @@ def test_given_bytes_when_formatting_mib_then_rounds_cleanly():
 	# when / then
 	assert bytes_to_mib_text(DEFAULT_MAX_FILE_SIZE, allow_zero=True) == "100"
 	assert bytes_to_mib_text(0, allow_zero=True) == "0"
+
+
+def test_given_cli_size_flags_when_building_size_limits_then_reflects_arguments():
+	# given
+	args = build_parser().parse_args(
+		[
+			"token",
+			"--max-file-size",
+			"0",
+			"--max-ocr-file-size",
+			str(100 * 1024 * 1024),
+			"--max-transcribe-file-size",
+			str(250 * 1024 * 1024),
+		]
+	)
+
+	# when
+	limits = size_limits_from_args(args)
+
+	# then
+	assert limits == SizeLimits(text_mib="0", ocr_mib="100", transcribe_mib="250")
+
+
+def test_given_size_limits_when_applying_to_args_then_sets_byte_fields():
+	# given
+	args = build_parser().parse_args(["token"])
+	limits = SizeLimits(text_mib="10", ocr_mib="20", transcribe_mib="30")
+
+	# when
+	from srxy.tui.size_limits import apply_size_limits_to_args
+
+	apply_size_limits_to_args(args, limits)
+
+	# then
+	assert args.max_file_size == 10 * 1024 * 1024
+	assert args.max_ocr_file_size == 20 * 1024 * 1024
+	assert args.max_transcribe_file_size == 30 * 1024 * 1024

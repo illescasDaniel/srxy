@@ -223,15 +223,20 @@ class SizeLimitsModal(ModalScreen[SizeLimits | None]):
 		with Vertical(id="size-limits-dialog"):
 			yield Static("File size limits (MiB)", id="size-limits-title")
 			yield Label("Text & documents (0 = unlimited)", classes="size-limits-label")
-			yield Input(value=self._initial.text_mib, id="size-limit-text", classes="size-limits-input")
+			yield Input(id="size-limit-text", classes="size-limits-input")
 			yield Label("OCR", classes="size-limits-label")
-			yield Input(value=self._initial.ocr_mib, id="size-limit-ocr", classes="size-limits-input")
+			yield Input(id="size-limit-ocr", classes="size-limits-input")
 			yield Label("Transcribe", classes="size-limits-label")
-			yield Input(value=self._initial.transcribe_mib, id="size-limit-transcribe", classes="size-limits-input")
+			yield Input(id="size-limit-transcribe", classes="size-limits-input")
 			yield Label("", id="size-limits-error")
 			with Grid(id="size-limits-buttons"):
 				yield Button("Apply", variant="primary", id="size-limits-apply")
 				yield Button("Cancel", id="size-limits-cancel")
+
+	def on_mount(self):
+		self.query_one("#size-limit-text", Input).value = self._initial.text_mib
+		self.query_one("#size-limit-ocr", Input).value = self._initial.ocr_mib
+		self.query_one("#size-limit-transcribe", Input).value = self._initial.transcribe_mib
 
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "size-limits-cancel":

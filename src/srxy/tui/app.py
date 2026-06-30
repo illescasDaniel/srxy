@@ -59,7 +59,7 @@ from srxy.tui.search_worker import (
 	search_uses_subprocess,
 	skipped_file_from_dict,
 )
-from srxy.tui.size_limits import SizeLimits, parse_size_limits, size_limits_from_args
+from srxy.tui.size_limits import SizeLimits, apply_size_limits_to_args, parse_size_limits, size_limits_from_args
 from srxy.tui.theme import detect_app_theme
 
 
@@ -326,6 +326,7 @@ class SrxyApp(App[int]):
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
 		self.size_limits = size_limits_from_args(args)
+		apply_size_limits_to_args(self._args, self.size_limits)
 
 	@property
 	def exit_code(self) -> int:
@@ -569,11 +570,16 @@ class SrxyApp(App[int]):
 	def action_show_help(self):
 		self.push_screen(HelpModal())
 
+	def _current_applied_size_limits(self) -> SizeLimits:
+		return size_limits_from_args(self._sync_args_from_ui())
+
 	@work
 	async def action_open_size_limits(self):
-		limits = await self.push_screen_wait(SizeLimitsModal(self.size_limits))
+		current = self._current_applied_size_limits()
+		limits = await self.push_screen_wait(SizeLimitsModal(current))
 		if limits is not None:
 			self.size_limits = limits
+			apply_size_limits_to_args(self._args, limits)
 			self._update_search_button_state()
 
 	def action_open_file(self):

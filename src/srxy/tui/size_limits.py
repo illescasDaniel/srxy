@@ -28,16 +28,39 @@ def bytes_to_mib_text(value: int, *, allow_zero: bool = False) -> str:
 
 
 def size_limits_from_args(args: argparse.Namespace) -> SizeLimits:
-	text_bytes = args.max_file_size if args.max_file_size is not None else DEFAULT_MAX_FILE_SIZE
-	ocr_bytes = args.max_ocr_file_size if args.max_ocr_file_size is not None else DEFAULT_OCR_MAX_FILE_SIZE
-	transcribe_bytes = (
-		args.max_transcribe_file_size if args.max_transcribe_file_size is not None else DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
-	)
+	text_bytes = _effective_text_limit_bytes(args)
+	ocr_bytes = _effective_ocr_limit_bytes(args)
+	transcribe_bytes = _effective_transcribe_limit_bytes(args)
 	return SizeLimits(
 		text_mib=bytes_to_mib_text(text_bytes, allow_zero=True),
 		ocr_mib=bytes_to_mib_text(ocr_bytes),
 		transcribe_mib=bytes_to_mib_text(transcribe_bytes),
 	)
+
+
+def _effective_text_limit_bytes(args: argparse.Namespace) -> int:
+	if args.max_file_size is not None:
+		return args.max_file_size
+	return DEFAULT_MAX_FILE_SIZE
+
+
+def _effective_ocr_limit_bytes(args: argparse.Namespace) -> int:
+	if args.max_ocr_file_size is not None:
+		return args.max_ocr_file_size
+	return DEFAULT_OCR_MAX_FILE_SIZE
+
+
+def _effective_transcribe_limit_bytes(args: argparse.Namespace) -> int:
+	if args.max_transcribe_file_size is not None:
+		return args.max_transcribe_file_size
+	return DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
+
+
+def apply_size_limits_to_args(args: argparse.Namespace, limits: SizeLimits):
+	max_file_size, max_ocr_file_size, max_transcribe_file_size = parse_size_limits(limits)
+	args.max_file_size = max_file_size
+	args.max_ocr_file_size = max_ocr_file_size
+	args.max_transcribe_file_size = max_transcribe_file_size
 
 
 def _parse_mib_field(raw: str, *, field_name: str, allow_zero: bool = False) -> int:
