@@ -9,10 +9,10 @@ import pytest
 from srxy.windows_metadata import (
 	_ensure_com_initialized,
 	_read_windows_keywords,
-	reset_thread_com_state_for_tests,
 	has_windows_tags,
 	iter_windows_metadata_lines,
 	normalize_windows_keywords,
+	reset_thread_com_state_for_tests,
 	windows_tags_supported,
 )
 
