@@ -9,7 +9,7 @@ Search
 + Term
 Advanced
 hello
-Advanced
+Search modes
 Names, Content, Semantic, Archives
 █
 █
@@ -18,7 +18,7 @@ All files ·
 █
 █
 █
-Search options
+Search modes
 █
 ┌
 █

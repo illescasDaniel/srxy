@@ -44,7 +44,7 @@ def test_given_tui_when_search_options_toggled_then_search_becomes_stale(tmp_pat
 			assert app.search_options.ocr
 			assert button.has_class("-stale")
 			svg = app.export_screenshot(title="srxy-tui-ocr-toggle")
-			assert_labels_visible(svg, ("Advanced", "Search"))
+			assert_labels_visible(svg, ("Search modes", "Search"))
 
 	asyncio.run(run())
 
@@ -175,7 +175,7 @@ def test_given_semantic_image_flag_when_search_completes_then_results_table_popu
 						break
 				assert app.query_one("#results-table", DataTable).row_count >= 1
 				svg = app.export_screenshot(title="srxy-tui-semantic-image")
-				assert_labels_visible(svg, ("Search", "Advanced"))
+				assert_labels_visible(svg, ("Search", "Search modes"))
 
 	asyncio.run(run())
 
@@ -204,7 +204,7 @@ def test_given_tui_when_search_filters_applied_then_search_becomes_stale(tmp_pat
 	app = _build_app(argv=["hello", str(tmp_path)])
 
 	async def run():
-		async with app.run_test(size=(120, 30)) as pilot:
+		async with app.run_test(size=(120, 40)) as pilot:
 			await pilot.pause()
 			button = app.query_one("#search-button")
 			await pilot.click("#search-filters-button")
@@ -235,7 +235,7 @@ def test_given_cli_size_flags_when_opening_filters_dialog_then_shows_applied_lim
 	)
 
 	async def run():
-		async with app.run_test(size=(120, 30)) as pilot:
+		async with app.run_test(size=(120, 40)) as pilot:
 			await pilot.pause()
 			await pilot.click("#search-filters-button")
 			await pilot.pause()
@@ -253,7 +253,7 @@ def test_given_tui_when_search_filters_cancelled_then_values_unchanged(tmp_path:
 	original = app.search_filters
 
 	async def run():
-		async with app.run_test(size=(120, 30)) as pilot:
+		async with app.run_test(size=(120, 40)) as pilot:
 			await pilot.pause()
 			await pilot.click("#search-filters-button")
 			await pilot.pause()

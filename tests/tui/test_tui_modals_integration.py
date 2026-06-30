@@ -52,7 +52,7 @@ def test_given_tui_when_filters_dialog_opened_then_matches_snapshot(theme: str):
 	app.theme = theme
 
 	async def run():
-		async with app.run_test(size=(100, 30)) as pilot:
+		async with app.run_test(size=(100, 40)) as pilot:
 			await pilot.pause()
 			await pilot.click("#search-filters-button")
 			await pilot.pause()

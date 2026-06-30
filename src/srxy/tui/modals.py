@@ -137,7 +137,8 @@ class HelpModal(ModalScreen[None]):
 
 [b]Filters[/b]
   Filters            Top files, per-file match cap, and size limits (MiB)
-  Advanced           Search modes (names, content, semantic, archives, …)
+  Search modes       Names, content, semantic, OCR, archives, …
+  Filters            Top files, per-file match cap, and size limits (MiB)
 
 [b]Results[/b]
   j / k          Move selection
@@ -344,7 +345,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	def compose(self) -> ComposeResult:
 		with Vertical(id="search-options-dialog"):
-			yield Static("Search options", id="search-options-title")
+			yield Static("Search modes", id="search-options-title")
 			with VerticalScroll(id="search-options-scroll"):
 				yield Checkbox("Names", id="so-names", value=self._initial.search_names)
 				yield Checkbox("Content", id="so-content", value=self._initial.search_contents)

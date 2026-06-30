@@ -5,7 +5,7 @@ host
 █
 █
 █
-Search options
+Search modes
 █
 █
 █

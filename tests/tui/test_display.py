@@ -19,7 +19,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.tui]
 
 _CONTROL_LABELS = (
 	"Search",
-	"Advanced",
+	"Search modes",
 	"Filters",
 )
 _STATUS_LABELS = ("Match", "Path", "Matched", "Ready", "Quit")
@@ -58,7 +58,7 @@ def test_given_tui_when_screenshot_exported_then_status_and_footer_labels_are_vi
 	asyncio.run(run())
 
 
-_FIELD_LABELS = ("Query", "Path", "Advanced", "Filters")
+_FIELD_LABELS = ("Query", "Path", "Search modes", "Filters")
 
 
 @pytest.mark.parametrize("theme", ["textual-light", "textual-dark"])
@@ -124,7 +124,7 @@ def test_given_tui_when_composed_then_search_row_has_padding_and_controls_are_sl
 			assert options_button.outer_size.height == 1
 			assert filters_button.outer_size.height == 1
 			svg = app.export_screenshot(title="srxy-tui")
-			assert_labels_visible(svg, ("Search", "Advanced", "Filters"))
+			assert_labels_visible(svg, ("Search", "Search modes", "Filters"))
 
 	# when / then
 	asyncio.run(run())

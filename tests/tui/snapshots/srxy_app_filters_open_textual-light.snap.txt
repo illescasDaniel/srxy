@@ -9,15 +9,8 @@ Search
 + Term
 Advanced
 hello
-█
-█
-Advanced
-Names, C
-█
-█
-█
-Search filters
-█
+Search modes
+Names, Content
 Filters
 All file
 █
@@ -26,7 +19,7 @@ All file
 █
 ┌
 █
-Top files (empty = all)
+Search filters
 █
 ┐
 │
@@ -34,13 +27,26 @@ Match
 Path
 Matched
 █
-all
 █
 │
 │
 █
 █
 Text
+│
+│
+█
+Top files (empty = all)
+█
+│
+│
+█
+all
+█
+│
+│
+█
+█
 │
 │
 █
@@ -106,12 +112,44 @@ Transcribe (MiB)
 █
 █
 │
+│
+█
+█
+│
+│
+█
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+█
+│
+│
+█
+Apply
+Cancel
+█
+│
+│
+█
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+█
+│
+│
+█
+█
+│
+│
+█
+█
+│
+│
+│
+│
+│
 └
-█
-█
 ┘
-█
-█
+└
+┘
 Ready
 ▔▔▔▔▔▔▔▔
 ▔▔▔▔▔▔▔▔

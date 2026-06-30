@@ -16,7 +16,6 @@ from srxy.cli import build_parser, should_use_tui
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
 from srxy.tui.modals import SearchOptionsModal
-from srxy.tui.search_filters import apply_search_filters_to_args
 from srxy.tui.theme import detect_app_theme
 
 
@@ -337,7 +336,6 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 		async with app.run_test() as pilot:
 			await pilot.pause()
 			app.search_filters = replace(app.search_filters, top_files="2")
-			apply_search_filters_to_args(app._args, app.search_filters)
 			app.query_one("#query-term-0").value = "token"
 			await pilot.click("#search-button")
 			table = app.query_one("#results-table", DataTable)
