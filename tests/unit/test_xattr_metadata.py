@@ -30,8 +30,9 @@ def test_given_binary_plist_tags_when_iterating_xattr_lines_then_yields_finder_t
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata.xattr_supported", return_value=True),
+		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr, create=True),
+		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr, create=True),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -52,8 +53,9 @@ def test_given_invalid_plist_when_iterating_xattr_lines_then_yields_nothing(tmp_
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata.xattr_supported", return_value=True),
+		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr, create=True),
+		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr, create=True),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -74,8 +76,9 @@ def test_given_comma_separated_xdg_tags_when_iterating_xattr_lines_then_splits_v
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata.xattr_supported", return_value=True),
+		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr, create=True),
+		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr, create=True),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -100,8 +103,9 @@ def test_given_xdg_comment_when_iterating_xattr_lines_then_yields_full_text(tmp_
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata.xattr_supported", return_value=True),
+		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr, create=True),
+		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr, create=True),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
@@ -122,8 +126,9 @@ def test_given_finder_comment_when_iterating_xattr_lines_then_yields_full_text(t
 
 	# when
 	with (
-		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr),
-		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr),
+		patch("srxy.xattr_metadata.xattr_supported", return_value=True),
+		patch("srxy.xattr_metadata.os.listxattr", fake_listxattr, create=True),
+		patch("srxy.xattr_metadata.os.getxattr", fake_getxattr, create=True),
 	):
 		lines = list(iter_xattr_metadata_lines(file_path))
 
