@@ -3,7 +3,6 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-import numpy as np
 import pytest
 
 from srxy.cache import (
@@ -17,7 +16,7 @@ from srxy.document_text import iter_document_lines
 from srxy.matchers.semantic import SemanticMatcher, reset_semantic_model
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("mock_semantic_model")]
+pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
 
 
 def setup_function():
@@ -33,6 +32,7 @@ def teardown_function():
 @patch("srxy.matchers.semantic._get_model")
 def test_given_cached_embedding_when_scoring_twice_then_encodes_once(mock_get_model: MagicMock):
 	# given
+	np = pytest.importorskip("numpy")
 	mock_model = MagicMock()
 	mock_model.encode.side_effect = lambda text: np.array([float(len(text)), 0.5], dtype=np.float32)
 	mock_get_model.return_value = mock_model
@@ -55,6 +55,7 @@ def test_given_cached_embedding_when_new_process_scores_again_then_skips_encode(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
+	np = pytest.importorskip("numpy")
 	monkeypatch.setenv("SRXY_SEMANTIC_MODEL", "test-model")
 	mock_model = MagicMock()
 	mock_model.encode.side_effect = lambda text: np.array([float(len(text)), 0.5], dtype=np.float32)
@@ -100,6 +101,7 @@ def test_given_pdf_lines_when_iterating_twice_then_extracts_once(tmp_path: Path,
 	assert cache_get(CACHE_KIND_DOCUMENT_TEXT, content_hash, ".pdf:ocr=1") is not None
 
 
+@pytest.mark.transcribe
 def test_given_empty_transcript_cache_when_iterating_then_skips_transcription(
 	tmp_path: Path,
 	monkeypatch: pytest.MonkeyPatch,

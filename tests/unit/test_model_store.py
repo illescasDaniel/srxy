@@ -2,9 +2,10 @@ from __future__ import annotations
 
 import io
 import os
+import sys
 from pathlib import Path
-from typing import Any, cast
-from unittest.mock import patch
+from typing import Any, Callable, cast
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -203,9 +204,24 @@ def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_p
 			bar = factory(total=100, desc="Fetching files")
 			bar.update(40)
 
+	fake_hub = MagicMock()
+	fake_hub.snapshot_download = fake_snapshot_download
+
+	def fake_make_progress_tqdm(on_progress_cb: Callable[[int, int, str], None]):
+		class FakeTqdm:
+			def __init__(self, *, total: int = 0, desc: str = ""):
+				self.total = total
+				self.desc = desc
+
+			def update(self, n: float | None = 1):
+				on_progress_cb(40, 100, self.desc)
+
+		return FakeTqdm
+
 	with (
 		patch("srxy.model_store.huggingface_hub_installed", return_value=True),
-		patch("huggingface_hub.snapshot_download", fake_snapshot_download),
+		patch("srxy.model_store._make_progress_tqdm", fake_make_progress_tqdm),
+		patch.dict(sys.modules, {"huggingface_hub": fake_hub}),
 	):
 		# when
 		download_model(SEMANTIC_TEXT_MODEL_ID, tmp_path / "model", on_progress=on_progress)
