@@ -130,13 +130,13 @@ pipx install 'srxy[semantic]'
 
 ## Core-only install
 
-When you do not need semantic search, OCR, or transcription:
+When you do not need semantic search or transcription:
 
 ```bash
 pipx install srxy
 ```
 
-Filename fuzzy/phonetic search, document text extraction, and the TUI still work.
+Filename fuzzy/phonetic search, document text extraction, OCR (with **tesseract** on `PATH`), and the TUI still work. OCR does not require `[semantic]` — only the Python wrapper (`pytesseract`) ships with core; install the **tesseract** binary separately.
 
 ## Verify
 

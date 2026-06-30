@@ -4,6 +4,8 @@ import json
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from srxy.archive_guard import ArchiveGuardError, validate_zip_archive
+
 
 DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx", ".xlsx", ".pptx"})
 
@@ -65,6 +67,8 @@ def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tupl
 			lines = list(extractor(path))
 		cache_put(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant, _encode_document_lines(lines))
 		yield from lines
+	except ArchiveGuardError:
+		return
 	except Exception:
 		return
 
@@ -96,6 +100,7 @@ def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[in
 def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from docx import Document
 
+	validate_zip_archive(path)
 	document = Document(str(path))
 	for paragraph_number, paragraph in enumerate(document.paragraphs, start=1):
 		text = paragraph.text.strip()
@@ -106,6 +111,7 @@ def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from openpyxl import load_workbook
 
+	validate_zip_archive(path)
 	workbook = load_workbook(path, read_only=True, data_only=True)
 	try:
 		line_number = 0
@@ -123,6 +129,7 @@ def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 def _iter_pptx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	from pptx import Presentation
 
+	validate_zip_archive(path)
 	presentation = Presentation(str(path))
 	for slide_number, slide in enumerate(presentation.slides, start=1):
 		parts: list[str] = []

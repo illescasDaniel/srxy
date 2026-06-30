@@ -8,6 +8,7 @@ from srxy.cache import (
 	CACHE_KIND_OCR_IMAGE,
 	cache_db_path,
 	cache_get,
+	cache_key_path,
 	cache_put,
 	clear_results_cache,
 	get_file_content_hash,
@@ -124,12 +125,77 @@ def test_given_cached_results_when_clearing_then_removes_cache_db(tmp_path: Path
 	content_hash = hash_bytes(b"clear me")
 	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", b"payload")
 	assert cache_db_path().exists()
+	assert cache_key_path().exists()
 
 	# when
 	clear_results_cache()
 
 	# then
 	assert not cache_db_path().exists()
+	assert not cache_key_path().exists()
+
+
+def test_given_payload_when_putting_then_stores_encrypted_bytes(tmp_path: Path):
+	# given
+	content_hash = hash_bytes(b"encrypt me")
+	payload = b"recognized text"
+
+	# when
+	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", payload)
+	import sqlite3
+
+	connection = sqlite3.connect(cache_db_path())
+	row = connection.execute(
+		"SELECT payload FROM cache_entries WHERE cache_key LIKE ?",
+		(f"{CACHE_KIND_OCR_IMAGE}:{content_hash}:%",),
+	).fetchone()
+	connection.close()
+
+	# then
+	assert row is not None
+	stored = row[0]
+	assert stored.startswith(b"\x00srxy\x01")
+	assert stored != payload
+
+
+def test_given_modified_file_when_getting_hash_twice_then_recomputes(tmp_path: Path):
+	# given
+	path = tmp_path / "mutable.txt"
+	path.write_bytes(b"version-one")
+	first = get_file_content_hash(path)
+
+	# when
+	path.write_bytes(b"version-two-with-different-size")
+	second = get_file_content_hash(path)
+
+	# then
+	assert first != second
+
+
+def test_given_cache_from_two_threads_when_getting_then_returns_payload():
+	# given
+	import threading
+
+	content_hash = hash_bytes(b"thread-safe")
+	cache_put(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1", b"thread payload")
+	errors: list[Exception] = []
+	results: list[bytes | None] = []
+
+	def worker():
+		try:
+			results.append(cache_get(CACHE_KIND_OCR_IMAGE, content_hash, "tesseract-v1"))
+		except Exception as error:
+			errors.append(error)
+
+	threads = [threading.Thread(target=worker) for _ in range(4)]
+	for thread in threads:
+		thread.start()
+	for thread in threads:
+		thread.join()
+
+	# then
+	assert not errors
+	assert results == [b"thread payload"] * 4
 
 
 def test_given_missing_cache_when_clearing_then_is_noop(tmp_path: Path):

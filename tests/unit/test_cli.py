@@ -20,9 +20,11 @@ from srxy.cli import (
 	format_skipped_file_warning,
 	main,
 	match_labels,
+	package_version,
 	render_progress,
 	resolve_search_modes,
 )
+from srxy.file_search import DEFAULT_MAX_FILE_SIZE
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
 
 
@@ -298,13 +300,31 @@ def test_given_content_only_flag_when_resolving_modes_then_disables_name_search(
 	assert search_contents is True
 
 
-def test_given_default_args_when_parsing_then_max_file_size_is_unlimited():
+def test_given_default_args_when_parsing_then_max_file_size_uses_default():
 	# when
 	args = build_parser().parse_args(["token"])
 
 	# then
-	assert args.max_file_size is None
+	assert args.max_file_size == DEFAULT_MAX_FILE_SIZE
 	assert args.max_matches == 50
+
+
+def test_given_zero_max_file_size_when_parsing_then_allows_unlimited():
+	# when
+	args = build_parser().parse_args(["token", "--max-file-size", "0"])
+
+	# then
+	assert args.max_file_size == 0
+
+
+def test_given_version_flag_when_parsing_then_reports_package_version():
+	# when
+	with pytest.raises(SystemExit) as exc_info:
+		build_parser().parse_args(["--version"])
+
+	# then
+	assert exc_info.value.code == 0
+	assert package_version() != ""
 
 
 def test_given_max_matches_flag_when_running_cli_then_limits_lines_per_file(

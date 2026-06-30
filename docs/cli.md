@@ -19,7 +19,7 @@ srxy "revenue" ./docs --semantic-all --content-only
 Grouped output (default on plain CLI):
 
 ```
-1 file matched for "registry"
+1 file matched for "magic"
 ── ./src/srxy/file_search.py ──
    match 82%  ·  matched: name, content
    line 128  ·  match 76%
@@ -37,7 +37,7 @@ srxy "(red|blue|green)&color" ./docs
 srxy "\"my search text\"|other" .
 ```
 
-Each leaf matches content and names. `notes` does not auto-match filenames only.
+Each leaf matches **both** file names and file contents by default.
 
 Python equivalent: `FileQ.leaf("foo") & FileQ.leaf("bar")`. TUI query builder shows the equivalent CLI string.
 
@@ -56,11 +56,11 @@ Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, 
 | | |
 |---|---|
 | **Scope** | `--names-only`, `--content-only`, `--names` / `--no-names`, `--content` / `--no-content` |
-| **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe` |
-| **Limits** | `--max-file-size`, `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
+| **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
+| **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
 | **Walk** | `--include-hidden`, `--include-noise` |
-| **UX** | `--progress` / `--no-progress`, `--no-tui` |
+| **UX** | `--progress` / `--no-progress`, `--no-tui`, `--version` |
 
 `--max-line-matches` is deprecated; use `--max-matches`.
 
@@ -85,6 +85,8 @@ Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. 
 | macOS tags | any | Finder tags + comments | |
 | Windows tags | any | `System.Keywords` | `srxy[windows]` |
 
-Media metadata and OS tags ignore `--max-file-size`. No default cap on plain text or office docs. Binary-looking files (null in first 8 KiB) skip body text.
+Media metadata and OS tags ignore `--max-file-size`. Plain text and office docs default to a **100 MiB** content cap (`--max-file-size 0` for unlimited). Binary-looking files (null in first 8 KiB) skip body text.
+
+**Privacy:** `--json` and `-o` include full matched line text. Treat output like sensitive file content.
 
 Optional layers: [Power-ups](power-ups.md) — OCR, text semantic, image semantic (CLIP), transcription.

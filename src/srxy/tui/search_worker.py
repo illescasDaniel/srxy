@@ -8,10 +8,39 @@ import os
 import sys
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, TextIO
 
 from srxy.cli import apply_args_to_env, execute_search
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
+
+
+_WORKER_ENV_KEYS = frozenset(
+	{
+		"PATH",
+		"HOME",
+		"USER",
+		"LANG",
+		"LC_ALL",
+		"LC_CTYPE",
+		"LC_MESSAGES",
+		"TMPDIR",
+		"TEMP",
+		"TMP",
+		"XDG_CACHE_HOME",
+		"XDG_CONFIG_HOME",
+		"CUDA_VISIBLE_DEVICES",
+		"PYTHONIOENCODING",
+		"PYTHONUTF8",
+		"TOKENIZERS_PARALLELISM",
+		"OMP_NUM_THREADS",
+		"TQDM_DISABLE",
+		"HF_HUB_DISABLE_PROGRESS_BARS",
+		"TRANSFORMERS_VERBOSITY",
+		"JOBLIB_MULTIPROCESSING",
+	}
+)
+
+_worker_stdin: TextIO | None = None
 
 
 def _bootstrap_worker_env():
@@ -23,13 +52,40 @@ def _bootstrap_worker_env():
 	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
 
 
+def build_worker_env() -> dict[str, str]:
+	env: dict[str, str] = {}
+	for key, value in os.environ.items():
+		if key.startswith("SRXY_") or key.startswith("HF_") or key in _WORKER_ENV_KEYS:
+			env[key] = value
+	_bootstrap_worker_env()
+	for key in (
+		"TOKENIZERS_PARALLELISM",
+		"OMP_NUM_THREADS",
+		"TQDM_DISABLE",
+		"HF_HUB_DISABLE_PROGRESS_BARS",
+		"TRANSFORMERS_VERBOSITY",
+		"JOBLIB_MULTIPROCESSING",
+	):
+		env[key] = os.environ[key]
+	return env
+
+
 def _detach_worker_stdin():
+	global _worker_stdin
 	devnull_fd = os.open(os.devnull, os.O_RDONLY)
 	try:
 		os.dup2(devnull_fd, 0)
 	finally:
 		os.close(devnull_fd)
-	sys.stdin = open(os.devnull)
+	_worker_stdin = open(os.devnull)
+	sys.stdin = _worker_stdin
+
+
+def _close_worker_stdin():
+	global _worker_stdin
+	if _worker_stdin is not None:
+		_worker_stdin.close()
+		_worker_stdin = None
 
 
 def search_uses_subprocess(args: argparse.Namespace) -> bool:
@@ -91,58 +147,62 @@ def _emit_event(event: dict[str, Any]):
 
 def run_worker_main():
 	_bootstrap_worker_env()
+	if sys.platform != "win32":
+		try:
+			multiprocessing.set_start_method("fork", force=True)
+		except (RuntimeError, ValueError):
+			pass
 	try:
-		multiprocessing.set_start_method("fork", force=True)
-	except (RuntimeError, ValueError):
-		pass
-	line = sys.stdin.readline()
-	if not line:
-		_emit_event({"type": "error", "message": "missing search arguments"})
-		_emit_event({"type": "done"})
-		return
+		line = sys.stdin.readline()
+		if not line:
+			_emit_event({"type": "error", "message": "missing search arguments"})
+			_emit_event({"type": "done"})
+			return
 
-	args = argparse.Namespace(**json.loads(line))
-	_detach_worker_stdin()
-	apply_args_to_env(args)
-	skipped_files: list[SkippedFile] = []
+		args = argparse.Namespace(**json.loads(line))
+		_detach_worker_stdin()
+		apply_args_to_env(args)
+		skipped_files: list[SkippedFile] = []
 
-	def on_progress(current: int, total: int):
-		_emit_event({"type": "progress", "current": current, "total": total})
+		def on_progress(current: int, total: int):
+			_emit_event({"type": "progress", "current": current, "total": total})
 
-	def on_activity(message: str | None):
-		_emit_event({"type": "activity", "message": message})
+		def on_activity(message: str | None):
+			_emit_event({"type": "activity", "message": message})
 
-	def on_result(result: FileSearchResult):
-		_emit_event({"type": "result", "result": file_result_to_dict(result)})
+		def on_result(result: FileSearchResult):
+			_emit_event({"type": "result", "result": file_result_to_dict(result)})
 
-	try:
-		results, skipped_files = execute_search(
-			args,
-			skipped_files=skipped_files,
-			on_progress=on_progress,
-			on_activity=on_activity,
-			on_result=on_result,
+		try:
+			results, skipped_files = execute_search(
+				args,
+				skipped_files=skipped_files,
+				on_progress=on_progress,
+				on_activity=on_activity,
+				on_result=on_result,
+			)
+		except Exception as error:
+			_emit_event({"type": "error", "message": str(error)})
+			_emit_event({"type": "done"})
+			return
+
+		_emit_event(
+			{
+				"type": "finished",
+				"results": [file_result_to_dict(result) for result in results],
+				"skipped_files": [
+					{
+						"path": str(skipped.path),
+						"size_bytes": skipped.size_bytes,
+						"reason": skipped.reason,
+					}
+					for skipped in skipped_files
+				],
+			}
 		)
-	except Exception as error:
-		_emit_event({"type": "error", "message": str(error)})
 		_emit_event({"type": "done"})
-		return
-
-	_emit_event(
-		{
-			"type": "finished",
-			"results": [file_result_to_dict(result) for result in results],
-			"skipped_files": [
-				{
-					"path": str(skipped.path),
-					"size_bytes": skipped.size_bytes,
-					"reason": skipped.reason,
-				}
-				for skipped in skipped_files
-			],
-		}
-	)
-	_emit_event({"type": "done"})
+	finally:
+		_close_worker_stdin()
 
 
 async def iter_subprocess_search_events(
@@ -150,17 +210,7 @@ async def iter_subprocess_search_events(
 	*,
 	cancel_check: Callable[[], bool] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
-	env = os.environ.copy()
-	_bootstrap_worker_env()
-	for key in (
-		"TOKENIZERS_PARALLELISM",
-		"OMP_NUM_THREADS",
-		"TQDM_DISABLE",
-		"HF_HUB_DISABLE_PROGRESS_BARS",
-		"TRANSFORMERS_VERBOSITY",
-		"JOBLIB_MULTIPROCESSING",
-	):
-		env[key] = os.environ[key]
+	env = build_worker_env()
 
 	process = await asyncio.create_subprocess_exec(
 		sys.executable,
@@ -193,6 +243,8 @@ async def iter_subprocess_search_events(
 				if stderr:
 					message = stderr.decode(errors="replace").strip().splitlines()[-1]
 					yield {"type": "error", "message": message or "search worker failed"}
+				else:
+					yield {"type": "error", "message": "search worker exited unexpectedly"}
 				break
 
 			text = line.decode().strip()
@@ -215,6 +267,7 @@ if __name__ == "__main__":
 
 __all__ = [
 	"args_to_payload",
+	"build_worker_env",
 	"file_result_from_dict",
 	"file_result_to_dict",
 	"iter_subprocess_search_events",

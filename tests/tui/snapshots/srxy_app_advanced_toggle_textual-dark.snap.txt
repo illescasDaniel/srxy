@@ -33,6 +33,7 @@ Top files
 all
 Per file
 50
+Size limits
 ┌
 ┐
 ┌

@@ -2,7 +2,7 @@
 
 On an interactive terminal (no `--json`, `--format flat`, or `-o`), srxy opens a **Textual** full-screen TUI by default.
 
-![srxy TUI](images/tui.png)
+![srxy TUI](images/tui.svg)
 
 The screenshot above uses this compound OR query against the repo fixtures — one branch per power-up:
 
@@ -29,7 +29,7 @@ Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
 |------|----------------|
 | **Query / Path** | Search string and root directory; **Search** runs the scan |
 | **Options** | Names, Content, Semantic, Image semantic, OCR, Transcribe, Hidden, Noise |
-| **Filters** | **Top files** (`-l` / `--limit`) and **Per file** (`--max-matches`) |
+| **Filters** | **Top files** (`-l` / `--limit`), **Per file** (`--max-matches`), and **Size limits** (text/OCR/transcribe caps in MiB) |
 | **Results** | Sortable table: match %, path, sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
 | **Preview** | Selected file path, score, sources, hit table (location + **bold** query highlights) |
 | **Status** | Progress, match count, copy buttons (**Path**, **Match**, **All**) |
@@ -86,7 +86,7 @@ Uses OSC 52; most modern terminals support it.
 
 ## When the TUI is skipped
 
-Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, or stdout is **not a TTY**.
+Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`).
 
 ## Manual release checklist
 

@@ -133,6 +133,9 @@ def content_location_kind(path: Path) -> str:
 	return "line"
 
 
+DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
+
+
 def suggest_max_file_size(file_size_bytes: int) -> int:
 	chunk = 1_048_576
 	return max(file_size_bytes + 1, ((file_size_bytes // chunk) + 1) * chunk)
@@ -638,7 +641,6 @@ def magic_file_search(
 	threshold: float = 0.35,
 	max_file_size: int | None = None,
 	max_matches: int = 50,
-	line_threshold: float | None = None,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
 	skipped_files: list[SkippedFile] | None = None,
@@ -671,7 +673,7 @@ def magic_file_search(
 		raise FileNotFoundError(f"Path does not exist: {root}")
 
 	reset_run_file_hashes()
-	effective_line_threshold = threshold if line_threshold is None else line_threshold
+	effective_line_threshold = threshold
 	search_root = root if root.is_dir() else root.parent
 	matcher = CompositeMatcher()
 	results: list[FileSearchResult] = []

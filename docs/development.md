@@ -19,7 +19,7 @@ Order: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → py
 | `checks.sh` | Integration + TUI; excludes `integration_full` and `transcribe_device_matrix` |
 | `checks.sh --full` | Full local suite |
 | `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` |
-| `CI=true checks.sh` | Unit only. `--fix`, `--full`, `--full+cpu` ignored |
+| `CI=true checks.sh` | `unit` marker only, excluding `semantic` and `transcribe` tests. `--fix`, `--full`, `--full+cpu` ignored |
 
 `--fix` = Ruff + shell only; ignored in CI.
 

@@ -8,6 +8,7 @@ import platform
 import queue
 import shutil
 import subprocess
+import sys
 from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
@@ -49,7 +50,7 @@ from srxy.tui.messages import (
 	SearchError,
 	SearchFinished,
 )
-from srxy.tui.modals import ErrorModal, HelpModal
+from srxy.tui.modals import ErrorModal, HelpModal, SizeLimitsModal
 from srxy.tui.preflight import run_tui_preflight
 from srxy.tui.query_builder import QueryBuilder
 from srxy.tui.search_worker import (
@@ -58,6 +59,7 @@ from srxy.tui.search_worker import (
 	search_uses_subprocess,
 	skipped_file_from_dict,
 )
+from srxy.tui.size_limits import SizeLimits, apply_size_limits_to_args, parse_size_limits, size_limits_from_args
 from srxy.tui.theme import detect_app_theme
 
 
@@ -79,6 +81,7 @@ class _SearchSnapshot:
 	include_noise: bool
 	limit_text: str
 	max_matches_text: str
+	size_limits: SizeLimits
 
 
 @dataclass(frozen=True, slots=True)
@@ -194,8 +197,18 @@ class SrxyApp(App[int]):
 		content-align: center middle;
 	}
 
-	#filters-bar Input:last-child {
-		margin-right: 0;
+	#filters-bar Input:last-of-type {
+		margin-right: 1;
+	}
+
+	#filters-bar Button {
+		height: 1;
+		min-width: 14;
+		border: none;
+		background: $surface;
+		color: $foreground;
+		padding: 0 1;
+		content-align: center middle;
 	}
 
 	#options-bar {
@@ -312,6 +325,8 @@ class SrxyApp(App[int]):
 		self._last_search_snapshot: _SearchSnapshot | None = None
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
+		self.size_limits = size_limits_from_args(args)
+		apply_size_limits_to_args(self._args, self.size_limits)
 
 	@property
 	def exit_code(self) -> int:
@@ -346,6 +361,7 @@ class SrxyApp(App[int]):
 			yield Input(placeholder="all", id="filter-limit", value=limit_value)
 			yield Label("Per file", id="filter-max-matches-label")
 			yield Input(id="filter-max-matches", value=str(self._args.max_matches), placeholder="")
+			yield Button("Size limits", id="size-limits-button")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
@@ -427,6 +443,7 @@ class SrxyApp(App[int]):
 			include_noise=self.query_one("#opt-noise", Checkbox).value,
 			limit_text=self.query_one("#filter-limit", Input).value,
 			max_matches_text=self.query_one("#filter-max-matches", Input).value,
+			size_limits=self.size_limits,
 		)
 
 	def _update_search_button_state(self):
@@ -447,6 +464,7 @@ class SrxyApp(App[int]):
 			else None
 		)
 		max_matches = self._parse_optional_positive_int(snapshot.max_matches_text, field_name="Matches per file") or 50
+		max_file_size, max_ocr_file_size, max_transcribe_file_size = parse_size_limits(snapshot.size_limits)
 		args = argparse.Namespace(**vars(self._args))
 		builder = self._query_builder()
 		args.query = builder.to_query_string()
@@ -454,6 +472,9 @@ class SrxyApp(App[int]):
 		args.path = snapshot.path
 		args.limit = limit
 		args.max_matches = max_matches
+		args.max_file_size = max_file_size
+		args.max_ocr_file_size = max_ocr_file_size
+		args.max_transcribe_file_size = max_transcribe_file_size
 		sync_options_to_args(
 			args,
 			search_names=snapshot.search_names,
@@ -548,6 +569,18 @@ class SrxyApp(App[int]):
 
 	def action_show_help(self):
 		self.push_screen(HelpModal())
+
+	def _current_applied_size_limits(self) -> SizeLimits:
+		return size_limits_from_args(self._sync_args_from_ui())
+
+	@work
+	async def action_open_size_limits(self):
+		current = self._current_applied_size_limits()
+		limits = await self.push_screen_wait(SizeLimitsModal(current))
+		if limits is not None:
+			self.size_limits = limits
+			apply_size_limits_to_args(self._args, limits)
+			self._update_search_button_state()
 
 	def action_open_file(self):
 		table = self.query_one("#results-table", DataTable)
@@ -732,9 +765,6 @@ class SrxyApp(App[int]):
 			post_event(message)
 
 		if self._cancel_search:
-			self._searching = False
-			self._set_status("Search cancelled")
-			self._save_search_snapshot()
 			return
 
 		while True:
@@ -790,24 +820,36 @@ class SrxyApp(App[int]):
 			except queue.Empty:
 				return None
 
-		await self._drain_search_events(
-			get_event=get_event,
-			is_done=search_task.done,
-			post_event=self._post_search_queue_event,
-		)
-		if self._cancel_search:
-			return
+		try:
+			await self._drain_search_events(
+				get_event=get_event,
+				is_done=search_task.done,
+				post_event=self._post_search_queue_event,
+			)
+		finally:
+			await search_task
 
-		await search_task
+		if self._cancel_search:
+			self._searching = False
+			self._set_status("Search cancelled")
+			self._save_search_snapshot()
 
 	async def _run_search_in_subprocess(self, args: argparse.Namespace):
+		terminal_event = False
 		try:
 			async for event in iter_subprocess_search_events(args, cancel_check=lambda: self._cancel_search):
 				if self._cancel_search:
 					break
+				event_type = event.get("type")
+				if event_type in {"finished", "error"}:
+					terminal_event = True
 				self._post_subprocess_event(event)
 		except Exception as error:
 			self.post_message(SearchError(str(error)))
+			return
+
+		if not terminal_event and not self._cancel_search:
+			self.post_message(SearchError("search worker exited unexpectedly"))
 			return
 
 		if self._cancel_search:
@@ -879,6 +921,8 @@ class SrxyApp(App[int]):
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "search-button":
 			self.action_start_search()
+		elif event.button.id == "size-limits-button":
+			self.action_open_size_limits()
 
 	def on_input_changed(self, event: Input.Changed):
 		if event.input.id in {
@@ -909,10 +953,11 @@ class SrxyApp(App[int]):
 
 
 def run_tui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
-	try:
-		multiprocessing.set_start_method("fork", force=True)
-	except (RuntimeError, ValueError):
-		pass
+	if sys.platform != "win32":
+		try:
+			multiprocessing.set_start_method("fork", force=True)
+		except (RuntimeError, ValueError):
+			pass
 	app = SrxyApp(args, auto_start=auto_start)
 	result = app.run()
 	return result if result is not None else 0

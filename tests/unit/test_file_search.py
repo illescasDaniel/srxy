@@ -250,7 +250,7 @@ def test_given_large_text_file_when_searching_without_size_limit_then_finds_matc
 	query = "needle"
 
 	# when
-	results = magic_file_search(tmp_path, query, search_names=False)
+	results = magic_file_search(tmp_path, query, search_names=False, max_file_size=None)
 
 	# then
 	assert len(results) == 1

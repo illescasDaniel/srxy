@@ -13,7 +13,9 @@ export SRXY_OCR=1
 
 Default: images via EXIF; PDFs via `pypdf` embedded text. `--ocr` adds Tesseract on top — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
 
-Cache: `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. `--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE` optional cap.
+Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs.
+
+Default OCR file cap: **50 MiB** (`--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE`).
 
 ## Text semantic
 
@@ -24,7 +26,7 @@ srxy "revenue" ./docs --semantic --content-only
 export SRXY_SEMANTIC=1
 ```
 
-Model: `paraphrase-multilingual-MiniLM-L12-v2`. Cached under `~/.cache/srxy/semantic-model`. Embeddings in `cache.db`; model id in cache key.
+Model: `paraphrase-multilingual-MiniLM-L12-v2` (override: `SRXY_SEMANTIC_MODEL`, local path: `SRXY_SEMANTIC_MODEL_PATH`). Cached under `~/.cache/srxy/semantic-model`. Embeddings in encrypted `cache.db`; model id in cache key.
 
 ## Image semantic (CLIP)
 
@@ -35,7 +37,7 @@ srxy "sunset over water" ~/Pictures --semantic-image --content-only
 export SRXY_SEMANTIC_IMAGE=1
 ```
 
-CLIP `clip-ViT-B-32`. Default threshold **0.18** (`--semantic-image-threshold`). RAW via `rawpy` preview.
+CLIP `clip-ViT-B-32` (override: `SRXY_SEMANTIC_IMAGE_MODEL`, local path: `SRXY_SEMANTIC_IMAGE_MODEL_PATH`). Default threshold **0.18** (`--semantic-image-threshold`). Queries shorter than **4** characters are ignored for CLIP. Device override: `SRXY_SEMANTIC_IMAGE_DEVICE`. RAW via `rawpy` preview.
 
 ## Transcription
 
@@ -57,7 +59,7 @@ Timestamp in location header, not searchable text. Missing ffmpeg → exit `2` w
 
 **GPU:** CUDA → `faster-whisper` (+ `nvidia-cublas-cu12` on Linux). MPS → transformers Whisper. CPU → faster-whisper int8. Override: `SRXY_TRANSCRIBE_DEVICE` / `SRXY_SEMANTIC_DEVICE` (`cuda|mps|cpu`).
 
-Model **base** by default. Cache: `~/.cache/srxy/transcribe-model/`. Transcript lines in `cache.db`. Threshold **0.25** (`--transcribe-threshold`).
+Model **base** by default (`--transcribe-model` / `SRXY_TRANSCRIBE_MODEL`). Cache: `~/.cache/srxy/transcribe-model/`. Local paths: `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`. Transcript lines in encrypted `cache.db`. Threshold **0.25** (`--transcribe-threshold`). Default transcribe file cap: **500 MiB** (`--max-transcribe-file-size` / `SRXY_TRANSCRIBE_MAX_FILE_SIZE`).
 
 ## All at once
 
@@ -87,9 +89,12 @@ Downloaded model weights and scan results are stored separately under `~/.cache/
 | `semantic-model/` | Text semantic model weights |
 | `semantic-image-model/` | CLIP model weights |
 | `transcribe-model/` | Whisper / faster-whisper weights |
-| `cache.db` | OCR, transcripts, embeddings, document-text cache |
+| `cache.db` | Encrypted OCR, transcripts, embeddings, document-text cache |
+| `.cache_key` | Fernet key for `cache.db` payloads (created on first use) |
 
-Custom paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_*_MODEL_PATH`, and `SRXY_CACHE_DIR`.
+Custom model paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`, and `SRXY_CACHE_DIR`. LRU cap: `SRXY_CACHE_MAX_BYTES`.
+
+Upgrading from older srxy versions clears unencrypted cache entries on first open (schema v2).
 
 ### Clear downloaded models
 
@@ -111,7 +116,7 @@ python -m srxy.model_store clear semantic-text
 
 ### Clear results cache
 
-Removes `cache.db`. Scan results rebuild on the next run.
+Removes `cache.db` and `.cache_key`. Scan results rebuild on the next run.
 
 ```bash
 ./scripts/clear_results_cache.sh
@@ -123,6 +128,6 @@ Or:
 python -m srxy.cache clear
 ```
 
-Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE`.
+Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE` (including `SRXY_SEMANTIC_IMAGE_DEVICE`).
 
-Core deps (always): `rapidfuzz`, `jellyfish`.
+Core deps include fuzzy matching (`rapidfuzz`, `jellyfish`), document parsers, Pillow, Textual, `cryptography` (cache encryption), and more — see `pyproject.toml`.

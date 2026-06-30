@@ -5,11 +5,12 @@ import json
 import os
 import sys
 import threading
+from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import IO, Callable, TextIO
 
 from srxy.file_query import FileQ, FileQueryParseError, coerce_file_query, file_q_from_dict
-from srxy.file_search import magic_file_search, suggest_max_file_size
+from srxy.file_search import DEFAULT_MAX_FILE_SIZE, magic_file_search, suggest_max_file_size
 from srxy.matchers.semantic import (
 	sentence_transformers_installed,
 )
@@ -282,6 +283,19 @@ def format_json(results: list[FileSearchResult], *, query: str = "") -> str:
 	return json.dumps(payload, indent=2)
 
 
+def package_version() -> str:
+	try:
+		return version("srxy")
+	except PackageNotFoundError:
+		return "unknown"
+
+
+def normalize_max_file_size(value: int | None) -> int | None:
+	if value is not None and value <= 0:
+		return None
+	return value
+
+
 def format_no_matches_message(query: str, path: Path | str) -> str:
 	from srxy.file_query import format_query_for_display
 
@@ -544,6 +558,11 @@ def build_parser() -> argparse.ArgumentParser:
 		description="Fuzzy file and content search using composite matchers.",
 	)
 	parser.add_argument(
+		"--version",
+		action="version",
+		version=f"%(prog)s {package_version()}",
+	)
+	parser.add_argument(
 		"query",
 		nargs="?",
 		default=None,
@@ -554,8 +573,11 @@ def build_parser() -> argparse.ArgumentParser:
 	parser.add_argument(
 		"--max-file-size",
 		type=int,
-		default=None,
-		help="Skip text and document content search in files larger than this many bytes (default: unlimited)",
+		default=DEFAULT_MAX_FILE_SIZE,
+		help=(
+			f"Skip text and document content search in files larger than this many bytes "
+			f"(default: {DEFAULT_MAX_FILE_SIZE:,}; use 0 for unlimited)"
+		),
 	)
 	parser.add_argument(
 		"--max-matches",
@@ -857,7 +879,7 @@ def execute_search(
 		semantic_image_threshold=args.semantic_image_threshold,
 		transcribe_threshold=args.transcribe_threshold,
 		limit=args.limit,
-		max_file_size=args.max_file_size,
+		max_file_size=normalize_max_file_size(args.max_file_size),
 		max_matches=args.max_matches,
 		skip_hidden_folders=not args.include_hidden,
 		skip_noise_folders=not args.include_noise,

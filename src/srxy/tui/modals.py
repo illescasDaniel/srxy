@@ -3,7 +3,9 @@ from __future__ import annotations
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical
 from textual.screen import ModalScreen
-from textual.widgets import Button, Label, ProgressBar, Static
+from textual.widgets import Button, Input, Label, ProgressBar, Static
+
+from srxy.tui.size_limits import SizeLimits, validate_size_limits
 
 
 class DownloadConfirmModal(ModalScreen[bool]):
@@ -134,6 +136,7 @@ class HelpModal(ModalScreen[None]):
 [b]Filters[/b]
   Top files          Max matched files (empty = all)
   Per file           Max matches per file (lines, OCR, transcript, …)
+  Size limits        Max file sizes for text, OCR, and transcribe (MiB)
 
 [b]Results[/b]
   j / k          Move selection
@@ -157,6 +160,103 @@ class HelpModal(ModalScreen[None]):
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "help-close":
 			self.dismiss(None)
+
+
+class SizeLimitsModal(ModalScreen[SizeLimits | None]):
+	DEFAULT_CSS = """
+	SizeLimitsModal {
+		align: center middle;
+	}
+
+	#size-limits-dialog {
+		width: 56;
+		height: auto;
+		max-height: 80%;
+		border: thick $accent;
+		background: $surface;
+		padding: 1 2;
+	}
+
+	#size-limits-title {
+		width: 100%;
+		height: auto;
+		margin-bottom: 1;
+	}
+
+	.size-limits-label {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		margin-top: 1;
+	}
+
+	.size-limits-input {
+		width: 100%;
+		height: 1;
+		margin-bottom: 1;
+		border: none;
+		padding: 0 1;
+		background: $background;
+	}
+
+	#size-limits-error {
+		width: 100%;
+		height: auto;
+		color: $error;
+		margin-bottom: 1;
+	}
+
+	#size-limits-buttons {
+		grid-size: 2;
+		grid-gutter: 1 2;
+		width: 100%;
+		height: auto;
+		margin-top: 1;
+	}
+	"""
+
+	def __init__(self, initial: SizeLimits):
+		super().__init__()
+		self._initial = initial
+
+	def compose(self) -> ComposeResult:
+		with Vertical(id="size-limits-dialog"):
+			yield Static("File size limits (MiB)", id="size-limits-title")
+			yield Label("Text & documents (0 = unlimited)", classes="size-limits-label")
+			yield Input(id="size-limit-text", classes="size-limits-input")
+			yield Label("OCR", classes="size-limits-label")
+			yield Input(id="size-limit-ocr", classes="size-limits-input")
+			yield Label("Transcribe", classes="size-limits-label")
+			yield Input(id="size-limit-transcribe", classes="size-limits-input")
+			yield Label("", id="size-limits-error")
+			with Grid(id="size-limits-buttons"):
+				yield Button("Apply", variant="primary", id="size-limits-apply")
+				yield Button("Cancel", id="size-limits-cancel")
+
+	def on_mount(self):
+		self.query_one("#size-limit-text", Input).value = self._initial.text_mib
+		self.query_one("#size-limit-ocr", Input).value = self._initial.ocr_mib
+		self.query_one("#size-limit-transcribe", Input).value = self._initial.transcribe_mib
+
+	def on_button_pressed(self, event: Button.Pressed):
+		if event.button.id == "size-limits-cancel":
+			self.dismiss(None)
+			return
+		if event.button.id != "size-limits-apply":
+			return
+		error = self.query_one("#size-limits-error", Label)
+		limits = SizeLimits(
+			text_mib=self.query_one("#size-limit-text", Input).value,
+			ocr_mib=self.query_one("#size-limit-ocr", Input).value,
+			transcribe_mib=self.query_one("#size-limit-transcribe", Input).value,
+		)
+		try:
+			validate_size_limits(limits)
+		except ValueError as exc:
+			error.update(str(exc))
+			return
+		error.update("")
+		self.dismiss(limits)
 
 
 class ErrorModal(ModalScreen[None]):

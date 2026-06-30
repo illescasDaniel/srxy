@@ -31,6 +31,7 @@ RAW_IMAGE_SUFFIXES = frozenset(
 	}
 )
 SEMANTIC_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES | RAW_IMAGE_SUFFIXES
+MAX_IMAGE_PIXELS = 250_000_000
 
 _heif_registered = False
 
@@ -47,20 +48,8 @@ def register_image_openers():
 	_heif_registered = True
 
 
-def heif_support_available() -> bool:
-	return importlib.util.find_spec("pillow_heif") is not None
-
-
 def rawpy_available() -> bool:
 	return importlib.util.find_spec("rawpy") is not None
-
-
-def is_decodable_image_path(path: Path) -> bool:
-	return path.suffix.lower() in DECODABLE_IMAGE_SUFFIXES
-
-
-def is_heif_image_path(path: Path) -> bool:
-	return path.suffix.lower() in HEIF_IMAGE_SUFFIXES
 
 
 def is_raw_image_path(path: Path) -> bool:
@@ -80,7 +69,8 @@ def _extract_raw_thumbnail(raw: object) -> Image.Image | None:
 		return None
 	try:
 		if isinstance(thumb.data, (bytes, bytearray)):
-			return Image.open(io.BytesIO(thumb.data))
+			with Image.open(io.BytesIO(thumb.data)) as image:
+				return image.copy()
 		return Image.fromarray(thumb.data)
 	except Exception:
 		return None
@@ -103,6 +93,7 @@ def open_image(path: Path) -> Generator[Image.Image]:
 	from PIL import Image
 
 	register_image_openers()
+	Image.MAX_IMAGE_PIXELS = MAX_IMAGE_PIXELS
 	with Image.open(path) as image:
 		yield image
 
