@@ -57,7 +57,7 @@ transcript at 02:40  ·  score 0.34
 
 Timestamp in location header, not searchable text. Missing ffmpeg → exit `2` with hints.
 
-**GPU:** CUDA → `faster-whisper` (+ `nvidia-cublas-cu12` on Linux). MPS → transformers Whisper. CPU → faster-whisper int8. Override: `SRXY_TRANSCRIBE_DEVICE` / `SRXY_SEMANTIC_DEVICE` (`cuda|mps|cpu`).
+**GPU:** CUDA → `faster-whisper` (+ `nvidia-cublas-cu12` on Linux and Windows). MPS → transformers Whisper. CPU → faster-whisper int8. Status shows device/backend (e.g. `cuda/faster-whisper`). Override: `SRXY_TRANSCRIBE_DEVICE` / `SRXY_SEMANTIC_DEVICE` (`cuda|mps|cpu`).
 
 Model **base** by default (`--transcribe-model` / `SRXY_TRANSCRIBE_MODEL`). Cache: `~/.cache/srxy/transcribe-model/`. Local paths: `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`. Transcript lines in encrypted `cache.db`. Threshold **0.25** (`--transcribe-threshold`). Default transcribe file cap: **500 MiB** (`--max-transcribe-file-size` / `SRXY_TRANSCRIBE_MAX_FILE_SIZE`).
 

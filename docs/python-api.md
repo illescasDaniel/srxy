@@ -38,7 +38,7 @@ results = magic_file_search(
     max_file_size=50_000_000,
     skipped_files=[],
     on_progress=lambda current, total: None,
-    on_activity=lambda message: None,
+    on_activity=lambda update: None,
     on_result=lambda result: None,
 )
 ```

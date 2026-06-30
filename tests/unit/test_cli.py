@@ -26,6 +26,7 @@ from srxy.cli import (
 )
 from srxy.file_search import DEFAULT_MAX_FILE_SIZE
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
+from srxy.progress import ActivityUpdate
 
 
 pytestmark = pytest.mark.unit
@@ -1109,7 +1110,7 @@ def test_given_progress_bar_when_setting_activity_then_renders_spinner(monkeypat
 	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
 
 	# when
-	progress.set_activity("Encoding image query…")
+	progress.set_activity(ActivityUpdate(label="Encoding image query…"))
 	time.sleep(0.15)
 	progress.set_activity(None)
 	progress.finish()
@@ -1117,6 +1118,38 @@ def test_given_progress_bar_when_setting_activity_then_renders_spinner(monkeypat
 	# then
 	output = "".join(written)
 	assert "Encoding image query" in output
+
+
+def test_given_progress_bar_when_setting_determinate_activity_then_renders_two_lines(monkeypatch: pytest.MonkeyPatch):
+	# given
+	written: list[str] = []
+
+	class FakeTTY:
+		def fileno(self) -> int:
+			return 2
+
+		def isatty(self) -> bool:
+			return True
+
+		def write(self, text: str) -> None:
+			written.append(text)
+
+		def flush(self) -> None:
+			pass
+
+	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
+	progress.update(2, 5)
+
+	# when
+	progress.set_activity(ActivityUpdate(label="OCR · page.pdf", current=1, total=3))
+	progress.set_activity(None)
+	progress.finish()
+
+	# then
+	output = "".join(written)
+	assert "2/5 files" in output
+	assert "33% OCR · page.pdf" in output
 
 
 def test_given_invalid_boolean_query_when_running_cli_then_exits_with_error(

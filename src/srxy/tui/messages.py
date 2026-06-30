@@ -3,6 +3,7 @@ from __future__ import annotations
 from textual.message import Message
 
 from srxy.models import FileSearchResult, SkippedFile
+from srxy.progress import ActivityUpdate
 
 
 class ProgressUpdated(Message):
@@ -13,8 +14,8 @@ class ProgressUpdated(Message):
 
 
 class ActivityChanged(Message):
-	def __init__(self, message: str | None):
-		self.activity = message
+	def __init__(self, activity: ActivityUpdate | None):
+		self.activity = activity
 		super().__init__()
 
 

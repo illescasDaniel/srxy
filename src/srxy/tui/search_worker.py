@@ -12,6 +12,7 @@ from typing import Any, TextIO
 
 from srxy.cli import apply_args_to_env, execute_search
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
+from srxy.progress import ActivityUpdate
 
 
 _worker_stdin: TextIO | None = None
@@ -118,6 +119,19 @@ def _emit_event(event: dict[str, Any]):
 	sys.stdout.flush()
 
 
+async def _terminate_subprocess(process: asyncio.subprocess.Process):
+	if process.returncode is not None:
+		return
+	try:
+		process.kill()
+	except ProcessLookupError:
+		return
+	try:
+		await asyncio.wait_for(process.wait(), timeout=5.0)
+	except (TimeoutError, asyncio.CancelledError):
+		pass
+
+
 def run_worker_main():
 	_bootstrap_worker_env()
 	if sys.platform != "win32":
@@ -140,8 +154,16 @@ def run_worker_main():
 		def on_progress(current: int, total: int):
 			_emit_event({"type": "progress", "current": current, "total": total})
 
-		def on_activity(message: str | None):
-			_emit_event({"type": "activity", "message": message})
+		def on_activity(update: ActivityUpdate | None):
+			if update is None:
+				_emit_event({"type": "activity", "message": None})
+				return
+			event: dict[str, object] = {"type": "activity", "message": update.label}
+			if update.current is not None:
+				event["current"] = update.current
+			if update.total is not None:
+				event["total"] = update.total
+			_emit_event(event)
 
 		def on_result(result: FileSearchResult):
 			_emit_event({"type": "result", "result": file_result_to_dict(result)})
@@ -182,6 +204,7 @@ async def iter_subprocess_search_events(
 	args: argparse.Namespace,
 	*,
 	cancel_check: Callable[[], bool] | None = None,
+	on_process: Callable[[asyncio.subprocess.Process], None] | None = None,
 ) -> AsyncIterator[dict[str, Any]]:
 	env = build_worker_env()
 
@@ -198,6 +221,9 @@ async def iter_subprocess_search_events(
 	if process.stdin is None or process.stdout is None:
 		raise RuntimeError("search worker subprocess missing stdio pipes")
 
+	if on_process is not None:
+		on_process(process)
+
 	process.stdin.write((json.dumps(args_to_payload(args)) + "\n").encode())
 	await process.stdin.drain()
 	process.stdin.close()
@@ -205,7 +231,7 @@ async def iter_subprocess_search_events(
 	try:
 		while True:
 			if cancel_check and cancel_check():
-				process.terminate()
+				await _terminate_subprocess(process)
 				return
 
 			line = await process.stdout.readline()
@@ -229,9 +255,7 @@ async def iter_subprocess_search_events(
 				break
 			yield event
 	finally:
-		if process.returncode is None:
-			process.terminate()
-		await process.wait()
+		await _terminate_subprocess(process)
 
 
 if __name__ == "__main__":

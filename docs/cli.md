@@ -67,7 +67,7 @@ Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, 
 
 ## Plain output
 
-Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. Results print after scan, sorted by score. Skipped-file warnings after summary.
+Progress bar on stderr when TTY: a file-scan bar plus a second line with a spinner and optional percent during OCR, transcribe, CLIP, and similar steps (e.g. `⠋ 30% Transcribe`). Results print after scan, sorted by score. Skipped-file warnings after summary.
 
 **Exit codes:** `0` matches, `1` none, `2` usage/path error.
 

@@ -42,6 +42,7 @@ from srxy.cli import (
 )
 from srxy.file_query import file_q_to_dict
 from srxy.models import FileSearchResult, SkippedFile
+from srxy.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
 from srxy.tui.messages import (
 	ActivityChanged,
 	ProgressUpdated,
@@ -266,18 +267,6 @@ class SrxyApp(App[int]):
 		width: 1fr;
 	}
 
-	#status-bar Button {
-		width: auto;
-		min-width: 8;
-		height: 1;
-		margin-left: 1;
-	}
-
-	#copy-actions {
-		width: auto;
-		height: auto;
-	}
-
 	#warnings-log {
 		height: auto;
 		max-height: 6;
@@ -305,6 +294,10 @@ class SrxyApp(App[int]):
 		self._last_search_snapshot: _SearchSnapshot | None = None
 		self._active_file_limit: int | None = None
 		self._preview_rows: list[_PreviewRow] = []
+		self._activity: ActivityUpdate | None = None
+		self._activity_spinner_index = 0
+		self._activity_spinner_timer = None
+		self._search_subprocess: asyncio.subprocess.Process | None = None
 		self.search_options = search_options_from_args(args)
 		self.search_filters = search_filters_from_args(args)
 		apply_search_options_to_args(self._args, self.search_options)
@@ -337,10 +330,6 @@ class SrxyApp(App[int]):
 		with Horizontal(id="status-bar"):
 			yield ProgressBar(total=100, show_eta=False, id="scan-progress")
 			yield Label("Ready", id="status-message")
-			with Horizontal(id="copy-actions"):
-				yield Button("Path", id="copy-path-button")
-				yield Button("Match", id="copy-match-button")
-				yield Button("All", id="copy-all-button")
 		yield Footer(show_command_palette=False)
 
 	def on_mount(self):
@@ -582,18 +571,6 @@ class SrxyApp(App[int]):
 		lines = [f"{format_score_percent(row.score)}\t{row.location}\t{row.plain_text}" for row in self._preview_rows]
 		self._copy_text("\n".join(lines), label="all matches")
 
-	@on(Button.Pressed, "#copy-path-button")
-	def _on_copy_path_button(self):
-		self.action_copy_path()
-
-	@on(Button.Pressed, "#copy-match-button")
-	def _on_copy_match_button(self):
-		self.action_copy_match()
-
-	@on(Button.Pressed, "#copy-all-button")
-	def _on_copy_all_matches_button(self):
-		self.action_copy_all_matches()
-
 	def _open_path(self, path: Path):
 		from srxy.archive_search import split_archive_member_path
 
@@ -628,6 +605,7 @@ class SrxyApp(App[int]):
 		self._exit_code = 0
 		progress = self.query_one("#scan-progress", ProgressBar)
 		progress.update(total=100, progress=0)
+		self._clear_activity_status()
 		self._set_status("Starting search…")
 		self._start_search_flow(args)
 
@@ -667,7 +645,20 @@ class SrxyApp(App[int]):
 				self.post_message(ProgressUpdated(current, total))
 		elif kind == "activity":
 			message = event.get("message")
-			self.post_message(ActivityChanged(message if isinstance(message, str) else None))
+			if message is None:
+				self.post_message(ActivityChanged(None))
+			elif isinstance(message, str):
+				current = event.get("current")
+				total = event.get("total")
+				self.post_message(
+					ActivityChanged(
+						ActivityUpdate(
+							label=message,
+							current=current if isinstance(current, int) else None,
+							total=total if isinstance(total, int) else None,
+						)
+					)
+				)
 		elif kind == "result":
 			result_data = event.get("result")
 			if isinstance(result_data, dict):
@@ -728,8 +719,8 @@ class SrxyApp(App[int]):
 			def on_progress(current: int, total: int):
 				event_queue.put(ProgressUpdated(current, total))
 
-			def on_activity(message: str | None):
-				event_queue.put(ActivityChanged(message))
+			def on_activity(update: ActivityUpdate | None):
+				event_queue.put(ActivityChanged(update))
 
 			def on_result(result: FileSearchResult):
 				event_queue.put(ResultFound(result))
@@ -774,8 +765,13 @@ class SrxyApp(App[int]):
 
 	async def _run_search_in_subprocess(self, args: argparse.Namespace):
 		terminal_event = False
+		events = iter_subprocess_search_events(
+			args,
+			cancel_check=lambda: self._cancel_search,
+			on_process=self._register_search_subprocess,
+		)
 		try:
-			async for event in iter_subprocess_search_events(args, cancel_check=lambda: self._cancel_search):
+			async for event in events:
 				if self._cancel_search:
 					break
 				event_type = event.get("type")
@@ -785,6 +781,9 @@ class SrxyApp(App[int]):
 		except Exception as error:
 			self.post_message(SearchError(str(error)))
 			return
+		finally:
+			self._search_subprocess = None
+			await events.aclose()
 
 		if not terminal_event and not self._cancel_search:
 			self.post_message(SearchError("search worker exited unexpectedly"))
@@ -803,12 +802,42 @@ class SrxyApp(App[int]):
 			return
 		percent = int((message.current / message.total) * 100)
 		progress.update(total=100, progress=percent)
-		self._set_status(f"Scanning {message.current}/{message.total} files")
+		if self._activity is None:
+			self._set_status(f"Scanning {message.current}/{message.total} files")
+
+	def _clear_activity_status(self):
+		if self._activity_spinner_timer is not None:
+			self._activity_spinner_timer.stop()
+			self._activity_spinner_timer = None
+		self._activity = None
+		self._activity_spinner_index = 0
+
+	def _refresh_activity_status(self):
+		if self._activity is None:
+			return
+		frame = ACTIVITY_SPINNER_FRAMES[self._activity_spinner_index % len(ACTIVITY_SPINNER_FRAMES)]
+		self._set_status(format_activity_status(self._activity, spinner_frame=frame))
+
+	def _tick_activity_spinner(self):
+		if self._activity is None:
+			self._clear_activity_status()
+			return
+		self._activity_spinner_index += 1
+		self._refresh_activity_status()
+
+	def _start_activity_spinner_if_needed(self):
+		if self._activity_spinner_timer is None:
+			self._activity_spinner_timer = self.set_interval(0.1, self._tick_activity_spinner)
 
 	@on(ActivityChanged)
 	def _on_activity_changed(self, message: ActivityChanged):
-		if message.activity:
-			self._set_status(message.activity)
+		activity = message.activity
+		if activity is None:
+			self._clear_activity_status()
+			return
+		self._activity = activity
+		self._start_activity_spinner_if_needed()
+		self._refresh_activity_status()
 
 	@on(ResultFound)
 	def _on_result_found(self, message: ResultFound):
@@ -847,6 +876,7 @@ class SrxyApp(App[int]):
 				self._update_preview(self._results[0])
 		progress = self.query_one("#scan-progress", ProgressBar)
 		progress.update(total=100, progress=100)
+		self._clear_activity_status()
 		self._save_search_snapshot()
 
 	@on(DataTable.RowHighlighted, "#results-table")
@@ -878,9 +908,29 @@ class SrxyApp(App[int]):
 	def _on_query_builder_changed(self, _event: QueryBuilder.Changed):
 		self._update_search_button_state()
 
+	def _register_search_subprocess(self, process: asyncio.subprocess.Process):
+		self._search_subprocess = process
+
+	def _kill_search_worker_sync(self):
+		process = self._search_subprocess
+		self._search_subprocess = None
+		if process is None or process.returncode is not None:
+			return
+		try:
+			process.kill()
+		except ProcessLookupError:
+			return
+		transport = getattr(process, "_transport", None)
+		if transport is not None:
+			try:
+				transport.close()
+			except Exception:
+				pass
+
 	def action_request_quit(self):
 		if self._searching:
 			self._cancel_search = True
+			self._kill_search_worker_sync()
 		self.exit(self._exit_code)
 
 

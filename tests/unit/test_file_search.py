@@ -21,6 +21,7 @@ from tests.helpers import (
 from srxy import FileQ, magic_file_search
 from srxy.cli import match_labels
 from srxy.models import FileSearchResult, MatchType, SkippedFile
+from srxy.progress import ActivityUpdate
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
 
@@ -1105,7 +1106,7 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 	# given
 	image_path = tmp_path / "beach.png"
 	image_path.write_bytes(b"png")
-	activities: list[str | None] = []
+	activities: list[ActivityUpdate | None] = []
 
 	with (
 		patch("srxy.file_search.is_semantic_image_active", return_value=True),
@@ -1123,8 +1124,11 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 		)
 
 	# then
-	assert "Encoding image query…" in activities
-	assert any(activity is not None and activity.startswith("CLIP ·") for activity in activities)
+	assert any(activity is not None and activity.label == "Encoding image query…" for activity in activities)
+	assert any(
+		activity is not None and activity.label is not None and activity.label.startswith("CLIP ·")
+		for activity in activities
+	)
 	assert activities[-1] is None
 
 

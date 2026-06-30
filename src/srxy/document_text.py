@@ -9,6 +9,7 @@ from pathlib import Path
 from zipfile import ZipFile
 
 from srxy.archive_guard import ArchiveGuardError, validate_zip_archive
+from srxy.progress import ActivityCallback, emit_activity
 
 
 DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx", ".xlsx", ".pptx"})
@@ -117,7 +118,12 @@ def _decode_document_lines(payload: bytes) -> list[tuple[int, str, str]]:
 	return lines
 
 
-def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str, str]]:
+def iter_document_lines(
+	path: Path,
+	*,
+	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
+) -> Iterator[tuple[int, str, str]]:
 	suffix = path.suffix.lower()
 	extractors: dict[str, Callable[..., Iterator[tuple[int, str, str]]]] = {
 		".pdf": _iter_pdf_lines,
@@ -140,7 +146,7 @@ def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tupl
 			return
 
 		if suffix == ".pdf":
-			lines = list(extractor(path, ocr=ocr))
+			lines = list(extractor(path, ocr=ocr, on_activity=on_activity))
 		else:
 			lines = list(extractor(path))
 		cache_put(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant, _encode_document_lines(lines))
@@ -151,12 +157,18 @@ def iter_document_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tupl
 		return
 
 
-def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[int, str, str]]:
+def _iter_pdf_lines(
+	path: Path,
+	*,
+	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
+) -> Iterator[tuple[int, str, str]]:
 	from pypdf import PdfReader
 
 	from srxy.ocr_text import is_ocr_active, ocr_max_file_size, ocr_pdf_page_images
 
 	reader = PdfReader(path)
+	total_pages = len(reader.pages)
 	ocr_active = is_ocr_active(ocr)
 	if ocr_active:
 		try:
@@ -167,6 +179,8 @@ def _iter_pdf_lines(path: Path, *, ocr: bool | None = None) -> Iterator[tuple[in
 			ocr_active = False
 
 	for page_number, page in enumerate(reader.pages, start=1):
+		if ocr_active:
+			emit_activity(on_activity, f"OCR · {path.name}", current=page_number, total=total_pages)
 		embedded = (page.extract_text() or "").strip()
 		image_ocr = ocr_pdf_page_images(page).strip() if ocr_active else ""
 		if embedded:
