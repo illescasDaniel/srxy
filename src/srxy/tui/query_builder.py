@@ -4,7 +4,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Horizontal, Vertical
 from textual.message import Message
-from textual.widgets import Button, Input, Select, Static
+from textual.widgets import Button, Input, Label, Select, Static
 
 from srxy.file_query import (
 	FileQ,
@@ -16,13 +16,29 @@ from srxy.file_query import (
 from srxy.models import QNodeType
 
 
-class QueryBuilder(Vertical):
+class QueryBuilder(Horizontal):
 	"""Dynamic term rows with AND/OR joins, or Advanced raw boolean text."""
 
 	DEFAULT_CSS = """
 	QueryBuilder {
 		height: auto;
 		width: 1fr;
+		border: solid $accent;
+		padding: 0 1;
+	}
+
+	QueryBuilder #query-label {
+		width: auto;
+		min-width: 8;
+		height: 1;
+		padding: 0 1 0 0;
+		content-align: right middle;
+		color: $text-muted;
+	}
+
+	QueryBuilder #query-body {
+		width: 1fr;
+		height: auto;
 	}
 
 	QueryBuilder .query-row {
@@ -94,17 +110,19 @@ class QueryBuilder(Vertical):
 		self._advanced_mode = False
 
 	def compose(self) -> ComposeResult:
-		for index, (term, join) in enumerate(self._initial_rows):
-			yield from self._compose_row(index, term=term, join=join or "and")
-		with Horizontal(id="query-actions"):
-			yield Button("+ Term", id="add-term-button", variant="default")
-			yield Button("Advanced", id="mode-toggle-button", variant="default")
-		yield Input(
-			value=self._initial_query,
-			placeholder="query (|, &, parentheses)",
-			id="query-raw-input",
-		)
-		yield Static("", id="query-preview")
+		yield Label("Query", id="query-label")
+		with Vertical(id="query-body"):
+			for index, (term, join) in enumerate(self._initial_rows):
+				yield from self._compose_row(index, term=term, join=join or "and")
+			yield Input(
+				value=self._initial_query,
+				placeholder="query (|, &, parentheses)",
+				id="query-raw-input",
+			)
+			yield Static("", id="query-preview")
+			with Horizontal(id="query-actions"):
+				yield Button("+ Term", id="add-term-button", variant="default")
+				yield Button("Advanced", id="mode-toggle-button", variant="default")
 
 	def on_mount(self):
 		self._update_preview()
@@ -228,7 +246,7 @@ class QueryBuilder(Vertical):
 		indices = self._row_indices()
 		next_index = 0 if not indices else max(indices) + 1
 		row = Horizontal(classes="query-row", id=f"query-row-{next_index}")
-		await self.mount(row, before="#query-actions")
+		await self.mount(row, before="#query-raw-input")
 		await row.mount(*self._row_widgets(next_index, join="and"))
 		self.query_one(f"#query-term-{next_index}", Input).focus()
 		self._post_change()
@@ -271,7 +289,7 @@ class QueryBuilder(Vertical):
 		for index, (term, join) in enumerate(rows):
 			if index not in self._row_indices():
 				row = Horizontal(classes="query-row", id=f"query-row-{index}")
-				self.mount(row, before="#query-actions")
+				self.mount(row, before="#query-raw-input")
 				row.mount(*self._row_widgets(index, term=term, join=join or "and"))
 				continue
 			self.query_one(f"#query-term-{index}", Input).value = term

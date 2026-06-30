@@ -1,54 +1,56 @@
 srxy-tui-advanced-open
 ⭘
 Srxy
-Query
-hello
+┌
+┐
 Path
 .
 Search
-+ Term
-Advanced
+│
+Query
+hello
+│
+│
 hello
 █
+█
+│
++ Term
+Adv
+█
+█
+└
+█
+Search modes
 █
 Search modes
 Names, C
 █
 █
 █
-Search modes
+X
+Names
 █
 Filters
 All files ·
 █
+X
+Content
 █
 █
 X
-Names
+Semantic
 █
 ┌
 █
 X
-Content
+Image semantic
 █
 ┐
 │
 Match
 Path
 Matched
-█
-X
-Semantic
-█
-│
-│
-█
-X
-Image semantic
-█
-Text
-│
-│
 █
 X
 OCR
@@ -59,6 +61,7 @@ OCR
 X
 Transcribe
 █
+Text
 │
 │
 █

@@ -1,19 +1,42 @@
 query-builder-round-trip
+┌
+┐
+│
+Query
 red
+│
+│
 OR
 ▼
 blue
 ▔▔▔
+│
+│
 ▁▁▁
+│
+│
 AND
 ▼
 color
 ▔▔▔
+│
+│
 ▁▁▁
+│
+│
+(red | blue) & color
+│
+│
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+│
+│
 + Term
 Advanced
+│
+│
 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-(red | blue) & color
+│
+└
+┘

@@ -1,6 +1,21 @@
 query-builder-advanced
+┌
+┐
+│
+Query
+(red | blue) & color
+│
+│
+(red | blue) & color
+│
+│
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+│
+│
 Builder
+│
+│
 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-(red | blue) & color
-(red | blue) & color
+│
+└
+┘

@@ -1,24 +1,51 @@
 query-builder-or-terms
+┌
+┐
+│
+Query
 revenue
+│
+│
 OR
 ▼
 amphibian
 ▔▔▔
+│
+│
 ▁▁▁
+│
+│
 OR
 ▼
 person
 ▔▔▔
+│
+│
 ▁▁▁
+│
+│
 OR
 ▼
 thank you
 ▔▔▔
+│
+│
 ▁▁▁
+│
+│
+revenue | amphibian | person | "thank you"
+│
+│
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+│
+│
 + Term
 Advanced
+│
+│
 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
 ▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
-revenue | amphibian | person | "thank you"
+│
+└
+┘

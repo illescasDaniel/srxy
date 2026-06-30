@@ -311,7 +311,6 @@ class SrxyApp(App[int]):
 	def compose(self) -> ComposeResult:
 		yield Header()
 		with Horizontal(id="search-bar"):
-			yield Label("Query", id="query-label")
 			yield QueryBuilder(id="query-builder", initial_query=self._args.query or "")
 			yield Label("Path", id="path-label")
 			yield Input(id="path-input", value=str(self._args.path), placeholder="")

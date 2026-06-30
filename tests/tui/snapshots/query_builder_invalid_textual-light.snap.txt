@@ -1,8 +1,23 @@
 query-builder-invalid
-▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
-Builder
-▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+┌
+┐
+│
+Query
 (f
 o
 o
+│
+│
 invalid: missing closing parenthesis
+│
+│
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+│
+│
+Builder
+│
+│
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+│
+└
+┘

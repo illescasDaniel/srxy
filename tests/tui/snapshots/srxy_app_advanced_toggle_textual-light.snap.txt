@@ -1,18 +1,30 @@
 srxy-tui-advanced-toggle
 ⭘
 Srxy
-Query
-revenue
+┌
+┐
 Path
 .
 Search
+│
+Query
+revenue
+│
+│
 OR
 ▼
-amphibian
+amphi
 ×
+│
+│
+revenue | amphibian
+│
+│
 + Term
 Advanced
-revenue | amphibian
+│
+└
+┘
 Search modes
 Names, Content
 Filters
@@ -34,14 +46,6 @@ Matched
 Match
 Location
 Text
-│
-│
-│
-│
-│
-│
-│
-│
 │
 │
 │

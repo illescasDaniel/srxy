@@ -1,29 +1,42 @@
 srxy-tui-filters-open
 ⭘
 Srxy
-Query
-hello
+┌
+┐
 Path
 .
 Search
-+ Term
-Advanced
+│
+Query
 hello
+│
+│
+hello
+│
+│
++ Term
+█
+█
+└
+█
+█
 Search modes
 Name
 █
+Search filters
 █
 █
 █
 Filters
 All file
 █
-Search filters
 █
 █
+Top files (empty = all)
 █
 ┌
 █
+all
 █
 ┐
 │
@@ -31,23 +44,13 @@ Match
 Path
 Matched
 █
-Top files (empty = all)
-█
-│
-│
-█
-all
-█
-Text
-│
-│
-█
 █
 │
 │
 █
 Matches per file
 █
+Text
 │
 │
 █
