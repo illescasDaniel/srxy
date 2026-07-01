@@ -67,7 +67,7 @@ Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, 
 
 ## Plain output
 
-Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. Results print after scan, sorted by score. Skipped-file warnings after summary.
+Progress bar on stderr when TTY: a file-scan bar plus a second line with a spinner and optional percent during OCR, transcribe, CLIP, and similar steps (e.g. `⠋ 30% Transcribe`). Results print after scan, sorted by score. Skipped-file warnings after summary.
 
 **Exit codes:** `0` matches, `1` none, `2` usage/path error.
 
@@ -84,7 +84,7 @@ Progress bar on stderr when TTY; spinner during OCR/transcribe/CLIP/model load. 
 | Video (limited) | `.mkv`, `.avi`, `.webm` | filename only | |
 | Linux tags | any | xattrs (`xdg.tags`, etc.) | |
 | macOS tags | any | Finder tags + comments | |
-| Windows tags | any | `System.Keywords` | `srxy[windows]` |
+| Windows metadata | any | file properties (tags, author, program name, …) | `srxy[windows]` |
 
 Media metadata and OS tags ignore `--max-file-size`. Plain text and office docs default to a **100 MiB** content cap (`--max-file-size 0` for unlimited). Binary-looking files (null in first 8 KiB) skip body text.
 

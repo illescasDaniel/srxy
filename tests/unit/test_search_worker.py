@@ -13,6 +13,7 @@ from srxy.cli import build_parser
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.tui.search_worker import (
 	args_to_payload,
+	build_worker_env,
 	file_result_from_dict,
 	file_result_to_dict,
 	run_worker_main,
@@ -91,6 +92,23 @@ def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypat
 		"skipped_files": [{"path": "big.png", "size_bytes": 99, "reason": "oversized"}],
 	}
 	assert events[-1] == {"type": "done"}
+
+
+def test_given_parent_env_when_build_worker_env_then_inherits_platform_paths(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setenv("SRXY_SEMANTIC", "1")
+	monkeypatch.setenv("CUSTOM_PARENT_ONLY", "keep-me")
+
+	# when
+	env = build_worker_env()
+
+	# then
+	assert env["SRXY_SEMANTIC"] == "1"
+	assert env["CUSTOM_PARENT_ONLY"] == "keep-me"
+	assert env["PATH"] == os.environ["PATH"]
+	if os.name == "nt":
+		system_root = env.get("SYSTEMROOT") or env.get("SystemRoot")
+		assert system_root == os.environ.get("SYSTEMROOT") or os.environ.get("SystemRoot")
 
 
 def test_given_worker_args_when_run_worker_main_then_sets_worker_env(

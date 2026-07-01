@@ -146,7 +146,6 @@ class HelpModal(ModalScreen[None]):
   y              Copy selected file path
   m              Copy focused preview match
   M              Copy all preview matches
-  Path/Match/All Bottom-right copy buttons
   Scores         Shown as match percentages (e.g. 86%)
 
 [b]General[/b]

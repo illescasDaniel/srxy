@@ -24,6 +24,7 @@ from srxy.model_store import (
 )
 from srxy.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.ocr_text import is_ocr_available, ocr_requested, ocr_unavailable_message
+from srxy.progress import ActivityCallback, ActivityUpdate, format_activity_status
 from srxy.semantic_image import (
 	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	is_semantic_image_available,
@@ -54,6 +55,7 @@ _LOCATION_LABELS = {
 }
 
 _PROGRESS_BAR_WIDTH = 40
+_TASK_BAR_WIDTH = 24
 _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 _CONTENT_LOCATION_KINDS = frozenset({"line", "page", "paragraph", "row", "slide"})
@@ -359,15 +361,16 @@ class ProgressBar:
 		self._tty = self._stream.isatty()
 		self._current = 0
 		self._total = 0
-		self._activity_message: str | None = None
+		self._activity: ActivityUpdate | None = None
 		self._spinner_index = 0
 		self._spinner_stop = threading.Event()
 		self._spinner_thread: threading.Thread | None = None
 		self._match_flash = False
+		self._two_line = False
 
 	def flash_match(self):
 		self._match_flash = True
-		if self._tty and self._searching() and self._activity_message is None:
+		if self._tty and (self._searching() or self._activity is not None):
 			self.refresh()
 
 	def _stop_spinner(self):
@@ -378,44 +381,77 @@ class ProgressBar:
 		self._spinner_thread = None
 		self._spinner_stop.clear()
 
-	def set_activity(self, message: str | None):
-		if message == self._activity_message:
+	def set_activity(self, update: ActivityUpdate | None):
+		if update == self._activity:
 			return
 		self._match_flash = False
+		was_two_line = self._two_line
 		self._stop_spinner()
-		self._activity_message = message
-		if message is None:
-			if self._tty and self._searching():
+		self._activity = update
+		self._two_line = update is not None
+		if not self._tty:
+			if update is not None and update.determinate:
+				print(self._format_task_line(width=_TASK_BAR_WIDTH + 32), file=self._stream, flush=True)
+			return
+		if update is None:
+			if was_two_line:
+				self._erase_second_line()
+			if self._searching():
 				self.refresh()
 			return
-		if not self._tty:
-			return
-		self._spinner_thread = threading.Thread(target=self._run_spinner, daemon=True)
-		self._spinner_thread.start()
+		if update.indeterminate:
+			self._spinner_thread = threading.Thread(target=self._run_spinner, daemon=True)
+			self._spinner_thread.start()
+		else:
+			self.refresh()
+
+	def _erase_second_line(self):
+		self._stream.write("\n\x1b[2K\x1b[1A")
+		self._stream.flush()
 
 	def _run_spinner(self):
 		while not self._spinner_stop.is_set():
 			frame = _SPINNER_FRAMES[self._spinner_index % len(_SPINNER_FRAMES)]
 			self._spinner_index += 1
-			columns, _ = _terminal_size(self._stream)
-			message = f"{frame} {self._activity_message}"
-			if len(message) > columns:
-				message = message[: max(0, columns - 3)] + "..."
-			self._stream.write(f"\r\x1b[2K{message}")
-			self._stream.flush()
+			self._write_display(spinner_frame=frame)
 			if self._spinner_stop.wait(0.1):
 				break
 
-	def _format_message(self, *, width: int) -> str:
+	def _truncate(self, message: str, *, width: int) -> str:
+		if len(message) <= width:
+			return message
+		return message[: max(0, width - 3)] + "..."
+
+	def _format_file_bar(self, *, width: int) -> str:
 		ratio = self._current / self._total if self._total else 0.0
 		filled = int(_PROGRESS_BAR_WIDTH * ratio)
 		bar = "█" * filled + "░" * (_PROGRESS_BAR_WIDTH - filled)
 		message = f"[{bar}] {self._current}/{self._total} files"
 		if self._match_flash:
 			message += " · match found"
-		if len(message) > width:
-			return message[: max(0, width - 3)] + "..."
-		return message
+		return self._truncate(message, width=width)
+
+	def _format_task_line(self, *, width: int, spinner_frame: str | None = None) -> str:
+		if self._activity is None:
+			return ""
+		frame = spinner_frame or _SPINNER_FRAMES[0]
+		message = format_activity_status(self._activity, spinner_frame=frame)
+		return self._truncate(message, width=width)
+
+	def _write_display(self, *, spinner_frame: str | None = None):
+		columns, _ = _terminal_size(self._stream)
+		line1 = self._format_file_bar(width=columns) if self._total > 0 else ""
+		if self._activity is None:
+			if not line1:
+				return
+			self._stream.write(f"\r\x1b[2K{line1}")
+		else:
+			line2 = self._format_task_line(width=columns, spinner_frame=spinner_frame)
+			if line1:
+				self._stream.write(f"\r\x1b[2K{line1}\n\x1b[2K{line2}\x1b[1A")
+			else:
+				self._stream.write(f"\r\x1b[2K{line2}")
+		self._stream.flush()
 
 	def _searching(self) -> bool:
 		return self._total > 0 and self._current < self._total
@@ -424,16 +460,18 @@ class ProgressBar:
 		self._stop_spinner()
 		if not self._tty:
 			return
-		self._stream.write("\r\x1b[2K")
+		if self._two_line:
+			self._stream.write("\x1b[2K\n\x1b[2K\x1b[1A")
+		else:
+			self._stream.write("\r\x1b[2K")
 		self._stream.flush()
 
 	def refresh(self):
-		if not self._tty or self._total <= 0:
+		if not self._tty:
 			return
-		columns, _ = _terminal_size(self._stream)
-		message = self._format_message(width=columns)
-		self._stream.write(f"\r\x1b[2K{message}")
-		self._stream.flush()
+		if self._total <= 0 and self._activity is None:
+			return
+		self._write_display()
 
 	def update(self, current: int, total: int):
 		self._match_flash = False
@@ -444,7 +482,7 @@ class ProgressBar:
 
 		if not self._tty:
 			if current == total or current == 1 or current % max(1, total // 20) == 0:
-				print(self._format_message(width=_PROGRESS_BAR_WIDTH + 24), file=self._stream, flush=True)
+				print(self._format_file_bar(width=_PROGRESS_BAR_WIDTH + 24), file=self._stream, flush=True)
 			return
 
 		self.refresh()
@@ -455,11 +493,12 @@ class ProgressBar:
 			return
 		self.clear()
 		print(text, file=stdout, flush=True)
-		if self._searching():
+		if self._searching() or self._activity is not None:
 			self.refresh()
 
 	def finish(self):
-		self._activity_message = None
+		self._activity = None
+		self._two_line = False
 		if not self._tty:
 			return
 		self.clear()
@@ -871,7 +910,7 @@ def execute_search(
 	*,
 	skipped_files: list[SkippedFile] | None = None,
 	on_progress: Callable[[int, int], None] | None = None,
-	on_activity: Callable[[str | None], None] | None = None,
+	on_activity: ActivityCallback | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
 ) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 	search_names, search_contents = resolve_search_modes(args)
@@ -936,9 +975,9 @@ def run_plain(args: argparse.Namespace) -> int:
 			progress.set_activity(None)
 			progress.update(current, total)
 
-	def on_activity(message: str | None):
+	def on_activity(update: ActivityUpdate | None):
 		if progress is not None:
-			progress.set_activity(message)
+			progress.set_activity(update)
 
 	def on_result(_result: FileSearchResult):
 		if progress is not None:

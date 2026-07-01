@@ -17,6 +17,7 @@ from srxy.device import (
 	warn_if_cpu_device,
 )
 from srxy.media_metadata import AUDIO_SUFFIXES, VIDEO_SUFFIXES
+from srxy.progress import ActivityCallback, emit_activity
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -117,27 +118,82 @@ def reset_transcribe_models():
 	_ctranslate2_cuda_libs_loaded = False
 
 
+def _cublas_library_dir() -> Path | None:
+	try:
+		import nvidia.cublas.lib as cublas_lib  # type: ignore[import-untyped]
+	except ImportError:
+		cublas_lib = None
+	if cublas_lib is not None:
+		module_file = cublas_lib.__file__
+		if module_file is not None:
+			return Path(module_file).resolve().parent
+
+	import importlib.util
+
+	spec = importlib.util.find_spec("nvidia.cublas")
+	if spec is None or not spec.submodule_search_locations:
+		return None
+	bin_dir = Path(spec.submodule_search_locations[0]) / "bin"
+	if bin_dir.is_dir():
+		return bin_dir
+	return None
+
+
 def _ensure_ctranslate2_cuda_libs():
 	global _ctranslate2_cuda_libs_loaded
 	if _ctranslate2_cuda_libs_loaded:
 		return
 	_ctranslate2_cuda_libs_loaded = True
-	try:
-		import nvidia.cublas.lib  # type: ignore[import-untyped]
-	except ImportError:
+	lib_dir = _cublas_library_dir()
+	if lib_dir is None:
 		return
-	module_file = nvidia.cublas.lib.__file__
-	if module_file is None:
+	if sys.platform == "win32":
+		if hasattr(os, "add_dll_directory"):
+			os.add_dll_directory(str(lib_dir))
+		for name in ("cublas64_12.dll", "cublasLt64_12.dll"):
+			library = lib_dir / name
+			if library.is_file():
+				ctypes.CDLL(str(library))
 		return
-	lib_dir = Path(module_file).resolve().parent
 	for name in ("libcublas.so.12", "libcublasLt.so.12"):
 		library = lib_dir / name
 		if library.is_file():
 			ctypes.CDLL(str(library), mode=ctypes.RTLD_GLOBAL)
 
 
+def transcribe_activity_label(
+	path: Path,
+	*,
+	phase: str = "Transcribe",
+	device: str | None = None,
+	backend: str | None = None,
+) -> str:
+	base = f"{phase} · {path.name}"
+	if device is None:
+		return base
+	stack = f"{device}/{backend}" if backend else device
+	return f"{base} · {stack}"
+
+
 def _maybe_warn_transcribe_cpu(device: str):
 	warn_if_cpu_device(device, context="transcription")
+
+
+def _emit_transcribe_fallback(
+	on_activity: ActivityCallback | None,
+	*,
+	path: Path,
+	device: str,
+	backend: str,
+	error: Exception,
+):
+	message = f"warning: faster-whisper {device} failed ({error}); falling back to {backend} on {device}."
+	print(message, file=sys.stderr)
+	if on_activity is not None:
+		emit_activity(
+			on_activity,
+			transcribe_activity_label(path, device=device, backend=f"{backend} (fallback)"),
+		)
 
 
 def _cache_variant(device: str, backend: str) -> str:
@@ -238,6 +294,19 @@ def _get_faster_whisper_model(device: str):
 	return _faster_whisper_model
 
 
+def _wav_duration_seconds(wav_path: Path) -> float | None:
+	import wave
+
+	try:
+		with wave.open(str(wav_path), "rb") as handle:
+			rate = handle.getframerate()
+			if rate <= 0:
+				return None
+			return handle.getnframes() / rate
+	except (OSError, wave.Error):
+		return None
+
+
 def _get_transformers_pipeline(device: str):
 	global _transformers_pipeline
 	if _transformers_pipeline is not None:
@@ -255,32 +324,63 @@ def _get_transformers_pipeline(device: str):
 		"automatic-speech-recognition",
 		model=model_id,
 		device=device,
-		chunk_length_s=30,
 	)
 	return _transformers_pipeline
 
 
-def _iter_faster_whisper_segments(wav_path: Path, device: str) -> Iterator[tuple[int, str]]:
+def _iter_faster_whisper_segments(
+	wav_path: Path,
+	device: str,
+	*,
+	on_activity: ActivityCallback | None = None,
+	label: str | None = None,
+) -> Iterator[tuple[int, str]]:
+	if on_activity is not None and label is not None:
+		loading_label = label.replace("Transcribe ·", "Loading model ·", 1)
+		emit_activity(on_activity, loading_label)
 	model = _get_faster_whisper_model(device)
-	segments, _info = model.transcribe(  # type: ignore[union-attr]
+	segments, info = model.transcribe(  # type: ignore[union-attr]
 		str(wav_path),
 		beam_size=1,
 		vad_filter=False,
 		language=None,
 	)
+	duration = float(getattr(info, "duration", 0.0) or 0.0)
+	total = int(duration) if duration > 0 else None
 	for segment in segments:
+		if on_activity is not None and label is not None:
+			if total is not None:
+				emit_activity(on_activity, label, current=min(int(segment.end), total), total=total)
+			else:
+				emit_activity(on_activity, label)
 		item = _segment_at(segment.start, segment.text)
 		if item is not None:
 			yield item
 
 
-def _iter_transformers_segments(wav_path: Path, device: str) -> Iterator[tuple[int, str]]:
+def _iter_transformers_segments(
+	wav_path: Path,
+	device: str,
+	*,
+	on_activity: ActivityCallback | None = None,
+	label: str | None = None,
+) -> Iterator[tuple[int, str]]:
+	if on_activity is not None and label is not None:
+		emit_activity(on_activity, label)
 	pipe = _get_transformers_pipeline(device)
-	result = pipe(str(wav_path), return_timestamps=True)  # type: ignore[operator]
+	duration = _wav_duration_seconds(wav_path)
+	chunk_length_s = 30 if duration is not None and duration > 30 else None
+	if chunk_length_s is not None:
+		result = pipe(str(wav_path), return_timestamps=True, chunk_length_s=chunk_length_s)  # type: ignore[call-arg]
+	else:
+		result = pipe(str(wav_path), return_timestamps=True)  # type: ignore[operator]
 
 	chunks = result.get("chunks") if isinstance(result, dict) else None
 	if chunks:
-		for chunk in chunks:
+		chunk_limit = len(chunks)
+		if duration is not None and duration < 5:
+			chunk_limit = min(chunk_limit, max(1, int(duration) + 1))
+		for chunk in chunks[:chunk_limit]:
 			if not isinstance(chunk, dict):
 				continue
 			text = str(chunk.get("text", "")).strip()
@@ -302,43 +402,90 @@ def _iter_transformers_segments(wav_path: Path, device: str) -> Iterator[tuple[i
 			yield item
 
 
-def _iter_transformers_segment_lines(wav_path: Path, device: str) -> list[tuple[int, str]]:
-	return list(_iter_transformers_segments(wav_path, device))
+def _iter_transformers_segment_lines(
+	wav_path: Path,
+	device: str,
+	*,
+	on_activity: ActivityCallback | None = None,
+	label: str | None = None,
+) -> list[tuple[int, str]]:
+	return list(
+		_iter_transformers_segments(wav_path, device, on_activity=on_activity, label=label),
+	)
 
 
-def _iter_faster_whisper_segment_lines(wav_path: Path, device: str) -> list[tuple[int, str]]:
-	return list(_iter_faster_whisper_segments(wav_path, device))
+def _iter_faster_whisper_segment_lines(
+	wav_path: Path,
+	device: str,
+	*,
+	on_activity: ActivityCallback | None = None,
+	label: str | None = None,
+) -> list[tuple[int, str]]:
+	return list(
+		_iter_faster_whisper_segments(wav_path, device, on_activity=on_activity, label=label),
+	)
 
 
 def _transcribe_wav_segments(
 	wav_path: Path,
 	*,
+	source_path: Path,
 	device: str,
 	backend: str,
+	on_activity: ActivityCallback | None = None,
+	label: str | None = None,
 ) -> tuple[str, list[tuple[int, str]]]:
 	_maybe_warn_transcribe_cpu(device)
 	if backend == "transformers":
-		return "transformers", _iter_transformers_segment_lines(wav_path, device)
+		return "transformers", _iter_transformers_segment_lines(
+			wav_path,
+			device,
+			on_activity=on_activity,
+			label=label,
+		)
 
 	try:
-		segments = _iter_faster_whisper_segment_lines(wav_path, device)
+		segments = _iter_faster_whisper_segment_lines(
+			wav_path,
+			device,
+			on_activity=on_activity,
+			label=label,
+		)
 		if segments:
 			return "faster-whisper", segments
 		print(
 			"warning: faster-whisper produced no speech segments; falling back to transformers.",
 			file=sys.stderr,
 		)
-		return "transformers", _iter_transformers_segment_lines(wav_path, device)
+		if on_activity is not None:
+			emit_activity(
+				on_activity,
+				transcribe_activity_label(source_path, device=device, backend="transformers (fallback)"),
+			)
+		return "transformers", _iter_transformers_segment_lines(
+			wav_path,
+			device,
+			on_activity=on_activity,
+			label=label,
+		)
 	except RuntimeError as exc:
 		if device != "cuda":
 			raise
-		print(
-			f"warning: faster-whisper CUDA failed ({exc}); falling back to transformers on CUDA.",
-			file=sys.stderr,
+		_emit_transcribe_fallback(
+			on_activity,
+			path=source_path,
+			device=device,
+			backend="transformers",
+			error=exc,
 		)
 		global _faster_whisper_model
 		_faster_whisper_model = None
-		return "transformers", _iter_transformers_segment_lines(wav_path, device)
+		return "transformers", _iter_transformers_segment_lines(
+			wav_path,
+			device,
+			on_activity=on_activity,
+			label=label,
+		)
 
 
 def _cached_transcript_lines(
@@ -384,22 +531,32 @@ def _cached_transcript_lines(
 	return segments
 
 
-def iter_transcript_lines(path: Path) -> Iterator[tuple[int, str]]:
+def iter_transcript_lines(path: Path, *, on_activity: ActivityCallback | None = None):
 	from srxy.cache import get_file_content_hash
 
+	device = resolve_transcribe_device()
+	active_backend = transcribe_backend_for_device(device)
+	label = transcribe_activity_label(path, device=device, backend=active_backend)
 	try:
 		content_hash = get_file_content_hash(path)
-		device = resolve_transcribe_device()
-		active_backend = transcribe_backend_for_device(device)
+		_maybe_warn_transcribe_cpu(device)
 
 		def transcribe() -> tuple[str, list[tuple[int, str]]]:
 			segments: list[tuple[int, str]] = []
 			backend_in_use = active_backend
+			emit_activity(
+				on_activity,
+				transcribe_activity_label(path, device=device, backend=active_backend, phase="Preparing audio"),
+			)
 			for wav_path in _with_normalized_audio(path):
+				emit_activity(on_activity, label)
 				backend_in_use, wav_segments = _transcribe_wav_segments(
 					wav_path,
+					source_path=path,
 					device=device,
 					backend=backend_in_use,
+					on_activity=on_activity,
+					label=label,
 				)
 				segments.extend(wav_segments)
 			return backend_in_use, segments

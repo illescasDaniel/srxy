@@ -17,7 +17,7 @@ pip install 'srxy[semantic]'   # inside a venv or project
 pip install srxy                 # core only (no PyTorch / semantic / transcription)
 ```
 
-`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux `nvidia-cublas-cu12` for GPU transcription. Models download on first use — see [Model prefetch](power-ups.md#model-prefetch) in the power-ups guide. To remove cached models or scan results, see [Managing cache](power-ups.md#managing-cache).
+`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. On **Windows**, pip installs the **CPU-only** PyTorch wheel — install CUDA PyTorch first if you have an NVIDIA GPU ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
 ## System dependencies
 
@@ -120,13 +120,39 @@ pipx install 'srxy[semantic]'
 
    Restart your terminal so `PATH` picks up the new binaries.
 
-4. Install srxy with Windows Explorer tag support:
+4. Install srxy:
+
+   `[windows]` adds `pywin32` for `System.Keywords` tag search ([CLI reference](cli.md)).
+
+   **CPU only** (no NVIDIA GPU, or GPU not needed):
 
    ```powershell
    pipx install 'srxy[semantic,windows]'
    ```
 
-   `[windows]` adds `pywin32` for `System.Keywords` tag search — see [CLI reference](cli.md).
+   **GPU** (semantic search and transcription): Windows `pip`/`pipx` install pulls **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first.
+
+   See [pytorch.org/get-started](https://pytorch.org/get-started/locally/) (Windows → Pip → CUDA). Use **CUDA 13.0** (`cu130`) for most recent GPUs; use **CUDA 12.6** (`cu126`) if `cu130` fails or your GPU/driver is older.
+
+   **venv** (recommended for GPU):
+
+   ```powershell
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+   pip install 'srxy[semantic,windows]'
+   ```
+
+   For CUDA 12.6, replace `cu130` with `cu126`.
+
+   **pipx** (global `srxy` with GPU):
+
+   ```powershell
+   pipx install 'srxy[semantic,windows]'
+   pipx inject srxy torch torchvision torchaudio --pip-args="--index-url https://download.pytorch.org/whl/cu130"
+   ```
+
+   `pipx inject` replaces the CPU wheel from `pipx install`.
 
 ## Core-only install
 
@@ -145,6 +171,14 @@ srxy --version
 which ffmpeg      # where ffmpeg on Windows
 which tesseract   # where tesseract on Windows
 ```
+
+With `[semantic]` and an NVIDIA GPU, confirm PyTorch sees CUDA:
+
+```powershell
+python -c "import torch; print(torch.__version__); print('cuda:', torch.cuda.is_available())"
+```
+
+Expect `+cu130` or `+cu126` and `cuda: True`. `+cpu` means GPU support was not installed.
 
 ## TestPyPI (testers)
 

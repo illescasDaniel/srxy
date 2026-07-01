@@ -14,6 +14,7 @@ from srxy.transcribe_text import (
 	is_transcribe_path,
 	iter_transcript_lines,
 	reset_transcribe_models,
+	transcribe_activity_label,
 	transcribe_deps_installed,
 	transcribe_max_file_size,
 	transcribe_requested,
@@ -22,6 +23,14 @@ from srxy.transcribe_text import (
 
 
 pytestmark = pytest.mark.unit
+
+
+def test_given_transcribe_path_when_building_activity_label_then_includes_device_and_backend():
+	# when / then
+	assert (
+		transcribe_activity_label(Path("speech.mp3"), device="cuda", backend="faster-whisper")
+		== "Transcribe · speech.mp3 · cuda/faster-whisper"
+	)
 
 
 def test_given_transcribe_param_true_when_requesting_then_returns_true():
@@ -93,7 +102,7 @@ def test_given_mocked_transcription_when_iterating_lines_then_yields_segments(
 	monkeypatch.setenv("SRXY_TRANSCRIBE", "1")
 	reset_transcribe_models()
 
-	def fake_transcribe_wav_segments(_wav_path: Path, *, device: str, backend: str):
+	def fake_transcribe_wav_segments(_wav_path: Path, *, device: str, backend: str, **_kwargs: object):
 		return backend, [
 			(0, "quarterly earnings"),
 			(5, "revenue growth"),
@@ -160,7 +169,7 @@ def test_given_cached_transcript_when_iterating_twice_then_transcribes_once(
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
 	reset_transcribe_models()
 
-	def fake_transcribe(_wav_path: Path, *, device: str, backend: str):
+	def fake_transcribe(_wav_path: Path, *, device: str, backend: str, **_kwargs: object):
 		return backend, [(42, "call me maybe")]
 
 	with (
@@ -188,7 +197,7 @@ def test_given_empty_transcript_when_caching_then_does_not_store_empty_payload(
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
 	reset_transcribe_models()
 
-	def fake_transcribe(_wav_path: Path, *, device: str, backend: str):
+	def fake_transcribe(_wav_path: Path, *, device: str, backend: str, **_kwargs: object):
 		return backend, []
 
 	with (
@@ -218,10 +227,10 @@ def test_given_cuda_faster_whisper_failure_when_transcribing_then_falls_back_to_
 	wav = tmp_path / "audio.wav"
 	wav.write_bytes(b"wav")
 
-	def boom(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+	def boom(_wav_path: Path, device: str, **_kwargs: object) -> list[tuple[int, str]]:
 		raise RuntimeError("Library libcublas.so.12 is not found or cannot be loaded")
 
-	def transformers(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+	def transformers(_wav_path: Path, device: str, **_kwargs: object) -> list[tuple[int, str]]:
 		return [(0, "fallback transcript")]
 
 	with (
@@ -233,12 +242,12 @@ def test_given_cuda_faster_whisper_failure_when_transcribing_then_falls_back_to_
 		from srxy.transcribe_text import _transcribe_wav_segments  # pyright: ignore[reportPrivateUsage]
 
 		# when
-		backend, segments = _transcribe_wav_segments(wav, device="cuda", backend="faster-whisper")
+		backend, segments = _transcribe_wav_segments(wav, source_path=wav, device="cuda", backend="faster-whisper")
 
 	# then
 	assert backend == "transformers"
 	assert segments == [(0, "fallback transcript")]
-	assert "falling back to transformers on CUDA" in capsys.readouterr().err
+	assert "falling back to transformers on cuda" in capsys.readouterr().err.lower()
 
 
 def test_given_cpu_faster_whisper_empty_when_transcribing_then_falls_back_to_transformers(
@@ -249,10 +258,10 @@ def test_given_cpu_faster_whisper_empty_when_transcribing_then_falls_back_to_tra
 	wav = tmp_path / "audio.wav"
 	wav.write_bytes(b"wav")
 
-	def empty(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+	def empty(_wav_path: Path, device: str, **_kwargs: object) -> list[tuple[int, str]]:
 		return []
 
-	def transformers(_wav_path: Path, device: str) -> list[tuple[int, str]]:
+	def transformers(_wav_path: Path, device: str, **_kwargs: object) -> list[tuple[int, str]]:
 		return [(0, "quiet audio transcript")]
 
 	with (
@@ -262,7 +271,7 @@ def test_given_cpu_faster_whisper_empty_when_transcribing_then_falls_back_to_tra
 		from srxy.transcribe_text import _transcribe_wav_segments  # pyright: ignore[reportPrivateUsage]
 
 		# when
-		backend, segments = _transcribe_wav_segments(wav, device="cpu", backend="faster-whisper")
+		backend, segments = _transcribe_wav_segments(wav, source_path=wav, device="cpu", backend="faster-whisper")
 
 	# then
 	assert backend == "transformers"
@@ -337,6 +346,7 @@ def test_given_nvidia_cublas_lib_when_ensuring_cuda_libs_then_preloads_library(
 	monkeypatch.setitem(sys.modules, "nvidia.cublas", fake_cublas_pkg)
 	monkeypatch.setitem(sys.modules, "nvidia.cublas.lib", fake_cublas)
 	monkeypatch.setattr(module, "_ctranslate2_cuda_libs_loaded", False)
+	monkeypatch.setattr(module.sys, "platform", "linux")
 	loaded: list[str] = []
 	monkeypatch.setattr(module.ctypes, "CDLL", lambda path, mode=0: loaded.append(path))
 
@@ -345,3 +355,47 @@ def test_given_nvidia_cublas_lib_when_ensuring_cuda_libs_then_preloads_library(
 
 	# then
 	assert loaded == [str(lib_dir / "libcublas.so.12")]
+
+
+def test_given_nvidia_cublas_bin_when_ensuring_cuda_libs_on_windows_then_preloads_dlls(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	import importlib.util
+	import types
+
+	import srxy.transcribe_text as module
+
+	bin_dir = tmp_path / "nvidia" / "cublas" / "bin"
+	bin_dir.mkdir(parents=True)
+	(bin_dir / "cublas64_12.dll").write_bytes(b"MZ")
+	(bin_dir / "cublasLt64_12.dll").write_bytes(b"MZ")
+	fake_cublas_pkg = types.ModuleType("nvidia.cublas")
+	fake_nvidia = types.ModuleType("nvidia")
+	fake_nvidia.cublas = fake_cublas_pkg
+	monkeypatch.setitem(sys.modules, "nvidia", fake_nvidia)
+	monkeypatch.setitem(sys.modules, "nvidia.cublas", fake_cublas_pkg)
+	monkeypatch.delitem(sys.modules, "nvidia.cublas.lib", raising=False)
+	monkeypatch.setattr(
+		importlib.util,
+		"find_spec",
+		lambda name: types.SimpleNamespace(submodule_search_locations=[str(bin_dir.parent)]),
+	)
+	monkeypatch.setattr(module, "_ctranslate2_cuda_libs_loaded", False)
+	monkeypatch.setattr(module.sys, "platform", "win32")
+	added: list[str] = []
+	monkeypatch.setattr(
+		module.os,
+		"add_dll_directory",
+		lambda path: added.append(path),
+		raising=False,
+	)
+	loaded: list[str] = []
+	monkeypatch.setattr(module.ctypes, "CDLL", lambda path: loaded.append(path))
+
+	# when
+	module._ensure_ctranslate2_cuda_libs()  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert added == [str(bin_dir)]
+	assert loaded == [str(bin_dir / "cublas64_12.dll"), str(bin_dir / "cublasLt64_12.dll")]

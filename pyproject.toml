@@ -26,7 +26,7 @@ dependencies = [
 # Text + image semantic search (sentence-transformers → PyTorch, CLIP, MiniLM).
 semantic = [
 	"faster-whisper>=1.2",
-	"nvidia-cublas-cu12; platform_system == 'Linux'",
+	"nvidia-cublas-cu12; platform_system == 'Linux' or platform_system == 'Windows'",
 	"rawpy>=0.27",
 	"sentence-transformers>=5.6",
 ]
@@ -122,6 +122,7 @@ executionEnvironments = [
 	{ root = "src/srxy/semantic_image.py", reportMissingImports = "none" },
 	{ root = "src/srxy/matchers/semantic.py", reportMissingImports = "none" },
 	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
+	{ root = "tests/unit/test_windows_metadata.py", reportPrivateUsage = "none" },
 	{ root = "src" },
 	{ root = "tests", extraPaths = ["src", "."] },
 ]

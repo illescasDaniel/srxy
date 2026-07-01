@@ -32,7 +32,7 @@ Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
 | **Filters** | Dialog for top files, per-file match cap, and size limits (MiB) |
 | **Results** | Sortable table: match %, path, sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
 | **Preview** | Selected file path, score, sources, hit table (location + **bold** query highlights) |
-| **Status** | Progress, match count, copy buttons (**Path**, **Match**, **All**) |
+| **Status** | File-scan progress bar; during OCR/transcribe/CLIP the status line shows a spinner with optional percent, filename, and device/backend (e.g. `⠋ 30% Transcribe · speech.mp3 · cuda/faster-whisper`), match count, copy buttons |
 
 Heavy modes run in a background worker so the UI stays responsive.
 

@@ -15,7 +15,7 @@ from srxy.archive_search import (
 	list_archive_members,
 )
 from srxy.cache import get_file_content_hash, reset_run_file_hashes
-from srxy.document_text import is_document_path, iter_document_lines
+from srxy.document_text import is_document_path, iter_document_lines, iter_document_metadata_lines
 from srxy.file_query import (
 	FileQ,
 	coerce_file_query,
@@ -34,6 +34,7 @@ from srxy.ocr_text import (
 	iter_image_ocr_lines,
 	ocr_max_file_size,
 )
+from srxy.progress import ActivityCallback, clear_activity, emit_activity
 from srxy.semantic_image import (
 	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	encode_semantic_image_query,
@@ -50,7 +51,7 @@ from srxy.transcribe_text import (
 	transcribe_max_file_size,
 )
 from srxy.utils import normalize_text, query_words, word_pair_match_allowed
-from srxy.windows_metadata import has_windows_tags, iter_windows_metadata_lines
+from srxy.windows_metadata import has_windows_searchable_metadata, iter_windows_metadata_lines
 from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
 
 
@@ -165,7 +166,7 @@ def _effective_max_file_size(path: Path, max_file_size: int | None, *, ocr: bool
 
 
 def _can_search_without_reading_body(path: Path) -> bool:
-	return is_media_path(path) or has_searchable_xattrs(path) or has_windows_tags(path)
+	return is_media_path(path) or has_searchable_xattrs(path) or has_windows_searchable_metadata(path)
 
 
 def _file_within_size_limit(path: Path, max_file_size: int | None) -> bool:
@@ -226,6 +227,7 @@ def _iter_body_searchable_lines(
 	max_file_size: int | None,
 	*,
 	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
 ) -> Iterator[tuple[int, str, str]]:
 	if is_archive_member_path(path):
 		content_byte_limit = max_file_size
@@ -240,7 +242,7 @@ def _iter_body_searchable_lines(
 	if not _file_within_size_limit(path, content_byte_limit):
 		return
 	if is_document_path(path):
-		yield from iter_document_lines(path, ocr=ocr)
+		yield from iter_document_lines(path, ocr=ocr, on_activity=on_activity)
 		return
 	if not _is_probably_text(path, content_byte_limit):
 		return
@@ -275,10 +277,10 @@ def _iter_searchable_lines(
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
-	on_activity: Callable[[str | None], None] | None = None,
+	on_activity: ActivityCallback | None = None,
 ) -> Iterator[tuple[int, str, str]]:
 	if is_archive_member_path(path):
-		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr)
+		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
 		return
 	if is_media_path(path):
 		for line_number, raw_line in iter_media_metadata_lines(path):
@@ -288,31 +290,29 @@ def _iter_searchable_lines(
 			if ocr_byte_limit is not None and not _file_within_size_limit(path, ocr_byte_limit):
 				_append_ocr_skip(path, skipped_files)
 			else:
-				if on_activity is not None:
-					on_activity(f"OCR · {path.name}")
+				emit_activity(on_activity, f"OCR · {path.name}")
 				try:
 					for line_number, raw_line in iter_image_ocr_lines(path):
 						yield line_number, raw_line, "ocr"
 				finally:
-					if on_activity is not None:
-						on_activity(None)
+					clear_activity(on_activity)
 		if is_transcribe_active(transcribe) and is_transcribe_path(path):
 			transcribe_byte_limit = transcribe_max_file_size()
 			if transcribe_byte_limit is not None and not _file_within_size_limit(path, transcribe_byte_limit):
 				_append_transcribe_skip(path, skipped_files)
 			else:
-				if on_activity is not None:
-					on_activity(f"Transcribe · {path.name}")
+				emit_activity(on_activity, f"Transcribe · {path.name}")
 				try:
-					for line_number, raw_line in iter_transcript_lines(path):
+					for line_number, raw_line in iter_transcript_lines(path, on_activity=on_activity):
 						yield line_number, raw_line, "transcript"
 				finally:
-					if on_activity is not None:
-						on_activity(None)
+					clear_activity(on_activity)
 	else:
-		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr)
+		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
 
 	for line_number, raw_line in iter_xattr_metadata_lines(path):
+		yield line_number, raw_line, "tag"
+	for line_number, raw_line in iter_document_metadata_lines(path):
 		yield line_number, raw_line, "tag"
 	for line_number, raw_line in iter_windows_metadata_lines(path):
 		yield line_number, raw_line, "tag"
@@ -457,7 +457,7 @@ def _score_lines(
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
-	on_activity: Callable[[str | None], None] | None = None,
+	on_activity: ActivityCallback | None = None,
 ) -> tuple[float, list[LineMatch], LineMatch | None, dict[str, float]]:
 	matches: list[LineMatch] = []
 	best_near_match: LineMatch | None = None
@@ -557,7 +557,7 @@ def _search_single_file(
 	query_image_embedding: object | None = None,
 	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
-	on_activity: Callable[[str | None], None] | None = None,
+	on_activity: ActivityCallback | None = None,
 ) -> FileSearchResult | None:
 	if not is_searchable_path(file_path):
 		return None
@@ -617,8 +617,7 @@ def _search_single_file(
 
 	semantic_image_score = 0.0
 	if not archive_member and is_semantic_image_active(semantic_image) and is_semantic_image_path(file_path):
-		if on_activity is not None:
-			on_activity(f"CLIP · {file_path.name}")
+		emit_activity(on_activity, f"CLIP · {file_path.name}")
 		try:
 			file_hash = get_file_content_hash(file_path)
 			clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
@@ -629,8 +628,7 @@ def _search_single_file(
 				query_embedding=query_image_embedding,
 			)
 		finally:
-			if on_activity is not None:
-				on_activity(None)
+			clear_activity(on_activity)
 		if semantic_image_score > 0.0:
 			breakdown["semantic_image"] = semantic_image_score
 			for term in iter_terms(query_expr):
@@ -702,7 +700,7 @@ def magic_file_search(
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	limit: int | None = None,
 	on_progress: Callable[[int, int], None] | None = None,
-	on_activity: Callable[[str | None], None] | None = None,
+	on_activity: ActivityCallback | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
 	max_line_matches: int | None = None,
 ) -> list[FileSearchResult]:
@@ -731,13 +729,11 @@ def magic_file_search(
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
 	if is_semantic_image_active(semantic_image):
-		if on_activity is not None:
-			on_activity("Encoding image query…")
+		emit_activity(on_activity, "Encoding image query…")
 		try:
 			query_image_embedding = encode_semantic_image_query(clip_query)
 		finally:
-			if on_activity is not None:
-				on_activity(None)
+			clear_activity(on_activity)
 	files = _collect_files(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
@@ -747,8 +743,7 @@ def magic_file_search(
 	total_files = len(files)
 
 	for index, file_path in enumerate(files, start=1):
-		if on_activity is not None:
-			on_activity(f"Scanning · {file_path.name}")
+		emit_activity(on_activity, f"Scanning · {file_path.name}")
 		try:
 			result = _search_single_file(
 				file_path,
@@ -771,8 +766,7 @@ def magic_file_search(
 				on_activity=on_activity,
 			)
 		finally:
-			if on_activity is not None:
-				on_activity(None)
+			clear_activity(on_activity)
 		if on_progress is not None:
 			on_progress(index, total_files)
 		if result is None:

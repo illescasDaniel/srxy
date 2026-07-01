@@ -10,6 +10,8 @@ pip install -e ".[dev,semantic]"
 ./scripts/quality/checks.sh --full+cpu   # release + forced-CPU transcribe matrix
 ```
 
+On **Windows** with an NVIDIA GPU, install CUDA PyTorch in `.venv` before `pip install -e …` ([installation.md → Windows](installation.md#windows)).
+
 ## Quality gate
 
 Order: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.

@@ -14,6 +14,7 @@ from srxy.cache import (
 )
 from srxy.document_text import iter_document_lines
 from srxy.matchers.semantic import SemanticMatcher, reset_semantic_model
+from srxy.progress import ActivityCallback
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
@@ -83,7 +84,7 @@ def test_given_pdf_lines_when_iterating_twice_then_extracts_once(tmp_path: Path,
 	pdf_path.write_bytes(b"%PDF-1.4 cached")
 	lines = [(1, "page text", "page"), (2, "ocr text", "ocr")]
 
-	def fake_pdf_lines(path: Path, *, ocr: bool | None = None):
+	def fake_pdf_lines(path: Path, *, ocr: bool | None = None, on_activity: ActivityCallback | None = None):
 		assert path == pdf_path
 		yield from lines
 
