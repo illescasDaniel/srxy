@@ -295,9 +295,9 @@ def _get_faster_whisper_model(device: str):
 
 
 def _wav_duration_seconds(wav_path: Path) -> float | None:
-	try:
-		import wave
+	import wave
 
+	try:
 		with wave.open(str(wav_path), "rb") as handle:
 			rate = handle.getframerate()
 			if rate <= 0:

@@ -3,7 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from srxy.document_text import _iter_pdf_lines
+from srxy.document_text import _iter_pdf_lines  # pyright: ignore[reportPrivateUsage]
 from srxy.progress import ActivityUpdate
 
 

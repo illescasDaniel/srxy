@@ -64,7 +64,7 @@ def test_given_indeterminate_activity_when_formatting_status_then_omits_percent(
 
 def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_progress():
 	# given
-	from srxy.transcribe_text import _iter_faster_whisper_segments
+	from srxy.transcribe_text import _iter_faster_whisper_segments  # pyright: ignore[reportPrivateUsage]
 
 	segment = MagicMock(start=0.0, end=15.0, text="hello")
 	info = MagicMock(duration=60.0)

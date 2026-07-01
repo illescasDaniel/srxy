@@ -101,3 +101,5 @@ Text
 ┘
 0%
 Ready
+^c
+Quit

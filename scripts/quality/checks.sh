@@ -183,9 +183,14 @@ fi
 # --- 6. pytest (when project uses pytest) ---
 if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
 	gate_step_start "pytest"
-	pytest_output="$("${quality_dir}/pytest.sh" 2>&1)"
-	pytest_exit=$?
-	printf '%s\n' "${pytest_output}"
+	if [[ "${CI:-}" == "true" ]]; then
+		pytest_output="$("${quality_dir}/pytest.sh" 2>&1)"
+		pytest_exit=$?
+		printf '%s\n' "${pytest_output}"
+	else
+		"${quality_dir}/pytest.sh"
+		pytest_exit=$?
+	fi
 	if [[ "${pytest_exit}" -eq 0 ]]; then
 		gate_record_pass
 	else

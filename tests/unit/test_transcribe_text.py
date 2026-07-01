@@ -242,9 +242,7 @@ def test_given_cuda_faster_whisper_failure_when_transcribing_then_falls_back_to_
 		from srxy.transcribe_text import _transcribe_wav_segments  # pyright: ignore[reportPrivateUsage]
 
 		# when
-		backend, segments = _transcribe_wav_segments(
-			wav, source_path=wav, device="cuda", backend="faster-whisper"
-		)
+		backend, segments = _transcribe_wav_segments(wav, source_path=wav, device="cuda", backend="faster-whisper")
 
 	# then
 	assert backend == "transformers"
@@ -273,9 +271,7 @@ def test_given_cpu_faster_whisper_empty_when_transcribing_then_falls_back_to_tra
 		from srxy.transcribe_text import _transcribe_wav_segments  # pyright: ignore[reportPrivateUsage]
 
 		# when
-		backend, segments = _transcribe_wav_segments(
-			wav, source_path=wav, device="cpu", backend="faster-whisper"
-		)
+		backend, segments = _transcribe_wav_segments(wav, source_path=wav, device="cpu", backend="faster-whisper")
 
 	# then
 	assert backend == "transformers"
@@ -388,7 +384,12 @@ def test_given_nvidia_cublas_bin_when_ensuring_cuda_libs_on_windows_then_preload
 	monkeypatch.setattr(module, "_ctranslate2_cuda_libs_loaded", False)
 	monkeypatch.setattr(module.sys, "platform", "win32")
 	added: list[str] = []
-	monkeypatch.setattr(module.os, "add_dll_directory", lambda path: added.append(path))
+	monkeypatch.setattr(
+		module.os,
+		"add_dll_directory",
+		lambda path: added.append(path),
+		raising=False,
+	)
 	loaded: list[str] = []
 	monkeypatch.setattr(module.ctypes, "CDLL", lambda path: loaded.append(path))
 
