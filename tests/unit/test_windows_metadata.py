@@ -211,28 +211,29 @@ def test_given_worker_thread_when_reading_keywords_then_initializes_com_per_thre
 	def worker():
 		try:
 			reset_thread_com_state_for_tests()
-			with (
-				patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
-				patch.dict(
-					"sys.modules",
-					{
-						"pythoncom": fake_pythoncom,
-						"win32com.propsys": MagicMock(propsys=fake_propsys),
-						"win32com.shell": MagicMock(shellcon=fake_shellcon),
-					},
-				),
-			):
-				ready.wait(timeout=1)
-				_read_windows_keywords(file_path)
+			ready.wait(timeout=1)
+			_read_windows_keywords(file_path)
 		except BaseException as error:
 			errors.append(error)
 
 	# when
-	threads = [threading.Thread(target=worker) for _ in range(2)]
-	for thread in threads:
-		thread.start()
-	for thread in threads:
-		thread.join()
+	with (
+		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
+		patch.dict(
+			"sys.modules",
+			{
+				"pythoncom": fake_pythoncom,
+				"win32com": MagicMock(),
+				"win32com.propsys": MagicMock(propsys=fake_propsys),
+				"win32com.shell": MagicMock(shellcon=fake_shellcon),
+			},
+		),
+	):
+		threads = [threading.Thread(target=worker) for _ in range(2)]
+		for thread in threads:
+			thread.start()
+		for thread in threads:
+			thread.join()
 
 	# then
 	assert errors == []
