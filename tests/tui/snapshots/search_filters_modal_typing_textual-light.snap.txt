@@ -1,0 +1,57 @@
+search-filters-modal-typing
+host
+█
+█
+█
+█
+█
+Search filters
+█
+█
+█
+█
+█
+█
+Top files (empty = all)
+█
+█
+25
+█
+█
+█
+█
+Matches per file
+█
+█
+50
+█
+█
+█
+█
+Text & documents (MiB, 0 = unlimited)
+█
+█
+100
+█
+█
+█
+█
+OCR (MiB)
+█
+█
+50
+█
+█
+█
+█
+█
+█
+█
+█
+Cancel
+Apply
+█
+█
+█
+█
+█

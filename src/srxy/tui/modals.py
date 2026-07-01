@@ -201,10 +201,9 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 
 	.search-filters-input {
 		width: 100%;
-		height: 1;
 		margin-bottom: 1;
-		border: none;
 		padding: 0 1;
+		color: $foreground;
 		background: $background;
 	}
 
@@ -247,15 +246,20 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 			yield Static("Search filters", id="search-filters-title")
 			with VerticalScroll(id="search-filters-scroll"):
 				yield Label("Top files (empty = all)", classes="search-filters-label")
-				yield Input(id="sf-top-files", classes="search-filters-input", placeholder="all")
+				yield Input(
+					id="sf-top-files",
+					classes="search-filters-input",
+					placeholder="all",
+					compact=True,
+				)
 				yield Label("Matches per file", classes="search-filters-label")
-				yield Input(id="sf-max-matches", classes="search-filters-input")
+				yield Input(id="sf-max-matches", classes="search-filters-input", compact=True)
 				yield Label("Text & documents (MiB, 0 = unlimited)", classes="search-filters-label")
-				yield Input(id="sf-size-text", classes="search-filters-input")
+				yield Input(id="sf-size-text", classes="search-filters-input", compact=True)
 				yield Label("OCR (MiB)", classes="search-filters-label")
-				yield Input(id="sf-size-ocr", classes="search-filters-input")
+				yield Input(id="sf-size-ocr", classes="search-filters-input", compact=True)
 				yield Label("Transcribe (MiB)", classes="search-filters-label")
-				yield Input(id="sf-size-transcribe", classes="search-filters-input")
+				yield Input(id="sf-size-transcribe", classes="search-filters-input", compact=True)
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
 				yield Button("Cancel", id="search-filters-cancel")
