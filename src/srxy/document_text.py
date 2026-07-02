@@ -97,9 +97,41 @@ def _document_cache_variant(path: Path, *, ocr: bool | None = None) -> str:
 	from srxy.ocr_text import is_ocr_active
 
 	suffix = path.suffix.lower()
-	if suffix == ".pdf":
-		return f"{suffix}:ocr={int(is_ocr_active(ocr))}"
-	return suffix
+	return f"{suffix}:ocr={int(is_ocr_active(ocr))}"
+
+
+def _document_ocr_active(path: Path, ocr: bool | None) -> bool:
+	from srxy.ocr_text import is_ocr_active, ocr_max_file_size
+
+	if not is_ocr_active(ocr):
+		return False
+	try:
+		limit = ocr_max_file_size()
+		if limit is not None and path.stat().st_size > limit:
+			return False
+	except OSError:
+		return False
+	return True
+
+
+def _iter_office_zip_media_blobs(path: Path, media_prefix: str) -> Iterator[bytes]:
+	from srxy.image_formats import DECODABLE_IMAGE_SUFFIXES
+	from srxy.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
+
+	validate_zip_archive(path)
+	prefix = media_prefix.lower()
+	with ZipFile(path) as archive:
+		for name in sorted(archive.namelist()):
+			lower_name = name.lower()
+			if not lower_name.startswith(prefix):
+				continue
+			suffix = Path(name).suffix.lower()
+			if suffix not in DECODABLE_IMAGE_SUFFIXES:
+				continue
+			data = archive.read(name)
+			if len(data) < MIN_PDF_IMAGE_OCR_BYTES:
+				continue
+			yield data
 
 
 def _encode_document_lines(lines: list[tuple[int, str, str]]) -> bytes:
@@ -145,10 +177,7 @@ def iter_document_lines(
 			yield from _decode_document_lines(cached)
 			return
 
-		if suffix == ".pdf":
-			lines = list(extractor(path, ocr=ocr, on_activity=on_activity))
-		else:
-			lines = list(extractor(path))
+		lines = list(extractor(path, ocr=ocr, on_activity=on_activity))
 		cache_put(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant, _encode_document_lines(lines))
 		yield from lines
 	except ArchiveGuardError:
@@ -165,18 +194,11 @@ def _iter_pdf_lines(
 ) -> Iterator[tuple[int, str, str]]:
 	from pypdf import PdfReader
 
-	from srxy.ocr_text import is_ocr_active, ocr_max_file_size, ocr_pdf_page_images
+	from srxy.ocr_text import ocr_pdf_page_images
 
 	reader = PdfReader(path)
 	total_pages = len(reader.pages)
-	ocr_active = is_ocr_active(ocr)
-	if ocr_active:
-		try:
-			limit = ocr_max_file_size()
-			if limit is not None and path.stat().st_size > limit:
-				ocr_active = False
-		except OSError:
-			ocr_active = False
+	ocr_active = _document_ocr_active(path, ocr)
 
 	for page_number, page in enumerate(reader.pages, start=1):
 		if ocr_active:
@@ -189,8 +211,15 @@ def _iter_pdf_lines(
 			yield page_number, image_ocr, "ocr"
 
 
-def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
+def _iter_docx_lines(
+	path: Path,
+	*,
+	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
+) -> Iterator[tuple[int, str, str]]:
 	from docx import Document
+
+	from srxy.ocr_text import ocr_image_bytes
 
 	validate_zip_archive(path)
 	document = Document(str(path))
@@ -199,9 +228,28 @@ def _iter_docx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 		if text:
 			yield paragraph_number, text, "paragraph"
 
+	ocr_active = _document_ocr_active(path, ocr)
+	if not ocr_active:
+		return
 
-def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
+	media_blobs = list(_iter_office_zip_media_blobs(path, "word/media/"))
+	total_images = len(media_blobs)
+	for image_index, blob in enumerate(media_blobs, start=1):
+		emit_activity(on_activity, f"OCR · {path.name}", current=image_index, total=total_images)
+		text = ocr_image_bytes(blob).strip()
+		if text:
+			yield image_index, text, "ocr"
+
+
+def _iter_xlsx_lines(
+	path: Path,
+	*,
+	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
+) -> Iterator[tuple[int, str, str]]:
 	from openpyxl import load_workbook
+
+	from srxy.ocr_text import ocr_image_bytes
 
 	validate_zip_archive(path)
 	workbook = load_workbook(path, read_only=True, data_only=True)
@@ -217,17 +265,52 @@ def _iter_xlsx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
 	finally:
 		workbook.close()
 
+	ocr_active = _document_ocr_active(path, ocr)
+	if not ocr_active:
+		return
 
-def _iter_pptx_lines(path: Path) -> Iterator[tuple[int, str, str]]:
+	media_blobs = list(_iter_office_zip_media_blobs(path, "xl/media/"))
+	total_images = len(media_blobs)
+	for image_index, blob in enumerate(media_blobs, start=1):
+		emit_activity(on_activity, f"OCR · {path.name}", current=image_index, total=total_images)
+		text = ocr_image_bytes(blob).strip()
+		if text:
+			yield image_index, text, "ocr"
+
+
+def _iter_pptx_lines(
+	path: Path,
+	*,
+	ocr: bool | None = None,
+	on_activity: ActivityCallback | None = None,
+) -> Iterator[tuple[int, str, str]]:
 	from pptx import Presentation
+	from pptx.enum.shapes import MSO_SHAPE_TYPE
+
+	from srxy.ocr_text import MIN_PDF_IMAGE_OCR_BYTES, ocr_image_bytes
 
 	validate_zip_archive(path)
 	presentation = Presentation(str(path))
-	for slide_number, slide in enumerate(presentation.slides, start=1):
+	slides = presentation.slides
+	total_slides = len(slides)
+	ocr_active = _document_ocr_active(path, ocr)
+	for slide_number, slide in enumerate(slides, start=1):
+		if ocr_active:
+			emit_activity(on_activity, f"OCR · {path.name}", current=slide_number, total=total_slides)
 		parts: list[str] = []
 		for shape in slide.shapes:
 			text = shape.text.strip() if hasattr(shape, "text") else ""
 			if text:
 				parts.append(text)
+			if not ocr_active:
+				continue
+			if shape.shape_type != MSO_SHAPE_TYPE.PICTURE or not hasattr(shape, "image"):
+				continue
+			blob = shape.image.blob
+			if len(blob) < MIN_PDF_IMAGE_OCR_BYTES:
+				continue
+			image_text = ocr_image_bytes(blob).strip()
+			if image_text:
+				yield slide_number, image_text, "ocr"
 		if parts:
 			yield slide_number, " ".join(parts), "slide"

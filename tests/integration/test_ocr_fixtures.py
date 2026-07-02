@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 from pypdf import PdfReader
 from tests.helpers import OCR_FIXTURES_DIR, OCR_IMAGE_FIXTURE, OCR_PDF_FIXTURE
@@ -50,6 +52,40 @@ def test_given_ocr_pdf_fixture_when_extracting_embedded_image_text_then_reads_cl
 
 	# then
 	assert "classifier" in text.lower()
+
+
+@_requires_tesseract
+def test_given_docx_with_embedded_image_when_searching_with_ocr_then_finds_revenue(tmp_path: Path):
+	# given
+	from tests.helpers import write_docx_with_image
+
+	write_docx_with_image(tmp_path / "memo.docx", OCR_IMAGE_FIXTURE)
+
+	# when
+	results = magic_file_search(tmp_path, "revenue", ocr=True, search_names=False, semantic_image=False)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "memo.docx"
+	assert any(line.location_kind == "ocr" for line in results[0].lines)
+	assert any("revenue" in line.text.lower() for line in results[0].lines)
+
+
+@_requires_tesseract
+def test_given_pptx_with_embedded_image_when_searching_with_ocr_then_finds_revenue(tmp_path: Path):
+	# given
+	from tests.helpers import write_pptx_with_image
+
+	write_pptx_with_image(tmp_path / "deck.pptx", OCR_IMAGE_FIXTURE)
+
+	# when
+	results = magic_file_search(tmp_path, "revenue", ocr=True, search_names=False, semantic_image=False)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "deck.pptx"
+	assert any(line.location_kind == "ocr" for line in results[0].lines)
+	assert any("revenue" in line.text.lower() for line in results[0].lines)
 
 
 @_requires_tesseract

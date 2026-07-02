@@ -342,7 +342,7 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 	def fake_ocr_bytes(data: bytes) -> str:
 		return "classifier layer" if len(data) >= 20_000 else ""
 
-	with patch("srxy.ocr_text._ocr_pdf_image_bytes", side_effect=fake_ocr_bytes):
+	with patch("srxy.ocr_text.ocr_image_bytes", side_effect=fake_ocr_bytes):
 		# when
 		text = ocr_pdf_page_images(page)
 
