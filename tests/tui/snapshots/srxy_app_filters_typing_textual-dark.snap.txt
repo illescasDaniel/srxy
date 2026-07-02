@@ -31,6 +31,7 @@ Filters
 All file
 █
 █
+nscript≥25%
 █
 Top files (empty = all)
 █
@@ -107,6 +108,12 @@ Transcribe (MiB)
 │
 │
 █
+Match threshold %
+█
+│
+│
+█
+35
 █
 │
 │
@@ -115,14 +122,13 @@ Transcribe (MiB)
 │
 │
 █
+Image semantic threshold %
+▅▅
 █
 │
 │
 █
-█
-│
-│
-█
+18
 █
 │
 │

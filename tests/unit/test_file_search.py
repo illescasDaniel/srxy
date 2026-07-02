@@ -989,9 +989,38 @@ def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview
 	assert len(results) == 1
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.27)
 	assert len(results[0].lines) == 1
-	assert results[0].lines[0].text == "Sister (=)"
-	assert results[0].lines[0].location_kind == "ocr"
-	assert results[0].lines[0].score == pytest.approx(0.291)
+	assert results[0].lines[0].text == "(visual match)"
+	assert results[0].lines[0].location_kind == "semantic_image"
+	assert results[0].lines[0].score == pytest.approx(0.27)
+
+
+def test_given_semantic_query_when_content_line_is_related_synonym_then_matches(tmp_path: Path):
+	# given
+	text_path = tmp_path / "things.txt"
+	text_path.write_text("recents\n", encoding="utf-8")
+
+	with (
+		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
+		patch("srxy.matchers.registry.is_matcher_available", return_value=True),
+	):
+		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
+			(0.245, {"semantic": 0.56, "fuzzy": 0.38}) if value == "recents" else (0.0, {})
+		)
+
+		# when
+		results = magic_file_search(
+			tmp_path,
+			"new",
+			search_names=False,
+			search_contents=True,
+		)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path == text_path
+	assert results[0].score == pytest.approx(0.56)
+	assert results[0].lines[0].location_kind == "line"
+	assert results[0].lines[0].text == "recents"
 
 
 def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(tmp_path: Path):
@@ -1100,6 +1129,30 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	# then
 	assert len(results) == 1
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.198)
+
+
+def test_given_text_only_path_when_searching_with_semantic_image_then_skips_query_encoding(tmp_path: Path):
+	# given
+	text_path = tmp_path / "things.txt"
+	text_path.write_text("recents\n", encoding="utf-8")
+
+	with (
+		patch("srxy.file_search.is_semantic_image_active", return_value=True),
+		patch("srxy.file_search.encode_semantic_image_query") as encode_query,
+	):
+		# when
+		results = magic_file_search(
+			text_path,
+			"recent",
+			search_names=False,
+			search_contents=True,
+			semantic_image=True,
+		)
+
+	# then
+	encode_query.assert_not_called()
+	assert len(results) == 1
+	assert results[0].path == text_path
 
 
 def test_given_semantic_image_when_searching_with_on_activity_then_reports_phases(tmp_path: Path):

@@ -207,9 +207,22 @@ def test_given_semantic_image_match_when_formatting_grouped_then_shows_query_pre
 	output = format_grouped([result], query="sibling")
 
 	# then
-	assert "match 25%  ·  matched: ocr, image semantic" in output
+	assert "match 25%  ·  matched: image semantic" in output
 	assert "ocr 1  ·  match 25%" in output
 	assert "│ «Sister» (=)" in output
+
+
+def test_given_semantic_image_with_weak_ocr_preview_when_match_labels_then_shows_image_only(tmp_path: Path):
+	# given
+	result = FileSearchResult(
+		path=tmp_path / "family.jpg",
+		score=0.22,
+		breakdown={"semantic_image": 0.22, "content": 0.22},
+		lines=[LineMatch(line_number=1, text="Recent", score=0.22, location_kind="ocr")],
+	)
+
+	# when / then
+	assert match_labels(result) == "image semantic"
 
 
 def test_given_visual_match_only_when_formatting_grouped_then_shows_image_preview(tmp_path: Path):

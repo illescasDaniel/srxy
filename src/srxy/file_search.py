@@ -390,6 +390,25 @@ def _score_multi_word_query(matcher: CompositeMatcher, query: str, text: str) ->
 	return min(word_scores)
 
 
+def _semantic_rescue_score(score: float, breakdown: dict[str, float], *, line_threshold: float) -> float:
+	"""Use semantic similarity when composite score is below threshold but embedding is strong.
+
+	OCR/transcript tokens already admit semantic-only hits via ``_passes_semantic_word_gate``,
+	but their composite score is often too low to clear the file threshold. Content lines had
+	the same problem: semantic weight in ``CompositeMatcher`` is only 0.20, so related terms
+	(e.g. new→recents) can embed above 0.5 while composite stays near 0.25.
+	"""
+	from srxy.matchers.registry import is_matcher_available
+	from srxy.models import MatchType
+
+	if not is_matcher_available(MatchType.SEMANTIC):
+		return score
+	semantic = breakdown.get("semantic", 0.0)
+	if semantic >= _SEMANTIC_WORD_MATCH_GATE and score < line_threshold:
+		return max(score, semantic)
+	return score
+
+
 def _score_best_word(matcher: CompositeMatcher, query: str, text: str, *, location_kind: str | None = None) -> float:
 	if len(query_words(query)) >= 2:
 		return _score_multi_word_query(matcher, query, text)
@@ -408,18 +427,33 @@ def _score_best_word(matcher: CompositeMatcher, query: str, text: str, *, locati
 	return best_score if found else 0.0
 
 
-def _score_line(matcher: CompositeMatcher, query: str, raw_line: str, location_kind: str) -> float:
+def _score_line(
+	matcher: CompositeMatcher,
+	query: str,
+	raw_line: str,
+	location_kind: str,
+	*,
+	line_threshold: float,
+) -> float:
 	searchable = _tag_value_text(raw_line) if location_kind == "tag" else raw_line
 	if len(query_words(query)) >= 2:
 		return _score_multi_word_query(matcher, query, searchable)
 	if location_kind in _TOKEN_SCORING_LOCATION_KINDS:
 		return _score_best_word(matcher, query, searchable, location_kind=location_kind)
-	return matcher.score(query, normalize_text(raw_line))
+	score, breakdown = matcher.score_with_breakdown(query, normalize_text(searchable))
+	return _semantic_rescue_score(score, breakdown, line_threshold=line_threshold)
 
 
-def _score_line_expr(matcher: CompositeMatcher, expr: FileQ, raw_line: str, location_kind: str) -> float:
+def _score_line_expr(
+	matcher: CompositeMatcher,
+	expr: FileQ,
+	raw_line: str,
+	location_kind: str,
+	*,
+	line_threshold: float,
+) -> float:
 	def score_term(term: str, _text: str) -> float:
-		return _score_line(matcher, term, raw_line, location_kind)
+		return _score_line(matcher, term, raw_line, location_kind, line_threshold=line_threshold)
 
 	return score_file_query_on_text(expr, score_term, "")
 
@@ -483,7 +517,7 @@ def _score_lines(
 		if not line_text:
 			continue
 
-		score = _score_line_expr(matcher, expr, raw_line, location_kind)
+		score = _score_line_expr(matcher, expr, raw_line, location_kind, line_threshold=line_threshold)
 		effective_threshold = transcribe_threshold if location_kind == "transcript" else line_threshold
 		line_match = LineMatch(
 			line_number=line_number,
@@ -492,7 +526,7 @@ def _score_lines(
 			location_kind=location_kind,
 		)
 		for term in iter_terms(expr):
-			term_score = _score_line(matcher, term, raw_line, location_kind)
+			term_score = _score_line(matcher, term, raw_line, location_kind, line_threshold=line_threshold)
 			if term_score > term_best_scores[term]:
 				term_best_scores[term] = term_score
 				term_best_lines[term] = LineMatch(
@@ -655,12 +689,22 @@ def _search_single_file(
 		cutoff = transcribe_threshold
 	if score < cutoff:
 		return None
-	if not line_matches and near_match is not None:
-		line_matches = [near_match]
+
 	semantic_image_score = breakdown.get("semantic_image", 0.0)
-	if semantic_image_score > 0.0 and not any(
-		line.location_kind in _TEXT_MATCH_LOCATION_KINDS for line in line_matches
-	):
+	clip_won = semantic_image_score > 0.0 and semantic_image_score >= score - 1e-9
+
+	if clip_won:
+		line_matches = [
+			LineMatch(
+				line_number=1,
+				text=_VISUAL_MATCH_PREVIEW,
+				score=semantic_image_score,
+				location_kind="semantic_image",
+			)
+		]
+	elif not line_matches and near_match is not None:
+		line_matches = [near_match]
+	elif semantic_image_score > 0.0 and not any(line.location_kind == "semantic_image" for line in line_matches):
 		line_matches.append(
 			LineMatch(
 				line_number=1,
@@ -728,18 +772,18 @@ def magic_file_search(
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
-	if is_semantic_image_active(semantic_image):
-		emit_activity(on_activity, "Encoding image query…")
-		try:
-			query_image_embedding = encode_semantic_image_query(clip_query)
-		finally:
-			clear_activity(on_activity)
 	files = _collect_files(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
 		include_archives=include_archives,
 	)
+	if is_semantic_image_active(semantic_image) and any(is_semantic_image_path(file_path) for file_path in files):
+		emit_activity(on_activity, "Encoding image query…")
+		try:
+			query_image_embedding = encode_semantic_image_query(clip_query)
+		finally:
+			clear_activity(on_activity)
 	total_files = len(files)
 
 	for index, file_path in enumerate(files, start=1):

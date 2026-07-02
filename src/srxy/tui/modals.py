@@ -136,9 +136,8 @@ class HelpModal(ModalScreen[None]):
   Orange Search  Settings changed since last run — search again
 
 [b]Filters[/b]
-  Filters            Top files, per-file match cap, and size limits (MiB)
+  Filters            Top files, thresholds, per-file match cap, and size limits (MiB)
   Search modes       Names, content, semantic, OCR, archives, …
-  Filters            Top files, per-file match cap, and size limits (MiB)
 
 [b]Results[/b]
   j / k          Move selection
@@ -260,6 +259,12 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 				yield Input(id="sf-size-ocr", classes="search-filters-input", compact=True)
 				yield Label("Transcribe (MiB)", classes="search-filters-label")
 				yield Input(id="sf-size-transcribe", classes="search-filters-input", compact=True)
+				yield Label("Match threshold %", classes="search-filters-label")
+				yield Input(id="sf-threshold", classes="search-filters-input", compact=True)
+				yield Label("Image semantic threshold %", classes="search-filters-label")
+				yield Input(id="sf-semantic-image-threshold", classes="search-filters-input", compact=True)
+				yield Label("Transcribe threshold %", classes="search-filters-label")
+				yield Input(id="sf-transcribe-threshold", classes="search-filters-input", compact=True)
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
 				yield Button("Cancel", id="search-filters-cancel")
@@ -271,6 +276,9 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		self.query_one("#sf-size-text", Input).value = self._initial.size_limits.text_mib
 		self.query_one("#sf-size-ocr", Input).value = self._initial.size_limits.ocr_mib
 		self.query_one("#sf-size-transcribe", Input).value = self._initial.size_limits.transcribe_mib
+		self.query_one("#sf-threshold", Input).value = self._initial.threshold
+		self.query_one("#sf-semantic-image-threshold", Input).value = self._initial.semantic_image_threshold
+		self.query_one("#sf-transcribe-threshold", Input).value = self._initial.transcribe_threshold
 
 	def _current_filters(self) -> SearchFilters:
 		return SearchFilters(
@@ -281,6 +289,9 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 				ocr_mib=self.query_one("#sf-size-ocr", Input).value,
 				transcribe_mib=self.query_one("#sf-size-transcribe", Input).value,
 			),
+			threshold=self.query_one("#sf-threshold", Input).value,
+			semantic_image_threshold=self.query_one("#sf-semantic-image-threshold", Input).value,
+			transcribe_threshold=self.query_one("#sf-transcribe-threshold", Input).value,
 		)
 
 	def on_button_pressed(self, event: Button.Pressed):

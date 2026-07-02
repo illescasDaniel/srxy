@@ -31,6 +31,9 @@ def test_given_search_filters_modal_when_typing_in_field_then_matches_snapshot(t
 		top_files="",
 		max_matches="50",
 		size_limits=SizeLimits(text_mib="100", ocr_mib="50", transcribe_mib="500"),
+		threshold="35",
+		semantic_image_threshold="18",
+		transcribe_threshold="25",
 	)
 
 	async def run():

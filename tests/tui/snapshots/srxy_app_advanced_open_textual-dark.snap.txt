@@ -37,6 +37,7 @@ All files ·
 X
 Content
 █
+transcript≥25%
 █
 X
 Semantic
