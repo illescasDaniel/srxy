@@ -11,6 +11,7 @@ from srxy.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
 	TesseractEngine,
 	ensure_ocr_available,
+	has_lexical_ocr_content,
 	is_ocr_active,
 	is_ocr_available,
 	is_sparse_text,
@@ -210,6 +211,105 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 
 	# then
 	assert "BRIAN TYLER" in text
+
+
+def test_given_lexical_nav_text_when_checking_content_then_returns_true():
+	# when / then
+	assert has_lexical_ocr_content("Scanner Recents Generate More") is True
+
+
+def test_given_ocr_garbage_when_checking_content_then_returns_false():
+	# when / then
+	assert has_lexical_ocr_content("%o @HAEJ eeeee CJ") is False
+
+
+def test_given_one_real_word_in_noise_when_checking_content_then_returns_true():
+	# when / then
+	assert has_lexical_ocr_content("x y z Recent") is True
+
+
+def test_given_underscore_token_with_real_part_when_checking_content_then_returns_true():
+	# when / then
+	assert has_lexical_ocr_content("fxture_cer_token") is True
+
+
+def test_given_garbage_ocr_when_iterating_lines_then_yields_nothing(tmp_path: Path):
+	# given
+	image_path = tmp_path / "noise.png"
+	Image.new("L", (20, 20), color=255).save(image_path)
+
+	with patch("srxy.ocr_text.ocr_pil_image", return_value="%o @HAEJ eeeee CJ"):
+		# when
+		lines = list(iter_image_ocr_lines(image_path))
+
+	# then
+	assert lines == []
+
+
+def test_given_small_image_when_ocring_then_uses_full_frame_only():
+	# given
+	image = Image.new("RGB", (100, 100))
+
+	class FakeEngine:
+		def __init__(self):
+			self.calls = 0
+
+		def recognize(self, region: Image.Image) -> str:
+			self.calls += 1
+			return "camera sunset beach"
+
+	fake = FakeEngine()
+	with patch("srxy.ocr_text.get_ocr_engine", return_value=fake):
+		# when
+		text = ocr_pil_image(image)
+
+	# then
+	assert fake.calls == 1
+	assert "beach" in text
+
+
+def test_given_large_image_when_ocring_then_merges_grid_regions():
+	# given
+	image = Image.new("RGB", (600, 600))
+	garbage = "x\n\ny\n\n@HAEJ"
+	nav_bar = "Scanner Recents Generate More"
+
+	class FakeEngine:
+		def recognize(self, region: Image.Image) -> str:
+			_, height = region.size
+			if height < 600:
+				return nav_bar
+			return garbage
+
+	with patch("srxy.ocr_text.get_ocr_engine", return_value=FakeEngine()):
+		# when
+		text = ocr_pil_image(image)
+
+	# then
+	assert "Recents" in text
+	assert "Generate" in text
+
+
+def test_given_large_image_with_lexical_primary_when_ocring_then_still_merges_grid():
+	# given
+	image = Image.new("RGB", (600, 600))
+	primary = "x\n\ny\n\nRecent"
+	nav_bar = "Scanner Recents Generate More"
+
+	class FakeEngine:
+		def recognize(self, region: Image.Image) -> str:
+			_, height = region.size
+			if height < 600:
+				return nav_bar
+			return primary
+
+	with patch("srxy.ocr_text.get_ocr_engine", return_value=FakeEngine()):
+		# when
+		text = ocr_pil_image(image)
+
+	# then
+	assert "Recents" in text
+	assert "Generate" in text
 
 
 @pytest.mark.ocr

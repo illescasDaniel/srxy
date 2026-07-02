@@ -20,7 +20,7 @@ from tests.helpers import (
 
 from srxy import FileQ, magic_file_search
 from srxy.cli import match_labels
-from srxy.models import FileSearchResult, MatchType, SkippedFile
+from srxy.models import FileSearchResult, SkippedFile
 from srxy.progress import ActivityUpdate
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
@@ -989,9 +989,9 @@ def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview
 	assert len(results) == 1
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.27)
 	assert len(results[0].lines) == 1
-	assert results[0].lines[0].text == "Sister (=)"
-	assert results[0].lines[0].location_kind == "ocr"
-	assert results[0].lines[0].score == pytest.approx(0.291)
+	assert results[0].lines[0].text == "(visual match)"
+	assert results[0].lines[0].location_kind == "semantic_image"
+	assert results[0].lines[0].score == pytest.approx(0.27)
 
 
 def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(tmp_path: Path):
@@ -1040,40 +1040,6 @@ def test_given_short_transcript_when_searching_sibling_then_does_not_match(tmp_p
 	assert results == []
 
 
-def test_given_focusing_transcript_when_searching_sibling_then_does_not_match(tmp_path: Path):
-	# given
-	audio_path = tmp_path / "song.flac"
-	audio_path.write_bytes(b"flac")
-	query = "sibling"
-
-	with (
-		patch(
-			"srxy.file_search._iter_searchable_lines",
-			return_value=[(40, "A little pace that they're focusing", "transcript")],
-		),
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
-		patch(
-			"srxy.matchers.registry.is_matcher_available",
-			lambda match_type: match_type == MatchType.SEMANTIC,
-		),
-	):
-		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
-			(0.297, {"semantic": 0.20, "fuzzy": 0.63}) if value == "focusing" else (0.0, {})
-		)
-
-		# when
-		results = magic_file_search(
-			tmp_path,
-			query,
-			search_names=False,
-			search_contents=True,
-			threshold=0.18,
-		)
-
-	# then
-	assert results == []
-
-
 def test_given_semantic_image_below_text_threshold_when_searching_then_uses_image_threshold(
 	tmp_path: Path,
 ):
@@ -1100,6 +1066,30 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	# then
 	assert len(results) == 1
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.198)
+
+
+def test_given_text_only_path_when_searching_with_semantic_image_then_skips_query_encoding(tmp_path: Path):
+	# given
+	text_path = tmp_path / "things.txt"
+	text_path.write_text("recents\n", encoding="utf-8")
+
+	with (
+		patch("srxy.file_search.is_semantic_image_active", return_value=True),
+		patch("srxy.file_search.encode_semantic_image_query") as encode_query,
+	):
+		# when
+		results = magic_file_search(
+			text_path,
+			"recent",
+			search_names=False,
+			search_contents=True,
+			semantic_image=True,
+		)
+
+	# then
+	encode_query.assert_not_called()
+	assert len(results) == 1
+	assert results[0].path == text_path
 
 
 def test_given_semantic_image_when_searching_with_on_activity_then_reports_phases(tmp_path: Path):

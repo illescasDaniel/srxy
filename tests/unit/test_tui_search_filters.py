@@ -27,6 +27,9 @@ def test_given_default_args_when_building_search_filters_then_reflects_values():
 	assert filters.top_files == ""
 	assert filters.max_matches == "50"
 	assert filters.size_limits == SizeLimits(text_mib="100", ocr_mib="50", transcribe_mib="500")
+	assert filters.threshold == "35"
+	assert filters.semantic_image_threshold == "18"
+	assert filters.transcribe_threshold == "25"
 
 
 def test_given_limit_and_size_flags_when_building_search_filters_then_reflects_arguments():
@@ -40,6 +43,12 @@ def test_given_limit_and_size_flags_when_building_search_filters_then_reflects_a
 			"25",
 			"--max-file-size",
 			"0",
+			"--threshold",
+			"0.4",
+			"--semantic-image-threshold",
+			"0.2",
+			"--transcribe-threshold",
+			"0.3",
 		]
 	)
 
@@ -50,6 +59,9 @@ def test_given_limit_and_size_flags_when_building_search_filters_then_reflects_a
 	assert filters.top_files == "10"
 	assert filters.max_matches == "25"
 	assert filters.size_limits.text_mib == "0"
+	assert filters.threshold == "40"
+	assert filters.semantic_image_threshold == "20"
+	assert filters.transcribe_threshold == "30"
 
 
 def test_given_search_filters_when_applying_to_args_then_sets_namespace_fields():
@@ -59,6 +71,9 @@ def test_given_search_filters_when_applying_to_args_then_sets_namespace_fields()
 		top_files="5",
 		max_matches="12",
 		size_limits=SizeLimits(text_mib="10", ocr_mib="20", transcribe_mib="30"),
+		threshold="40",
+		semantic_image_threshold="20",
+		transcribe_threshold="30",
 	)
 
 	# when
@@ -68,6 +83,9 @@ def test_given_search_filters_when_applying_to_args_then_sets_namespace_fields()
 	assert args.limit == 5
 	assert args.max_matches == 12
 	assert args.max_file_size == 10 * 1024 * 1024
+	assert args.threshold == 0.4
+	assert args.semantic_image_threshold == 0.2
+	assert args.transcribe_threshold == 0.3
 
 
 def test_given_invalid_top_files_when_validating_then_raises():
@@ -76,10 +94,29 @@ def test_given_invalid_top_files_when_validating_then_raises():
 		top_files="abc",
 		max_matches="50",
 		size_limits=SizeLimits(text_mib="100", ocr_mib="50", transcribe_mib="500"),
+		threshold="35",
+		semantic_image_threshold="18",
+		transcribe_threshold="25",
 	)
 
 	# when / then
 	with pytest.raises(ValueError, match="Top files"):
+		validate_search_filters(filters)
+
+
+def test_given_invalid_threshold_when_validating_then_raises():
+	# given
+	filters = SearchFilters(
+		top_files="",
+		max_matches="50",
+		size_limits=SizeLimits(text_mib="100", ocr_mib="50", transcribe_mib="500"),
+		threshold="150",
+		semantic_image_threshold="18",
+		transcribe_threshold="25",
+	)
+
+	# when / then
+	with pytest.raises(ValueError, match="Match threshold %"):
 		validate_search_filters(filters)
 
 
@@ -89,6 +126,9 @@ def test_given_enabled_filters_when_formatting_summary_then_includes_top_n():
 		top_files="10",
 		max_matches="25",
 		size_limits=SizeLimits(text_mib="0", ocr_mib="50", transcribe_mib="500"),
+		threshold="35",
+		semantic_image_threshold="18",
+		transcribe_threshold="25",
 	)
 
 	# when
@@ -98,3 +138,6 @@ def test_given_enabled_filters_when_formatting_summary_then_includes_top_n():
 	assert "Top 10" in summary
 	assert "25/file" in summary
 	assert "0 MiB" in summary
+	assert "match≥35%" in summary
+	assert "image≥18%" in summary
+	assert "transcript≥25%" in summary

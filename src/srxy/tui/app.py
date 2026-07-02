@@ -421,6 +421,7 @@ class SrxyApp(App[int]):
 			result,
 			threshold=self._args.threshold,
 			semantic_image_threshold=self._args.semantic_image_threshold,
+			transcribe_threshold=self._args.transcribe_threshold,
 		)
 
 	def _update_preview(self, result: FileSearchResult | None):

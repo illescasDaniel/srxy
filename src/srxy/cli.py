@@ -85,27 +85,73 @@ def _format_locations(kind: str, numbers: list[int]) -> str:
 	return f"{label}s {_format_number_ranges(sorted_numbers)}"
 
 
+def _line_match_threshold(
+	location_kind: str,
+	*,
+	threshold: float,
+	semantic_image_threshold: float,
+	transcribe_threshold: float,
+) -> float:
+	if location_kind == "transcript":
+		return transcribe_threshold
+	if location_kind == "semantic_image":
+		return semantic_image_threshold
+	return threshold
+
+
+def _line_counts_as_match(
+	line: LineMatch,
+	*,
+	threshold: float,
+	semantic_image_threshold: float,
+	transcribe_threshold: float,
+) -> bool:
+	cutoff = _line_match_threshold(
+		line.location_kind,
+		threshold=threshold,
+		semantic_image_threshold=semantic_image_threshold,
+		transcribe_threshold=transcribe_threshold,
+	)
+	return line.score >= cutoff
+
+
 def match_labels(
 	result: FileSearchResult,
 	*,
 	threshold: float = 0.35,
 	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 ) -> str:
 	labels: list[str] = []
 	if _name_matched(result, threshold=threshold):
 		labels.append("name")
-	line_kinds = {line.location_kind for line in result.lines}
-	if line_kinds & _CONTENT_LOCATION_KINDS:
-		labels.append("content")
-	if "ocr" in line_kinds:
-		labels.append("ocr")
-	if "transcript" in line_kinds:
-		labels.append("transcript")
-	if "tag" in line_kinds:
-		labels.append("tag")
+	for line in result.lines:
+		if not _line_counts_as_match(
+			line,
+			threshold=threshold,
+			semantic_image_threshold=semantic_image_threshold,
+			transcribe_threshold=transcribe_threshold,
+		):
+			continue
+		if line.location_kind in _CONTENT_LOCATION_KINDS:
+			if "content" not in labels:
+				labels.append("content")
+		elif line.location_kind == "ocr" and "ocr" not in labels:
+			labels.append("ocr")
+		elif line.location_kind == "transcript" and "transcript" not in labels:
+			labels.append("transcript")
+		elif line.location_kind == "tag" and "tag" not in labels:
+			labels.append("tag")
+		elif line.location_kind == "semantic_image" and "image semantic" not in labels:
+			labels.append("image semantic")
 	if not result.lines and _content_matched_from_terms(result, threshold=threshold):
 		labels.append("content")
-	if result.breakdown.get("semantic_image", 0.0) >= semantic_image_threshold:
+	semantic_image_score = result.breakdown.get("semantic_image", 0.0)
+	if (
+		semantic_image_score >= semantic_image_threshold
+		and semantic_image_score >= result.score - 1e-9
+		and "image semantic" not in labels
+	):
 		labels.append("image semantic")
 	return ", ".join(labels) if labels else "match"
 

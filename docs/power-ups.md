@@ -125,7 +125,7 @@ Removes `cache.db` and `.cache_key`. Scan results rebuild on the next run.
 Or:
 
 ```bash
-python -m srxy.cache clear
+python -c "from srxy.cache import clear_results_cache; clear_results_cache()"
 ```
 
 Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE` (including `SRXY_SEMANTIC_IMAGE_DEVICE`).
