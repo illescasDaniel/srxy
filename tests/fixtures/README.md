@@ -11,6 +11,7 @@ Dev-only assets for pytest. Not installed with the `srxy` package.
 | `file_search/samples/` | Office docs, OCR/images/audio format coverage, edge-case files |
 | `file_search/samples/images/photoshop_xmp.jpg` | Sanitized JPEG with EXIF+XMP (fake author/software); XMP parsing / SIG regression tests |
 | `file_search/samples/audio/` | `speech_sample.mp3` for transcribe integration tests |
+| `file_search/semantic/` | Text files for semantic file-search integration (`things.txt`) |
 
 Regenerate office documents or token images with helpers in `tests/helpers.py` (`write_docx_with_text`, etc.).
 

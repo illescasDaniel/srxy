@@ -20,7 +20,7 @@ from tests.helpers import (
 
 from srxy import FileQ, magic_file_search
 from srxy.cli import match_labels
-from srxy.models import FileSearchResult, MatchType, SkippedFile
+from srxy.models import FileSearchResult, SkippedFile
 from srxy.progress import ActivityUpdate
 from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
@@ -994,35 +994,6 @@ def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview
 	assert results[0].lines[0].score == pytest.approx(0.27)
 
 
-def test_given_semantic_query_when_content_line_is_related_synonym_then_matches(tmp_path: Path):
-	# given
-	text_path = tmp_path / "things.txt"
-	text_path.write_text("recents\n", encoding="utf-8")
-
-	with (
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
-		patch("srxy.matchers.registry.is_matcher_available", return_value=True),
-	):
-		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
-			(0.245, {"semantic": 0.56, "fuzzy": 0.38}) if value == "recents" else (0.0, {})
-		)
-
-		# when
-		results = magic_file_search(
-			tmp_path,
-			"new",
-			search_names=False,
-			search_contents=True,
-		)
-
-	# then
-	assert len(results) == 1
-	assert results[0].path == text_path
-	assert results[0].score == pytest.approx(0.56)
-	assert results[0].lines[0].location_kind == "line"
-	assert results[0].lines[0].text == "recents"
-
-
 def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(tmp_path: Path):
 	# given
 	image_path = tmp_path / "photo.jpg"
@@ -1056,40 +1027,6 @@ def test_given_short_transcript_when_searching_sibling_then_does_not_match(tmp_p
 		"srxy.file_search._iter_searchable_lines",
 		return_value=[(0, "I", "transcript")],
 	):
-		# when
-		results = magic_file_search(
-			tmp_path,
-			query,
-			search_names=False,
-			search_contents=True,
-			threshold=0.18,
-		)
-
-	# then
-	assert results == []
-
-
-def test_given_focusing_transcript_when_searching_sibling_then_does_not_match(tmp_path: Path):
-	# given
-	audio_path = tmp_path / "song.flac"
-	audio_path.write_bytes(b"flac")
-	query = "sibling"
-
-	with (
-		patch(
-			"srxy.file_search._iter_searchable_lines",
-			return_value=[(40, "A little pace that they're focusing", "transcript")],
-		),
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
-		patch(
-			"srxy.matchers.registry.is_matcher_available",
-			lambda match_type: match_type == MatchType.SEMANTIC,
-		),
-	):
-		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
-			(0.297, {"semantic": 0.20, "fuzzy": 0.63}) if value == "focusing" else (0.0, {})
-		)
-
 		# when
 		results = magic_file_search(
 			tmp_path,

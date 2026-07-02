@@ -278,19 +278,24 @@ def test_given_minimal_mp4_when_searching_by_name_then_finds_video(file_search_r
 @pytest.mark.integration_full
 @pytest.mark.semantic
 def test_given_semantic_all_when_searching_axolotl_then_finds_text(file_search_root: Path):
+	# given
+	notes = file_search_root / "notes.txt"
+
 	# when
 	results = magic_file_search(
-		file_search_root,
+		notes,
 		"axolotl",
 		search_names=False,
 		ocr=True,
 		transcribe=True,
 		semantic_image=True,
-		limit=5,
 	)
 
 	# then
-	assert results
+	assert len(results) == 1
+	assert results[0].path == notes
+	assert results[0].score >= 0.35
+	assert any("axolotl" in line.text.lower() for line in results[0].lines)
 
 
 @pytest.mark.integration_full

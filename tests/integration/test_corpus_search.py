@@ -169,6 +169,26 @@ def test_given_labeled_queries_when_composite_search_then_top3_hit_rate_meets_ta
 	assert hit_rate >= 0.9
 
 
+def test_given_labeled_queries_when_semantic_search_then_top3_hit_rate_meets_target(
+	search_corpus: list[dict[str, str]],
+	labeled_queries: list[LabeledQuery],
+):
+	# given
+	where = Q.semantic("title") | Q.semantic("body")
+	results_by_query: list[list[SearchResult]] = []
+	expected_ids: list[str] = []
+
+	# when
+	for labeled in labeled_queries:
+		results = search(search_corpus, labeled.query, where=where, threshold=0.35)
+		results_by_query.append(results)
+		expected_ids.append(labeled.expected_id)
+	hit_rate = top_k_hit_rate(results_by_query, expected_ids, k=3)
+
+	# then
+	assert hit_rate >= 0.5
+
+
 def test_given_labeled_queries_when_measuring_expected_item_scores_then_meet_minimum_threshold(
 	search_corpus: list[dict[str, str]],
 	labeled_queries: list[LabeledQuery],
