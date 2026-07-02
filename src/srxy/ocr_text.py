@@ -3,6 +3,7 @@ from __future__ import annotations
 import importlib.util
 import io
 import os
+import re
 import shutil
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
@@ -20,10 +21,15 @@ _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_MAX_IMAGE_DIMENSION = 4000
 DEFAULT_OCR_MAX_FILE_SIZE = 50 * 1024 * 1024
 MIN_OCR_QUALITY_SCORE = 80.0
-MIN_INDEXED_OCR_QUALITY_SCORE = 40.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
 SPARSE_TEXT_THRESHOLD = 20
-OCR_ENGINE_VARIANT = "tesseract-v4"
+MIN_LEXICAL_TOKEN_LENGTH = 4
+MIN_LEXICAL_ZIPF = 3.0
+LEXICAL_WORDLIST = "small"
+OCR_ENGINE_VARIANT = "tesseract-v8"
+_REGION_MIN_DIMENSION = 400
+_REGION_GRID_DIVISIONS = 3
+_REGION_MIN_CELL = 32
 
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
@@ -33,6 +39,8 @@ _OCR_UNAVAILABLE_MESSAGE = (
 )
 
 _ocr_engine: OcrEngine | None = None
+_lexical_langs_cache: tuple[str, ...] | None = None
+_WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 
 
 class OcrEngine(ABC):
@@ -156,10 +164,76 @@ def _ocr_quality_score(text: str) -> float:
 	return len(long_words) * 25 * compactness - short_line_penalty
 
 
+def _lexical_langs() -> tuple[str, ...]:
+	global _lexical_langs_cache
+	if _lexical_langs_cache is None:
+		from wordfreq import available_languages
+
+		_lexical_langs_cache = tuple(available_languages(LEXICAL_WORDLIST))
+	return _lexical_langs_cache
+
+
+def _iter_ocr_tokens(text: str) -> Iterator[str]:
+	for match in _WORD_PATTERN.finditer(text):
+		raw = match.group().strip().lower()
+		for part in re.split(r"[_\-]+", raw):
+			token = part.strip()
+			if len(token) < MIN_LEXICAL_TOKEN_LENGTH:
+				continue
+			if not token.isalpha():
+				continue
+			yield token
+
+
+def _is_lexical_token(token: str) -> bool:
+	from wordfreq import zipf_frequency
+
+	for lang in _lexical_langs():
+		try:
+			if zipf_frequency(token, lang, wordlist=LEXICAL_WORDLIST, minimum=0) >= MIN_LEXICAL_ZIPF:
+				return True
+		except (ImportError, ValueError):
+			continue
+	return False
+
+
+def has_lexical_ocr_content(text: str) -> bool:
+	return any(_is_lexical_token(token) for token in _iter_ocr_tokens(text))
+
+
+def _iter_ocr_regions(image: Image.Image) -> Iterator[Image.Image]:
+	width, height = image.size
+	yield image
+	if max(width, height) < _REGION_MIN_DIMENSION:
+		return
+	for row in range(_REGION_GRID_DIVISIONS):
+		for col in range(_REGION_GRID_DIVISIONS):
+			left = col * width // _REGION_GRID_DIVISIONS
+			right = width if col == _REGION_GRID_DIVISIONS - 1 else (col + 1) * width // _REGION_GRID_DIVISIONS
+			top = row * height // _REGION_GRID_DIVISIONS
+			bottom = height if row == _REGION_GRID_DIVISIONS - 1 else (row + 1) * height // _REGION_GRID_DIVISIONS
+			if right - left < _REGION_MIN_CELL or bottom - top < _REGION_MIN_CELL:
+				continue
+			if left == 0 and top == 0 and right == width and bottom == height:
+				continue
+			yield image.crop((left, top, right, bottom))
+
+
 def ocr_pil_image(image: Image.Image) -> str:
 	engine = get_ocr_engine()
 	processed = preprocess_image(image)
-	return engine.recognize(processed)
+	parts: list[str] = []
+	seen: set[str] = set()
+	for region in _iter_ocr_regions(processed):
+		text = engine.recognize(region).strip()
+		if not text:
+			continue
+		key = " ".join(text.split())
+		if key in seen:
+			continue
+		seen.add(key)
+		parts.append(text)
+	return "\n".join(parts)
 
 
 def _cached_ocr_text(kind: str, content_hash: str, recognize: Callable[[], str]) -> str:
@@ -226,6 +300,6 @@ def iter_image_ocr_lines(path: Path) -> Iterator[tuple[int, str]]:
 	text = text.strip()
 	if not text:
 		return
-	if _ocr_quality_score(text) < MIN_INDEXED_OCR_QUALITY_SCORE:
+	if not has_lexical_ocr_content(text):
 		return
 	yield 1, text
