@@ -709,7 +709,9 @@ def build_parser() -> argparse.ArgumentParser:
 		action="store_true",
 		help="Enable text semantic, image semantic (CLIP), OCR, and transcription together",
 	)
-	parser.add_argument("--ocr", action="store_true", help="Enable OCR for images and PDF embedded images (SRXY_OCR=1)")
+	parser.add_argument(
+		"--ocr", action="store_true", help="Enable OCR for images and embedded document images (SRXY_OCR=1)"
+	)
 	parser.add_argument(
 		"--max-ocr-file-size",
 		type=int,

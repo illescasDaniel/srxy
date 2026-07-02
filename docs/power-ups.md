@@ -4,14 +4,14 @@ Off by default. Enable per run (flags) or persist (`SRXY_*` env vars).
 
 ## OCR
 
-Text in photos and embedded PDF images.
+Text in photos and embedded document images (PDF pages, Office media).
 
 ```bash
 srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```
 
-Default: images via EXIF; PDFs via `pypdf` embedded text. `--ocr` adds Tesseract on top — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
+Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` adds Tesseract on embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`) — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
 
 Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs.
 

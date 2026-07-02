@@ -7,14 +7,18 @@ from unittest.mock import MagicMock, patch
 import pytest
 from PIL import Image
 from tests.helpers import (
+	OCR_IMAGE_FIXTURE,
 	copy_media_fixture,
 	file_search_root,
 	require_file_search_fixtures,
 	set_windows_tags,
+	write_docx_with_image,
 	write_docx_with_text,
 	write_mp4_with_tags,
 	write_pdf_with_text,
+	write_pptx_with_image,
 	write_pptx_with_text,
+	write_xlsx_with_image,
 	write_xlsx_with_text,
 )
 
@@ -367,6 +371,67 @@ def test_given_pptx_with_matching_content_when_searching_contents_then_returns_f
 	assert results[0].path.name == "deck.pptx"
 	assert results[0].lines[0].line_number == 1
 	assert "revenue" in results[0].lines[0].text
+
+
+def test_given_docx_with_embedded_image_when_searching_with_ocr_then_returns_ocr_match(tmp_path: Path):
+	# given
+	write_docx_with_image(tmp_path / "memo.docx", OCR_IMAGE_FIXTURE)
+	query = "revenue"
+
+	with (
+		patch("srxy.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
+	):
+		# when
+		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "memo.docx"
+	assert results[0].lines[0].location_kind == "ocr"
+	assert results[0].lines[0].line_number == 1
+	assert "revenue" in results[0].lines[0].text
+
+
+def test_given_xlsx_with_embedded_image_when_searching_with_ocr_then_returns_ocr_match(tmp_path: Path):
+	# given
+	write_xlsx_with_image(tmp_path / "budget.xlsx", OCR_IMAGE_FIXTURE)
+	query = "revenue"
+
+	with (
+		patch("srxy.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
+	):
+		# when
+		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "budget.xlsx"
+	assert results[0].lines[0].location_kind == "ocr"
+	assert results[0].lines[0].line_number == 1
+	assert "revenue" in results[0].lines[0].text
+
+
+def test_given_pptx_with_embedded_image_when_searching_with_ocr_then_returns_slide_ocr_match(tmp_path: Path):
+	# given
+	write_pptx_with_image(tmp_path / "deck.pptx", OCR_IMAGE_FIXTURE, text="quarterly revenue projections")
+	query = "classifier"
+
+	with (
+		patch("srxy.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.ocr_text.ocr_image_bytes", return_value="classifier layer"),
+	):
+		# when
+		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "deck.pptx"
+	ocr_lines = [line for line in results[0].lines if line.location_kind == "ocr"]
+	assert len(ocr_lines) == 1
+	assert ocr_lines[0].line_number == 1
+	assert "classifier" in ocr_lines[0].text
 
 
 def test_given_corrupt_pdf_when_searching_contents_then_skips_gracefully(tmp_path: Path):

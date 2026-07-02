@@ -177,6 +177,83 @@ def write_pptx_with_text(path: Path, text: str):
 	presentation.save(str(path))
 
 
+def _large_embed_image_bytes(image_path: Path) -> bytes:
+	import io
+
+	from PIL import Image
+
+	from srxy.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
+
+	source = image_path.read_bytes()
+	if len(source) >= MIN_PDF_IMAGE_OCR_BYTES:
+		return source
+
+	with Image.open(image_path) as image:
+		rgb = image.convert("RGB")
+		for scale in (2, 4, 8, 16):
+			width = max(rgb.width * scale, 400)
+			height = max(rgb.height * scale, 300)
+			resized = rgb.resize((width, height))
+			buffer = io.BytesIO()
+			resized.save(buffer, format="PNG")
+			data = buffer.getvalue()
+			if len(data) >= MIN_PDF_IMAGE_OCR_BYTES:
+				return data
+	raise RuntimeError(f"unable to create embedded image >= {MIN_PDF_IMAGE_OCR_BYTES} bytes from {image_path}")
+
+
+def write_docx_with_image(path: Path, image_path: Path, text: str = ""):
+	import io
+
+	from docx import Document
+
+	embed_bytes = _large_embed_image_bytes(image_path)
+	document = Document()
+	if text:
+		document.add_paragraph(text)
+	document.add_picture(io.BytesIO(embed_bytes))
+	document.save(str(path))
+
+
+def write_pptx_with_image(path: Path, image_path: Path, text: str = ""):
+	import io
+
+	from pptx import Presentation
+	from pptx.util import Inches
+
+	embed_bytes = _large_embed_image_bytes(image_path)
+	presentation = Presentation()
+	slide = presentation.slides.add_slide(presentation.slide_layouts[6])
+	if text:
+		textbox = slide.shapes.add_textbox(Inches(1), Inches(1), Inches(4), Inches(1))
+		textbox.text_frame.text = text
+	slide.shapes.add_picture(io.BytesIO(embed_bytes), Inches(1), Inches(2))
+	presentation.save(str(path))
+
+
+def write_xlsx_with_image(path: Path, image_path: Path, text: str = ""):
+	import tempfile
+
+	from openpyxl import Workbook
+	from openpyxl.drawing.image import Image as XLImage
+
+	embed_bytes = _large_embed_image_bytes(image_path)
+	workbook = Workbook()
+	sheet = workbook.active
+	with tempfile.NamedTemporaryFile(suffix=".png", delete=False) as handle:
+		handle.write(embed_bytes)
+		temp_image = Path(handle.name)
+	try:
+		if sheet is not None:
+			sheet.title = "Summary"
+			if text:
+				sheet["A1"] = text
+			sheet.add_image(XLImage(str(temp_image)), "A2")
+		workbook.save(path)
+	finally:
+		temp_image.unlink(missing_ok=True)
+
+
 def write_mp4_with_tags(path: Path, *, title: str | None = None, min_size: int = 0):
 	from mutagen.mp4 import MP4
 

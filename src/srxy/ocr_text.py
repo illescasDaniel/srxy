@@ -261,13 +261,13 @@ def ocr_pdf_page_images(page: object) -> str:
 		data = img.data if hasattr(img, "data") else b""
 		if len(data) < MIN_PDF_IMAGE_OCR_BYTES:
 			continue
-		text = _ocr_pdf_image_bytes(data)
+		text = ocr_image_bytes(data)
 		if text:
 			parts.append(text)
 	return "\n".join(parts)
 
 
-def _ocr_pdf_image_bytes(data: bytes) -> str:
+def ocr_image_bytes(data: bytes) -> str:
 	from PIL import Image
 
 	from srxy.cache import CACHE_KIND_OCR_PDF_BLOB, hash_bytes
