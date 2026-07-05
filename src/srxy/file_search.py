@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import threading
 import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -57,6 +58,9 @@ from srxy.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
 
 _MIN_SEARCHABLE_WORD_LENGTH = 3
 _SHORT_QUERY_PHONETIC_SKIP_LENGTH = 3
+# Minimum file count before the process pool is activated for text-only searches.
+# Below this threshold the process startup cost outweighs the parallelism benefit.
+_MIN_PROCESS_FILES = 50
 _SEMANTIC_WORD_MATCH_GATE = 0.5
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _TOKEN_SCORING_LOCATION_KINDS = frozenset({"ocr", "tag", "transcript"})
@@ -584,7 +588,6 @@ def _search_single_file(
 	max_file_size: int | None,
 	effective_line_threshold: float,
 	max_matches: int,
-	skipped_files: list[SkippedFile] | None,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	semantic_image: bool | None = None,
@@ -592,9 +595,16 @@ def _search_single_file(
 	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	on_activity: ActivityCallback | None = None,
-) -> FileSearchResult | None:
+) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+	"""Search a single file and return its result plus any files skipped due to size limits.
+
+	Each call is self-contained and thread-safe: skipped files are collected into a
+	local list and returned rather than mutating a shared structure.
+	"""
+	local_skipped: list[SkippedFile] = []
+
 	if not is_searchable_path(file_path):
-		return None
+		return None, local_skipped
 	archive_member = is_archive_member_path(file_path)
 
 	breakdown: dict[str, float] = {}
@@ -627,8 +637,7 @@ def _search_single_file(
 					size_bytes = file_path.stat().st_size
 				except OSError:
 					size_bytes = 0
-			if skipped_files is not None:
-				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
+			local_skipped.append(SkippedFile(path=file_path, size_bytes=size_bytes))
 		else:
 			content_score, line_matches, near_match, content_term_bests = _score_lines(
 				matcher,
@@ -641,7 +650,7 @@ def _search_single_file(
 				semantic_image_threshold,
 				ocr=ocr,
 				transcribe=transcribe,
-				skipped_files=skipped_files,
+				skipped_files=local_skipped,
 				on_activity=on_activity,
 			)
 			breakdown["content"] = content_score
@@ -670,7 +679,7 @@ def _search_single_file(
 				term_bests[term] = max(term_bests[term], semantic_image_score)
 
 	if not breakdown:
-		return None
+		return None, local_skipped
 
 	boolean_score = score_file_query(query_expr, term_bests)
 	legacy_score = max(breakdown.values())
@@ -688,7 +697,7 @@ def _search_single_file(
 	):
 		cutoff = transcribe_threshold
 	if score < cutoff:
-		return None
+		return None, local_skipped
 
 	semantic_image_score = breakdown.get("semantic_image", 0.0)
 	clip_won = semantic_image_score > 0.0 and semantic_image_score >= score - 1e-9
@@ -715,12 +724,79 @@ def _search_single_file(
 		)
 		line_matches.sort(key=lambda match: match.score, reverse=True)
 		line_matches = line_matches[:max_matches]
-	return FileSearchResult(
-		path=file_path,
-		score=score,
-		breakdown=breakdown,
-		lines=line_matches,
-		term_surfaces=term_surfaces,
+	return (
+		FileSearchResult(
+			path=file_path,
+			score=score,
+			breakdown=breakdown,
+			lines=line_matches,
+			term_surfaces=term_surfaces,
+		),
+		local_skipped,
+	)
+
+
+# ---------------------------------------------------------------------------
+# Process-pool worker support (large text-only searches)
+# ---------------------------------------------------------------------------
+# These module-level objects are used by ProcessPoolExecutor workers.  They
+# must live at module scope so they are importable in spawned child processes.
+
+# Populated once per worker by _init_proc_worker(); never written after that.
+_proc_worker_matcher: CompositeMatcher | None = None
+
+
+def _init_proc_worker():
+	"""Pool initializer: warm up one CompositeMatcher per worker process.
+
+	Runs once at worker startup, before any tasks are dispatched.  For
+	fork-based pools (Linux default) the cost is a fresh Python object
+	allocation; for spawn-based pools (macOS/Windows) it also re-imports
+	the matchers, which is fast for the non-semantic case.
+	"""
+	global _proc_worker_matcher
+	_proc_worker_matcher = CompositeMatcher()
+
+
+def _proc_worker_task(
+	file_path: Path,
+	query_expr: FileQ,
+	search_root: Path,
+	search_names: bool,
+	search_contents: bool,
+	threshold: float,
+	max_file_size: int | None,
+	effective_line_threshold: float,
+	max_matches: int,
+	semantic_image_threshold: float,
+	transcribe_threshold: float,
+) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+	"""Task function executed inside a worker process.
+
+	All arguments are basic Python types (or frozen dataclasses) so they
+	survive both fork and spawn pickling.  ``on_activity`` is intentionally
+	omitted; cross-process callbacks are not supported and the caller's
+	spinner covers the wait.
+	"""
+	matcher = _proc_worker_matcher
+	if matcher is None:
+		raise RuntimeError("_init_proc_worker was not called for this worker")
+	return _search_single_file(
+		file_path,
+		matcher=matcher,
+		query_expr=query_expr,
+		search_root=search_root,
+		search_names=search_names,
+		search_contents=search_contents,
+		threshold=threshold,
+		max_file_size=max_file_size,
+		effective_line_threshold=effective_line_threshold,
+		max_matches=max_matches,
+		ocr=None,
+		transcribe=None,
+		semantic_image=None,
+		semantic_image_threshold=semantic_image_threshold,
+		transcribe_threshold=transcribe_threshold,
 	)
 
 
@@ -747,6 +823,7 @@ def magic_file_search(
 	on_activity: ActivityCallback | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
 	max_line_matches: int | None = None,
+	max_workers: int | None = None,
 ) -> list[FileSearchResult]:
 	if max_line_matches is not None:
 		warnings.warn(
@@ -786,38 +863,145 @@ def magic_file_search(
 			clear_activity(on_activity)
 	total_files = len(files)
 
-	for index, file_path in enumerate(files, start=1):
-		emit_activity(on_activity, f"Scanning · {file_path.name}")
-		try:
-			result = _search_single_file(
-				file_path,
-				matcher=matcher,
-				query_expr=query_expr,
-				search_root=search_root,
-				search_names=search_names,
-				search_contents=search_contents,
-				threshold=threshold,
-				max_file_size=max_file_size,
-				effective_line_threshold=effective_line_threshold,
-				max_matches=max_matches,
-				skipped_files=skipped_files,
-				ocr=ocr,
-				transcribe=transcribe,
-				semantic_image=semantic_image,
-				query_image_embedding=query_image_embedding,
-				semantic_image_threshold=semantic_image_threshold,
-				transcribe_threshold=transcribe_threshold,
-				on_activity=on_activity,
-			)
-		finally:
-			clear_activity(on_activity)
-		if on_progress is not None:
-			on_progress(index, total_files)
-		if result is None:
-			continue
-		results.append(result)
-		if on_result is not None:
-			on_result(result)
+	from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+
+	from srxy.matchers.registry import is_matcher_available
+	from srxy.models import MatchType
+
+	def _submit_file(file_path: Path) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+		# Captures all search parameters from the enclosing scope. Each call is
+		# self-contained so no shared mutable state is touched inside the worker.
+		# on_activity is intentionally omitted: concurrent activity messages from
+		# multiple threads would conflict in the TUI; the caller's spinner covers
+		# the wait instead.
+		return _search_single_file(
+			file_path,
+			matcher=matcher,
+			query_expr=query_expr,
+			search_root=search_root,
+			search_names=search_names,
+			search_contents=search_contents,
+			threshold=threshold,
+			max_file_size=max_file_size,
+			effective_line_threshold=effective_line_threshold,
+			max_matches=max_matches,
+			ocr=ocr,
+			transcribe=transcribe,
+			semantic_image=semantic_image,
+			query_image_embedding=query_image_embedding,
+			semantic_image_threshold=semantic_image_threshold,
+			transcribe_threshold=transcribe_threshold,
+		)
+
+	# Execution strategy selection:
+	#
+	# THREAD pool — OCR / transcribe / CLIP inference
+	#   Per-file work runs outside Python for extended periods (Tesseract subprocess,
+	#   Whisper inference, CLIP inference), so the GIL is fully released and threads
+	#   give near-linear speedup.
+	#
+	# PROCESS pool — large pure-text searches (no OCR / transcribe / CLIP)
+	#   Text-only matching (rapidfuzz, jellyfish, exact/partial string ops) is a mix
+	#   of Python bytecode and short C-extension calls.  Threads cause heavy GIL
+	#   thrashing (confirmed by benchmarks: 2-5× *slower* at all thread counts).
+	#   A process pool bypasses the GIL entirely; each worker gets its own
+	#   CompositeMatcher pre-warmed by the pool initializer.  Semantic-text matching
+	#   (SRXY_SEMANTIC=1) is excluded because loading the ~400 MB embedding model in
+	#   every worker would be prohibitively slow and memory-heavy.
+	#
+	#   SAFETY: the process pool must only be started from the main thread.  When
+	#   called from a background thread (e.g. the TUI's asyncio.to_thread worker),
+	#   fork() inherits all open file descriptors including Textual's terminal
+	#   raw-mode handles, which corrupts the terminal state when child processes exit.
+	#
+	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
+	_heavy = is_ocr_active(ocr) or is_transcribe_active(transcribe) or is_semantic_image_active(semantic_image)
+	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
+	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
+	_use_processes = (
+		threading.current_thread() is threading.main_thread()
+		and not _use_threads
+		and len(files) >= _MIN_PROCESS_FILES
+		and max_workers != 1
+		and not _heavy
+		and not _semantic_text
+	)
+	_heavy = is_ocr_active(ocr) or is_transcribe_active(transcribe) or is_semantic_image_active(semantic_image)
+	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
+	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
+	_use_processes = (
+		threading.current_thread() is threading.main_thread()
+		and not _use_threads
+		and len(files) >= _MIN_PROCESS_FILES
+		and max_workers != 1
+		and not _heavy
+		and not _semantic_text
+	)
+
+	emit_activity(on_activity, "Searching…")
+	completed = 0
+	try:
+		if _use_threads:
+			with ThreadPoolExecutor(max_workers=max_workers) as pool:
+				future_to_path = {pool.submit(_submit_file, file_path): file_path for file_path in files}
+				for future in as_completed(future_to_path):
+					result, file_skipped = future.result()
+					completed += 1
+					if skipped_files is not None:
+						skipped_files.extend(file_skipped)
+					if on_progress is not None:
+						on_progress(completed, total_files)
+					if result is None:
+						continue
+					results.append(result)
+					if on_result is not None:
+						on_result(result)
+		elif _use_processes:
+			with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_proc_worker) as pool:
+				futures = {
+					pool.submit(
+						_proc_worker_task,
+						file_path,
+						query_expr,
+						search_root,
+						search_names,
+						search_contents,
+						threshold,
+						max_file_size,
+						effective_line_threshold,
+						max_matches,
+						semantic_image_threshold,
+						transcribe_threshold,
+					): file_path
+					for file_path in files
+				}
+				for future in as_completed(futures):
+					result, file_skipped = future.result()
+					completed += 1
+					if skipped_files is not None:
+						skipped_files.extend(file_skipped)
+					if on_progress is not None:
+						on_progress(completed, total_files)
+					if result is None:
+						continue
+					results.append(result)
+					if on_result is not None:
+						on_result(result)
+		else:
+			for file_path in files:
+				result, file_skipped = _submit_file(file_path)
+				completed += 1
+				if skipped_files is not None:
+					skipped_files.extend(file_skipped)
+				if on_progress is not None:
+					on_progress(completed, total_files)
+				if result is None:
+					continue
+				results.append(result)
+				if on_result is not None:
+					on_result(result)
+	finally:
+		clear_activity(on_activity)
 
 	results.sort(key=lambda result: result.score, reverse=True)
 	if limit is not None:

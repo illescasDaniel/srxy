@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import sys
+import threading
 from pathlib import Path
 
 from srxy.device import resolve_torch_device
@@ -11,6 +12,7 @@ from srxy.matchers.base import Matcher
 DEFAULT_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 
 _semantic_model: object | None = None
+_model_lock = threading.Lock()
 _run_embedding_cache: dict[tuple[str, str], object] = {}
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -66,9 +68,12 @@ def _load_model() -> object:
 
 def _get_model() -> object:
 	global _semantic_model
-	if _semantic_model is None:
-		_semantic_model = _load_model()
-	return _semantic_model
+	if _semantic_model is not None:
+		return _semantic_model
+	with _model_lock:
+		if _semantic_model is None:
+			_semantic_model = _load_model()
+		return _semantic_model
 
 
 def warmup_semantic_model():

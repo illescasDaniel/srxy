@@ -51,3 +51,15 @@ Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`sr
 ### TUI snapshots
 
 New or changed TUI elements need snapshot coverage in `tests/tui/` (`assert_svg_snapshot`). Refresh: `UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/…`. See [AGENTS.md](../AGENTS.md).
+
+## Performance benchmarks
+
+`scripts/bench_file_search.py` measures `magic_file_search` across several scenarios (text, documents, OCR, synthetic large/small sets):
+
+```bash
+python scripts/bench_file_search.py                 # warm cache
+python scripts/bench_file_search.py --cold          # cold cache (re-runs OCR/parsing)
+python scripts/bench_file_search.py --iters 5       # more iterations for stable σ
+```
+
+Results and design rationale for the parallel execution strategy (thread pool vs process pool) are documented in [docs/multi-process-benchmark.md](multi-process-benchmark.md).
