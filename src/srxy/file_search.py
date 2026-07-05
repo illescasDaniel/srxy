@@ -584,7 +584,6 @@ def _search_single_file(
 	max_file_size: int | None,
 	effective_line_threshold: float,
 	max_matches: int,
-	skipped_files: list[SkippedFile] | None,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	semantic_image: bool | None = None,
@@ -592,9 +591,16 @@ def _search_single_file(
 	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	on_activity: ActivityCallback | None = None,
-) -> FileSearchResult | None:
+) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+	"""Search a single file and return its result plus any files skipped due to size limits.
+
+	Each call is self-contained and thread-safe: skipped files are collected into a
+	local list and returned rather than mutating a shared structure.
+	"""
+	local_skipped: list[SkippedFile] = []
+
 	if not is_searchable_path(file_path):
-		return None
+		return None, local_skipped
 	archive_member = is_archive_member_path(file_path)
 
 	breakdown: dict[str, float] = {}
@@ -627,8 +633,7 @@ def _search_single_file(
 					size_bytes = file_path.stat().st_size
 				except OSError:
 					size_bytes = 0
-			if skipped_files is not None:
-				skipped_files.append(SkippedFile(path=file_path, size_bytes=size_bytes))
+			local_skipped.append(SkippedFile(path=file_path, size_bytes=size_bytes))
 		else:
 			content_score, line_matches, near_match, content_term_bests = _score_lines(
 				matcher,
@@ -641,7 +646,7 @@ def _search_single_file(
 				semantic_image_threshold,
 				ocr=ocr,
 				transcribe=transcribe,
-				skipped_files=skipped_files,
+				skipped_files=local_skipped,
 				on_activity=on_activity,
 			)
 			breakdown["content"] = content_score
@@ -670,7 +675,7 @@ def _search_single_file(
 				term_bests[term] = max(term_bests[term], semantic_image_score)
 
 	if not breakdown:
-		return None
+		return None, local_skipped
 
 	boolean_score = score_file_query(query_expr, term_bests)
 	legacy_score = max(breakdown.values())
@@ -688,7 +693,7 @@ def _search_single_file(
 	):
 		cutoff = transcribe_threshold
 	if score < cutoff:
-		return None
+		return None, local_skipped
 
 	semantic_image_score = breakdown.get("semantic_image", 0.0)
 	clip_won = semantic_image_score > 0.0 and semantic_image_score >= score - 1e-9
@@ -715,12 +720,15 @@ def _search_single_file(
 		)
 		line_matches.sort(key=lambda match: match.score, reverse=True)
 		line_matches = line_matches[:max_matches]
-	return FileSearchResult(
-		path=file_path,
-		score=score,
-		breakdown=breakdown,
-		lines=line_matches,
-		term_surfaces=term_surfaces,
+	return (
+		FileSearchResult(
+			path=file_path,
+			score=score,
+			breakdown=breakdown,
+			lines=line_matches,
+			term_surfaces=term_surfaces,
+		),
+		local_skipped,
 	)
 
 
@@ -747,6 +755,7 @@ def magic_file_search(
 	on_activity: ActivityCallback | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
 	max_line_matches: int | None = None,
+	max_workers: int | None = None,
 ) -> list[FileSearchResult]:
 	if max_line_matches is not None:
 		warnings.warn(
@@ -786,38 +795,76 @@ def magic_file_search(
 			clear_activity(on_activity)
 	total_files = len(files)
 
-	for index, file_path in enumerate(files, start=1):
-		emit_activity(on_activity, f"Scanning · {file_path.name}")
-		try:
-			result = _search_single_file(
-				file_path,
-				matcher=matcher,
-				query_expr=query_expr,
-				search_root=search_root,
-				search_names=search_names,
-				search_contents=search_contents,
-				threshold=threshold,
-				max_file_size=max_file_size,
-				effective_line_threshold=effective_line_threshold,
-				max_matches=max_matches,
-				skipped_files=skipped_files,
-				ocr=ocr,
-				transcribe=transcribe,
-				semantic_image=semantic_image,
-				query_image_embedding=query_image_embedding,
-				semantic_image_threshold=semantic_image_threshold,
-				transcribe_threshold=transcribe_threshold,
-				on_activity=on_activity,
-			)
-		finally:
-			clear_activity(on_activity)
-		if on_progress is not None:
-			on_progress(index, total_files)
-		if result is None:
-			continue
-		results.append(result)
-		if on_result is not None:
-			on_result(result)
+	from concurrent.futures import ThreadPoolExecutor, as_completed
+
+	def _submit_file(file_path: Path) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+		# Captures all search parameters from the enclosing scope. Each call is
+		# self-contained so no shared mutable state is touched inside the worker.
+		# on_activity is intentionally omitted: concurrent activity messages from
+		# multiple threads would conflict in the TUI; the caller's spinner covers
+		# the wait instead.
+		return _search_single_file(
+			file_path,
+			matcher=matcher,
+			query_expr=query_expr,
+			search_root=search_root,
+			search_names=search_names,
+			search_contents=search_contents,
+			threshold=threshold,
+			max_file_size=max_file_size,
+			effective_line_threshold=effective_line_threshold,
+			max_matches=max_matches,
+			ocr=ocr,
+			transcribe=transcribe,
+			semantic_image=semantic_image,
+			query_image_embedding=query_image_embedding,
+			semantic_image_threshold=semantic_image_threshold,
+			transcribe_threshold=transcribe_threshold,
+		)
+
+	# Only spin up the thread pool for modes that do real per-file work outside
+	# Python (OCR subprocesses, Whisper inference, CLIP inference). For pure-text
+	# searches the GIL is held most of the time and thread creation overhead
+	# exceeds the parallelism benefit on typical small-to-medium file sets.
+	_use_threads = (
+		len(files) > 1
+		and max_workers != 1
+		and (is_ocr_active(ocr) or is_transcribe_active(transcribe) or is_semantic_image_active(semantic_image))
+	)
+
+	emit_activity(on_activity, "Searching…")
+	completed = 0
+	try:
+		if _use_threads:
+			with ThreadPoolExecutor(max_workers=max_workers) as pool:
+				future_to_path = {pool.submit(_submit_file, file_path): file_path for file_path in files}
+				for future in as_completed(future_to_path):
+					result, file_skipped = future.result()
+					completed += 1
+					if skipped_files is not None:
+						skipped_files.extend(file_skipped)
+					if on_progress is not None:
+						on_progress(completed, total_files)
+					if result is None:
+						continue
+					results.append(result)
+					if on_result is not None:
+						on_result(result)
+		else:
+			for file_path in files:
+				result, file_skipped = _submit_file(file_path)
+				completed += 1
+				if skipped_files is not None:
+					skipped_files.extend(file_skipped)
+				if on_progress is not None:
+					on_progress(completed, total_files)
+				if result is None:
+					continue
+				results.append(result)
+				if on_result is not None:
+					on_result(result)
+	finally:
+		clear_activity(on_activity)
 
 	results.sort(key=lambda result: result.score, reverse=True)
 	if limit is not None:

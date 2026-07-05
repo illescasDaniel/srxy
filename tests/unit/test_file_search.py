@@ -1178,12 +1178,11 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 			on_activity=activities.append,
 		)
 
-	# then
+	# then — query encoding and the generic "Searching…" phase are still reported;
+	# per-file messages (CLIP ·, OCR ·, …) are no longer emitted because workers run
+	# concurrently and simultaneous messages would conflict in the TUI.
 	assert any(activity is not None and activity.label == "Encoding image query…" for activity in activities)
-	assert any(
-		activity is not None and activity.label is not None and activity.label.startswith("CLIP ·")
-		for activity in activities
-	)
+	assert any(activity is not None and activity.label == "Searching…" for activity in activities)
 	assert activities[-1] is None
 
 
