@@ -10,6 +10,8 @@ Scenarios measured:
   1. Text-only search   — exercises exact/fuzzy/phonetic matching
   2. Document search    — exercises docx/xlsx/pptx parsing
   3. OCR search         — exercises tesseract; highest parallelism benefit
+  4. Synthetic small    — 25 generated .txt files; shows thread-pool overhead on tiny sets
+  5. Synthetic large    — 500 generated .txt files; shows threading benefit on big dirs
 """
 
 from __future__ import annotations
@@ -34,6 +36,42 @@ from srxy.ocr_text import tesseract_available
 
 FIXTURES_ROOT = _REPO / "tests" / "fixtures" / "file_search"
 DEFAULT_ITERS = 3
+
+_SYNTHETIC_NEEDLE = "srxy_bench_needle"
+_SYNTHETIC_NEEDLE_COUNT = 5  # files that contain the needle
+_WORD_POOL = (
+	"the quick brown fox jumps over lazy dog "
+	"python function class return import from "
+	"file search query result match score text "
+	"document folder path index cache hash key "
+	"memory process thread async await yield "
+	"error exception raise handle finally try "
+	"data structure algorithm complexity space "
+	"network request response header status code "
+	"version release build deploy artifact test "
+).split()
+
+
+def _make_synthetic_dir(n_files: int) -> Path:
+	"""Create (or reuse) a temp directory with n_files deterministic text files."""
+	import random
+
+	dest = Path(f"/tmp/srxy_bench_{n_files}")
+	marker = dest / ".srxy_bench_done"
+	if marker.is_file() and sum(1 for _ in dest.glob("*.txt")) == n_files:
+		return dest
+	dest.mkdir(exist_ok=True)
+	rng = random.Random(42)
+	for i in range(n_files):
+		path = dest / f"file_{i:04d}.txt"
+		lines: list[str] = []
+		if i < _SYNTHETIC_NEEDLE_COUNT:
+			lines.append(f"This file contains the token {_SYNTHETIC_NEEDLE} for testing.")
+		for _ in range(40):
+			lines.append(" ".join(rng.choices(_WORD_POOL, k=rng.randint(8, 16))))
+		path.write_text("\n".join(lines), encoding="utf-8")
+	marker.write_text("ok")
+	return dest
 
 
 def _require_fixtures() -> Path:
@@ -117,8 +155,6 @@ def main():
 	print(f"Platform     : {platform.system()} {platform.machine()}")
 	print(f"Python       : {sys.version.split()[0]}")
 	print(f"CPU cores    : {cpu_count}")
-	print(f"Fixture root : {root}")
-	print(f"File count   : {_file_count(root)}")
 	print(f"Iterations   : {args.iters}")
 	print(f"Cache mode   : {'cold' if args.cold else 'warm'}")
 	print()
@@ -155,6 +191,23 @@ def main():
 		]
 	else:
 		print("  [tesseract not available — OCR scenarios skipped]")
+
+	synth_small = _make_synthetic_dir(25)
+	synth_large = _make_synthetic_dir(500)
+	scenarios += [
+		(
+			"Synthetic text — 25 files (small)",
+			synth_small,
+			_SYNTHETIC_NEEDLE,
+			{"search_names": False},
+		),
+		(
+			"Synthetic text — 500 files (large)",
+			synth_large,
+			_SYNTHETIC_NEEDLE,
+			{"search_names": False},
+		),
+	]
 
 	col_label = 36
 	col_time = 38
