@@ -37,6 +37,7 @@ windows = [
 dev = [
 	"basedpyright>=1.39",
 	"pip-audit>=2.10",
+	"setuptools>=83.0",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
 	"ruff>=0.15",
@@ -47,7 +48,7 @@ uploader = [
 ]
 
 [build-system]
-requires = ["setuptools>=82.0"]
+requires = ["setuptools>=83.0"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
