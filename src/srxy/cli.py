@@ -12,6 +12,7 @@ from typing import IO, Callable, TextIO
 from srxy.file_query import FileQ, FileQueryParseError, coerce_file_query, file_q_from_dict
 from srxy.file_search import DEFAULT_MAX_FILE_SIZE, magic_file_search, suggest_max_file_size
 from srxy.matchers.semantic import (
+	semantic_deps_unavailable_message,
 	sentence_transformers_installed,
 )
 from srxy.model_store import (
@@ -929,7 +930,7 @@ def run_preflight(
 
 	if _args_want_semantic_text(args):
 		if not sentence_transformers_installed():
-			return "Semantic matching requires the optional dependency: pip install 'srxy[semantic]'"
+			return semantic_deps_unavailable_message()
 		if not ensure_semantic_text_model(interactive=interactive, prompt_yes=prompt_yes):
 			return semantic_text_model_missing_message()
 

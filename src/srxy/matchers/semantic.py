@@ -17,6 +17,11 @@ _run_embedding_cache: dict[tuple[str, str], object] = {}
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
+_SEMANTIC_DEPS_UNAVAILABLE_MESSAGE = (
+	"Semantic matching requires the optional dependency: pip install 'srxy[semantic]'. "
+	"Semantic search needs a GPU to run."
+)
+
 
 def semantic_env_enabled() -> bool:
 	value = os.environ.get("SRXY_SEMANTIC", "").strip().lower()
@@ -31,6 +36,10 @@ def sentence_transformers_installed() -> bool:
 
 def is_semantic_available() -> bool:
 	return semantic_env_enabled() and sentence_transformers_installed()
+
+
+def semantic_deps_unavailable_message() -> str:
+	return _SEMANTIC_DEPS_UNAVAILABLE_MESSAGE
 
 
 def _model_source() -> str:

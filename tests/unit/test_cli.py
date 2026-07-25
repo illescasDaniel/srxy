@@ -603,6 +603,25 @@ def test_given_semantic_image_flag_without_dependency_when_running_cli_then_exit
 	assert "Image semantic search is disabled" in captured.err
 
 
+def test_given_semantic_flag_without_dependency_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+	monkeypatch.delenv("SRXY_SEMANTIC", raising=False)
+
+	with patch("srxy.cli.sentence_transformers_installed", return_value=False):
+		# when
+		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "srxy[semantic]" in captured.err
+	assert "GPU" in captured.err
+	assert captured.out == ""
+
+
 def test_given_semantic_flag_without_cached_model_when_user_declines_then_exits_two(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
 ):

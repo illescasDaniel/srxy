@@ -8,6 +8,7 @@ from typing import Any, Protocol
 
 from srxy.cli import apply_args_to_env
 from srxy.matchers.semantic import (
+	semantic_deps_unavailable_message,
 	semantic_env_enabled,
 	sentence_transformers_installed,
 )
@@ -68,7 +69,7 @@ async def run_tui_preflight(app: Any, args: argparse.Namespace) -> str | None:
 
 	if semantic_env_enabled() and (args.semantic or args.semantic_all):
 		if not sentence_transformers_installed():
-			return "Semantic matching requires the optional dependency: pip install 'srxy[semantic]'"
+			return semantic_deps_unavailable_message()
 		if not await _ensure_semantic_text_model_tui(app):
 			return semantic_text_model_missing_message()
 

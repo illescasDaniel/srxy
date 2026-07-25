@@ -1,0 +1,27 @@
+error-modal-semantic-deps
+host
+█
+█
+█
+█
+█
+Semantic matching requires the optional dependency: pip install
+█
+█
+'srxy[semantic]'. Semantic search needs a GPU to run.
+█
+█
+█
+█
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+█
+█
+Close
+█
+█
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+█
+█
+█
+█
+█

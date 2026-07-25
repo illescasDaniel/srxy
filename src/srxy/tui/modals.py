@@ -456,7 +456,8 @@ class ErrorModal(ModalScreen[None]):
 
 	def compose(self) -> ComposeResult:
 		with Vertical(id="error-dialog"):
-			yield Label(self._message, id="error-message")
+			# Plain text: Rich markup would swallow pip extras like [semantic].
+			yield Label(self._message, id="error-message", markup=False)
 			yield Button("Close", variant="primary", id="error-close")
 
 	def on_button_pressed(self, event: Button.Pressed):

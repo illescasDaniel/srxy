@@ -329,7 +329,8 @@ class SrxyApp(App[int]):
 		yield Static("", id="warnings-log")
 		with Horizontal(id="status-bar"):
 			yield ProgressBar(total=100, show_eta=False, id="scan-progress")
-			yield Label("Ready", id="status-message")
+			# Plain text: Rich markup would swallow pip extras like [semantic].
+			yield Label("Ready", id="status-message", markup=False)
 		yield Footer(show_command_palette=False)
 
 	def on_mount(self):
