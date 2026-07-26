@@ -50,28 +50,41 @@ def apply_search_options_to_args(args: argparse.Namespace, options: SearchOption
 
 
 def format_search_options_summary(options: SearchOptions) -> str:
-	labels: list[str] = []
+	segments: list[str] = []
+
+	in_labels: list[str] = []
 	if options.search_names:
-		labels.append("Names")
+		in_labels.append("Names")
 	if options.search_contents:
-		labels.append("Content")
+		in_labels.append("Content")
+	if in_labels:
+		segments.append(f"In: {', '.join(in_labels)}")
+
+	with_labels: list[str] = []
 	if options.semantic:
-		labels.append("Semantic")
-	if options.semantic_image:
-		labels.append("Image semantic")
+		with_labels.append("Semantic")
 	if options.ocr:
-		labels.append("OCR")
+		with_labels.append("OCR")
 	if options.transcribe:
-		labels.append("Transcribe")
+		with_labels.append("Transcribe")
+	if options.semantic_image:
+		with_labels.append("Image semantic")
+	if with_labels:
+		segments.append(f"With: {', '.join(with_labels)}")
+
+	include_labels: list[str] = []
 	if options.include_hidden:
-		labels.append("Hidden")
+		include_labels.append("Hidden")
 	if options.include_noise:
-		labels.append("Noise")
+		include_labels.append("Noise")
 	if options.include_archives:
-		labels.append("Archives")
-	if not labels:
+		include_labels.append("Archives")
+	if include_labels:
+		segments.append(f"Include: {', '.join(include_labels)}")
+
+	if not segments:
 		return "None enabled"
-	text = ", ".join(labels)
+	text = " · ".join(segments)
 	if len(text) > 72:
 		return f"{text[:69]}…"
 	return text

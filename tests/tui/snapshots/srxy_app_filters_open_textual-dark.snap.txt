@@ -20,8 +20,8 @@ hello
 └
 █
 █
-Search modes
-Name
+Search options
+In
 █
 Search filters
 █

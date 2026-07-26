@@ -16,36 +16,32 @@ hello
 █
 │
 + Term
-Adv
 █
 █
 └
 █
-Search modes
+Search options
 █
-Search modes
-Names, C
+Search options
+In
 █
 █
+█
+█
+Filters
+All file
+█
+Search in
+█
+nscript≥25%
 █
 X
 Names
 █
-Filters
-All files ·
-█
-X
-Content
-█
-transcript≥25%
-█
-X
-Semantic
-█
 ┌
 █
 X
-Image semantic
+Content
 █
 ┐
 │
@@ -53,8 +49,39 @@ Match
 Path
 Matched
 █
+█
+│
+│
+█
+Match with
+█
+Text
+│
+│
+█
+Fuzzy, phonetic, and substring matching
+█
+│
+│
+█
+(always on)
+█
+│
+│
+█
+█
+│
+│
+█
+X
+Semantic
+█
+│
+│
+█
 X
 OCR
+▅▅
 █
 │
 │
@@ -62,44 +89,17 @@ OCR
 X
 Transcribe
 █
-Text
 │
 │
 █
 X
-Hidden
-█
-│
-│
-█
-X
-Noise
+Image semantic
 █
 │
 │
 █
 X
-Archives
-█
-│
-│
-█
-█
-│
-│
-█
-█
-│
-│
-█
-█
-│
-│
-█
-█
-│
-│
-█
+Enable all power-ups
 █
 │
 │

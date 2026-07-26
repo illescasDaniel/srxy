@@ -25,8 +25,8 @@ Advanced
 │
 └
 ┘
-Search modes
-Names, Content
+Search options
+In: Names, Content
 Filters
 All files · 50/file · text 100 MiB · match≥35% · image≥18% · transcript≥25%
 ┌

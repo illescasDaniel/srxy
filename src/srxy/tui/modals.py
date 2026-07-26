@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
@@ -137,7 +138,7 @@ class HelpModal(ModalScreen[None]):
 
 [b]Filters[/b]
   Filters            Top files, thresholds, per-file match cap, and size limits (MiB)
-  Search modes       Names, content, semantic, OCR, archives, …
+  Search options     Search in (names/content), match with (power-ups), include (walk)
 
 [b]Results[/b]
   j / k          Move selection
@@ -318,7 +319,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	}
 
 	#search-options-dialog {
-		width: 48;
+		width: 56;
 		height: auto;
 		max-height: 80%;
 		overflow: hidden;
@@ -337,6 +338,22 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		width: 100%;
 		height: 1fr;
 		min-height: 1;
+		margin-bottom: 1;
+	}
+
+	.search-options-section {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		text-style: bold;
+		margin-top: 1;
+	}
+
+	.search-options-hint {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		padding: 0 1;
 		margin-bottom: 1;
 	}
 
@@ -362,6 +379,18 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		border: none;
 	}
 
+	#search-options-scroll Checkbox:disabled {
+		color: $text-muted;
+		opacity: 0.6;
+	}
+
+	#search-options-error {
+		width: 100%;
+		height: auto;
+		color: $error;
+		margin-bottom: 1;
+	}
+
 	#search-options-buttons {
 		grid-size: 2;
 		grid-gutter: 1 2;
@@ -385,46 +414,147 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	}
 	"""
 
+	_CONTENT_ONLY_IDS = ("so-ocr", "so-transcribe", "so-semantic-image")
+	_POWERUP_IDS = ("so-semantic", "so-ocr", "so-transcribe", "so-semantic-image")
+
 	def __init__(self, initial: SearchOptions):
 		super().__init__()
 		self._initial = initial
+		self._syncing_checkboxes = False
 
 	def compose(self) -> ComposeResult:
+		all_powerups = (
+			self._initial.semantic and self._initial.ocr and self._initial.transcribe and self._initial.semantic_image
+		)
 		with Vertical(id="search-options-dialog"):
-			yield Static("Search modes", id="search-options-title")
+			yield Static("Search options", id="search-options-title")
 			with VerticalScroll(id="search-options-scroll"):
+				yield Static("Search in", classes="search-options-section")
 				yield Checkbox("Names", id="so-names", value=self._initial.search_names)
 				yield Checkbox("Content", id="so-content", value=self._initial.search_contents)
+				yield Static("Match with", classes="search-options-section")
+				yield Static(
+					"Fuzzy, phonetic, and substring matching (always on)",
+					classes="search-options-hint",
+				)
 				yield Checkbox("Semantic", id="so-semantic", value=self._initial.semantic)
-				yield Checkbox("Image semantic", id="so-semantic-image", value=self._initial.semantic_image)
 				yield Checkbox("OCR", id="so-ocr", value=self._initial.ocr)
 				yield Checkbox("Transcribe", id="so-transcribe", value=self._initial.transcribe)
+				yield Checkbox("Image semantic", id="so-semantic-image", value=self._initial.semantic_image)
+				yield Checkbox("Enable all power-ups", id="so-enable-all", value=all_powerups)
+				yield Static("Include", classes="search-options-section")
 				yield Checkbox("Hidden", id="so-hidden", value=self._initial.include_hidden)
 				yield Checkbox("Noise", id="so-noise", value=self._initial.include_noise)
 				yield Checkbox("Archives", id="so-archives", value=self._initial.include_archives)
+			yield Label("", id="search-options-error")
 			with Grid(id="search-options-buttons"):
 				yield Button("Cancel", id="search-options-cancel")
 				yield Button("Apply", variant="primary", id="search-options-apply")
 
+	def on_mount(self):
+		self._sync_content_dependent_controls()
+
+	def _content_enabled(self) -> bool:
+		return self.query_one("#so-content", Checkbox).value
+
+	def _powerup_values(self) -> tuple[bool, bool, bool, bool]:
+		return (
+			self.query_one("#so-semantic", Checkbox).value,
+			self.query_one("#so-ocr", Checkbox).value,
+			self.query_one("#so-transcribe", Checkbox).value,
+			self.query_one("#so-semantic-image", Checkbox).value,
+		)
+
+	def _all_powerups_enabled(self) -> bool:
+		return all(self._powerup_values())
+
+	def _set_checkbox_value(self, checkbox_id: str, value: bool):
+		checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
+		if checkbox.value != value:
+			checkbox.value = value
+
+	def _set_powerups(self, *, semantic: bool, ocr: bool, transcribe: bool, semantic_image: bool):
+		self._syncing_checkboxes = True
+		try:
+			self._set_checkbox_value("so-semantic", semantic)
+			self._set_checkbox_value("so-ocr", ocr)
+			self._set_checkbox_value("so-transcribe", transcribe)
+			self._set_checkbox_value("so-semantic-image", semantic_image)
+			self._set_checkbox_value("so-enable-all", semantic and ocr and transcribe and semantic_image)
+		finally:
+			self._syncing_checkboxes = False
+
+	def _sync_enable_all_from_powerups(self):
+		if self._syncing_checkboxes:
+			return
+		self._syncing_checkboxes = True
+		try:
+			self._set_checkbox_value("so-enable-all", self._all_powerups_enabled())
+		finally:
+			self._syncing_checkboxes = False
+
+	def _sync_content_dependent_controls(self):
+		content_enabled = self._content_enabled()
+		for checkbox_id in self._CONTENT_ONLY_IDS:
+			checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
+			checkbox.disabled = not content_enabled
+
 	def _current_options(self) -> SearchOptions:
+		search_contents = self._content_enabled()
+		semantic, ocr, transcribe, semantic_image = self._powerup_values()
+		if not search_contents:
+			ocr = False
+			transcribe = False
+			semantic_image = False
 		return SearchOptions(
 			search_names=self.query_one("#so-names", Checkbox).value,
-			search_contents=self.query_one("#so-content", Checkbox).value,
-			semantic=self.query_one("#so-semantic", Checkbox).value,
-			semantic_image=self.query_one("#so-semantic-image", Checkbox).value,
-			ocr=self.query_one("#so-ocr", Checkbox).value,
-			transcribe=self.query_one("#so-transcribe", Checkbox).value,
+			search_contents=search_contents,
+			semantic=semantic,
+			semantic_image=semantic_image,
+			ocr=ocr,
+			transcribe=transcribe,
 			include_hidden=self.query_one("#so-hidden", Checkbox).value,
 			include_noise=self.query_one("#so-noise", Checkbox).value,
 			include_archives=self.query_one("#so-archives", Checkbox).value,
 		)
 
+	@on(Checkbox.Changed, "#so-content")
+	def _on_content_changed(self):
+		self._sync_content_dependent_controls()
+
+	@on(Checkbox.Changed, "#so-enable-all")
+	def _on_enable_all_changed(self, event: Checkbox.Changed):
+		if self._syncing_checkboxes:
+			return
+		self._set_powerups(
+			semantic=event.value,
+			ocr=event.value and self._content_enabled(),
+			transcribe=event.value and self._content_enabled(),
+			semantic_image=event.value and self._content_enabled(),
+		)
+
+	@on(Checkbox.Changed, "#so-semantic")
+	@on(Checkbox.Changed, "#so-ocr")
+	@on(Checkbox.Changed, "#so-transcribe")
+	@on(Checkbox.Changed, "#so-semantic-image")
+	def _on_powerup_changed(self):
+		if self._syncing_checkboxes:
+			return
+		self._sync_enable_all_from_powerups()
+
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "search-options-cancel":
 			self.dismiss(None)
 			return
-		if event.button.id == "search-options-apply":
-			self.dismiss(self._current_options())
+		if event.button.id != "search-options-apply":
+			return
+		error = self.query_one("#search-options-error", Label)
+		options = self._current_options()
+		if not options.search_names and not options.search_contents:
+			error.update("Enable at least one of Names or Content.")
+			return
+		error.update("")
+		self.dismiss(options)
 
 
 class ErrorModal(ModalScreen[None]):

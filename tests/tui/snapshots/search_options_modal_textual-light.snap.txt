@@ -5,9 +5,14 @@ host
 █
 █
 █
-Search modes
+Search options
 █
 █
+█
+█
+█
+█
+Search in
 █
 █
 X
@@ -18,16 +23,26 @@ X
 Content
 █
 █
+█
+█
+Match with
+█
+█
+Fuzzy, phonetic, and substring matching
+█
+█
+(always on)
+█
+█
+█
+█
 X
 Semantic
 █
 █
 X
-Image semantic
-█
-█
-X
 OCR
+▅▅
 █
 █
 X
@@ -35,25 +50,11 @@ Transcribe
 █
 █
 X
-Hidden
+Image semantic
 █
 █
 X
-Noise
-█
-█
-X
-Archives
-█
-█
-█
-█
-█
-█
-█
-█
-█
-█
+Enable all power-ups
 █
 █
 █

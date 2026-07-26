@@ -44,7 +44,7 @@ def test_given_tui_when_search_options_toggled_then_search_becomes_stale(tmp_pat
 			assert app.search_options.ocr
 			assert button.has_class("-stale")
 			svg = app.export_screenshot(title="srxy-tui-ocr-toggle")
-			assert_labels_visible(svg, ("Search modes", "Search"))
+			assert_labels_visible(svg, ("Search options", "Search"))
 
 	asyncio.run(run())
 
@@ -76,7 +76,7 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 				await pilot.click("#search-options-button")
 				await pilot.pause()
 				assert isinstance(app.screen, SearchOptionsModal)
-				await pilot.click("#so-content")
+				await pilot.click("#so-semantic")
 				await pilot.pause()
 				await pilot.click("#search-options-apply")
 				await pilot.pause()
@@ -175,7 +175,7 @@ def test_given_semantic_image_flag_when_search_completes_then_results_table_popu
 						break
 				assert app.query_one("#results-table", DataTable).row_count >= 1
 				svg = app.export_screenshot(title="srxy-tui-semantic-image")
-				assert_labels_visible(svg, ("Search", "Search modes"))
+				assert_labels_visible(svg, ("Search", "Search options"))
 
 	asyncio.run(run())
 
@@ -192,6 +192,7 @@ def test_given_semantic_transcribe_ocr_flags_when_launched_then_search_options_r
 			assert app.search_options.ocr
 			assert app.search_options.transcribe
 			summary = format_search_options_summary(app.search_options)
+			assert "With:" in summary
 			assert "Semantic" in summary
 			assert "Transcribe" in summary
 			assert "OCR" in summary

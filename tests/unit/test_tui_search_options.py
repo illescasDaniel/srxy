@@ -78,6 +78,20 @@ def test_given_enabled_options_when_formatting_summary_then_lists_labels():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert "Names" in summary
-	assert "Content" in summary
-	assert "Archives" in summary
+	assert summary == "In: Names, Content · Include: Archives"
+
+
+def test_given_powerups_when_formatting_summary_then_shows_with_segment():
+	# given
+	options = SearchOptions(
+		search_names=True,
+		search_contents=True,
+		ocr=True,
+		transcribe=True,
+	)
+
+	# when
+	summary = format_search_options_summary(options)
+
+	# then
+	assert summary == "In: Names, Content · With: OCR, Transcribe"
