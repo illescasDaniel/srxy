@@ -51,12 +51,12 @@ The query area has two modes:
 
 | Mode | Use for |
 |------|---------|
-| **Builder** (default) | Simple linear queries — one term per row, **AND** / **OR** between rows |
+| **Builder** (default) | Simple linear queries — one term per row, **OR** by default between new rows (change to **AND** per row) |
 | **Advanced** | Grouped boolean syntax — `|`, `&`, and parentheses (same rules as the [CLI](cli.md#boolean-queries)) |
 
 Click **Advanced** to edit the raw query string; click **Builder** to return to term rows. The muted preview line below shows the formatted query (or a parse error in Advanced mode).
 
-**Builder** rows combine left-to-right: `foo` OR `bar` AND `baz` becomes `(foo | bar) & baz`. For `(foo | bar) & baz` vs `foo | (bar & baz)`, use **Advanced** or launch with a grouped CLI query:
+**Builder** rows combine left-to-right: new rows default to **OR**; `foo` OR `bar` AND `baz` becomes `(foo | bar) & baz`. For `(foo | bar) & baz` vs `foo | (bar & baz)`, use **Advanced** or launch with a grouped CLI query:
 
 ```bash
 srxy "(revenue|amphibian) & person" ./tests/fixtures/file_search

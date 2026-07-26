@@ -16,6 +16,9 @@ from srxy.file_query import (
 from srxy.models import QNodeType
 
 
+_DEFAULT_JOIN = "or"
+
+
 class QueryBuilder(Horizontal):
 	"""Dynamic term rows with AND/OR joins, or Advanced raw boolean text."""
 
@@ -113,7 +116,7 @@ class QueryBuilder(Horizontal):
 		yield Label("Query", id="query-label")
 		with Vertical(id="query-body"):
 			for index, (term, join) in enumerate(self._initial_rows):
-				yield from self._compose_row(index, term=term, join=join or "and")
+				yield from self._compose_row(index, term=term, join=join or _DEFAULT_JOIN)
 			yield Input(
 				value=self._initial_query,
 				placeholder="query (|, &, parentheses)",
@@ -127,7 +130,7 @@ class QueryBuilder(Horizontal):
 	def on_mount(self):
 		self._update_preview()
 
-	def _row_widgets(self, index: int, *, term: str = "", join: str = "and"):
+	def _row_widgets(self, index: int, *, term: str = "", join: str = _DEFAULT_JOIN):
 		widgets = []
 		if index > 0:
 			widgets.append(
@@ -144,7 +147,7 @@ class QueryBuilder(Horizontal):
 			widgets.append(Button("×", id=f"query-remove-{index}", variant="default"))
 		return widgets
 
-	def _compose_row(self, index: int, *, term: str = "", join: str = "and") -> ComposeResult:
+	def _compose_row(self, index: int, *, term: str = "", join: str = _DEFAULT_JOIN) -> ComposeResult:
 		with Horizontal(classes="query-row", id=f"query-row-{index}"):
 			for widget in self._row_widgets(index, term=term, join=join):
 				yield widget
@@ -247,7 +250,7 @@ class QueryBuilder(Horizontal):
 		next_index = 0 if not indices else max(indices) + 1
 		row = Horizontal(classes="query-row", id=f"query-row-{next_index}")
 		await self.mount(row, before="#query-raw-input")
-		await row.mount(*self._row_widgets(next_index, join="and"))
+		await row.mount(*self._row_widgets(next_index, join=_DEFAULT_JOIN))
 		self.query_one(f"#query-term-{next_index}", Input).focus()
 		self._post_change()
 
@@ -290,11 +293,11 @@ class QueryBuilder(Horizontal):
 			if index not in self._row_indices():
 				row = Horizontal(classes="query-row", id=f"query-row-{index}")
 				self.mount(row, before="#query-raw-input")
-				row.mount(*self._row_widgets(index, term=term, join=join or "and"))
+				row.mount(*self._row_widgets(index, term=term, join=join or _DEFAULT_JOIN))
 				continue
 			self.query_one(f"#query-term-{index}", Input).value = term
 			if index > 0:
-				self.query_one(f"#query-join-{index}", Select).value = join or "and"
+				self.query_one(f"#query-join-{index}", Select).value = join or _DEFAULT_JOIN
 
 	@on(Button.Pressed)
 	async def _on_remove_term(self, event: Button.Pressed):
