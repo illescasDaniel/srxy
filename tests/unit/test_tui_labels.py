@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from pathlib import Path
+
 import pytest
 
 from srxy.models import FileSearchResult, LineMatch
@@ -32,7 +34,7 @@ def test_given_all_option_ids_when_resolving_then_each_has_label_and_hint():
 def test_given_result_with_sources_when_formatting_tui_labels_then_maps_known_sources():
 	# given
 	result = FileSearchResult(
-		path=__file__,
+		path=Path(__file__),
 		score=0.8,
 		breakdown={"content": 0.8, "semantic_image": 0.2},
 		lines=[

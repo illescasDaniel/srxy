@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+from pathlib import Path
 
 import pytest
 
@@ -102,7 +103,7 @@ def test_given_powerups_when_formatting_summary_then_shows_how_segment():
 def test_given_match_labels_when_formatting_for_tui_then_uses_plain_language():
 	# given
 	result = FileSearchResult(
-		path=__file__,
+		path=Path(__file__),
 		score=0.9,
 		breakdown={"name": 0.4, "ocr": 0.9, "transcript": 0.5},
 		lines=[
