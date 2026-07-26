@@ -14,44 +14,52 @@ Search
 hello
 │
 │
-+ Term
+Add ter
 █
 █
 └
 █
 █
 Search options
-In
 █
 Search filters
 █
 █
 █
 Filters
-All file
+All fi
 █
 █
-nscript≥25%
+cript≥25%
 █
-Top files (empty = all)
+Limits
 █
 ┌
 █
-all
 █
 ┐
 │
 Match
 Path
-Matched
+Match
 █
+Max results (empty = no limit)
 █
 │
 │
 █
-Matches per file
+all
 █
 Text
+│
+│
+█
+█
+│
+│
+█
+Hits shown per file
+█
 │
 │
 █
@@ -64,7 +72,7 @@ Text
 │
 │
 █
-Text & documents (MiB, 0 = unlimited)
+Document size limit (MiB, 0 = unlimited)
 █
 │
 │
@@ -78,7 +86,7 @@ Text & documents (MiB, 0 = unlimited)
 │
 │
 █
-OCR (MiB)
+Image text size limit (MiB)
 █
 │
 │
@@ -92,12 +100,13 @@ OCR (MiB)
 │
 │
 █
-Transcribe (MiB)
+Audio/video size limit (MiB)
 █
 │
 │
 █
 500
+▂▂
 █
 │
 │
@@ -106,31 +115,21 @@ Transcribe (MiB)
 │
 │
 █
-Match threshold %
+Sensitivity
+█
+│
+│
+█
+█
+│
+│
+█
+Minimum match %
 █
 │
 │
 █
 35
-█
-│
-│
-█
-█
-│
-│
-█
-Image semantic threshold %
-▅▅
-█
-│
-│
-█
-18
-█
-│
-│
-█
 █
 │
 │

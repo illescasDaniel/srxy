@@ -100,7 +100,7 @@ def test_given_invalid_top_files_when_validating_then_raises():
 	)
 
 	# when / then
-	with pytest.raises(ValueError, match="Top files"):
+	with pytest.raises(ValueError, match="Max results"):
 		validate_search_filters(filters)
 
 
@@ -116,7 +116,7 @@ def test_given_invalid_threshold_when_validating_then_raises():
 	)
 
 	# when / then
-	with pytest.raises(ValueError, match="Match threshold %"):
+	with pytest.raises(ValueError, match="Minimum match %"):
 		validate_search_filters(filters)
 
 

@@ -12,49 +12,42 @@ Search options
 █
 █
 █
-Search in
+Where to search
 █
 █
 X
-Names
+File names
 █
 █
-X
-Content
-█
-█
-█
-█
-Match with
-█
-█
-Fuzzy, phonetic, and substring matching
-█
-█
-(always on)
+Match the path and filename
 █
 █
 █
 █
 X
-Semantic
+File contents
+█
+█
+Text inside documents, tags, and metadata
+█
+█
+█
+█
+How to match
+█
+█
+Fuzzy, phonetic, and substring matching (always on)
+█
+█
 █
 █
 X
-OCR
-▅▅
+Similar meaning
 █
 █
-X
-Transcribe
+Find related words, not just exact spelling
 █
 █
-X
-Image semantic
-█
-█
-X
-Enable all power-ups
 █
 █
 █

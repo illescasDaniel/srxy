@@ -6,7 +6,7 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from tests.tui.helpers import assert_labels_visible
-from textual.widgets import DataTable
+from textual.widgets import Checkbox, DataTable
 
 from srxy.cli import build_parser
 from srxy.models import FileSearchResult, LineMatch
@@ -37,7 +37,9 @@ def test_given_tui_when_search_options_toggled_then_search_becomes_stale(tmp_pat
 			await pilot.click("#search-options-button")
 			await pilot.pause()
 			assert isinstance(app.screen, SearchOptionsModal)
-			await pilot.click("#so-ocr")
+			modal = app.screen
+			modal.query_one("#so-ocr", Checkbox).focus()
+			await pilot.press("space")
 			await pilot.pause()
 			await pilot.click("#search-options-apply")
 			await pilot.pause()
@@ -192,10 +194,10 @@ def test_given_semantic_transcribe_ocr_flags_when_launched_then_search_options_r
 			assert app.search_options.ocr
 			assert app.search_options.transcribe
 			summary = format_search_options_summary(app.search_options)
-			assert "With:" in summary
-			assert "Semantic" in summary
-			assert "Transcribe" in summary
-			assert "OCR" in summary
+			assert "How:" in summary
+			assert "Meaning" in summary
+			assert "Speech" in summary
+			assert "Image text" in summary
 
 	asyncio.run(run())
 

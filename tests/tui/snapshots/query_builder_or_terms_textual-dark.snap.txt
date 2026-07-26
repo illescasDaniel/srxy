@@ -40,7 +40,7 @@ revenue | amphibian | person | "thank you"
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 │
 │
-+ Term
+Add term
 Advanced
 │
 │

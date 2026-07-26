@@ -38,11 +38,11 @@ from srxy.cli import (
 	format_score_percent,
 	format_skipped_file_warnings,
 	iter_grouped_line_displays,
-	match_labels,
 )
 from srxy.file_query import file_q_to_dict
 from srxy.models import FileSearchResult, SkippedFile
 from srxy.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.tui.labels import format_tui_match_labels
 from srxy.tui.messages import (
 	ActivityChanged,
 	ProgressUpdated,
@@ -418,7 +418,7 @@ class SrxyApp(App[int]):
 		self.query_one("#status-message", Label).update(message)
 
 	def _match_labels(self, result: FileSearchResult) -> str:
-		return match_labels(
+		return format_tui_match_labels(
 			result,
 			threshold=self._args.threshold,
 			semantic_image_threshold=self._args.semantic_image_threshold,

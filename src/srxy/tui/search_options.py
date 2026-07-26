@@ -3,6 +3,21 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
+from srxy.tui.labels import (
+	SUMMARY_HOW_OCR,
+	SUMMARY_HOW_SEMANTIC,
+	SUMMARY_HOW_SEMANTIC_IMAGE,
+	SUMMARY_HOW_TRANSCRIBE,
+	SUMMARY_PREFIX_HOW,
+	SUMMARY_PREFIX_SCAN,
+	SUMMARY_PREFIX_WHERE,
+	SUMMARY_SCAN_ARCHIVES,
+	SUMMARY_SCAN_HIDDEN,
+	SUMMARY_SCAN_NOISE,
+	SUMMARY_WHERE_CONTENT,
+	SUMMARY_WHERE_NAMES,
+)
+
 
 @dataclass(frozen=True, slots=True)
 class SearchOptions:
@@ -52,35 +67,35 @@ def apply_search_options_to_args(args: argparse.Namespace, options: SearchOption
 def format_search_options_summary(options: SearchOptions) -> str:
 	segments: list[str] = []
 
-	in_labels: list[str] = []
+	where_labels: list[str] = []
 	if options.search_names:
-		in_labels.append("Names")
+		where_labels.append(SUMMARY_WHERE_NAMES)
 	if options.search_contents:
-		in_labels.append("Content")
-	if in_labels:
-		segments.append(f"In: {', '.join(in_labels)}")
+		where_labels.append(SUMMARY_WHERE_CONTENT)
+	if where_labels:
+		segments.append(f"{SUMMARY_PREFIX_WHERE}: {', '.join(where_labels)}")
 
-	with_labels: list[str] = []
+	how_labels: list[str] = []
 	if options.semantic:
-		with_labels.append("Semantic")
+		how_labels.append(SUMMARY_HOW_SEMANTIC)
 	if options.ocr:
-		with_labels.append("OCR")
+		how_labels.append(SUMMARY_HOW_OCR)
 	if options.transcribe:
-		with_labels.append("Transcribe")
+		how_labels.append(SUMMARY_HOW_TRANSCRIBE)
 	if options.semantic_image:
-		with_labels.append("Image semantic")
-	if with_labels:
-		segments.append(f"With: {', '.join(with_labels)}")
+		how_labels.append(SUMMARY_HOW_SEMANTIC_IMAGE)
+	if how_labels:
+		segments.append(f"{SUMMARY_PREFIX_HOW}: {', '.join(how_labels)}")
 
-	include_labels: list[str] = []
+	scan_labels: list[str] = []
 	if options.include_hidden:
-		include_labels.append("Hidden")
+		scan_labels.append(SUMMARY_SCAN_HIDDEN)
 	if options.include_noise:
-		include_labels.append("Noise")
+		scan_labels.append(SUMMARY_SCAN_NOISE)
 	if options.include_archives:
-		include_labels.append("Archives")
-	if include_labels:
-		segments.append(f"Include: {', '.join(include_labels)}")
+		scan_labels.append(SUMMARY_SCAN_ARCHIVES)
+	if scan_labels:
+		segments.append(f"{SUMMARY_PREFIX_SCAN}: {', '.join(scan_labels)}")
 
 	if not segments:
 		return "None enabled"

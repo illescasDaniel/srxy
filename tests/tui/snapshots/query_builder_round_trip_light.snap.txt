@@ -31,7 +31,7 @@ color
 ▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
 │
 │
-+ Term
+Add term
 Advanced
 │
 │

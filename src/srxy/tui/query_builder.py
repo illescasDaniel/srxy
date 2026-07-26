@@ -14,6 +14,7 @@ from srxy.file_query import (
 	parse_file_query,
 )
 from srxy.models import QNodeType
+from srxy.tui.labels import QUERY_ADD_TERM, QUERY_ADVANCED_PLACEHOLDER, QUERY_TERM_PLACEHOLDER
 
 
 _DEFAULT_JOIN = "or"
@@ -119,12 +120,12 @@ class QueryBuilder(Horizontal):
 				yield from self._compose_row(index, term=term, join=join or _DEFAULT_JOIN)
 			yield Input(
 				value=self._initial_query,
-				placeholder="query (|, &, parentheses)",
+				placeholder=QUERY_ADVANCED_PLACEHOLDER,
 				id="query-raw-input",
 			)
 			yield Static("", id="query-preview")
 			with Horizontal(id="query-actions"):
-				yield Button("+ Term", id="add-term-button", variant="default")
+				yield Button(QUERY_ADD_TERM, id="add-term-button", variant="default")
 				yield Button("Advanced", id="mode-toggle-button", variant="default")
 
 	def on_mount(self):
@@ -142,7 +143,7 @@ class QueryBuilder(Horizontal):
 					compact=True,
 				)
 			)
-		widgets.append(Input(value=term, placeholder="search term", id=f"query-term-{index}"))
+		widgets.append(Input(value=term, placeholder=QUERY_TERM_PLACEHOLDER, id=f"query-term-{index}"))
 		if index > 0:
 			widgets.append(Button("×", id=f"query-remove-{index}", variant="default"))
 		return widgets

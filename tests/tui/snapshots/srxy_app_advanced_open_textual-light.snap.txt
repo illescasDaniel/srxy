@@ -15,7 +15,7 @@ hello
 █
 █
 │
-+ Term
+Add t
 █
 █
 └
@@ -23,48 +23,42 @@ hello
 Search options
 █
 Search options
-In
 █
 █
 █
 █
 Filters
-All file
+All
 █
-Search in
+Where to search
 █
-nscript≥25%
+ipt≥25%
 █
 X
-Names
+File names
 █
 ┌
 █
-X
-Content
+Match the path and filename
 █
 ┐
 │
 Match
 Path
-Matched
+Mat
 █
 █
 │
 │
 █
-Match with
+X
+File contents
 █
 Text
 │
 │
 █
-Fuzzy, phonetic, and substring matching
-█
-│
-│
-█
-(always on)
+Text inside documents, tags, and metadata
 █
 │
 │
@@ -73,33 +67,31 @@ Fuzzy, phonetic, and substring matching
 │
 │
 █
-X
-Semantic
+How to match
 █
 │
 │
 █
-X
-OCR
-▅▅
+Fuzzy, phonetic, and substring matching (always on)
 █
 │
 │
 █
-X
-Transcribe
 █
 │
 │
 █
 X
-Image semantic
+Similar meaning
 █
 │
 │
 █
-X
-Enable all power-ups
+Find related words, not just exact spelling
+█
+│
+│
+█
 █
 │
 │
