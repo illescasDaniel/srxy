@@ -1,10 +1,29 @@
 from __future__ import annotations
 
+from textual import on
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Static
 
+from srxy.tui.labels import (
+	CLASSIC_MATCHING_HINT,
+	FILTER_LABEL_AUDIO_VIDEO_SIZE,
+	FILTER_LABEL_DOCUMENT_SIZE,
+	FILTER_LABEL_HITS_PER_FILE,
+	FILTER_LABEL_IMAGE_TEXT_SIZE,
+	FILTER_LABEL_MAX_RESULTS,
+	FILTER_LABEL_MIN_MATCH,
+	FILTER_LABEL_SPEECH_MIN,
+	FILTER_LABEL_VISUAL_MIN,
+	FILTER_SECTION_LIMITS,
+	FILTER_SECTION_SENSITIVITY,
+	SEARCH_OPTIONS_SECTION_HOW,
+	SEARCH_OPTIONS_SECTION_SCAN,
+	SEARCH_OPTIONS_SECTION_WHERE,
+	option_hint,
+	option_label,
+)
 from srxy.tui.search_filters import SearchFilters, validate_search_filters
 from srxy.tui.search_options import SearchOptions
 from srxy.tui.size_limits import SizeLimits
@@ -136,8 +155,8 @@ class HelpModal(ModalScreen[None]):
   Orange Search  Settings changed since last run — search again
 
 [b]Filters[/b]
-  Filters            Top files, thresholds, per-file match cap, and size limits (MiB)
-  Search modes       Names, content, semantic, OCR, archives, …
+  Filters            Result limits, file size caps, and match sensitivity
+  Search options     Where to search, how to match, which files to scan
 
 [b]Results[/b]
   j / k          Move selection
@@ -169,7 +188,7 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 	}
 
 	#search-filters-dialog {
-		width: 56;
+		width: 60;
 		height: auto;
 		max-height: 80%;
 		overflow: hidden;
@@ -189,6 +208,14 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		height: 1fr;
 		min-height: 1;
 		margin-bottom: 1;
+	}
+
+	.search-filters-section {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		text-style: bold;
+		margin-top: 1;
 	}
 
 	.search-filters-label {
@@ -244,26 +271,28 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		with Vertical(id="search-filters-dialog"):
 			yield Static("Search filters", id="search-filters-title")
 			with VerticalScroll(id="search-filters-scroll"):
-				yield Label("Top files (empty = all)", classes="search-filters-label")
+				yield Static(FILTER_SECTION_LIMITS, classes="search-filters-section")
+				yield Label(FILTER_LABEL_MAX_RESULTS, classes="search-filters-label")
 				yield Input(
 					id="sf-top-files",
 					classes="search-filters-input",
 					placeholder="all",
 					compact=True,
 				)
-				yield Label("Matches per file", classes="search-filters-label")
+				yield Label(FILTER_LABEL_HITS_PER_FILE, classes="search-filters-label")
 				yield Input(id="sf-max-matches", classes="search-filters-input", compact=True)
-				yield Label("Text & documents (MiB, 0 = unlimited)", classes="search-filters-label")
+				yield Label(FILTER_LABEL_DOCUMENT_SIZE, classes="search-filters-label")
 				yield Input(id="sf-size-text", classes="search-filters-input", compact=True)
-				yield Label("OCR (MiB)", classes="search-filters-label")
+				yield Label(FILTER_LABEL_IMAGE_TEXT_SIZE, classes="search-filters-label")
 				yield Input(id="sf-size-ocr", classes="search-filters-input", compact=True)
-				yield Label("Transcribe (MiB)", classes="search-filters-label")
+				yield Label(FILTER_LABEL_AUDIO_VIDEO_SIZE, classes="search-filters-label")
 				yield Input(id="sf-size-transcribe", classes="search-filters-input", compact=True)
-				yield Label("Match threshold %", classes="search-filters-label")
+				yield Static(FILTER_SECTION_SENSITIVITY, classes="search-filters-section")
+				yield Label(FILTER_LABEL_MIN_MATCH, classes="search-filters-label")
 				yield Input(id="sf-threshold", classes="search-filters-input", compact=True)
-				yield Label("Image semantic threshold %", classes="search-filters-label")
+				yield Label(FILTER_LABEL_VISUAL_MIN, classes="search-filters-label")
 				yield Input(id="sf-semantic-image-threshold", classes="search-filters-input", compact=True)
-				yield Label("Transcribe threshold %", classes="search-filters-label")
+				yield Label(FILTER_LABEL_SPEECH_MIN, classes="search-filters-label")
 				yield Input(id="sf-transcribe-threshold", classes="search-filters-input", compact=True)
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
@@ -318,7 +347,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	}
 
 	#search-options-dialog {
-		width: 48;
+		width: 64;
 		height: auto;
 		max-height: 80%;
 		overflow: hidden;
@@ -338,6 +367,28 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		height: 1fr;
 		min-height: 1;
 		margin-bottom: 1;
+	}
+
+	.search-options-section {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		text-style: bold;
+		margin-top: 1;
+	}
+
+	.search-options-hint {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		padding: 0 1;
+		margin-bottom: 1;
+	}
+
+	.search-options-option-hint {
+		margin-top: 0;
+		margin-bottom: 1;
+		padding-left: 2;
 	}
 
 	#search-options-scroll Checkbox {
@@ -360,6 +411,18 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		background: $primary;
 		color: $button-foreground;
 		border: none;
+	}
+
+	#search-options-scroll Checkbox:disabled {
+		color: $text-muted;
+		opacity: 0.6;
+	}
+
+	#search-options-error {
+		width: 100%;
+		height: auto;
+		color: $error;
+		margin-bottom: 1;
 	}
 
 	#search-options-buttons {
@@ -385,46 +448,150 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	}
 	"""
 
+	_CONTENT_ONLY_IDS = ("so-ocr", "so-transcribe", "so-semantic-image")
+	_POWERUP_IDS = ("so-semantic", "so-ocr", "so-transcribe", "so-semantic-image")
+
 	def __init__(self, initial: SearchOptions):
 		super().__init__()
 		self._initial = initial
+		self._syncing_checkboxes = False
+
+	def _compose_option(self, checkbox_id: str, *, value: bool) -> ComposeResult:
+		yield Checkbox(option_label(checkbox_id), id=checkbox_id, value=value)
+		hint = option_hint(checkbox_id)
+		if hint:
+			yield Static(hint, classes="search-options-hint search-options-option-hint")
 
 	def compose(self) -> ComposeResult:
+		all_powerups = (
+			self._initial.semantic and self._initial.ocr and self._initial.transcribe and self._initial.semantic_image
+		)
 		with Vertical(id="search-options-dialog"):
-			yield Static("Search modes", id="search-options-title")
+			yield Static("Search options", id="search-options-title")
 			with VerticalScroll(id="search-options-scroll"):
-				yield Checkbox("Names", id="so-names", value=self._initial.search_names)
-				yield Checkbox("Content", id="so-content", value=self._initial.search_contents)
-				yield Checkbox("Semantic", id="so-semantic", value=self._initial.semantic)
-				yield Checkbox("Image semantic", id="so-semantic-image", value=self._initial.semantic_image)
-				yield Checkbox("OCR", id="so-ocr", value=self._initial.ocr)
-				yield Checkbox("Transcribe", id="so-transcribe", value=self._initial.transcribe)
-				yield Checkbox("Hidden", id="so-hidden", value=self._initial.include_hidden)
-				yield Checkbox("Noise", id="so-noise", value=self._initial.include_noise)
-				yield Checkbox("Archives", id="so-archives", value=self._initial.include_archives)
+				yield Static(SEARCH_OPTIONS_SECTION_WHERE, classes="search-options-section")
+				yield from self._compose_option("so-names", value=self._initial.search_names)
+				yield from self._compose_option("so-content", value=self._initial.search_contents)
+				yield Static(SEARCH_OPTIONS_SECTION_HOW, classes="search-options-section")
+				yield Static(CLASSIC_MATCHING_HINT, classes="search-options-hint")
+				yield from self._compose_option("so-semantic", value=self._initial.semantic)
+				yield from self._compose_option("so-ocr", value=self._initial.ocr)
+				yield from self._compose_option("so-transcribe", value=self._initial.transcribe)
+				yield from self._compose_option("so-semantic-image", value=self._initial.semantic_image)
+				yield from self._compose_option("so-enable-all", value=all_powerups)
+				yield Static(SEARCH_OPTIONS_SECTION_SCAN, classes="search-options-section")
+				yield from self._compose_option("so-hidden", value=self._initial.include_hidden)
+				yield from self._compose_option("so-noise", value=self._initial.include_noise)
+				yield from self._compose_option("so-archives", value=self._initial.include_archives)
+			yield Label("", id="search-options-error")
 			with Grid(id="search-options-buttons"):
 				yield Button("Cancel", id="search-options-cancel")
 				yield Button("Apply", variant="primary", id="search-options-apply")
 
+	def on_mount(self):
+		self._sync_content_dependent_controls()
+
+	def _content_enabled(self) -> bool:
+		return self.query_one("#so-content", Checkbox).value
+
+	def _powerup_values(self) -> tuple[bool, bool, bool, bool]:
+		return (
+			self.query_one("#so-semantic", Checkbox).value,
+			self.query_one("#so-ocr", Checkbox).value,
+			self.query_one("#so-transcribe", Checkbox).value,
+			self.query_one("#so-semantic-image", Checkbox).value,
+		)
+
+	def _all_powerups_enabled(self) -> bool:
+		return all(self._powerup_values())
+
+	def _set_checkbox_value(self, checkbox_id: str, value: bool):
+		checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
+		if checkbox.value != value:
+			checkbox.value = value
+
+	def _set_powerups(self, *, semantic: bool, ocr: bool, transcribe: bool, semantic_image: bool):
+		self._syncing_checkboxes = True
+		try:
+			self._set_checkbox_value("so-semantic", semantic)
+			self._set_checkbox_value("so-ocr", ocr)
+			self._set_checkbox_value("so-transcribe", transcribe)
+			self._set_checkbox_value("so-semantic-image", semantic_image)
+			self._set_checkbox_value("so-enable-all", semantic and ocr and transcribe and semantic_image)
+		finally:
+			self._syncing_checkboxes = False
+
+	def _sync_enable_all_from_powerups(self):
+		if self._syncing_checkboxes:
+			return
+		self._syncing_checkboxes = True
+		try:
+			self._set_checkbox_value("so-enable-all", self._all_powerups_enabled())
+		finally:
+			self._syncing_checkboxes = False
+
+	def _sync_content_dependent_controls(self):
+		content_enabled = self._content_enabled()
+		for checkbox_id in self._CONTENT_ONLY_IDS:
+			checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
+			checkbox.disabled = not content_enabled
+
 	def _current_options(self) -> SearchOptions:
+		search_contents = self._content_enabled()
+		semantic, ocr, transcribe, semantic_image = self._powerup_values()
+		if not search_contents:
+			ocr = False
+			transcribe = False
+			semantic_image = False
 		return SearchOptions(
 			search_names=self.query_one("#so-names", Checkbox).value,
-			search_contents=self.query_one("#so-content", Checkbox).value,
-			semantic=self.query_one("#so-semantic", Checkbox).value,
-			semantic_image=self.query_one("#so-semantic-image", Checkbox).value,
-			ocr=self.query_one("#so-ocr", Checkbox).value,
-			transcribe=self.query_one("#so-transcribe", Checkbox).value,
+			search_contents=search_contents,
+			semantic=semantic,
+			semantic_image=semantic_image,
+			ocr=ocr,
+			transcribe=transcribe,
 			include_hidden=self.query_one("#so-hidden", Checkbox).value,
 			include_noise=self.query_one("#so-noise", Checkbox).value,
 			include_archives=self.query_one("#so-archives", Checkbox).value,
 		)
 
+	@on(Checkbox.Changed, "#so-content")
+	def _on_content_changed(self):
+		self._sync_content_dependent_controls()
+
+	@on(Checkbox.Changed, "#so-enable-all")
+	def _on_enable_all_changed(self, event: Checkbox.Changed):
+		if self._syncing_checkboxes:
+			return
+		self._set_powerups(
+			semantic=event.value,
+			ocr=event.value and self._content_enabled(),
+			transcribe=event.value and self._content_enabled(),
+			semantic_image=event.value and self._content_enabled(),
+		)
+
+	@on(Checkbox.Changed, "#so-semantic")
+	@on(Checkbox.Changed, "#so-ocr")
+	@on(Checkbox.Changed, "#so-transcribe")
+	@on(Checkbox.Changed, "#so-semantic-image")
+	def _on_powerup_changed(self):
+		if self._syncing_checkboxes:
+			return
+		self._sync_enable_all_from_powerups()
+
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "search-options-cancel":
 			self.dismiss(None)
 			return
-		if event.button.id == "search-options-apply":
-			self.dismiss(self._current_options())
+		if event.button.id != "search-options-apply":
+			return
+		error = self.query_one("#search-options-error", Label)
+		options = self._current_options()
+		if not options.search_names and not options.search_contents:
+			error.update("Enable at least one of File names or File contents.")
+			return
+		error.update("")
+		self.dismiss(options)
 
 
 class ErrorModal(ModalScreen[None]):

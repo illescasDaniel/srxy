@@ -126,7 +126,7 @@ def test_given_two_terms_when_editing_rows_then_updates_query_string():
 			expr = builder.to_file_query()
 
 			# then
-			assert expr == FileQ.leaf("red") & FileQ.leaf("blue")
+			assert expr == FileQ.leaf("red") | FileQ.leaf("blue")
 
 	asyncio.run(run())
 
@@ -165,7 +165,7 @@ def test_given_compound_initial_query_when_mounted_then_shows_and_join_label():
 	asyncio.run(run())
 
 
-def test_given_query_builder_when_adding_term_then_shows_and_join_label():
+def test_given_query_builder_when_adding_term_then_shows_or_join_label():
 	# given
 	app = _QueryBuilderApp()
 
@@ -179,7 +179,7 @@ def test_given_query_builder_when_adding_term_then_shows_and_join_label():
 			svg = app.export_screenshot(title="query-builder-add-term")
 
 			# then
-			assert "AND" in normalized_svg_text(svg)
+			assert "OR" in normalized_svg_text(svg)
 
 	asyncio.run(run())
 

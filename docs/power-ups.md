@@ -1,6 +1,6 @@
 # Power-ups
 
-Off by default. Enable per run (flags) or persist (`SRXY_*` env vars).
+Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI, power-ups live under **Match with** in the **Search options** dialog.
 
 ## OCR
 

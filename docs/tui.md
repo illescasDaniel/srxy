@@ -28,7 +28,7 @@ Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
 | Area | What it shows |
 |------|----------------|
 | **Query / Path** | Search string and root directory; **Search** runs the scan |
-| **Search modes** | Dialog for what to match: names, content, semantic, OCR, archives, … |
+| **Search options** | Dialog with three sections: **Where to search**, **How to match** (similar meaning, text in images, spoken words, visual description), **Which files to scan** |
 | **Filters** | Dialog for top files, per-file match cap, and size limits (MiB) |
 | **Results** | Sortable table: match %, path, sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
 | **Preview** | Selected file path, score, sources, hit table (location + **bold** query highlights) |
@@ -51,12 +51,12 @@ The query area has two modes:
 
 | Mode | Use for |
 |------|---------|
-| **Builder** (default) | Simple linear queries — one term per row, **AND** / **OR** between rows |
+| **Builder** (default) | Simple linear queries — one term per row, **OR** by default between new rows (change to **AND** per row) |
 | **Advanced** | Grouped boolean syntax — `|`, `&`, and parentheses (same rules as the [CLI](cli.md#boolean-queries)) |
 
 Click **Advanced** to edit the raw query string; click **Builder** to return to term rows. The muted preview line below shows the formatted query (or a parse error in Advanced mode).
 
-**Builder** rows combine left-to-right: `foo` OR `bar` AND `baz` becomes `(foo | bar) & baz`. For `(foo | bar) & baz` vs `foo | (bar & baz)`, use **Advanced** or launch with a grouped CLI query:
+**Builder** rows combine left-to-right: new rows default to **OR**; `foo` OR `bar` AND `baz` becomes `(foo | bar) & baz`. For `(foo | bar) & baz` vs `foo | (bar & baz)`, use **Advanced** or launch with a grouped CLI query:
 
 ```bash
 srxy "(revenue|amphibian) & person" ./tests/fixtures/file_search

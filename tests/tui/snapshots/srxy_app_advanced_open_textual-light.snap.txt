@@ -15,87 +15,79 @@ hello
 █
 █
 │
-+ Term
-Adv
+Add t
 █
 █
 └
 █
-Search modes
+Search options
 █
-Search modes
-Names, C
-█
+Search options
 █
 █
-X
-Names
+█
 █
 Filters
-All files ·
+All
+█
+Where to search
+█
+ipt≥25%
 █
 X
-Content
-█
-transcript≥25%
-█
-X
-Semantic
+File names
 █
 ┌
 █
-X
-Image semantic
+Match the path and filename
 █
 ┐
 │
 Match
 Path
-Matched
+Mat
 █
-X
-OCR
 █
 │
 │
 █
 X
-Transcribe
+File contents
 █
 Text
 │
 │
 █
+Text inside documents, tags, and metadata
+█
+│
+│
+█
+█
+│
+│
+█
+How to match
+█
+│
+│
+█
+Fuzzy, phonetic, and substring matching (always on)
+█
+│
+│
+█
+█
+│
+│
+█
 X
-Hidden
+Similar meaning
 █
 │
 │
 █
-X
-Noise
-█
-│
-│
-█
-X
-Archives
-█
-│
-│
-█
-█
-│
-│
-█
-█
-│
-│
-█
-█
-│
-│
-█
+Find related words, not just exact spelling
 █
 │
 │

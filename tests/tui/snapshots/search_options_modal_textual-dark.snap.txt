@@ -5,53 +5,47 @@ host
 █
 █
 █
-Search modes
+Search options
+█
+█
+█
+█
+█
+█
+Where to search
+█
+█
+X
+File names
+█
+█
+Match the path and filename
 █
 █
 █
 █
 X
-Names
+File contents
+█
+█
+Text inside documents, tags, and metadata
+█
+█
+█
+█
+How to match
+█
+█
+Fuzzy, phonetic, and substring matching (always on)
+█
+█
 █
 █
 X
-Content
+Similar meaning
 █
 █
-X
-Semantic
-█
-█
-X
-Image semantic
-█
-█
-X
-OCR
-█
-█
-X
-Transcribe
-█
-█
-X
-Hidden
-█
-█
-X
-Noise
-█
-█
-X
-Archives
-█
-█
-█
-█
-█
-█
-█
-█
+Find related words, not just exact spelling
 █
 █
 █

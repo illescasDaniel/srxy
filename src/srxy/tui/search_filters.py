@@ -5,6 +5,13 @@ from dataclasses import dataclass
 
 from srxy.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
 from srxy.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
+from srxy.tui.labels import (
+	FILTER_LABEL_HITS_PER_FILE,
+	FILTER_LABEL_MAX_RESULTS,
+	FILTER_LABEL_MIN_MATCH,
+	FILTER_LABEL_SPEECH_MIN,
+	FILTER_LABEL_VISUAL_MIN,
+)
 from srxy.tui.size_limits import (
 	SizeLimits,
 	apply_size_limits_to_args,
@@ -98,24 +105,26 @@ def _parse_threshold_percent(raw: str, *, field_name: str) -> float:
 
 def parse_search_filter_limits(filters: SearchFilters) -> tuple[int | None, int]:
 	limit = (
-		_parse_optional_positive_int(filters.top_files, field_name="Top files") if filters.top_files.strip() else None
+		_parse_optional_positive_int(filters.top_files, field_name=FILTER_LABEL_MAX_RESULTS)
+		if filters.top_files.strip()
+		else None
 	)
-	max_matches = _parse_optional_positive_int(filters.max_matches, field_name="Matches per file") or 50
+	max_matches = _parse_optional_positive_int(filters.max_matches, field_name=FILTER_LABEL_HITS_PER_FILE) or 50
 	return limit, max_matches
 
 
 def parse_search_filter_thresholds(filters: SearchFilters) -> tuple[float, float, float]:
 	threshold = _parse_threshold_percent(
 		filters.threshold or _percent_text(_DEFAULT_THRESHOLD),
-		field_name="Match threshold %",
+		field_name=FILTER_LABEL_MIN_MATCH,
 	)
 	semantic_image_threshold = _parse_threshold_percent(
 		filters.semantic_image_threshold or _percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD),
-		field_name="Image semantic threshold %",
+		field_name=FILTER_LABEL_VISUAL_MIN,
 	)
 	transcribe_threshold = _parse_threshold_percent(
 		filters.transcribe_threshold or _percent_text(DEFAULT_TRANSCRIBE_THRESHOLD),
-		field_name="Transcribe threshold %",
+		field_name=FILTER_LABEL_SPEECH_MIN,
 	)
 	return threshold, semantic_image_threshold, transcribe_threshold
 
