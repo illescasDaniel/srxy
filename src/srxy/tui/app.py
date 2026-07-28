@@ -364,7 +364,7 @@ class SrxyApp(App[int]):
 	def _current_snapshot(self) -> _SearchSnapshot:
 		builder = self._query_builder()
 		return _SearchSnapshot(
-			query=builder.to_query_string(),
+			query=builder.to_snapshot_query_string(),
 			path=self.query_one("#path-input", Input).value or ".",
 			search_options=self.search_options,
 			search_filters=self.search_filters,

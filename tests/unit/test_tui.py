@@ -10,12 +10,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 from rich.text import Text
 from textual.coordinate import Coordinate
-from textual.widgets import DataTable, Footer
+from textual.widgets import DataTable, Footer, Input
 
 from srxy.cli import build_parser, should_use_tui
 from srxy.models import FileSearchResult, LineMatch
 from srxy.tui.app import SrxyApp
 from srxy.tui.modals import SearchOptionsModal
+from srxy.tui.query_builder import QueryBuilder
 from srxy.tui.theme import detect_app_theme
 
 
@@ -299,6 +300,28 @@ def test_given_completed_search_when_option_changes_then_search_button_becomes_s
 				await pilot.click("#search-options-apply")
 				await pilot.pause()
 				assert button.has_class("-stale")
+
+	# when / then
+	asyncio.run(run_app())
+
+
+def test_given_invalid_advanced_query_when_typing_then_app_does_not_crash_and_button_is_stale(tmp_path: Path):
+	# given
+	args = _build_args(["hello", str(tmp_path), "--content-only"])
+
+	async def run_app():
+		app = SrxyApp(args, auto_start=False)
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			button = app.query_one("#search-button")
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+			app.query_one("#query-raw-input", Input).value = "boo|bar&"
+
+			# when / then
+			await pilot.pause()
+			assert button.has_class("-stale")
+			assert app.query_one("#query-builder", QueryBuilder).to_snapshot_query_string() == "boo|bar&"
 
 	# when / then
 	asyncio.run(run_app())

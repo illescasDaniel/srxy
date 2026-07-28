@@ -191,6 +191,18 @@ class QueryBuilder(Horizontal):
 			return format_file_query(parse_file_query(raw))
 		return format_file_query(self.to_file_query())
 
+	def to_snapshot_query_string(self) -> str:
+		"""Return a stable query string for UI snapshot comparisons."""
+		if not self._advanced_mode:
+			return self.to_query_string()
+		raw = self._raw_query_value().strip()
+		if not raw:
+			return ""
+		try:
+			return format_file_query(parse_file_query(raw))
+		except FileQueryParseError:
+			return raw
+
 	def has_nonempty_term(self) -> bool:
 		if self._advanced_mode:
 			raw = self._raw_query_value().strip()
@@ -264,7 +276,11 @@ class QueryBuilder(Horizontal):
 
 	def _switch_to_advanced(self):
 		raw_input = self.query_one("#query-raw-input", Input)
-		raw_input.value = format_file_query(build_file_query_from_rows(self._read_rows()))
+		query = build_file_query_from_rows(self._read_rows())
+		if query.node_type == QNodeType.LEAF and not (query.value or "").strip():
+			raw_input.value = ""
+		else:
+			raw_input.value = format_file_query(query)
 		self._advanced_mode = True
 		self.add_class("-advanced")
 		self.query_one("#mode-toggle-button", Button).label = "Builder"

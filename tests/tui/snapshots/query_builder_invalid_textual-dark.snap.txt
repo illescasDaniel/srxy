@@ -3,9 +3,7 @@ query-builder-invalid
 ┐
 │
 Query
-(f
-o
-o
+(foo
 │
 │
 invalid: missing closing parenthesis

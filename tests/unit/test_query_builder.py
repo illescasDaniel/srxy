@@ -228,6 +228,26 @@ def test_given_query_builder_when_switching_to_advanced_then_shows_raw_input():
 	asyncio.run(run())
 
 
+def test_given_empty_builder_query_when_switching_to_advanced_then_raw_input_stays_empty():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+
+			# when
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+
+			# then
+			assert builder.has_class("-advanced")
+			assert builder.query_one("#query-raw-input", Input).value == ""
+
+	asyncio.run(run())
+
+
 def test_given_advanced_query_when_switching_to_builder_then_splits_rows():
 	# given
 	app = _QueryBuilderApp(initial_query="(red|blue)&color")
@@ -269,6 +289,25 @@ def test_given_invalid_advanced_query_when_editing_then_shows_parse_error():
 			# when / then
 			assert "invalid:" in str(builder.query_one("#query-preview", Static).content)
 			assert not builder.has_nonempty_term()
+
+	asyncio.run(run())
+
+
+def test_given_invalid_advanced_query_when_snapshot_string_requested_then_returns_raw_query():
+	# given
+	app = _QueryBuilderApp()
+
+	async def run():
+		async with app.run_test() as pilot:
+			await pilot.pause()
+			builder = app.builder()
+			await pilot.click("#mode-toggle-button")
+			await pilot.pause()
+			builder.query_one("#query-raw-input", Input).value = "boo|bar&"
+			await pilot.pause()
+
+			# when / then
+			assert builder.to_snapshot_query_string() == "boo|bar&"
 
 	asyncio.run(run())
 
