@@ -28,7 +28,11 @@ Regenerate after intentional UI changes:
 UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/test_query_builder_display.py
 ```
 
-Run the full local gate (`./scripts/quality/checks.sh`) so integration and TUI tests execute; CI (`CI=true`) runs `unit` tests excluding `semantic` and `transcribe`.
+## GUI changes
+
+When adding or changing GUI QML layout or visible labels, add or update text-tree snapshot tests under [`tests/gui/`](tests/gui/). Refresh with `UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen pytest tests/gui/test_gui_snapshots.py`.
+
+Run the full local gate (`./scripts/quality/checks.sh`) so integration, TUI, and GUI tests execute; CI (`CI=true`) runs `unit` tests excluding `semantic` and `transcribe`.
 
 ## Typing
 

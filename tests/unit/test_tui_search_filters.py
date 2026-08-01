@@ -2,15 +2,15 @@ from __future__ import annotations
 
 import pytest
 
-from srxy.cli import build_parser
-from srxy.tui.search_filters import (
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.application.search_filters import (
 	SearchFilters,
 	apply_search_filters_to_args,
 	format_search_filters_summary,
 	search_filters_from_args,
 	validate_search_filters,
 )
-from srxy.tui.size_limits import SizeLimits
+from srxy.application.size_limits import SizeLimits
 
 
 pytestmark = pytest.mark.unit

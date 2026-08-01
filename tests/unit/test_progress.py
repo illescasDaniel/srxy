@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from srxy.progress import ActivityUpdate, clear_activity, emit_activity, format_activity_status
+from srxy.domain.progress import ActivityUpdate, clear_activity, emit_activity, format_activity_status
 
 
 def test_given_activity_update_when_determinate_then_reports_progress():
@@ -64,7 +64,9 @@ def test_given_indeterminate_activity_when_formatting_status_then_omits_percent(
 
 def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_progress():
 	# given
-	from srxy.transcribe_text import _iter_faster_whisper_segments  # pyright: ignore[reportPrivateUsage]
+	from srxy.adapters.outbound.transcribe.transcribe_text import (
+		_iter_faster_whisper_segments,  # pyright: ignore[reportPrivateUsage]
+	)
 
 	segment = MagicMock(start=0.0, end=15.0, text="hello")
 	info = MagicMock(duration=60.0)
@@ -73,7 +75,7 @@ def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_pro
 	received: list[ActivityUpdate | None] = []
 
 	# when
-	with patch("srxy.transcribe_text._get_faster_whisper_model", return_value=model):
+	with patch("srxy.adapters.outbound.transcribe.transcribe_text._get_faster_whisper_model", return_value=model):
 		segments = list(
 			_iter_faster_whisper_segments(
 				__import__("pathlib").Path("audio.wav"),

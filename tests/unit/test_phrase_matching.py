@@ -5,9 +5,9 @@ from pathlib import Path
 import pytest
 from tests.helpers import file_search_root, require_file_search_fixtures
 
-from srxy.file_query import format_query_for_display
-from srxy.file_search import magic_file_search
-from srxy.utils import format_match_preview
+from srxy.application.use_cases.search_files import magic_file_search
+from srxy.application.utils import format_match_preview
+from srxy.domain.file_query import format_query_for_display
 
 
 pytestmark = pytest.mark.unit

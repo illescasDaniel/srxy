@@ -4,8 +4,8 @@ import pytest
 from tests.helpers import Product
 
 from srxy import FieldConfig, MatchType, Q, search
-from srxy.matchers.composite import CompositeMatcher
-from srxy.matchers.registry import get_atomic_matcher, get_matcher, is_matcher_available
+from srxy.application.matching.composite import CompositeMatcher
+from srxy.application.matching.registry import get_atomic_matcher, get_matcher, is_matcher_available
 
 
 pytestmark = pytest.mark.unit

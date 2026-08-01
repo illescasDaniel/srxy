@@ -9,9 +9,8 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from srxy.cli import build_parser
-from srxy.models import FileSearchResult, LineMatch, SkippedFile
-from srxy.tui.search_worker import (
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.outbound.worker.search_worker import (
 	args_to_payload,
 	build_worker_env,
 	file_result_from_dict,
@@ -19,6 +18,7 @@ from srxy.tui.search_worker import (
 	run_worker_main,
 	search_uses_subprocess,
 )
+from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
 
 
 pytestmark = pytest.mark.unit
@@ -70,14 +70,14 @@ def test_given_file_search_result_when_round_trip_dict_then_preserves_fields(tmp
 
 def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypatch: pytest.MonkeyPatch):
 	# given
-	args = _build_args(["transform", ".", "--ocr", "--no-tui"])
+	args = _build_args(["transform", ".", "--ocr", "--cli"])
 	result = FileSearchResult(path=Path("doc.png"), score=0.5, lines=[])
 	skipped = [SkippedFile(path=Path("big.png"), size_bytes=99)]
 	stdout = StringIO()
 	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
 	monkeypatch.setattr("sys.stdout", stdout)
 	monkeypatch.setattr(
-		"srxy.tui.search_worker.execute_search",
+		"srxy.adapters.outbound.worker.search_worker.execute_search",
 		MagicMock(return_value=([result], skipped)),
 	)
 
@@ -115,14 +115,14 @@ def test_given_worker_args_when_run_worker_main_then_sets_worker_env(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	args = _build_args(["transform", ".", "--ocr", "--no-tui"])
+	args = _build_args(["transform", ".", "--ocr", "--cli"])
 	stdout = StringIO()
 	for key in ("TQDM_DISABLE", "JOBLIB_MULTIPROCESSING"):
 		monkeypatch.delenv(key, raising=False)
 	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
 	monkeypatch.setattr("sys.stdout", stdout)
 	monkeypatch.setattr(
-		"srxy.tui.search_worker.execute_search",
+		"srxy.adapters.outbound.worker.search_worker.execute_search",
 		MagicMock(return_value=([], [])),
 	)
 

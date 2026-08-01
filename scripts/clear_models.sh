@@ -3,4 +3,4 @@
 set -euo pipefail
 
 target="${1:-all}"
-exec python -m srxy.model_store clear "$target"
+exec python -m srxy.adapters.outbound.models.model_store clear "$target"

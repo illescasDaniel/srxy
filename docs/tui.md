@@ -1,16 +1,16 @@
 # Interactive TUI
 
-On an interactive terminal (no `--json`, `--format flat`, or `-o`), srxy opens a **Textual** full-screen TUI by default.
+Launch with **`--tui`**. On an interactive terminal when the GUI cannot start (no display / no PySide6), srxy falls through to this Textual TUI.
 
 ![srxy TUI](images/tui.svg)
 
 The screenshot above uses this compound OR query against the repo fixtures — one branch per power-up:
 
 ```bash
-srxy "revenue|amphibian|person|thank you" ./tests/fixtures/file_search --semantic-all --content-only
+srxy --tui "revenue|amphibian|person|thank you" ./tests/fixtures/file_search --semantic-all --content-only
 ```
 
-Plain CLI (same flags, no TUI): add `--no-tui`.
+Plain CLI (same flags, no interactive UI): add `--cli`.
 
 | OR term | Typical match | Source |
 |---------|---------------|--------|
@@ -86,7 +86,7 @@ Uses OSC 52; most modern terminals support it.
 
 ## When the TUI is skipped
 
-Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`).
+Plain CLI when: **`--cli`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`). Prefer **`--tui`** to force the TUI; the GUI is the default when a display is available (see [gui.md](gui.md)).
 
 ## Manual release checklist
 

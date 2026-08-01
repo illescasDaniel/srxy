@@ -1,0 +1,23 @@
+mainWindow:
+  title: srxy
+  status: Ready
+  progressPercent: 0%
+  sections: Where to search, What to search, How to search, Search, Search Results, Search progress
+  howStack: Options button + summary, Filters button + summary
+  queryMode: simple
+  simpleQuery: 
+  path: .
+  pathIssue: 
+  queryPreview: 
+  queryIssue: 
+  optionsSummary: Where: Names, Content
+  filtersSummary: All files · 50/file · text 100 MiB · match≥35% · image≥18% · transcript≥25%
+  capabilityKeys: ffmpeg, has_gpu, ocr, ocr_enabled, semantic_deps, semantic_enabled, semantic_image_enabled, transcribe_deps, transcribe_enabled
+  stale: True
+  hasSearched: False
+  canSearch: False
+  buttons: Browse…, Search, Options, Filters, Cancel
+  menus: Open file, Copy path, Copy all matches, Copy line, Copy location
+  panels: Results, Matches in file, File preview
+  resultColumns: #, Match, Path, Matched
+  matchColumns: #, Match, Location, Text

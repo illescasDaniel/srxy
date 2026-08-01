@@ -6,7 +6,7 @@
 
 **Find files by what you mean — terminal or Python.**
 
-Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audio, video, and OS tags. On a TTY, **srxy opens a full-screen TUI by default**; use `--no-tui` for scripts and pipes.
+Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audio, video, and OS tags. On a desktop session, **srxy opens a GUI by default**; use `--tui` for the terminal UI or `--cli` for scripts and pipes.
 
 ## Installation
 
@@ -16,12 +16,23 @@ Needs **Python 3.11+**. `pipx install 'srxy[semantic]'` recommended; `pip instal
 
 ## Quick start
 
-**TUI (default on a TTY):**
+**GUI (default on a graphical session):**
 
 ```bash
 srxy                          # empty query/path
 srxy "registry" ./src         # pre-filled; auto-starts
-srxy "transform" ./docs --ocr
+```
+
+![srxy GUI](docs/images/gui.png)
+
+Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
+
+**TUI:**
+
+```bash
+srxy --tui
+srxy --tui "registry" ./src
+srxy --tui "transform" ./docs --ocr
 ```
 
 ![srxy TUI](docs/images/tui.svg)
@@ -31,7 +42,7 @@ Live scan progress, sortable results, preview pane, option chips, clipboard copy
 **Plain CLI:**
 
 ```bash
-srxy "registry" ./src --no-tui
+srxy "registry" ./src --cli
 srxy "revenue" ./docs --json
 srxy "dog at the beach" ~/Pictures --semantic-image --content-only
 srxy "revenue" ./docs --semantic-all --content-only
@@ -49,7 +60,7 @@ magic_file_search(Path("./src"), "registry", threshold=0.3)
 magic_search([{"name": "salad"}], "salat", fields=["name"])
 ```
 
-API reference: [docs/python-api.md](docs/python-api.md).
+API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.md](docs/api-reference.md).
 
 ## Documentation
 
@@ -60,6 +71,7 @@ API reference: [docs/python-api.md](docs/python-api.md).
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |
 | [Python API](docs/python-api.md) | `magic_file_search`, `search`, `Q`, match types |
+| [API reference](docs/api-reference.md) | Generated signatures from `srxy.__all__` |
 | [Development](docs/development.md) | Quality gate, `--full`, fixtures, pytest |
 
 ## Development

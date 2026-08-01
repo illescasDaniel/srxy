@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.model_store import (
+from srxy.adapters.outbound.models.model_store import (
 	SEMANTIC_IMAGE_MODEL_ID,
 	SEMANTIC_TEXT_MODEL_ID,
 	clear_semantic_text_model,
@@ -57,7 +57,7 @@ def test_given_cached_model_when_ensuring_text_model_then_skips_download(
 	(model_dir / "config.json").write_text("{}", encoding="utf-8")
 	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(model_dir))
 
-	with patch("srxy.model_store.download_model") as download:
+	with patch("srxy.adapters.outbound.models.model_store.download_model") as download:
 		# when
 		ready = ensure_semantic_text_model(interactive=False)
 
@@ -75,7 +75,7 @@ def test_given_missing_model_when_user_declines_then_ensure_returns_false(
 	stdin = io.StringIO("n\n")
 	stdout = io.StringIO()
 
-	with patch("srxy.model_store.download_model") as download:
+	with patch("srxy.adapters.outbound.models.model_store.download_model") as download:
 		# when
 		ready = ensure_semantic_text_model(interactive=True, stdin=stdin, stdout=stdout)
 
@@ -96,7 +96,7 @@ def test_given_missing_model_when_user_accepts_then_downloads_to_cache(
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 		assert model_id == SEMANTIC_TEXT_MODEL_ID
 
-	with patch("srxy.model_store.download_model", side_effect=fake_download) as download:
+	with patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download) as download:
 		# when
 		ready = ensure_semantic_text_model(interactive=False, auto_download=True)
 
@@ -118,7 +118,7 @@ def test_given_auto_download_when_ensuring_image_model_then_downloads_without_pr
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 		assert model_id == SEMANTIC_IMAGE_MODEL_ID
 
-	with patch("srxy.model_store.download_model", side_effect=fake_download) as download:
+	with patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download) as download:
 		# when
 		ready = ensure_semantic_image_model(interactive=False, auto_download=True)
 
@@ -133,7 +133,7 @@ def test_given_download_cli_when_target_is_semantic_text_then_downloads_model(
 	# given
 	monkeypatch.setenv("SRXY_SEMANTIC_MODEL_PATH", str(tmp_path / "semantic-model"))
 
-	with patch("srxy.model_store.download_semantic_text_model") as download_text:
+	with patch("srxy.adapters.outbound.models.model_store.download_semantic_text_model") as download_text:
 		# when
 		exit_code = main(["semantic-text"])
 
@@ -153,7 +153,7 @@ def test_given_download_helper_when_called_then_sets_model_path_env(
 		target_dir.mkdir(parents=True, exist_ok=True)
 		(target_dir / "modules.json").write_text("{}", encoding="utf-8")
 
-	with patch("srxy.model_store.download_model", side_effect=fake_download):
+	with patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download):
 		# when
 		download_semantic_text_model()
 
@@ -166,7 +166,7 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setattr("srxy.model_store.default_cache_root", lambda: tmp_path)
+	monkeypatch.setattr("srxy.adapters.outbound.models.model_store.default_cache_root", lambda: tmp_path)
 
 	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)
@@ -174,8 +174,8 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 		assert model_id == transcribe_faster_whisper_repo_id()
 
 	with (
-		patch("srxy.model_store.download_model", side_effect=fake_download) as download,
-		patch("srxy.device.resolve_transcribe_device", return_value="cpu"),
+		patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download) as download,
+		patch("srxy.adapters.outbound.models.device.resolve_transcribe_device", return_value="cpu"),
 	):
 		# when
 		ready = ensure_transcribe_model(interactive=False, auto_download=True)
@@ -188,7 +188,7 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 
 def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_path: Path):
 	# given
-	from srxy.model_store import download_model
+	from srxy.adapters.outbound.models.model_store import download_model
 
 	progress: list[tuple[int, int, str]] = []
 	captured: dict[str, object] = {}
@@ -219,8 +219,8 @@ def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_p
 		return FakeTqdm
 
 	with (
-		patch("srxy.model_store.huggingface_hub_installed", return_value=True),
-		patch("srxy.model_store._make_progress_tqdm", fake_make_progress_tqdm),
+		patch("srxy.adapters.outbound.models.model_store.huggingface_hub_installed", return_value=True),
+		patch("srxy.adapters.outbound.models.model_store._make_progress_tqdm", fake_make_progress_tqdm),
 		patch.dict(sys.modules, {"huggingface_hub": fake_hub}),
 	):
 		# when

@@ -20,10 +20,11 @@ import re
 from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
-from srxy.cli import build_parser
-from srxy.models import FileSearchResult, LineMatch
-from srxy.tui.app import SrxyApp
 from textual.widgets import DataTable
+
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.inbound.tui.app import SrxyApp
+from srxy.domain.models import FileSearchResult, LineMatch
 
 TERMINAL_SIZE = (120, 36)
 DOCS_THEME = "textual-light"
@@ -37,105 +38,107 @@ PRIMARY_BLUE = "#0178d4"
 SEARCH_TEXT_WHITE = "#ffffff"
 MUTED_PRIMARY = "#3a3a3a"
 
+
 def fixture_path(relative: str) -> Path:
-    return Path("tests/fixtures/file_search") / relative
+	return Path("tests/fixtures/file_search") / relative
 
 
 results = [
-    FileSearchResult(
-        path=fixture_path("ocr/ocr_sample.png"),
-        score=0.93,
-        breakdown={"ocr": 0.93},
-        lines=[
-            LineMatch(
-                line_number=1,
-                text="quarterly revenue scan",
-                score=0.93,
-                location_kind="ocr",
-                matched_term="revenue",
-            )
-        ],
-    ),
-    FileSearchResult(
-        path=fixture_path("notes.txt"),
-        score=0.91,
-        breakdown={"content": 0.91},
-        lines=[
-            LineMatch(
-                line_number=5,
-                text="Unlike most amphibians, it reaches adulthood without",
-                score=0.91,
-                location_kind="line",
-                matched_term="amphibian",
-            )
-        ],
-    ),
-    FileSearchResult(
-        path=fixture_path("portrait.jpg"),
-        score=0.82,
-        breakdown={"semantic_image": 0.82},
-        lines=[
-            LineMatch(
-                line_number=1,
-                text="person",
-                score=0.82,
-                location_kind="semantic_image",
-                matched_term="person",
-            )
-        ],
-    ),
-    FileSearchResult(
-        path=fixture_path("samples/audio/speech_sample.mp3"),
-        score=0.78,
-        breakdown={"transcript": 0.78},
-        lines=[
-            LineMatch(
-                line_number=1,
-                text="thank you very much",
-                score=0.78,
-                location_kind="transcript",
-                matched_term="thank you",
-            )
-        ],
-    ),
+	FileSearchResult(
+		path=fixture_path("ocr/ocr_sample.png"),
+		score=0.93,
+		breakdown={"ocr": 0.93},
+		lines=[
+			LineMatch(
+				line_number=1,
+				text="quarterly revenue scan",
+				score=0.93,
+				location_kind="ocr",
+				matched_term="revenue",
+			)
+		],
+	),
+	FileSearchResult(
+		path=fixture_path("notes.txt"),
+		score=0.91,
+		breakdown={"content": 0.91},
+		lines=[
+			LineMatch(
+				line_number=5,
+				text="Unlike most amphibians, it reaches adulthood without",
+				score=0.91,
+				location_kind="line",
+				matched_term="amphibian",
+			)
+		],
+	),
+	FileSearchResult(
+		path=fixture_path("portrait.jpg"),
+		score=0.82,
+		breakdown={"semantic_image": 0.82},
+		lines=[
+			LineMatch(
+				line_number=1,
+				text="person",
+				score=0.82,
+				location_kind="semantic_image",
+				matched_term="person",
+			)
+		],
+	),
+	FileSearchResult(
+		path=fixture_path("samples/audio/speech_sample.mp3"),
+		score=0.78,
+		breakdown={"transcript": 0.78},
+		lines=[
+			LineMatch(
+				line_number=1,
+				text="thank you very much",
+				score=0.78,
+				location_kind="transcript",
+				matched_term="thank you",
+			)
+		],
+	),
 ]
 args = build_parser().parse_args(
-    [
-        "revenue|amphibian|person|thank you",
-        "tests/fixtures/file_search",
-        "--semantic-all",
-        "--content-only",
-    ]
+	[
+		'revenue | amphibian | person | "thank you"',
+		"tests/fixtures/file_search",
+		"--semantic-all",
+		"--content-only",
+		"--tui",
+	]
 )
 app = SrxyApp(args, auto_start=True)
 app.theme = DOCS_THEME
 
 
 def boost_screenshot_contrast(svg: str) -> str:
-    """Textual SVG export mutes $primary; restore readable primary blue for docs."""
-    boosted = svg.replace(f'fill="{MUTED_PRIMARY}"', f'fill="{PRIMARY_BLUE}"')
-    return re.sub(
-        r'(<text class="[^"]+"[^>]*)(>[^<]*&#160;Search&#160;</text>)',
-        rf'\1 fill="{SEARCH_TEXT_WHITE}"\2',
-        boosted,
-        count=1,
-    )
+	"""Textual SVG export mutes $primary; restore readable primary blue for docs."""
+	boosted = svg.replace(f'fill="{MUTED_PRIMARY}"', f'fill="{PRIMARY_BLUE}"')
+	return re.sub(
+		r'(<text class="[^"]+"[^>]*)(>[^<]*&#160;Search&#160;</text>)',
+		rf'\1 fill="{SEARCH_TEXT_WHITE}"\2',
+		boosted,
+		count=1,
+	)
 
 
 async def run():
-    with (
-        patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-        patch("srxy.tui.app.search_uses_subprocess", return_value=False),
-        patch("srxy.tui.app.execute_search", return_value=(results, [])),
-    ):
-        async with app.run_test(size=TERMINAL_SIZE) as pilot:
-            app.stylesheet.add_source(SCREENSHOT_CSS)
-            for _ in range(80):
-                await pilot.pause(delay=0.05)
-                if app.query_one("#results-table", DataTable).row_count >= len(results):
-                    break
-            svg = boost_screenshot_contrast(app.export_screenshot(title="srxy"))
-            Path("docs/images/tui.svg").write_text(svg, encoding="utf-8")
+	with (
+		patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+		patch("srxy.adapters.inbound.tui.app.search_uses_subprocess", return_value=False),
+		patch("srxy.application.search_session.execute_search", return_value=(results, [])),
+	):
+		async with app.run_test(size=TERMINAL_SIZE) as pilot:
+			app.stylesheet.add_source(SCREENSHOT_CSS)
+			for _ in range(80):
+				await pilot.pause(delay=0.05)
+				if app.query_one("#results-table", DataTable).row_count >= len(results):
+					break
+			svg = boost_screenshot_contrast(app.export_screenshot(title="srxy"))
+			Path("docs/images/tui.svg").write_text(svg, encoding="utf-8")
 
 
 asyncio.run(run())

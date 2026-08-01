@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.image_formats import (
+from srxy.adapters.outbound.documents.image_formats import (
 	is_raw_image_path,
 	is_semantic_image_path,
 	open_image_for_vision,
@@ -33,8 +33,8 @@ def test_given_png_path_when_checking_raw_path_then_returns_false(tmp_path: Path
 	assert is_raw_image_path(png_path) is False
 
 
-@patch("srxy.image_formats._open_raw_image")
-@patch("srxy.image_formats.rawpy_available", return_value=True)
+@patch("srxy.adapters.outbound.documents.image_formats._open_raw_image")
+@patch("srxy.adapters.outbound.documents.image_formats.rawpy_available", return_value=True)
 def test_given_raw_path_when_opening_for_vision_then_uses_raw_decoder(
 	mock_rawpy_available: MagicMock,
 	mock_open_raw: MagicMock,
@@ -55,7 +55,7 @@ def test_given_raw_path_when_opening_for_vision_then_uses_raw_decoder(
 	mock_image.close.assert_called_once()
 
 
-@patch("srxy.image_formats.rawpy_available", return_value=False)
+@patch("srxy.adapters.outbound.documents.image_formats.rawpy_available", return_value=False)
 def test_given_raw_path_without_rawpy_when_opening_for_vision_then_raises(tmp_path: Path):
 	# given
 	raw_path = tmp_path / "photo.dng"

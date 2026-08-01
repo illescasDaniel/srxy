@@ -5,14 +5,14 @@ from pathlib import Path
 
 import pytest
 
-from srxy.models import FileSearchResult, LineMatch
-from srxy.tui.labels import format_tui_match_labels
-from srxy.tui.search_options import (
+from srxy.adapters.inbound.tui.labels import format_tui_match_labels
+from srxy.application.search_options import (
 	SearchOptions,
 	apply_search_options_to_args,
 	format_search_options_summary,
 	search_options_from_args,
 )
+from srxy.domain.models import FileSearchResult, LineMatch
 
 
 pytestmark = pytest.mark.unit
@@ -33,6 +33,7 @@ def test_given_args_when_building_search_options_then_reflects_flags():
 		include_hidden=True,
 		include_noise=False,
 		include_archives=True,
+		include_subdirectories=False,
 	)
 
 	# when
@@ -44,6 +45,7 @@ def test_given_args_when_building_search_options_then_reflects_flags():
 		search_contents=True,
 		include_hidden=True,
 		include_archives=True,
+		include_subdirectories=False,
 	)
 
 
@@ -62,8 +64,9 @@ def test_given_search_options_when_applying_to_args_then_sets_include_archives()
 		include_hidden=False,
 		include_noise=False,
 		include_archives=False,
+		include_subdirectories=True,
 	)
-	options = SearchOptions(include_archives=True, ocr=True)
+	options = SearchOptions(include_archives=True, ocr=True, include_subdirectories=False)
 
 	# when
 	apply_search_options_to_args(args, options)
@@ -71,6 +74,7 @@ def test_given_search_options_when_applying_to_args_then_sets_include_archives()
 	# then
 	assert args.include_archives is True
 	assert args.ocr is True
+	assert args.include_subdirectories is False
 
 
 def test_given_enabled_options_when_formatting_summary_then_lists_labels():
@@ -82,6 +86,17 @@ def test_given_enabled_options_when_formatting_summary_then_lists_labels():
 
 	# then
 	assert summary == "Where: Names, Content · Scan: Archives"
+
+
+def test_given_top_level_only_when_formatting_summary_then_lists_scan_label():
+	# given
+	options = SearchOptions(search_names=True, search_contents=True, include_subdirectories=False)
+
+	# when
+	summary = format_search_options_summary(options)
+
+	# then
+	assert summary == "Where: Names, Content · Scan: This folder only"
 
 
 def test_given_powerups_when_formatting_summary_then_shows_how_segment():

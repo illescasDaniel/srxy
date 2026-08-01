@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import pytest
 
-from srxy.matchers.contains import ContainsMatcher
-from srxy.matchers.exact import ExactMatcher
-from srxy.matchers.fuzzy import FuzzyMatcher
-from srxy.matchers.partial import PartialMatcher
-from srxy.matchers.phonetic import PhoneticMatcher
-from srxy.models import DEFAULT_COMPOSITE_WEIGHTS, MatchType
-from srxy.utils import get_field_value, normalize_text
+from srxy.application.matching.contains import ContainsMatcher
+from srxy.application.matching.exact import ExactMatcher
+from srxy.application.matching.fuzzy import FuzzyMatcher
+from srxy.application.matching.partial import PartialMatcher
+from srxy.application.matching.phonetic import PhoneticMatcher
+from srxy.application.utils import get_field_value, normalize_text
+from srxy.domain.models import DEFAULT_COMPOSITE_WEIGHTS, MatchType
 
 
 pytestmark = pytest.mark.unit

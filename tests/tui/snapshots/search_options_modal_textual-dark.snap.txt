@@ -26,6 +26,7 @@ Match the path and filename
 █
 X
 File contents
+▇▇
 █
 █
 Text inside documents, tags, and metadata

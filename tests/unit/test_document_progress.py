@@ -3,8 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-from srxy.document_text import _iter_pdf_lines  # pyright: ignore[reportPrivateUsage]
-from srxy.progress import ActivityUpdate
+from srxy.adapters.outbound.documents.document_text import _iter_pdf_lines  # pyright: ignore[reportPrivateUsage]
+from srxy.domain.progress import ActivityUpdate
 
 
 def test_given_pdf_with_ocr_when_iterating_pages_then_emits_page_progress(tmp_path: Path):
@@ -24,9 +24,9 @@ def test_given_pdf_with_ocr_when_iterating_pages_then_emits_page_progress(tmp_pa
 	# when
 	with (
 		patch("pypdf.PdfReader", return_value=reader),
-		patch("srxy.ocr_text.ocr_pdf_page_images", return_value=""),
-		patch("srxy.ocr_text.is_ocr_active", return_value=True),
-		patch("srxy.ocr_text.ocr_max_file_size", return_value=None),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pdf_page_images", return_value=""),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_active", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_max_file_size", return_value=None),
 	):
 		lines = list(_iter_pdf_lines(pdf_path, ocr=True, on_activity=received.append))
 

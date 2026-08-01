@@ -23,11 +23,11 @@ from tests.helpers import (
 )
 
 from srxy import FileQ, magic_file_search
-from srxy.cli import match_labels
-from srxy.models import FileSearchResult, SkippedFile
-from srxy.progress import ActivityUpdate
-from srxy.windows_metadata import windows_tags_supported, windows_tags_writable
-from srxy.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
+from srxy.adapters.inbound.cli.cli import match_labels
+from srxy.adapters.outbound.metadata.windows_metadata import windows_tags_supported, windows_tags_writable
+from srxy.adapters.outbound.metadata.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
+from srxy.domain.models import FileSearchResult, SkippedFile
+from srxy.domain.progress import ActivityUpdate
 
 
 pytestmark = pytest.mark.unit
@@ -47,6 +47,21 @@ def test_given_directory_with_matching_filename_when_searching_names_then_return
 	assert results[0].path.name == "budget-2024.md"
 	assert results[0].score >= 0.5
 	assert "name" in results[0].breakdown
+
+
+@pytest.mark.parametrize("query", ["README", "readme", "ReadMe"])
+def test_given_uppercase_readme_filename_when_searching_names_then_finds_file(tmp_path: Path, query: str):
+	# given — query terms are lowercased; filenames must score case-insensitively
+	(tmp_path / "README.md").write_text("project docs without the word\n", encoding="utf-8")
+	(tmp_path / "other.txt").write_text("unrelated\n", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=True, search_contents=False, threshold=0.35)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "README.md"
+	assert results[0].breakdown.get("name", 0.0) >= 0.35
 
 
 def test_given_directory_with_matching_content_when_searching_contents_then_returns_file(tmp_path: Path):
@@ -131,6 +146,35 @@ def test_given_single_file_path_when_searching_then_returns_that_file(tmp_path: 
 	# then
 	assert len(results) == 1
 	assert results[0].path == file_path.resolve()
+
+
+def test_given_nested_file_when_subdirectories_disabled_then_searches_top_level_only(tmp_path: Path):
+	# given
+	(tmp_path / "root.txt").write_text("token root\n", encoding="utf-8")
+	nested = tmp_path / "nested"
+	nested.mkdir()
+	(nested / "deep.txt").write_text("token nested\n", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "token", include_subdirectories=False)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "root.txt"
+
+
+def test_given_nested_file_when_subdirectories_enabled_then_searches_recursively(tmp_path: Path):
+	# given
+	(tmp_path / "root.txt").write_text("token root\n", encoding="utf-8")
+	nested = tmp_path / "nested"
+	nested.mkdir()
+	(nested / "deep.txt").write_text("token nested\n", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "token", include_subdirectories=True)
+
+	# then
+	assert {result.path.name for result in results} == {"root.txt", "deep.txt"}
 
 
 def test_given_hidden_directory_when_searching_then_skips_hidden_entries(tmp_path: Path):
@@ -379,8 +423,8 @@ def test_given_docx_with_embedded_image_when_searching_with_ocr_then_returns_ocr
 	query = "revenue"
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
@@ -399,8 +443,8 @@ def test_given_xlsx_with_embedded_image_when_searching_with_ocr_then_returns_ocr
 	query = "revenue"
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_image_bytes", return_value="quarterly revenue projections"),
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
@@ -419,8 +463,8 @@ def test_given_pptx_with_embedded_image_when_searching_with_ocr_then_returns_sli
 	query = "classifier"
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_image_bytes", return_value="classifier layer"),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_image_bytes", return_value="classifier layer"),
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
@@ -584,7 +628,7 @@ def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcr
 	query = "all the other boys"
 
 	with patch(
-		"srxy.file_search.iter_transcript_lines",
+		"srxy.application.use_cases.search_files.iter_transcript_lines",
 		return_value=iter([(160, "And all the other boys")]),
 	):
 		# when
@@ -609,7 +653,7 @@ def test_given_transcript_at_two_forty_when_searching_for_minute_token_then_does
 	copy_media_fixture("minimal.mp3", tmp_path / "song.flac")
 
 	with patch(
-		"srxy.file_search.iter_transcript_lines",
+		"srxy.application.use_cases.search_files.iter_transcript_lines",
 		return_value=iter([(160, "And all the other boys")]),
 	):
 		# when
@@ -876,7 +920,7 @@ def test_given_image_with_ocr_text_when_searching_without_ocr_then_skips_pixel_t
 	Image.new("L", (20, 20), color=255).save(image_path)
 	query = "invoice"
 
-	with patch("srxy.ocr_text.ocr_pil_image", return_value="invoice total due"):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="invoice total due"):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=False)
 
@@ -891,8 +935,8 @@ def test_given_image_with_ocr_text_when_searching_with_ocr_then_returns_match(tm
 	query = "invoice"
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_pil_image", return_value="invoice total due"),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="invoice total due"),
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
@@ -913,9 +957,11 @@ def test_given_pdf_with_sparse_page_when_searching_with_ocr_then_uses_image_ocr(
 	fake_page.extract_text.return_value = "   "
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
 		patch("pypdf.PdfReader") as reader_cls,
-		patch("srxy.ocr_text.ocr_pdf_page_images", return_value="quarterly revenue projections") as ocr_images,
+		patch(
+			"srxy.adapters.outbound.ocr.ocr_text.ocr_pdf_page_images", return_value="quarterly revenue projections"
+		) as ocr_images,
 	):
 		reader_cls.return_value.pages = [fake_page]
 
@@ -936,8 +982,10 @@ def test_given_pdf_with_embedded_text_when_searching_with_ocr_then_supplements_w
 	query = "revenue"
 
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_pdf_page_images", return_value="extra chart label") as ocr_images,
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch(
+			"srxy.adapters.outbound.ocr.ocr_text.ocr_pdf_page_images", return_value="extra chart label"
+		) as ocr_images,
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True)
@@ -973,7 +1021,7 @@ def test_given_oversized_image_when_searching_with_ocr_then_records_skip(
 	query = "invoice"
 	monkeypatch.setenv("SRXY_OCR_MAX_FILE_SIZE", "20971520")
 
-	with patch("srxy.ocr_text.is_ocr_available", return_value=True):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True):
 		# when
 		results = magic_file_search(
 			tmp_path,
@@ -997,9 +1045,9 @@ def test_given_image_when_searching_with_semantic_image_then_adds_breakdown_scor
 	query = "sunset beach"
 
 	with (
-		patch("srxy.file_search.is_semantic_image_active", return_value=True),
-		patch("srxy.file_search.encode_semantic_image_query", return_value=[1.0, 0.0]),
-		patch("srxy.file_search.score_image", return_value=0.71) as score_image,
+		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", return_value=0.71) as score_image,
 	):
 		# when
 		results = magic_file_search(
@@ -1027,15 +1075,15 @@ def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview
 	query = "sibling"
 
 	with (
-		patch("srxy.file_search.is_semantic_image_active", return_value=True),
-		patch("srxy.file_search.is_semantic_image_path", return_value=True),
-		patch("srxy.file_search.encode_semantic_image_query", return_value=[1.0, 0.0]),
-		patch("srxy.file_search.score_image", return_value=0.27),
+		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.is_semantic_image_path", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", return_value=0.27),
 		patch(
-			"srxy.file_search._iter_searchable_lines",
+			"srxy.application.use_cases.search_files._iter_searchable_lines",
 			return_value=[(1, "Sister (=)", "ocr")],
 		),
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
+		patch("srxy.application.use_cases.search_files.CompositeMatcher") as composite_matcher,
 	):
 		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
 			(0.291, {"semantic": 0.75, "fuzzy": 0.4}) if value == "sister" else (0.0, {})
@@ -1066,7 +1114,7 @@ def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(
 	query = "sibling"
 
 	with patch(
-		"srxy.file_search._iter_searchable_lines",
+		"srxy.application.use_cases.search_files._iter_searchable_lines",
 		return_value=[(11, "[Ycbcrpositioning] 1", "tag")],
 	):
 		# when
@@ -1089,7 +1137,7 @@ def test_given_short_transcript_when_searching_sibling_then_does_not_match(tmp_p
 	query = "sibling"
 
 	with patch(
-		"srxy.file_search._iter_searchable_lines",
+		"srxy.application.use_cases.search_files._iter_searchable_lines",
 		return_value=[(0, "I", "transcript")],
 	):
 		# when
@@ -1114,9 +1162,9 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	query = "person"
 
 	with (
-		patch("srxy.file_search.is_semantic_image_active", return_value=True),
-		patch("srxy.file_search.encode_semantic_image_query", return_value=[1.0, 0.0]),
-		patch("srxy.file_search.score_image", return_value=0.198),
+		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", return_value=0.198),
 	):
 		# when
 		results = magic_file_search(
@@ -1139,8 +1187,8 @@ def test_given_text_only_path_when_searching_with_semantic_image_then_skips_quer
 	text_path.write_text("recents\n", encoding="utf-8")
 
 	with (
-		patch("srxy.file_search.is_semantic_image_active", return_value=True),
-		patch("srxy.file_search.encode_semantic_image_query") as encode_query,
+		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query") as encode_query,
 	):
 		# when
 		results = magic_file_search(
@@ -1164,9 +1212,9 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 	activities: list[ActivityUpdate | None] = []
 
 	with (
-		patch("srxy.file_search.is_semantic_image_active", return_value=True),
-		patch("srxy.file_search.encode_semantic_image_query", return_value=[1.0, 0.0]),
-		patch("srxy.file_search.score_image", return_value=0.71),
+		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", return_value=0.71),
 	):
 		# when
 		magic_file_search(
@@ -1324,7 +1372,7 @@ def test_given_xmp_seq_token_when_searching_sig_on_tag_then_does_not_match(tmp_p
 
 	# when
 	with patch(
-		"srxy.file_search.iter_media_metadata_lines",
+		"srxy.application.use_cases.search_files.iter_media_metadata_lines",
 		return_value=iter([(1, "[Metadata] Seq")]),
 	):
 		results = magic_file_search(
@@ -1347,8 +1395,10 @@ def test_given_low_quality_ocr_text_when_searching_image_then_skips_match(tmp_pa
 
 	# when
 	with (
-		patch("srxy.ocr_text.is_ocr_available", return_value=True),
-		patch("srxy.ocr_text.ocr_pil_image", return_value="e gl A\n.\n¥\n| SRR LA 56 T P ) > e \\"),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch(
+			"srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="e gl A\n.\n¥\n| SRR LA 56 T P ) > e \\"
+		),
 	):
 		results = magic_file_search(tmp_path, query, search_names=False, ocr=True, threshold=0.18)
 

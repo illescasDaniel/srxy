@@ -182,7 +182,7 @@ def _large_embed_image_bytes(image_path: Path) -> bytes:
 
 	from PIL import Image
 
-	from srxy.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
+	from srxy.adapters.outbound.ocr.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
 
 	source = image_path.read_bytes()
 	if len(source) >= MIN_PDF_IMAGE_OCR_BYTES:
@@ -270,6 +270,6 @@ def write_mp4_with_tags(path: Path, *, title: str | None = None, min_size: int =
 
 
 def set_windows_tags(path: Path, tags: list[str]) -> None:
-	from srxy.windows_metadata import write_windows_keywords
+	from srxy.adapters.outbound.metadata.windows_metadata import write_windows_keywords
 
 	write_windows_keywords(path, tags)

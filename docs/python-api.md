@@ -1,14 +1,16 @@
 # Python API
 
-Import from `srxy`:
+Import from `srxy` only — [`__init__.__all__`](../src/srxy/__init__.py) is the stable contract:
 
-`magic_file_search`, `magic_search`, `search`, `Q`, `FileQ`, `FieldConfig`, `MatchType`, `SearchResult`
+`magic_file_search`, `magic_search`, `search`, `Q`, `FileQ`, `FieldConfig`, `MatchType`, `SearchResult`, `FileSearchResult`, `LineMatch`, `SkippedFile`, `ActivityUpdate`
+
+Generated signatures and docstrings: [api-reference.md](api-reference.md).
 
 ## File search
 
 ```python
 from pathlib import Path
-from srxy import magic_file_search
+from srxy import FileQ, magic_file_search
 
 results = magic_file_search(Path("./src"), "registry", threshold=0.3)
 for result in results:
@@ -19,29 +21,30 @@ for result in results:
 results = magic_file_search(Path("."), "token", skip_hidden_folders=False)
 results = magic_file_search(Path("."), "token", skip_noise_folders=False)
 results = magic_file_search(Path("."), "token", include_archives=True)
+results = magic_file_search(Path("."), "token", include_subdirectories=False)
 
 # Boolean file query (same syntax as CLI)
-from srxy import FileQ
-
 results = magic_file_search(Path("./docs"), FileQ.leaf("foo") | FileQ.leaf("bar"))
 
 # Power-ups and streaming callbacks
+skipped: list = []
 results = magic_file_search(
     Path("./photos"),
     "invoice",
     ocr=True,
-    semantic=True,
     semantic_image=True,
     transcribe=True,
     limit=20,
     max_matches=10,
     max_file_size=50_000_000,
-    skipped_files=[],
+    skipped_files=skipped,
     on_progress=lambda current, total: None,
     on_activity=lambda update: None,
     on_result=lambda result: None,
 )
 ```
+
+Text semantic matching is enabled via env (`SRXY_SEMANTIC=1`) or the CLI; image semantic search uses the `semantic_image=` kwarg.
 
 `--json` / file output include full matched line text — treat results as sensitive when sharing logs.
 

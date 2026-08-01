@@ -7,11 +7,11 @@ from tests.tui.helpers import assert_svg_snapshot
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from srxy.cli import build_parser
-from srxy.tui.app import SrxyApp
-from srxy.tui.modals import SearchFiltersModal
-from srxy.tui.search_filters import SearchFilters
-from srxy.tui.size_limits import SizeLimits
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.inbound.tui.app import SrxyApp
+from srxy.adapters.inbound.tui.modals import SearchFiltersModal
+from srxy.application.search_filters import SearchFilters
+from srxy.application.size_limits import SizeLimits
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]

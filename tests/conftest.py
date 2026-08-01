@@ -15,6 +15,12 @@ def pytest_addoption(parser: pytest.Parser):
 	)
 
 
+@pytest.fixture(autouse=True)
+def disable_gui_default_launch(monkeypatch: pytest.MonkeyPatch):
+	"""Keep pytest from opening the desktop GUI when PySide6 is installed."""
+	monkeypatch.setattr("srxy.application.launch.gui_importable", lambda: False)
+
+
 def pytest_generate_tests(metafunc: pytest.Metafunc):
 	if "device" not in metafunc.fixturenames:
 		return

@@ -5,14 +5,14 @@ from pathlib import Path
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from tests.tui.helpers import assert_labels_visible
+from tests.tui.helpers import assert_labels_visible, assert_svg_snapshot
 from textual.widgets import Checkbox, DataTable
 
-from srxy.cli import build_parser
-from srxy.models import FileSearchResult, LineMatch
-from srxy.tui.app import SrxyApp
-from srxy.tui.modals import SearchFiltersModal, SearchOptionsModal
-from srxy.tui.search_options import format_search_options_summary
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.inbound.tui.app import SrxyApp
+from srxy.adapters.inbound.tui.modals import SearchFiltersModal, SearchOptionsModal
+from srxy.application.search_options import format_search_options_summary
+from srxy.domain.models import FileSearchResult, LineMatch
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]
@@ -51,6 +51,63 @@ def test_given_tui_when_search_options_toggled_then_search_becomes_stale(tmp_pat
 	asyncio.run(run())
 
 
+def test_given_uppercase_readme_when_tui_names_search_completes_then_lists_file(tmp_path: Path):
+	# given — real engine path; query case must not drop README.md
+	(tmp_path / "README.md").write_text("docs without matching body text\n", encoding="utf-8")
+	(tmp_path / "notes.txt").write_text("unrelated\n", encoding="utf-8")
+	args = build_parser().parse_args(["README", str(tmp_path), "--names-only"])
+	app = SrxyApp(args, auto_start=True)
+	app.theme = "textual-light"
+
+	async def run():
+		with patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)):
+			async with app.run_test(size=(100, 30)) as pilot:
+				table = app.query_one("#results-table", DataTable)
+				for _ in range(60):
+					await pilot.pause(delay=0.05)
+					if table.row_count >= 1:
+						break
+					table = app.query_one("#results-table", DataTable)
+				assert table.row_count >= 1
+				assert app.exit_code == 0
+				paths = [str(table.get_row_at(row)[1]) for row in range(table.row_count)]
+				assert any(path.endswith("README.md") for path in paths)
+
+	# when / then
+	asyncio.run(run())
+
+
+def test_given_name_match_when_tui_results_rendered_then_snapshot_includes_readme():
+	# given — fixed path so SVG text snapshots stay stable across runs
+	file_path = Path("/fixture/docs/README.md")
+	result = FileSearchResult(
+		path=file_path,
+		score=0.92,
+		breakdown={"name": 0.92},
+		lines=[],
+	)
+	args = build_parser().parse_args(["README", "/fixture/docs", "--names-only"])
+	app = SrxyApp(args, auto_start=True)
+	app.theme = "textual-light"
+
+	async def run():
+		with (
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+		):
+			async with app.run_test(size=(100, 30)) as pilot:
+				for _ in range(30):
+					await pilot.pause(delay=0.05)
+					if app.query_one("#results-table", DataTable).row_count == 1:
+						break
+				svg = app.export_screenshot(title="srxy-tui-readme-name-hit")
+				assert_labels_visible(svg, ("README.md", "Match", "Path", "filename"))
+				assert_svg_snapshot("srxy_app_readme_name_hit_textual-light", svg)
+
+	# when / then
+	asyncio.run(run())
+
+
 def test_given_completed_search_when_query_edited_then_search_button_becomes_stale(tmp_path: Path):
 	# given
 	file_path = tmp_path / "notes.txt"
@@ -66,8 +123,8 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 
 	async def run():
 		with (
-			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				button = app.query_one("#search-button")
@@ -102,8 +159,8 @@ def test_given_ocr_result_when_preview_rendered_then_location_and_text_visible(t
 
 	async def run():
 		with (
-			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):
@@ -131,8 +188,8 @@ def test_given_transcript_result_when_preview_rendered_then_transcript_visible(t
 
 	async def run():
 		with (
-			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):
@@ -166,9 +223,9 @@ def test_given_semantic_image_flag_when_search_completes_then_results_table_popu
 
 	async def run():
 		with (
-			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.tui.app.search_uses_subprocess", return_value=False),
-			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.adapters.inbound.tui.app.search_uses_subprocess", return_value=False),
+			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(120, 40)) as pilot:
 				for _ in range(30):

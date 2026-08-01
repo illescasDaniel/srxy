@@ -7,8 +7,8 @@ from tests.tui.helpers import assert_svg_snapshot
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from srxy.tui.modals import SearchOptionsModal
-from srxy.tui.search_options import SearchOptions
+from srxy.adapters.inbound.tui.modals import SearchOptionsModal
+from srxy.application.search_options import SearchOptions
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]

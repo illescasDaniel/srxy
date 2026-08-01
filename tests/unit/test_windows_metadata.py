@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.windows_metadata import (
+from srxy.adapters.outbound.metadata.windows_metadata import (
 	_ensure_com_initialized,
 	_read_windows_keywords,
 	has_windows_tags,
@@ -56,7 +56,7 @@ def test_given_keyword_list_when_iterating_windows_lines_then_yields_tags(tmp_pa
 
 	# when
 	with patch(
-		"srxy.windows_metadata._read_searchable_property_entries",
+		"srxy.adapters.outbound.metadata.windows_metadata._read_searchable_property_entries",
 		return_value=[("Windows tag", "cursor"), ("Windows tag", "quarterly")],
 	):
 		lines = list(iter_windows_metadata_lines(file_path))
@@ -71,7 +71,7 @@ def test_given_property_entries_when_iterating_windows_lines_then_yields_labeled
 
 	# when
 	with patch(
-		"srxy.windows_metadata._read_searchable_property_entries",
+		"srxy.adapters.outbound.metadata.windows_metadata._read_searchable_property_entries",
 		return_value=[
 			("Program name", "Microsoft Office Word"),
 			("Last saved by", "Daniel Illescas"),
@@ -92,8 +92,11 @@ def test_given_property_store_error_when_reading_keywords_then_returns_empty(tmp
 
 	# when
 	with (
-		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
-		patch("srxy.windows_metadata._open_property_store", side_effect=OSError("access denied")),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
+		patch(
+			"srxy.adapters.outbound.metadata.windows_metadata._open_property_store",
+			side_effect=OSError("access denied"),
+		),
 	):
 		tags = list(iter_windows_metadata_lines(file_path))
 
@@ -103,7 +106,7 @@ def test_given_property_store_error_when_reading_keywords_then_returns_empty(tmp
 
 def test_given_non_windows_platform_when_checking_support_then_returns_false():
 	# when
-	with patch("srxy.windows_metadata.sys.platform", "linux"):
+	with patch("srxy.adapters.outbound.metadata.windows_metadata.sys.platform", "linux"):
 		supported = windows_tags_supported()
 
 	# then
@@ -135,9 +138,9 @@ def test_given_winerror_10106_when_reading_keywords_then_returns_empty(tmp_path:
 
 	# when
 	with (
-		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
 		patch(
-			"srxy.windows_metadata._read_property_value",
+			"srxy.adapters.outbound.metadata.windows_metadata._read_property_value",
 			side_effect=OSError("[WinError 10106] The requested service provider could not be loaded or initialized"),
 		),
 	):
@@ -169,7 +172,7 @@ def test_given_same_thread_when_reading_keywords_twice_then_initializes_com_once
 
 	# when
 	with (
-		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
 		patch.dict(
 			"sys.modules",
 			{
@@ -218,7 +221,7 @@ def test_given_worker_thread_when_reading_keywords_then_initializes_com_per_thre
 
 	# when
 	with (
-		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
 		patch.dict(
 			"sys.modules",
 			{
@@ -242,7 +245,7 @@ def test_given_worker_thread_when_reading_keywords_then_initializes_com_per_thre
 
 def test_given_changed_mode_runtime_when_scanning_files_then_does_not_crash(tmp_path: Path):
 	# given
-	from srxy.file_search import magic_file_search
+	from srxy.application.use_cases.search_files import magic_file_search
 
 	search_root = tmp_path / "docs"
 	search_root.mkdir()
@@ -255,9 +258,12 @@ def test_given_changed_mode_runtime_when_scanning_files_then_does_not_crash(tmp_
 
 	# when
 	with (
-		patch("srxy.file_search.has_windows_searchable_metadata", side_effect=fake_has_windows_metadata),
-		patch("srxy.file_search.iter_windows_metadata_lines", return_value=iter([])),
-		patch("srxy.windows_metadata.windows_tags_supported", return_value=True),
+		patch(
+			"srxy.application.use_cases.search_files.has_windows_searchable_metadata",
+			side_effect=fake_has_windows_metadata,
+		),
+		patch("srxy.application.use_cases.search_files.iter_windows_metadata_lines", return_value=iter([])),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
 	):
 		reset_thread_com_state_for_tests()
 		fake_pythoncom = MagicMock()

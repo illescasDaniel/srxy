@@ -72,10 +72,10 @@ srxy "quarterly revenue" ~/Documents --semantic-all --content-only
 ## Model prefetch
 
 ```bash
-python -m srxy.model_store semantic-text
-python -m srxy.model_store semantic-image
-python -m srxy.model_store transcribe
-python -m srxy.model_store all
+python -m srxy.adapters.outbound.models.model_store semantic-text
+python -m srxy.adapters.outbound.models.model_store semantic-image
+python -m srxy.adapters.outbound.models.model_store transcribe
+python -m srxy.adapters.outbound.models.model_store all
 ```
 
 `SRXY_AUTO_DOWNLOAD=1` for non-interactive download.
@@ -110,8 +110,8 @@ Removes model weights only. Models re-download on next use (or run [Model prefet
 Or without the script:
 
 ```bash
-python -m srxy.model_store clear all
-python -m srxy.model_store clear semantic-text
+python -m srxy.adapters.outbound.models.model_store clear all
+python -m srxy.adapters.outbound.models.model_store clear semantic-text
 ```
 
 ### Clear results cache
@@ -125,7 +125,7 @@ Removes `cache.db` and `.cache_key`. Scan results rebuild on the next run.
 Or:
 
 ```bash
-python -c "from srxy.cache import clear_results_cache; clear_results_cache()"
+python -c "from srxy.adapters.outbound.cache.cache import clear_results_cache; clear_results_cache()"
 ```
 
 Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE` (including `SRXY_SEMANTIC_IMAGE_DEVICE`).

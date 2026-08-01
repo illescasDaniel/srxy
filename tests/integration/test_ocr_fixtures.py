@@ -7,7 +7,7 @@ from pypdf import PdfReader
 from tests.helpers import OCR_FIXTURES_DIR, OCR_IMAGE_FIXTURE, OCR_PDF_FIXTURE
 
 from srxy import magic_file_search
-from srxy.ocr_text import iter_image_ocr_lines, ocr_pdf_page_images, tesseract_available
+from srxy.adapters.outbound.ocr.ocr_text import iter_image_ocr_lines, ocr_pdf_page_images, tesseract_available
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.ocr]

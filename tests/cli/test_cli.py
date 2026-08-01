@@ -9,7 +9,7 @@ from unittest.mock import MagicMock, patch
 import pytest
 from tests.helpers import copy_media_fixture
 
-from srxy.cli import (
+from srxy.adapters.inbound.cli.cli import (
 	ProgressBar,
 	build_parser,
 	format_flat,
@@ -24,9 +24,9 @@ from srxy.cli import (
 	render_progress,
 	resolve_search_modes,
 )
-from srxy.file_search import DEFAULT_MAX_FILE_SIZE
-from srxy.models import FileSearchResult, LineMatch, SkippedFile
-from srxy.progress import ActivityUpdate
+from srxy.application.use_cases.search_files import DEFAULT_MAX_FILE_SIZE
+from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
+from srxy.domain.progress import ActivityUpdate
 
 
 pytestmark = pytest.mark.unit
@@ -374,6 +374,22 @@ def test_given_matching_directory_when_running_cli_then_prints_results(
 	assert "revenue" in captured.out
 
 
+def test_given_uppercase_readme_filename_when_running_cli_names_only_then_finds_file(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "README.md").write_text("docs without matching body text\n", encoding="utf-8")
+	(tmp_path / "notes.txt").write_text("unrelated\n", encoding="utf-8")
+
+	# when
+	exit_code = main(["README", str(tmp_path), "--names-only", "--cli", "--format", "flat", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "README.md" in captured.out
+
+
 def test_given_no_matches_when_running_cli_then_returns_exit_code_one(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
@@ -442,6 +458,25 @@ def test_given_noise_directory_when_running_cli_with_include_noise_then_searches
 	assert exit_code == 0
 	assert "__pycache__/cache.txt:line:1:" in captured.out
 	assert "visible.txt:line:1:" in captured.out
+
+
+def test_given_nested_file_when_running_cli_without_subdirectories_then_skips_nested(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "root.txt").write_text("needle root", encoding="utf-8")
+	nested = tmp_path / "nested"
+	nested.mkdir()
+	(nested / "deep.txt").write_text("needle nested", encoding="utf-8")
+
+	# when
+	exit_code = main(["needle", str(tmp_path), "--content-only", "--format", "flat", "--no-include-subdirectories"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "root.txt:line:1:" in captured.out
+	assert "deep.txt" not in captured.out
 
 
 def test_given_zip_with_text_member_when_running_cli_with_include_archives_then_searches_inner_file(
@@ -565,9 +600,9 @@ def test_given_semantic_all_without_ffmpeg_when_running_cli_then_exits_two_with_
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
 	with (
-		patch("srxy.cli.is_ocr_available", return_value=True),
-		patch("srxy.cli.transcribe_deps_installed", return_value=True),
-		patch("srxy.cli.ffmpeg_available", return_value=False),
+		patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=True),
+		patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=True),
+		patch("srxy.adapters.inbound.cli.cli.ffmpeg_available", return_value=False),
 	):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--semantic-all", "--content-only", "--no-progress"])
@@ -593,7 +628,7 @@ def test_given_semantic_image_flag_without_dependency_when_running_cli_then_exit
 	(tmp_path / "photo.png").write_bytes(b"png")
 	monkeypatch.delenv("SRXY_SEMANTIC_IMAGE", raising=False)
 
-	with patch("srxy.cli.is_semantic_image_available", return_value=False):
+	with patch("srxy.adapters.inbound.cli.cli.is_semantic_image_available", return_value=False):
 		# when
 		exit_code = main(["sunset", str(tmp_path), "--semantic-image", "--content-only", "--no-progress"])
 
@@ -610,7 +645,7 @@ def test_given_semantic_flag_without_dependency_when_running_cli_then_exits_two_
 	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
 	monkeypatch.delenv("SRXY_SEMANTIC", raising=False)
 
-	with patch("srxy.cli.sentence_transformers_installed", return_value=False):
+	with patch("srxy.adapters.inbound.cli.cli.sentence_transformers_installed", return_value=False):
 		# when
 		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
 
@@ -630,8 +665,8 @@ def test_given_semantic_flag_without_cached_model_when_user_declines_then_exits_
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
 
 	with (
-		patch("srxy.cli.sentence_transformers_installed", return_value=True),
-		patch("srxy.cli.ensure_semantic_text_model", return_value=False),
+		patch("srxy.adapters.inbound.cli.cli.sentence_transformers_installed", return_value=True),
+		patch("srxy.adapters.inbound.cli.cli.ensure_semantic_text_model", return_value=False),
 	):
 		# when
 		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
@@ -657,7 +692,7 @@ def test_given_ocr_flag_without_tesseract_when_running_cli_then_exits_two_with_m
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.delenv("SRXY_OCR", raising=False)
 
-	with patch("srxy.cli.is_ocr_available", return_value=False):
+	with patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=False):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -676,7 +711,7 @@ def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_me
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.setenv("SRXY_OCR", "1")
 
-	with patch("srxy.cli.is_ocr_available", return_value=False):
+	with patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=False):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -694,7 +729,7 @@ def test_given_transcribe_flag_without_deps_when_running_cli_then_exits_two_with
 	(tmp_path / "notes.txt").write_text("quarterly earnings", encoding="utf-8")
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
-	with patch("srxy.cli.transcribe_deps_installed", return_value=False):
+	with patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=False):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])
 
@@ -713,8 +748,8 @@ def test_given_transcribe_flag_without_ffmpeg_when_running_cli_then_exits_two_wi
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
 	with (
-		patch("srxy.cli.transcribe_deps_installed", return_value=True),
-		patch("srxy.cli.ffmpeg_available", return_value=False),
+		patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=True),
+		patch("srxy.adapters.inbound.cli.cli.ffmpeg_available", return_value=False),
 	):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])
@@ -1047,7 +1082,7 @@ def test_given_progress_bar_when_updating_on_tty_then_redraws_same_line(monkeypa
 		def flush(self) -> None:
 			pass
 
-	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli._terminal_size", lambda _stream: (80, 24))
 	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
 
 	# when
@@ -1110,7 +1145,7 @@ def test_given_render_progress_when_completing_on_tty_then_finishes_bar(monkeypa
 		def flush(self) -> None:
 			pass
 
-	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli._terminal_size", lambda _stream: (80, 24))
 
 	# when
 	render_progress(10, 10, stream=FakeTTY())  # type: ignore[arg-type]
@@ -1138,7 +1173,7 @@ def test_given_progress_bar_when_setting_activity_then_renders_spinner(monkeypat
 		def flush(self) -> None:
 			pass
 
-	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli._terminal_size", lambda _stream: (80, 24))
 	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
 
 	# when
@@ -1169,7 +1204,7 @@ def test_given_progress_bar_when_setting_determinate_activity_then_renders_two_l
 		def flush(self) -> None:
 			pass
 
-	monkeypatch.setattr("srxy.cli._terminal_size", lambda _stream: (80, 24))
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli._terminal_size", lambda _stream: (80, 24))
 	progress = ProgressBar(FakeTTY())  # type: ignore[arg-type]
 	progress.update(2, 5)
 

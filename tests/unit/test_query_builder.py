@@ -8,8 +8,8 @@ from textual.app import App, ComposeResult
 from textual.css.query import NoMatches
 from textual.widgets import Button, Input, Static
 
-from srxy.file_query import FileQ, build_file_query_from_rows
-from srxy.tui.query_builder import QueryBuilder
+from srxy.adapters.inbound.tui.query_builder import QueryBuilder
+from srxy.domain.file_query import FileQ, build_file_query_from_rows
 
 
 pytestmark = pytest.mark.unit
@@ -186,8 +186,8 @@ def test_given_query_builder_when_adding_term_then_shows_or_join_label():
 
 def test_given_app_with_query_builder_when_adding_term_then_does_not_crash():
 	# given
-	from srxy.cli import build_parser
-	from srxy.tui.app import SrxyApp
+	from srxy.adapters.inbound.cli.cli import build_parser
+	from srxy.adapters.inbound.tui.app import SrxyApp
 
 	args = build_parser().parse_args(["registry", "."])
 

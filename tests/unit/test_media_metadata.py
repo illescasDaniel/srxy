@@ -12,7 +12,7 @@ from tests.fixture_xmp import (
 )
 from tests.helpers import PHOTOSHOP_XMP_JPEG_FIXTURE, require_file_search_fixtures
 
-from srxy.media_metadata import is_media_path, iter_media_metadata_lines
+from srxy.adapters.outbound.metadata.media_metadata import is_media_path, iter_media_metadata_lines
 
 
 pytestmark = pytest.mark.unit
@@ -92,8 +92,8 @@ def test_given_xmp_with_title_and_description_when_collecting_tags_then_extracts
 
 	# when
 	with (
-		patch("srxy.media_metadata.open_image", fake_open_image),
-		patch("srxy.media_metadata.register_image_openers"),
+		patch("srxy.adapters.outbound.metadata.media_metadata.open_image", fake_open_image),
+		patch("srxy.adapters.outbound.metadata.media_metadata.register_image_openers"),
 	):
 		lines = [text for _line, text in iter_media_metadata_lines(image_path)]
 
@@ -129,8 +129,8 @@ def test_given_uuid_only_xmp_when_collecting_tags_then_returns_no_xmp_lines(tmp_
 
 	# when
 	with (
-		patch("srxy.media_metadata.open_image", lambda _path: FakeImage()),
-		patch("srxy.media_metadata.register_image_openers"),
+		patch("srxy.adapters.outbound.metadata.media_metadata.open_image", lambda _path: FakeImage()),
+		patch("srxy.adapters.outbound.metadata.media_metadata.register_image_openers"),
 	):
 		lines = [text for _line, text in iter_media_metadata_lines(image_path)]
 
@@ -166,8 +166,8 @@ def test_given_existing_software_tag_when_merging_xmp_then_skips_duplicate_softw
 
 	# when
 	with (
-		patch("srxy.media_metadata.open_image", lambda _path: FakeImage()),
-		patch("srxy.media_metadata.register_image_openers"),
+		patch("srxy.adapters.outbound.metadata.media_metadata.open_image", lambda _path: FakeImage()),
+		patch("srxy.adapters.outbound.metadata.media_metadata.register_image_openers"),
 	):
 		lines = [text for _line, text in iter_media_metadata_lines(image_path)]
 
@@ -198,8 +198,8 @@ def test_given_utf16le_xp_comment_when_collecting_tags_then_decodes_searchable_t
 
 	# when
 	with (
-		patch("srxy.media_metadata.open_image", lambda _path: FakeImage()),
-		patch("srxy.media_metadata.register_image_openers"),
+		patch("srxy.adapters.outbound.metadata.media_metadata.open_image", lambda _path: FakeImage()),
+		patch("srxy.adapters.outbound.metadata.media_metadata.register_image_openers"),
 	):
 		lines = [text for _line, text in iter_media_metadata_lines(image_path)]
 

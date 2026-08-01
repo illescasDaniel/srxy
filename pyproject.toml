@@ -16,6 +16,7 @@ dependencies = [
 	"pillow-heif>=1.4",
 	"pypdf>=6.14",
 	"pytesseract>=0.3",
+	"PySide6>=6.6",
 	"python-docx>=1.2",
 	"python-pptx>=1.0",
 	"rapidfuzz>=3.14",
@@ -40,7 +41,9 @@ dev = [
 	"setuptools>=83.0",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
+	"pytest-qt>=4.4",
 	"ruff>=0.15",
+	"taskipy>=1.14",
 ]
 uploader = [
 	"build>=1.5",
@@ -52,10 +55,13 @@ requires = ["setuptools>=83.0"]
 build-backend = "setuptools.build_meta"
 
 [project.scripts]
-srxy = "srxy.cli:main"
+srxy = "srxy.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"srxy.adapters.inbound.gui" = ["qml/*.qml"]
 
 # tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
 
@@ -63,6 +69,7 @@ where = ["src"]
 testpaths = ["tests"]
 addopts = "-v --tb=short -rs"
 pythonpath = ["."]
+qt_api = "pyside6"
 filterwarnings = [
 	"ignore:.*BPE.__init__ will not create from files anymore:DeprecationWarning",
 ]
@@ -70,6 +77,7 @@ markers = [
 	"unit: fast isolated tests",
 	"integration: tests using real models and fixture datasets",
 	"tui: Textual TUI display and interaction tests",
+	"gui: PySide6 GUI display and interaction tests",
 	"ocr: tests requiring a real OCR backend",
 	"linux_xattr: tests that require Linux extended attribute support",
 	"macos_finder: tests that require writable macOS Finder tag extended attributes",
@@ -119,10 +127,10 @@ reportUnknownArgumentType = false
 reportUnknownParameterType = false
 reportAttributeAccessIssue = false
 executionEnvironments = [
-	{ root = "src/srxy/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
-	{ root = "src/srxy/device.py", reportMissingImports = "none" },
-	{ root = "src/srxy/semantic_image.py", reportMissingImports = "none" },
-	{ root = "src/srxy/matchers/semantic.py", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/metadata/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/models/device.py", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/semantic/semantic_image.py", reportMissingImports = "none" },
+	{ root = "src/srxy/application/matching/semantic.py", reportMissingImports = "none" },
 	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
 	{ root = "tests/unit/test_windows_metadata.py", reportPrivateUsage = "none" },
 	{ root = "src" },
@@ -132,3 +140,20 @@ executionEnvironments = [
 [tool.coverage.run]
 source = ["srxy"]
 omit = ["tests/*"]
+
+[tool.taskipy.tasks]
+cli = { cmd = "srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
+tui = { cmd = "srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
+gui = { cmd = "srxy", help = "launch GUI (pass query/path/flags after --)" }
+checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
+checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
+checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }
+checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix" }
+clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
+clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
+bench = { cmd = "python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
+export-api = { cmd = "python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
+export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
+export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
+upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
+test-package = { cmd = "./scripts/test-package.sh", help = "install from PyPI into a fresh venv and smoke-test" }

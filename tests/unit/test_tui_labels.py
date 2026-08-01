@@ -4,14 +4,14 @@ from pathlib import Path
 
 import pytest
 
-from srxy.models import FileSearchResult, LineMatch
-from srxy.tui.labels import (
+from srxy.adapters.inbound.tui.labels import (
 	MATCH_SOURCE_LABELS,
 	OPTION_LABELS,
 	format_tui_match_labels,
 	option_hint,
 	option_label,
 )
+from srxy.domain.models import FileSearchResult, LineMatch
 
 
 pytestmark = pytest.mark.unit

@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from srxy.archive_search import (
+from srxy.adapters.outbound.archive.archive_search import (
 	archive_member_path,
 	is_standalone_archive,
 	list_archive_members,
 	split_archive_member_path,
 )
-from srxy.file_search import magic_file_search
+from srxy.application.use_cases.search_files import magic_file_search
 
 
 pytestmark = pytest.mark.unit

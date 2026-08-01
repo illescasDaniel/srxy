@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from srxy.cache import reset_cache_connection, reset_run_file_hashes
+from srxy.adapters.outbound.cache.cache import reset_cache_connection, reset_run_file_hashes
 
 
 @pytest.fixture(autouse=True)
@@ -19,9 +19,9 @@ def isolated_cli_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.delenv("SRXY_AUTO_DOWNLOAD", raising=False)
 	monkeypatch.delenv("CI", raising=False)
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "srxy-cache"))
-	monkeypatch.setattr("srxy.cli.ensure_semantic_text_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.cli.ensure_semantic_image_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.cli.ensure_transcribe_model", lambda **_kwargs: True)
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_text_model", lambda **_kwargs: True)
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_image_model", lambda **_kwargs: True)
+	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_transcribe_model", lambda **_kwargs: True)
 	reset_cache_connection()
 	reset_run_file_hashes()
 	yield

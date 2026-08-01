@@ -4,14 +4,14 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.device import (
+from srxy.adapters.outbound.models.device import (
 	resolve_semantic_image_device,
 	resolve_torch_device,
 	resolve_transcribe_device,
 	transcribe_backend_for_device,
 	transcribe_compute_type,
 )
-from srxy.matchers import semantic as semantic_module
+from srxy.application.matching import semantic as semantic_module
 
 
 pytestmark = pytest.mark.unit
@@ -65,8 +65,8 @@ def test_given_semantic_model_load_when_device_resolved_then_passes_device(monke
 	semantic_module.reset_semantic_model()
 	fake_model = MagicMock()
 	with (
-		patch("srxy.model_store.ensure_semantic_text_model", return_value=True),
-		patch("srxy.matchers.semantic.resolve_torch_device", return_value="mps"),
+		patch("srxy.adapters.outbound.models.model_store.ensure_semantic_text_model", return_value=True),
+		patch("srxy.application.matching.semantic.resolve_torch_device", return_value="mps"),
 		patch("sentence_transformers.SentenceTransformer", return_value=fake_model) as constructor,
 	):
 		# when — call loader directly; unit conftest mocks _get_model for other tests

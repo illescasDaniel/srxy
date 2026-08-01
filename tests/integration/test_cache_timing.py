@@ -5,10 +5,10 @@ import time
 import pytest
 from tests.helpers import file_search_root, require_file_search_fixtures
 
-from srxy.cache import reset_cache_connection, reset_run_file_hashes
-from srxy.file_search import magic_file_search
-from srxy.matchers.semantic import reset_semantic_model
-from srxy.semantic_image import reset_semantic_image_model
+from srxy.adapters.outbound.cache.cache import reset_cache_connection, reset_run_file_hashes
+from srxy.adapters.outbound.semantic.semantic_image import reset_semantic_image_model
+from srxy.application.matching.semantic import reset_semantic_model
+from srxy.application.use_cases.search_files import magic_file_search
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.semantic, pytest.mark.integration_full]

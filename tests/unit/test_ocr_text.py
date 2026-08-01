@@ -7,7 +7,7 @@ import pytest
 from PIL import Image
 from tests.helpers import file_search_root, require_file_search_fixtures
 
-from srxy.ocr_text import (
+from srxy.adapters.outbound.ocr.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
 	TesseractEngine,
 	ensure_ocr_available,
@@ -77,10 +77,10 @@ def test_given_tesseract_on_path_when_selecting_engine_then_uses_tesseract(monke
 			return "invoice total"
 
 	with (
-		patch("srxy.ocr_text.tesseract_available", return_value=True),
-		patch("srxy.ocr_text.TesseractEngine", return_value=FakeEngine()),  # type: ignore[arg-type]
+		patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.TesseractEngine", return_value=FakeEngine()),  # type: ignore[arg-type]
 	):
-		from srxy.ocr_text import get_ocr_engine
+		from srxy.adapters.outbound.ocr.ocr_text import get_ocr_engine
 
 		# when
 		engine = get_ocr_engine()
@@ -93,14 +93,14 @@ def test_given_tesseract_on_path_when_selecting_engine_then_uses_tesseract(monke
 
 def test_given_no_tesseract_when_checking_availability_then_returns_false():
 	# given
-	with patch("srxy.ocr_text.tesseract_available", return_value=False):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False):
 		# when / then
 		assert is_ocr_available() is False
 
 
 def test_given_no_tesseract_when_ensuring_ocr_available_then_raises():
 	# given
-	with patch("srxy.ocr_text.tesseract_available", return_value=False):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False):
 		# when / then
 		with pytest.raises(RuntimeError, match="Tesseract OCR is not available"):
 			ensure_ocr_available()
@@ -120,8 +120,8 @@ def test_given_mocked_image_ocr_when_iterating_lines_then_yields_text(tmp_path: 
 	image_path = tmp_path / "scan.png"
 	Image.new("L", (20, 20), color=255).save(image_path)
 
-	with patch("srxy.ocr_text.ocr_pil_image", return_value="quarterly revenue scan"):
-		from srxy.ocr_text import iter_image_ocr_lines
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="quarterly revenue scan"):
+		from srxy.adapters.outbound.ocr.ocr_text import iter_image_ocr_lines
 
 		# when
 		lines = list(iter_image_ocr_lines(image_path))
@@ -138,13 +138,13 @@ def test_given_cached_image_ocr_when_iterating_twice_then_runs_tesseract_once(
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
 	image_path = tmp_path / "scan.png"
 	Image.new("L", (20, 20), color=255).save(image_path)
-	from srxy.cache import reset_cache_connection
-	from srxy.ocr_text import reset_ocr_engine
+	from srxy.adapters.outbound.cache.cache import reset_cache_connection
+	from srxy.adapters.outbound.ocr.ocr_text import reset_ocr_engine
 
 	reset_cache_connection()
 	reset_ocr_engine()
 
-	with patch("srxy.ocr_text.ocr_pil_image", return_value="cached invoice") as ocr_mock:
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="cached invoice") as ocr_mock:
 		# when
 		first = list(iter_image_ocr_lines(image_path))
 		second = list(iter_image_ocr_lines(image_path))
@@ -238,7 +238,7 @@ def test_given_garbage_ocr_when_iterating_lines_then_yields_nothing(tmp_path: Pa
 	image_path = tmp_path / "noise.png"
 	Image.new("L", (20, 20), color=255).save(image_path)
 
-	with patch("srxy.ocr_text.ocr_pil_image", return_value="%o @HAEJ eeeee CJ"):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="%o @HAEJ eeeee CJ"):
 		# when
 		lines = list(iter_image_ocr_lines(image_path))
 
@@ -259,7 +259,7 @@ def test_given_small_image_when_ocring_then_uses_full_frame_only():
 			return "camera sunset beach"
 
 	fake = FakeEngine()
-	with patch("srxy.ocr_text.get_ocr_engine", return_value=fake):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=fake):
 		# when
 		text = ocr_pil_image(image)
 
@@ -281,7 +281,7 @@ def test_given_large_image_when_ocring_then_merges_grid_regions():
 				return nav_bar
 			return garbage
 
-	with patch("srxy.ocr_text.get_ocr_engine", return_value=FakeEngine()):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=FakeEngine()):
 		# when
 		text = ocr_pil_image(image)
 
@@ -303,7 +303,7 @@ def test_given_large_image_with_lexical_primary_when_ocring_then_still_merges_gr
 				return nav_bar
 			return primary
 
-	with patch("srxy.ocr_text.get_ocr_engine", return_value=FakeEngine()):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=FakeEngine()):
 		# when
 		text = ocr_pil_image(image)
 
@@ -342,7 +342,7 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 	def fake_ocr_bytes(data: bytes) -> str:
 		return "classifier layer" if len(data) >= 20_000 else ""
 
-	with patch("srxy.ocr_text.ocr_image_bytes", side_effect=fake_ocr_bytes):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_image_bytes", side_effect=fake_ocr_bytes):
 		# when
 		text = ocr_pdf_page_images(page)
 

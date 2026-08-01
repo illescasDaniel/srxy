@@ -7,7 +7,7 @@ from tests.tui.helpers import assert_svg_snapshot
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from srxy.tui.modals import DownloadProgressModal
+from srxy.adapters.inbound.tui.modals import DownloadProgressModal
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]

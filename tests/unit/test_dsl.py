@@ -4,7 +4,7 @@ import pytest
 from tests.helpers import Product
 
 from srxy import Q, search
-from srxy.models import QNodeType
+from srxy.domain.models import QNodeType
 
 
 pytestmark = pytest.mark.unit

@@ -6,10 +6,10 @@ from pathlib import Path
 import pytest
 from tests.helpers import LabeledQuery, load_labeled_queries, load_search_corpus, require_file_search_fixtures
 
-from srxy.matchers.registry import get_atomic_matcher
-from srxy.matchers.semantic import is_semantic_available, warmup_semantic_model
-from srxy.model_store import ensure_semantic_image_model, ensure_semantic_text_model
-from srxy.semantic_image import is_semantic_image_available, warmup_semantic_image_model
+from srxy.adapters.outbound.models.model_store import ensure_semantic_image_model, ensure_semantic_text_model
+from srxy.adapters.outbound.semantic.semantic_image import is_semantic_image_available, warmup_semantic_image_model
+from srxy.application.matching.registry import get_atomic_matcher
+from srxy.application.matching.semantic import is_semantic_available, warmup_semantic_model
 
 
 pytestmark = pytest.mark.integration

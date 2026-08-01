@@ -5,7 +5,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.semantic_image import (
+from srxy.adapters.outbound.semantic.semantic_image import (
 	is_semantic_image_path,
 	reset_semantic_image_model,
 	score_image,
@@ -39,9 +39,9 @@ def test_given_env_set_when_requesting_semantic_image_then_returns_true(monkeypa
 	assert semantic_image_requested(None) is True
 
 
-@patch("srxy.semantic_image._cosine_similarity", return_value=0.82)
-@patch("srxy.semantic_image._encode_image")
-@patch("srxy.semantic_image.encode_semantic_image_query")
+@patch("srxy.adapters.outbound.semantic.semantic_image._cosine_similarity", return_value=0.82)
+@patch("srxy.adapters.outbound.semantic.semantic_image._encode_image")
+@patch("srxy.adapters.outbound.semantic.semantic_image.encode_semantic_image_query")
 def test_given_mocked_embeddings_when_scoring_image_then_returns_similarity(
 	mock_encode_query: MagicMock,
 	mock_encode_image: MagicMock,

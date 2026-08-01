@@ -1,12 +1,12 @@
 # CLI reference
 
-Same flags in TUI (pre-filled on launch) and plain CLI (`--no-tui` or non-TTY).
+Same flags in the GUI/TUI (pre-filled on launch) and plain CLI (`--cli`, non-TTY, or CI).
 
 ## Quick examples
 
 ```bash
 srxy "registry" ./src
-srxy "registry" ./src --no-tui
+srxy "registry" ./src --cli
 srxy "revenue" ./docs --json
 srxy "revenue" ./docs --content-only
 srxy "budget" . --format flat
@@ -48,9 +48,10 @@ srxy "token" . --names-only
 srxy "token" . --include-hidden
 srxy "token" . --include-noise
 srxy "token" . --include-archives
+srxy "token" . --no-include-subdirectories
 ```
 
-Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`). Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
+Recursive walk by default (`--include-subdirectories`). Use `--no-include-subdirectories` to search only files directly in the chosen folder. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`). Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
 
 ## Flags
 
@@ -60,8 +61,8 @@ Recursive walk. Default skips dot-hidden entries and noise dirs (`__pycache__`, 
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
 | **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
-| **Walk** | `--include-hidden`, `--include-noise`, `--include-archives` |
-| **UX** | `--progress` / `--no-progress`, `--no-tui`, `--version` |
+| **Walk** | `--include-subdirectories` / `--no-include-subdirectories`, `--include-hidden`, `--include-noise`, `--include-archives` |
+| **UX** | `--progress` / `--no-progress`, `--cli`, `--tui`, `--version` |
 
 `--max-line-matches` is deprecated; use `--max-matches`.
 

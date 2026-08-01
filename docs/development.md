@@ -52,6 +52,18 @@ Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`sr
 
 New or changed TUI elements need snapshot coverage in `tests/tui/` (`assert_svg_snapshot`). Refresh: `UPDATE_TUI_SNAPSHOTS=1 pytest tests/tui/…`. See [AGENTS.md](../AGENTS.md).
 
+### GUI snapshots
+
+GUI chrome text-tree snapshots live in `tests/gui/snapshots/`. Refresh: `UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen pytest tests/gui/test_gui_snapshots.py`. See [docs/gui.md](gui.md) and [docs/architecture.md](architecture.md).
+
+### Public API reference
+
+[`docs/api-reference.md`](api-reference.md) is generated from `srxy.__all__`. After changing public exports or their signatures/docstrings:
+
+```bash
+python scripts/docs/export_public_api.py
+```
+
 ## Performance benchmarks
 
 `scripts/bench_file_search.py` measures `magic_file_search` across several scenarios (text, documents, OCR, synthetic large/small sets):
