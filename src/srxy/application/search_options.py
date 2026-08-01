@@ -52,8 +52,12 @@ def has_search_source(options: SearchOptions) -> bool:
 	return bool(options.search_contents and content_match_sources_enabled(options))
 
 
-def normalize_content_dependent_options(options: SearchOptions) -> SearchOptions:
-	"""Clear content-only how-to-match flags when File contents is off."""
+def effective_search_options(options: SearchOptions) -> SearchOptions:
+	"""Return options with content-only how-flags inactive when File contents is off.
+
+	Preferred ticks are kept in the stored ``SearchOptions`` for UI round-trips;
+	use this when summarizing or reasoning about what will actually run.
+	"""
 	if options.search_contents:
 		return options
 	return SearchOptions(
@@ -71,11 +75,15 @@ def normalize_content_dependent_options(options: SearchOptions) -> SearchOptions
 	)
 
 
+# Back-compat alias for older imports.
+normalize_content_dependent_options = effective_search_options
+
+
 def search_options_from_args(args: argparse.Namespace) -> SearchOptions:
 	search_names, search_contents = _resolve_search_modes(args)
 	raw_docs = getattr(args, "search_docs_tags", None)
 	search_docs_tags = True if raw_docs is None else bool(raw_docs)
-	options = SearchOptions(
+	return SearchOptions(
 		search_names=search_names,
 		search_contents=search_contents,
 		search_docs_tags=search_docs_tags,
@@ -88,7 +96,6 @@ def search_options_from_args(args: argparse.Namespace) -> SearchOptions:
 		include_archives=bool(getattr(args, "include_archives", False)),
 		include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
 	)
-	return normalize_content_dependent_options(options)
 
 
 def sync_options_to_args(
@@ -123,57 +130,56 @@ def sync_options_to_args(
 
 
 def apply_search_options_to_args(args: argparse.Namespace, options: SearchOptions):
-	normalized = normalize_content_dependent_options(options)
 	sync_options_to_args(
 		args,
-		search_names=normalized.search_names,
-		search_contents=normalized.search_contents,
-		search_docs_tags=normalized.search_docs_tags,
-		semantic=normalized.semantic,
-		semantic_image=normalized.semantic_image,
-		ocr=normalized.ocr,
-		transcribe=normalized.transcribe,
-		include_hidden=normalized.include_hidden,
-		include_noise=normalized.include_noise,
-		include_archives=normalized.include_archives,
-		include_subdirectories=normalized.include_subdirectories,
+		search_names=options.search_names,
+		search_contents=options.search_contents,
+		search_docs_tags=options.search_docs_tags,
+		semantic=options.semantic,
+		semantic_image=options.semantic_image,
+		ocr=options.ocr,
+		transcribe=options.transcribe,
+		include_hidden=options.include_hidden,
+		include_noise=options.include_noise,
+		include_archives=options.include_archives,
+		include_subdirectories=options.include_subdirectories,
 	)
 
 
 def format_search_options_summary(options: SearchOptions) -> str:
-	normalized = normalize_content_dependent_options(options)
+	effective = effective_search_options(options)
 	segments: list[str] = []
 
 	where_labels: list[str] = []
-	if normalized.search_names:
+	if effective.search_names:
 		where_labels.append(SUMMARY_WHERE_NAMES)
-	if normalized.search_contents:
+	if effective.search_contents:
 		where_labels.append(SUMMARY_WHERE_CONTENT)
 	if where_labels:
 		segments.append(f"{SUMMARY_PREFIX_WHERE}: {', '.join(where_labels)}")
 
 	how_labels: list[str] = []
-	if normalized.search_docs_tags:
+	if effective.search_docs_tags:
 		how_labels.append(SUMMARY_HOW_DOCS_TAGS)
-	if normalized.semantic:
+	if effective.semantic:
 		how_labels.append(SUMMARY_HOW_SEMANTIC)
-	if normalized.ocr:
+	if effective.ocr:
 		how_labels.append(SUMMARY_HOW_OCR)
-	if normalized.transcribe:
+	if effective.transcribe:
 		how_labels.append(SUMMARY_HOW_TRANSCRIBE)
-	if normalized.semantic_image:
+	if effective.semantic_image:
 		how_labels.append(SUMMARY_HOW_SEMANTIC_IMAGE)
 	if how_labels:
 		segments.append(f"{SUMMARY_PREFIX_HOW}: {', '.join(how_labels)}")
 
 	scan_labels: list[str] = []
-	if not normalized.include_subdirectories:
+	if not effective.include_subdirectories:
 		scan_labels.append(SUMMARY_SCAN_TOP_LEVEL)
-	if normalized.include_hidden:
+	if effective.include_hidden:
 		scan_labels.append(SUMMARY_SCAN_HIDDEN)
-	if normalized.include_noise:
+	if effective.include_noise:
 		scan_labels.append(SUMMARY_SCAN_NOISE)
-	if normalized.include_archives:
+	if effective.include_archives:
 		scan_labels.append(SUMMARY_SCAN_ARCHIVES)
 	if scan_labels:
 		segments.append(f"{SUMMARY_PREFIX_SCAN}: {', '.join(scan_labels)}")

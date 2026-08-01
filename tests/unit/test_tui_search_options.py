@@ -137,7 +137,7 @@ def test_given_ocr_only_how_when_formatting_summary_then_omits_docs_tags():
 	assert has_search_source(options)
 
 
-def test_given_contents_off_when_normalizing_then_clears_content_how_options():
+def test_given_contents_off_with_preferred_how_ticks_when_formatting_summary_then_hides_how():
 	# given
 	options = SearchOptions(
 		search_names=True,
@@ -153,7 +153,45 @@ def test_given_contents_off_when_normalizing_then_clears_content_how_options():
 
 	# then
 	assert summary == "Where: Names"
+	assert options.ocr is True
+	assert options.search_docs_tags is True
 	assert not has_search_source(SearchOptions(search_names=False, search_contents=False, ocr=True))
+
+
+def test_given_contents_off_when_applying_options_to_args_then_preserves_preferred_how_ticks():
+	# given
+	args = argparse.Namespace(
+		names_only=False,
+		content_only=False,
+		search_names=True,
+		search_contents=True,
+		search_docs_tags=True,
+		semantic=False,
+		semantic_image=False,
+		semantic_all=False,
+		ocr=False,
+		transcribe=False,
+		include_hidden=False,
+		include_noise=False,
+		include_archives=False,
+		include_subdirectories=True,
+	)
+	options = SearchOptions(
+		search_names=True,
+		search_contents=False,
+		search_docs_tags=True,
+		ocr=True,
+		transcribe=True,
+	)
+
+	# when
+	apply_search_options_to_args(args, options)
+
+	# then
+	assert args.search_contents is False
+	assert args.search_docs_tags is True
+	assert args.ocr is True
+	assert args.transcribe is True
 
 
 def test_given_match_labels_when_formatting_for_tui_then_uses_plain_language():

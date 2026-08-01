@@ -29,7 +29,6 @@ from srxy.application.search_options import (
 	SEARCH_SOURCE_REQUIRED_MESSAGE,
 	SearchOptions,
 	has_search_source,
-	normalize_content_dependent_options,
 )
 from srxy.application.size_limits import SizeLimits
 
@@ -457,7 +456,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	def __init__(self, initial: SearchOptions):
 		super().__init__()
-		self._initial = normalize_content_dependent_options(initial)
+		self._initial = initial
 		self._syncing_checkboxes = False
 
 	def _compose_option(self, checkbox_id: str, *, value: bool) -> ComposeResult:
@@ -541,27 +540,14 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		for checkbox_id in self._CONTENT_DEPENDENT_IDS:
 			checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
 			checkbox.disabled = not content_enabled
-			if not content_enabled and checkbox.value:
-				self._syncing_checkboxes = True
-				try:
-					checkbox.value = False
-				finally:
-					self._syncing_checkboxes = False
 		self._sync_enable_all_from_powerups()
 
 	def _current_options(self) -> SearchOptions:
-		search_contents = self._content_enabled()
 		semantic, ocr, transcribe, semantic_image = self._powerup_values()
-		docs_tags = self.query_one("#so-docs-tags", Checkbox).value
-		if not search_contents:
-			docs_tags = False
-			ocr = False
-			transcribe = False
-			semantic_image = False
 		return SearchOptions(
 			search_names=self.query_one("#so-names", Checkbox).value,
-			search_contents=search_contents,
-			search_docs_tags=docs_tags,
+			search_contents=self._content_enabled(),
+			search_docs_tags=self.query_one("#so-docs-tags", Checkbox).value,
 			semantic=semantic,
 			semantic_image=semantic_image,
 			ocr=ocr,
@@ -580,12 +566,11 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	def _on_enable_all_changed(self, event: Checkbox.Changed):
 		if self._syncing_checkboxes:
 			return
-		content_enabled = self._content_enabled()
 		self._set_powerups(
 			semantic=event.value,
-			ocr=event.value and content_enabled,
-			transcribe=event.value and content_enabled,
-			semantic_image=event.value and content_enabled,
+			ocr=event.value,
+			transcribe=event.value,
+			semantic_image=event.value,
 		)
 
 	@on(Checkbox.Changed, "#so-semantic")

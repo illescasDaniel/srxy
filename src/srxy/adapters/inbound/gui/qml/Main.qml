@@ -62,26 +62,19 @@ ApplicationWindow {
 		optOcr.enabled = contentOn && (controller ? controller.isFeatureEnabled("ocr") : false)
 		optTranscribe.enabled = contentOn && (controller ? controller.isFeatureEnabled("transcribe") : false)
 		optSemanticImage.enabled = contentOn && (controller ? controller.isFeatureEnabled("semantic_image") : false)
-		if (!contentOn) {
-			optDocsTags.checked = false
-			optOcr.checked = false
-			optTranscribe.checked = false
-			optSemanticImage.checked = false
-		}
 	}
 
 	function pushOptionsToController() {
 		if (!controller || syncingOptions)
 			return ""
-		const contentOn = optContents.checked
 		return controller.applyOptionsJson(JSON.stringify({
 			search_names: optNames.checked,
-			search_contents: contentOn,
-			search_docs_tags: contentOn && optDocsTags.checked,
+			search_contents: optContents.checked,
+			search_docs_tags: optDocsTags.checked,
 			semantic: optSemantic.checked && controller.isFeatureEnabled("semantic"),
-			ocr: contentOn && optOcr.checked && controller.isFeatureEnabled("ocr"),
-			transcribe: contentOn && optTranscribe.checked && controller.isFeatureEnabled("transcribe"),
-			semantic_image: contentOn && optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
+			ocr: optOcr.checked && controller.isFeatureEnabled("ocr"),
+			transcribe: optTranscribe.checked && controller.isFeatureEnabled("transcribe"),
+			semantic_image: optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
 			include_hidden: optHidden.checked,
 			include_noise: optNoise.checked,
 			include_archives: optArchives.checked,
@@ -580,17 +573,33 @@ ApplicationWindow {
 		objectName: "optionsDialog"
 		title: "Search options"
 		modal: true
-		standardButtons: Dialog.Ok | Dialog.Cancel
 		anchors.centerIn: parent
 		width: 520
 		implicitWidth: 520
-		onAboutToShow: loadOptionsFromController()
-		onAccepted: {
-			const err = pushOptionsToController()
-			if (err) {
-				errorLabel.text = err
-				errorDialog.open()
-				Qt.callLater(function () { optionsDialog.open() })
+		onAboutToShow: {
+			optionsError.text = ""
+			optionsError.visible = false
+			loadOptionsFromController()
+		}
+		footer: DialogButtonBox {
+			Button {
+				text: qsTr("Cancel")
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: optionsDialog.reject()
+			}
+			Button {
+				text: qsTr("OK")
+				highlighted: true
+				onClicked: {
+					const err = pushOptionsToController()
+					if (err) {
+						optionsError.text = err
+						optionsError.visible = true
+						return
+					}
+					optionsError.visible = false
+					optionsDialog.accept()
+				}
 			}
 		}
 
@@ -599,6 +608,15 @@ ApplicationWindow {
 			ColumnLayout {
 				spacing: 6
 				width: optionsDialog.availableWidth - 24
+
+				Label {
+					id: optionsError
+					objectName: "optionsError"
+					visible: false
+					color: "#c62828"
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
 
 				Label {
 					text: "Where to search"
@@ -814,7 +832,11 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: 420
 		implicitWidth: 420
-		Label { id: errorLabel; wrapMode: Text.Wrap }
+		Label {
+			id: errorLabel
+			wrapMode: Text.Wrap
+			width: errorDialog.availableWidth - 24
+		}
 	}
 
 	Connections {
