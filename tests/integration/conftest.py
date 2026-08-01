@@ -15,6 +15,19 @@ from srxy.application.matching.semantic import is_semantic_available, warmup_sem
 pytestmark = pytest.mark.integration
 
 
+_INTEGRATION_ROOT = Path(__file__).resolve().parent
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]):
+	mark = pytest.mark.xdist_group("integration")
+	for item in items:
+		try:
+			item.path.resolve().relative_to(_INTEGRATION_ROOT)
+		except ValueError:
+			continue
+		item.add_marker(mark)
+
+
 @pytest.fixture(scope="session")
 def file_search_root() -> Path:
 	if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes", "on"}:
@@ -53,7 +66,10 @@ def semantic_search_enabled():  # pyright: ignore[reportUnusedFunction]
 @pytest.fixture(scope="session", autouse=True)
 def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[reportUnusedParameter]
 	if not is_semantic_available():
-		pytest.skip("Integration tests require SRXY_SEMANTIC=1 and pip install 'srxy[semantic]'")
+		pytest.skip(
+			"Integration tests require SRXY_SEMANTIC=1 and "
+			"uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
+		)
 	if not ensure_semantic_text_model(interactive=False, auto_download=True):
 		pytest.skip("Integration tests require the semantic text model (download failed or unavailable)")
 	warmup_semantic_model()

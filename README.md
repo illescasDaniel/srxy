@@ -10,7 +10,7 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 ## Installation
 
-Needs **Python 3.11+**. `pipx install 'srxy[semantic]'` recommended; `pip install srxy` for core-only. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
+Needs **Python 3.11+**. `uv tool install 'srxy[semantic]'` recommended; `pipx install 'srxy[semantic]'` also works; `pipx install srxy` for core-only in a venv. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
 
 **Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md)
 
@@ -66,7 +66,7 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 
 | Guide | Contents |
 |-------|----------|
-| [Installation](docs/installation.md) | pipx/pip, macOS/Linux/Windows, ffmpeg, tesseract |
+| [Installation](docs/installation.md) | uv tool / pipx, macOS/Linux/Windows, ffmpeg, tesseract |
 | [TUI](docs/tui.md) | Layout, keybindings, clipboard, release checklist |
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |
@@ -76,12 +76,14 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 
 ## Development
 
+Requires [uv](https://docs.astral.sh/uv/).
+
 ```bash
-pip install -e ".[dev,semantic]"
-./scripts/quality/checks.sh --fix
-./scripts/quality/checks.sh              # day-to-day
-./scripts/quality/checks.sh --full       # before release
-./scripts/quality/checks.sh --full+cpu   # + forced-CPU transcribe matrix
+uv sync --extra semantic
+uv run task checks-fix
+uv run task checks              # day-to-day
+uv run task checks-full         # before release
+uv run task checks-full-cpu     # + forced-CPU transcribe matrix
 ```
 
 CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).

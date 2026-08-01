@@ -22,7 +22,7 @@ _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 _SEMANTIC_IMAGE_UNAVAILABLE_MESSAGE = (
 	"Image semantic search is disabled. Set SRXY_SEMANTIC_IMAGE=1 and install the optional "
-	"dependency: pip install 'srxy[semantic]'"
+	"dependency: uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
 )
 
 

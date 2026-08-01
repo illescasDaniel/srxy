@@ -14,17 +14,12 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Create virtual environment
-        run: python -m venv .venv
-
-      - name: Install dependencies
-        run: |
-          .venv/bin/pip install --upgrade "pip>=26.1.2"
-          .venv/bin/pip install -e ".[dev]"
+      - name: Sync dependencies
+        run: uv sync --frozen
 
       - name: Install shell linting tools
         run: |
@@ -43,22 +38,17 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Create virtual environment
-        run: python -m venv .venv
-
-      - name: Install dependencies
-        run: |
-          .venv/bin/pip install --upgrade "pip>=26.1.2"
-          .venv/bin/pip install -e ".[dev]"
+      - name: Sync dependencies
+        run: uv sync --frozen
 
       - name: Unit tests
         env:
           CI: true
-        run: .venv/bin/pytest tests -m "unit and not semantic and not transcribe"
+        run: uv run pytest tests -n auto -m "unit and not semantic and not transcribe"
 
   test-windows:
     runs-on: windows-latest
@@ -67,19 +57,14 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      - uses: actions/setup-python@v7
+      - uses: astral-sh/setup-uv@v6
         with:
-          python-version: "3.11"
+          enable-cache: true
 
-      - name: Create virtual environment
-        run: python -m venv .venv
-
-      - name: Install dependencies
-        run: |
-          .venv\Scripts\pip install --upgrade "pip>=26.1.2"
-          .venv\Scripts\pip install -e ".[dev,windows]"
+      - name: Sync dependencies
+        run: uv sync --frozen --extra windows
 
       - name: Unit tests
         env:
           CI: true
-        run: .venv\Scripts\pytest tests -m "unit and not semantic and not transcribe"
+        run: uv run pytest tests -n auto -m "unit and not semantic and not transcribe"

@@ -7,5 +7,5 @@ internal_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${internal_dir}/lib.sh"
 
 lib_require_venv
-lib_activate_venv
-PIPAPI_PYTHON_LOCATION="${LIB_REPO_ROOT}/.venv/bin/python" pip-audit --skip-editable
+python_bin="$(lib_uv_run python -c 'import sys; print(sys.executable)')"
+PIPAPI_PYTHON_LOCATION="${python_bin}" lib_uv_run pip-audit --skip-editable

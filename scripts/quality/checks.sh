@@ -53,7 +53,6 @@ if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
 fi
 gate_init
 lib_require_venv
-PYTHON="${LIB_REPO_ROOT}/.venv/bin/python"
 cd "${LIB_REPO_ROOT}" || exit
 
 set +e
@@ -72,18 +71,17 @@ if [[ "${FIX}" == true ]]; then
 		gate_add_detail "[ruff] exit ${ruff_exit}"
 	fi
 else
-	lib_activate_venv
 	lib_ruff_targets
-	ruff_check_out="$(ruff check "${LIB_RUFF_TARGETS[@]}" --output-format=github 2>&1)"
+	ruff_check_out="$(lib_uv_run ruff check "${LIB_RUFF_TARGETS[@]}" --output-format=github 2>&1)"
 	printf '%s\n' "${ruff_check_out}"
-	emit_out="$(printf '%s\n' "${ruff_check_out}" | "${PYTHON}" "${internal_dir}/gate_emit.py" ruff-github 2>&1)"
+	emit_out="$(printf '%s\n' "${ruff_check_out}" | lib_uv_run python "${internal_dir}/gate_emit.py" ruff-github 2>&1)"
 	summary=""
 	while IFS= read -r line; do
 		if [[ "${line}" == GATE_SUMMARY* ]]; then
 			summary="${line}"
 		fi
 	done <<<"${emit_out}"
-	ruff_format_out="$(ruff format --check "${LIB_RUFF_TARGETS[@]}" 2>&1)"
+	ruff_format_out="$(lib_uv_run ruff format --check "${LIB_RUFF_TARGETS[@]}" 2>&1)"
 	ruff_format_exit=$?
 	if [[ -n "${ruff_format_out}" ]]; then
 		printf '%s\n' "${ruff_format_out}"
@@ -130,7 +128,7 @@ gate_step_start "basedpyright"
 pyright_stderr="$(mktemp)"
 pyright_json="$("${quality_dir}/pyright.sh" --outputjson 2>"${pyright_stderr}")"
 pyright_exit=$?
-emit_out="$(printf '%s' "${pyright_json}" | "${PYTHON}" "${internal_dir}/gate_emit.py" pyright 2>&1)"
+emit_out="$(printf '%s' "${pyright_json}" | lib_uv_run python "${internal_dir}/gate_emit.py" pyright 2>&1)"
 summary=""
 while IFS= read -r line; do
 	if [[ "${line}" == GATE_SUMMARY* ]]; then

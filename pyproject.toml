@@ -35,35 +35,34 @@ semantic = [
 windows = [
 	"pywin32>=312",
 ]
+
+[dependency-groups]
 dev = [
 	"basedpyright>=1.39",
 	"pip-audit>=2.10",
-	"setuptools>=83.0",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
 	"pytest-qt>=4.4",
+	"pytest-testmon>=2.2",
+	"pytest-xdist>=3.6",
 	"ruff>=0.15",
 	"taskipy>=1.14",
 ]
 uploader = [
-	"build>=1.5",
 	"twine>=6.2",
 ]
 
 [build-system]
-requires = ["setuptools>=83.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.12.1,<0.13"]
+build-backend = "uv_build"
 
 [project.scripts]
 srxy = "srxy.__main__:main"
 
-[tool.setuptools.packages.find]
-where = ["src"]
-
-[tool.setuptools.package-data]
-"srxy.adapters.inbound.gui" = ["qml/*.qml"]
-
 # tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -83,7 +82,7 @@ markers = [
 	"macos_finder: tests that require writable macOS Finder tag extended attributes",
 	"windows_tags: tests that require Windows Explorer tag support via pywin32",
 	"transcribe: tests requiring faster-whisper, transformers, and ffmpeg",
-	"semantic: tests requiring pip install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
+	"semantic: tests requiring uv tool install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
 	"integration_full: extended integration tests using committed binary fixtures from tests/fixtures/file_search/",
 	"transcribe_device_matrix: parametrized transcribe device matrix (CUDA only when available; use --integration-test-cpu to force CPU too)",
 ]
@@ -142,19 +141,19 @@ source = ["srxy"]
 omit = ["tests/*"]
 
 [tool.taskipy.tasks]
-cli = { cmd = "srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
-tui = { cmd = "srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
-gui = { cmd = "srxy", help = "launch GUI (pass query/path/flags after --)" }
+cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
+tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
+gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
 checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }
 checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix" }
 clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
 clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
-bench = { cmd = "python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
-export-api = { cmd = "python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
+bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
+export-api = { cmd = "uv run python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
 export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
 export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
 upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
 test-package = { cmd = "./scripts/test-package.sh", help = "install from PyPI into a fresh venv and smoke-test" }
-format = { cmd = "ruff check --fix src tests && ruff format src tests", help = "format code" }
+format = { cmd = "uv run ruff check --fix src tests && uv run ruff format src tests", help = "format code" }

@@ -7,7 +7,6 @@ quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${quality_dir}/internal/lib.sh"
 
 lib_require_venv
-lib_activate_venv
 lib_pytest_args
 
 if [[ ${#LIB_PYTEST_ARGS[@]} -eq 0 ]]; then
@@ -15,4 +14,4 @@ if [[ ${#LIB_PYTEST_ARGS[@]} -eq 0 ]]; then
 	exit 1
 fi
 
-pytest "${LIB_PYTEST_ARGS[@]}" "${LIB_PYTEST_COV[@]}"
+lib_uv_run pytest "${LIB_PYTEST_ARGS[@]}" "${LIB_PYTEST_COV[@]}"

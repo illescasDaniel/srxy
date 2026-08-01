@@ -22,7 +22,7 @@ Credentials are read from ~/.pypirc (recommended) or TWINE_USERNAME /
 TWINE_PASSWORD. Create a PyPI API token and store it in ~/.pypirc with
 chmod 600 before uploading.
 
-Install upload tools: pip install -e ".[uploader]"
+Install upload tools: uv sync --group uploader
 EOF
 }
 
@@ -57,10 +57,9 @@ while [[ $# -gt 0 ]]; do
 done
 
 lib_require_venv
-lib_activate_venv
 
-if ! python -c "import build, twine" 2>/dev/null; then
-	echo "error: missing upload dependencies; run: pip install -e '.[uploader]'" >&2
+if ! lib_uv_run python -c "import twine" 2>/dev/null; then
+	echo "error: missing upload dependencies; run: uv sync --group uploader" >&2
 	exit 1
 fi
 
@@ -79,8 +78,9 @@ if [[ "${run_checks}" == "true" ]]; then
 fi
 
 rm -rf "${LIB_REPO_ROOT}/dist"
-python -m build
-python -m twine check "${LIB_REPO_ROOT}"/dist/*
+cd "${LIB_REPO_ROOT}" || exit
+uv build
+lib_uv_run twine check "${LIB_REPO_ROOT}"/dist/*
 
 twine_args=()
 if [[ "${twine_yes}" == "true" ]]; then
@@ -90,4 +90,4 @@ if [[ "${repository}" == "testpypi" ]]; then
 	twine_args+=(--repository testpypi)
 fi
 
-python -m twine upload "${twine_args[@]}" "${LIB_REPO_ROOT}"/dist/*
+lib_uv_run twine upload "${twine_args[@]}" "${LIB_REPO_ROOT}"/dist/*

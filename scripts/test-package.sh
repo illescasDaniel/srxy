@@ -63,13 +63,12 @@ fi
 echo "Installing srxy==${version} from ${index_label} into ${venv}"
 
 rm -rf "${venv}"
-python3 -m venv "${venv}"
-"${venv}/bin/pip" install --upgrade pip
-"${venv}/bin/pip" install "${pip_install_args[@]}" "srxy==${version}"
+uv venv "${venv}"
+uv pip install --python "${venv}" "${pip_install_args[@]}" "srxy==${version}"
 
-"${venv}/bin/python" -c "from srxy import magic_search, search, Q; print('import ok')"
+uv run --python "${venv}" python -c "from srxy import magic_search, search, Q; print('import ok')"
 
 if [[ "${run_playground}" == "true" ]]; then
 	echo
-	"${venv}/bin/python" "${playground}"
+	uv run --python "${venv}" python "${playground}"
 fi

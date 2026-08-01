@@ -50,15 +50,14 @@ lib_has_pytest_tests() {
 
 lib_require_venv() {
 	if [[ ! -d "${LIB_REPO_ROOT}/.venv" ]]; then
-		echo "Missing .venv. Create it first: python -m venv .venv && pip install -e '.[dev]'" >&2
+		echo "Missing .venv. Create it first: uv sync --extra semantic" >&2
 		exit 1
 	fi
 }
 
-lib_activate_venv() {
+lib_uv_run() {
 	cd "${LIB_REPO_ROOT}" || return
-	# shellcheck disable=SC1091
-	source ".venv/bin/activate"
+	uv run -- "$@"
 }
 
 lib_ruff_targets() {
@@ -125,8 +124,14 @@ lib_pytest_args() {
 	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--integration-test-cpu)
 	fi
+	LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup)
+	# Change-aware selection for local day-to-day gate only (not CI, not --full).
+	if [[ "${CI:-}" != "true" && "${LIB_PYTEST_FULL:-}" != "true" ]]; then
+		LIB_PYTEST_ARGS+=(--testmon-forceselect --ff)
+	fi
 	LIB_PYTEST_COV=()
-	if [[ -d "${LIB_REPO_ROOT}/src" ]]; then
+	# Coverage only on --full / --full+cpu (avoids clash with testmon collection).
+	if [[ "${LIB_PYTEST_FULL:-}" == "true" && -d "${LIB_REPO_ROOT}/src" ]]; then
 		# shellcheck disable=SC2034
 		LIB_PYTEST_COV=(--cov=src --cov-report=term-missing)
 	fi

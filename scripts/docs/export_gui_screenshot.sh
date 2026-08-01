@@ -8,12 +8,11 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/scripts/quality/internal/lib.sh"
 
 lib_require_venv
-lib_activate_venv
 cd "$ROOT"
 
 mkdir -p docs/images
 
-python <<'PY'
+lib_uv_run python <<'PY'
 from __future__ import annotations
 
 import json

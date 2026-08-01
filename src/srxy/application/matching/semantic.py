@@ -18,7 +18,8 @@ _run_embedding_cache: dict[tuple[str, str], object] = {}
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 _SEMANTIC_DEPS_UNAVAILABLE_MESSAGE = (
-	"Semantic matching requires the optional dependency: pip install 'srxy[semantic]'. "
+	"Semantic matching requires the optional dependency: "
+	"uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]'). "
 	"Semantic search needs a GPU to run."
 )
 

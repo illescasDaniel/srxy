@@ -16,9 +16,8 @@ for arg in "$@"; do
 done
 
 lib_require_venv
-lib_activate_venv
 if [[ "${OUTPUT_JSON}" == true ]]; then
-	basedpyright --outputjson
+	lib_uv_run basedpyright --outputjson
 else
-	basedpyright
+	lib_uv_run basedpyright
 fi

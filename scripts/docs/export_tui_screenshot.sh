@@ -7,14 +7,13 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 source "$ROOT/scripts/quality/internal/lib.sh"
 
 lib_require_venv
-lib_activate_venv
 cd "$ROOT"
 
 mkdir -p docs/images
 
 PNG_MAX_WIDTH=880
 
-python <<'PY'
+lib_uv_run python <<'PY'
 import asyncio
 import re
 from pathlib import Path
@@ -150,7 +149,7 @@ if ! command -v rsvg-convert >/dev/null 2>&1; then
 fi
 
 read -r SVG_WIDTH SVG_HEIGHT < <(
-	python <<'PY'
+	lib_uv_run python <<'PY'
 import re
 from pathlib import Path
 
@@ -163,6 +162,6 @@ PY
 )
 
 PNG_WIDTH="${PNG_MAX_WIDTH}"
-PNG_HEIGHT="$(python -c "print(round(${PNG_WIDTH} * ${SVG_HEIGHT} / ${SVG_WIDTH}))")"
+PNG_HEIGHT="$(lib_uv_run python -c "print(round(${PNG_WIDTH} * ${SVG_HEIGHT} / ${SVG_WIDTH}))")"
 rsvg-convert -w "${PNG_WIDTH}" -h "${PNG_HEIGHT}" docs/images/tui.svg -o docs/images/tui.png
 echo "Wrote docs/images/tui.svg and docs/images/tui.png (${PNG_WIDTH}x${PNG_HEIGHT})"

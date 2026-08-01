@@ -26,7 +26,10 @@ DEFAULT_TRANSCRIBE_THRESHOLD = 0.25
 DEFAULT_TRANSCRIBE_MAX_FILE_SIZE = 500 * 1024 * 1024
 TRANSCRIBE_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
 
-_TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE = "Transcription requires the optional dependency: pip install 'srxy[semantic]'"
+_TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE = (
+	"Transcription requires the optional dependency: "
+	"uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
+)
 
 _FFMPEG_UNAVAILABLE_MESSAGE = (
 	"ffmpeg is not available. Install the ffmpeg binary on PATH "

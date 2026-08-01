@@ -13,7 +13,7 @@ from srxy.domain.models import MatchType
 
 _SEMANTIC_UNAVAILABLE_MESSAGE = (
 	"Semantic matching is disabled. Set SRXY_SEMANTIC=1 and install the optional "
-	"dependency: pip install 'srxy[semantic]'"
+	"dependency: uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
 )
 
 
