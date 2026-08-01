@@ -10,11 +10,17 @@ Match against file paths and filenames.
 Fuzzy, phonetic, and substring matching apply to the basename and path
 segments. Turn this off when you only want content matches.""",
 	"search_contents": """\
+Search inside files (not just names).
+
+Master switch for document text, tags/metadata, OCR, transcription, and
+visual matching. Turn this off for filename-only search. When on, choose
+sources under How to match.""",
+	"search_docs_tags": """\
 Match text inside documents, tags, and file metadata.
 
-Covers extracted document text, EXIF/media tags, and other content
-sources. Power-ups (OCR, transcription, visual match) also require
-content search.""",
+Recommended ON for most searches. Turn this off when you only want Text
+in images, Spoken words, and/or Visual description (File contents must
+still be on).""",
 	"semantic": """\
 Find related meaning, not just exact spelling.
 

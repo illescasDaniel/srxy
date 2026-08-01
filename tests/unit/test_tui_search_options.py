@@ -10,6 +10,7 @@ from srxy.application.search_options import (
 	SearchOptions,
 	apply_search_options_to_args,
 	format_search_options_summary,
+	has_search_source,
 	search_options_from_args,
 )
 from srxy.domain.models import FileSearchResult, LineMatch
@@ -25,6 +26,7 @@ def test_given_args_when_building_search_options_then_reflects_flags():
 		content_only=False,
 		search_names=True,
 		search_contents=True,
+		search_docs_tags=False,
 		semantic=False,
 		semantic_image=False,
 		semantic_all=False,
@@ -43,6 +45,7 @@ def test_given_args_when_building_search_options_then_reflects_flags():
 	assert options == SearchOptions(
 		search_names=True,
 		search_contents=True,
+		search_docs_tags=False,
 		include_hidden=True,
 		include_archives=True,
 		include_subdirectories=False,
@@ -56,6 +59,7 @@ def test_given_search_options_when_applying_to_args_then_sets_include_archives()
 		content_only=False,
 		search_names=True,
 		search_contents=True,
+		search_docs_tags=True,
 		semantic=False,
 		semantic_image=False,
 		semantic_all=False,
@@ -75,6 +79,7 @@ def test_given_search_options_when_applying_to_args_then_sets_include_archives()
 	assert args.include_archives is True
 	assert args.ocr is True
 	assert args.include_subdirectories is False
+	assert args.search_docs_tags is True
 
 
 def test_given_enabled_options_when_formatting_summary_then_lists_labels():
@@ -85,7 +90,7 @@ def test_given_enabled_options_when_formatting_summary_then_lists_labels():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · Scan: Archives"
+	assert summary == "Where: Names, Content · How: Docs & tags · Scan: Archives"
 
 
 def test_given_top_level_only_when_formatting_summary_then_lists_scan_label():
@@ -96,7 +101,7 @@ def test_given_top_level_only_when_formatting_summary_then_lists_scan_label():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · Scan: This folder only"
+	assert summary == "Where: Names, Content · How: Docs & tags · Scan: This folder only"
 
 
 def test_given_powerups_when_formatting_summary_then_shows_how_segment():
@@ -112,7 +117,43 @@ def test_given_powerups_when_formatting_summary_then_shows_how_segment():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · How: Image text, Speech"
+	assert summary == "Where: Names, Content · How: Docs & tags, Image text, Speech"
+
+
+def test_given_ocr_only_how_when_formatting_summary_then_omits_docs_tags():
+	# given
+	options = SearchOptions(
+		search_names=False,
+		search_contents=True,
+		search_docs_tags=False,
+		ocr=True,
+	)
+
+	# when
+	summary = format_search_options_summary(options)
+
+	# then
+	assert summary == "Where: Content · How: Image text"
+	assert has_search_source(options)
+
+
+def test_given_contents_off_when_normalizing_then_clears_content_how_options():
+	# given
+	options = SearchOptions(
+		search_names=True,
+		search_contents=False,
+		search_docs_tags=True,
+		ocr=True,
+		transcribe=True,
+		semantic_image=True,
+	)
+
+	# when
+	summary = format_search_options_summary(options)
+
+	# then
+	assert summary == "Where: Names"
+	assert not has_search_source(SearchOptions(search_names=False, search_contents=False, ocr=True))
 
 
 def test_given_match_labels_when_formatting_for_tui_then_uses_plain_language():

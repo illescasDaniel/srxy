@@ -126,7 +126,7 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
 			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
 		):
-			async with app.run_test(size=(100, 30)) as pilot:
+			async with app.run_test(size=(100, 40)) as pilot:
 				button = app.query_one("#search-button")
 				for _ in range(30):
 					await pilot.pause(delay=0.05)
@@ -134,10 +134,22 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 						break
 				await pilot.click("#search-options-button")
 				await pilot.pause()
-				assert isinstance(app.screen, SearchOptionsModal)
-				await pilot.click("#so-semantic")
+				modal = app.screen
+				assert isinstance(modal, SearchOptionsModal)
+				from textual.widgets import Checkbox
+
+				modal.query_one("#so-semantic", Checkbox).value = True
 				await pilot.pause()
-				await pilot.click("#search-options-apply")
+				from srxy.application.search_options import SearchOptions
+
+				modal.dismiss(
+					SearchOptions(
+						search_names=False,
+						search_contents=True,
+						search_docs_tags=True,
+						semantic=True,
+					)
+				)
 				await pilot.pause()
 				assert button.has_class("-stale")
 

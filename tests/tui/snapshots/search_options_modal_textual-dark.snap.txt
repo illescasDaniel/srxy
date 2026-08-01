@@ -22,14 +22,14 @@ File names
 Match the path and filename
 █
 █
+▃▃
 █
 █
 X
 File contents
-▇▇
 █
 █
-Text inside documents, tags, and metadata
+Search inside files (docs, images, audio, …)
 █
 █
 █
@@ -43,10 +43,10 @@ Fuzzy, phonetic, and substring matching (always on)
 █
 █
 X
-Similar meaning
+Docs, tags & metadata (recommended ON)
 █
 █
-Find related words, not just exact spelling
+Text inside documents, tags, and metadata
 █
 █
 █

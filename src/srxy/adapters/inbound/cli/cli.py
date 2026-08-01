@@ -755,8 +755,14 @@ def build_parser() -> argparse.ArgumentParser:
 	)
 
 	mode_group = parser.add_mutually_exclusive_group()
-	mode_group.add_argument("--names-only", action="store_true", help="Search file names only")
-	mode_group.add_argument("--content-only", action="store_true", help="Search file contents only")
+	mode_group.add_argument(
+		"--names-only", action="store_true", help="Search file names only (disables docs/tags/metadata)"
+	)
+	mode_group.add_argument(
+		"--content-only",
+		action="store_true",
+		help="Search docs/tags/metadata only (disables file names; power-ups still optional)",
+	)
 
 	search_group = parser.add_mutually_exclusive_group()
 	search_group.add_argument(
@@ -766,9 +772,33 @@ def build_parser() -> argparse.ArgumentParser:
 
 	content_group = parser.add_mutually_exclusive_group()
 	content_group.add_argument(
-		"--content", action="store_true", dest="search_contents", default=None, help="Search contents"
+		"--content",
+		action="store_true",
+		dest="search_contents",
+		default=None,
+		help="Search file contents (docs/tags, OCR, speech, visual; default on)",
 	)
-	content_group.add_argument("--no-content", action="store_false", dest="search_contents", help="Skip content search")
+	content_group.add_argument(
+		"--no-content",
+		action="store_false",
+		dest="search_contents",
+		help="Skip file contents (filename-only unless other where options apply)",
+	)
+
+	docs_group = parser.add_mutually_exclusive_group()
+	docs_group.add_argument(
+		"--docs-tags",
+		action="store_true",
+		dest="search_docs_tags",
+		default=None,
+		help="Search docs, tags & metadata inside files (recommended; default on)",
+	)
+	docs_group.add_argument(
+		"--no-docs-tags",
+		action="store_false",
+		dest="search_docs_tags",
+		help="Skip docs/tags/metadata (OCR / speech / visual can still run with --content)",
+	)
 
 	parser.add_argument(
 		"--include-hidden",
@@ -870,6 +900,7 @@ def sync_options_to_args(
 	*,
 	search_names: bool,
 	search_contents: bool,
+	search_docs_tags: bool = True,
 	semantic: bool,
 	semantic_image: bool,
 	ocr: bool,
@@ -885,6 +916,7 @@ def sync_options_to_args(
 		args,
 		search_names=search_names,
 		search_contents=search_contents,
+		search_docs_tags=search_docs_tags,
 		semantic=semantic,
 		semantic_image=semantic_image,
 		ocr=ocr,

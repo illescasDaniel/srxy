@@ -32,6 +32,7 @@ from srxy.adapters.outbound.ocr.ocr_text import (
 	is_ocr_image_path,
 	iter_image_ocr_lines,
 	ocr_max_file_size,
+	ocr_requested,
 )
 from srxy.adapters.outbound.semantic.semantic_image import (
 	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
@@ -47,8 +48,10 @@ from srxy.adapters.outbound.transcribe.transcribe_text import (
 	is_transcribe_path,
 	iter_transcript_lines,
 	transcribe_max_file_size,
+	transcribe_requested,
 )
 from srxy.application.matching.composite import CompositeMatcher
+from srxy.application.search_options import SEARCH_SOURCE_REQUIRED_MESSAGE
 from srxy.application.utils import normalize_text, query_words, word_pair_match_allowed
 from srxy.domain.file_query import (
 	FileQ,
@@ -291,17 +294,20 @@ def _iter_searchable_lines(
 	path: Path,
 	max_file_size: int | None,
 	*,
+	search_docs_tags: bool = True,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: ActivityCallback | None = None,
 ) -> Iterator[tuple[int, str, str]]:
 	if is_archive_member_path(path):
-		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
+		if search_docs_tags:
+			yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
 		return
 	if is_media_path(path):
-		for line_number, raw_line in iter_media_metadata_lines(path):
-			yield line_number, raw_line, "tag"
+		if search_docs_tags:
+			for line_number, raw_line in iter_media_metadata_lines(path):
+				yield line_number, raw_line, "tag"
 		if is_ocr_active(ocr) and is_ocr_image_path(path):
 			ocr_byte_limit = ocr_max_file_size()
 			if ocr_byte_limit is not None and not _file_within_size_limit(path, ocr_byte_limit):
@@ -324,15 +330,21 @@ def _iter_searchable_lines(
 						yield line_number, raw_line, "transcript"
 				finally:
 					clear_activity(on_activity)
-	else:
-		yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
+	elif search_docs_tags or is_ocr_active(ocr):
+		for line_number, raw_line, location_kind in _iter_body_searchable_lines(
+			path, max_file_size, ocr=ocr, on_activity=on_activity
+		):
+			if not search_docs_tags and location_kind != "ocr":
+				continue
+			yield line_number, raw_line, location_kind
 
-	for line_number, raw_line in iter_xattr_metadata_lines(path):
-		yield line_number, raw_line, "tag"
-	for line_number, raw_line in iter_document_metadata_lines(path):
-		yield line_number, raw_line, "tag"
-	for line_number, raw_line in iter_windows_metadata_lines(path):
-		yield line_number, raw_line, "tag"
+	if search_docs_tags:
+		for line_number, raw_line in iter_xattr_metadata_lines(path):
+			yield line_number, raw_line, "tag"
+		for line_number, raw_line in iter_document_metadata_lines(path):
+			yield line_number, raw_line, "tag"
+		for line_number, raw_line in iter_windows_metadata_lines(path):
+			yield line_number, raw_line, "tag"
 
 
 _PREVIEW_LOCATION_KINDS = frozenset({"ocr", "transcript"})
@@ -508,6 +520,7 @@ def _score_lines(
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 	preview_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	*,
+	search_docs_tags: bool = True,
 	ocr: bool | None = None,
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
@@ -523,6 +536,7 @@ def _score_lines(
 	for line_number, raw_line, location_kind in _iter_searchable_lines(
 		file_path,
 		max_file_size,
+		search_docs_tags=search_docs_tags,
 		ocr=ocr,
 		transcribe=transcribe,
 		skipped_files=skipped_files,
@@ -600,6 +614,7 @@ def _search_single_file(
 	search_root: Path,
 	search_names: bool,
 	search_contents: bool,
+	search_docs_tags: bool,
 	threshold: float,
 	max_file_size: int | None,
 	effective_line_threshold: float,
@@ -629,6 +644,11 @@ def _search_single_file(
 	line_matches: list[LineMatch] = []
 	near_match: LineMatch | None = None
 
+	effective_docs_tags = search_contents and search_docs_tags
+	effective_ocr = ocr if search_contents else False
+	effective_transcribe = transcribe if search_contents else False
+	effective_semantic_image = semantic_image if search_contents else False
+
 	if search_names:
 		name_score = _score_name(matcher, query_expr, file_path, search_root)
 		breakdown["name"] = name_score
@@ -637,12 +657,21 @@ def _search_single_file(
 			term_surfaces[term]["name"] = name_term_score
 			term_bests[term] = max(term_bests[term], name_term_score)
 
-	if search_contents:
-		content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
-		exceeds_size_limit = content_byte_limit is not None and not _file_within_size_limit(
-			file_path, content_byte_limit
+	needs_line_search = (
+		effective_docs_tags or is_ocr_active(effective_ocr) or is_transcribe_active(effective_transcribe)
+	)
+	if needs_line_search:
+		content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=effective_ocr)
+		exceeds_size_limit = (
+			effective_docs_tags
+			and content_byte_limit is not None
+			and not _file_within_size_limit(file_path, content_byte_limit)
 		)
-		if exceeds_size_limit and not _can_search_without_reading_body(file_path):
+		if (
+			exceeds_size_limit
+			and not _can_search_without_reading_body(file_path)
+			and not (is_ocr_active(effective_ocr) or is_transcribe_active(effective_transcribe))
+		):
 			size_bytes = 0
 			if archive_member:
 				from srxy.adapters.outbound.archive.archive_search import archive_member_size_bytes
@@ -664,8 +693,9 @@ def _search_single_file(
 				max_matches,
 				transcribe_threshold,
 				semantic_image_threshold,
-				ocr=ocr,
-				transcribe=transcribe,
+				search_docs_tags=effective_docs_tags,
+				ocr=effective_ocr,
+				transcribe=effective_transcribe,
 				skipped_files=local_skipped,
 				on_activity=on_activity,
 			)
@@ -675,7 +705,7 @@ def _search_single_file(
 				term_bests[term] = max(term_bests[term], score)
 
 	semantic_image_score = 0.0
-	if not archive_member and is_semantic_image_active(semantic_image) and is_semantic_image_path(file_path):
+	if not archive_member and is_semantic_image_active(effective_semantic_image) and is_semantic_image_path(file_path):
 		emit_activity(on_activity, f"CLIP · {file_path.name}")
 		try:
 			file_hash = get_file_content_hash(file_path)
@@ -780,6 +810,7 @@ def _proc_worker_task(
 	search_root: Path,
 	search_names: bool,
 	search_contents: bool,
+	search_docs_tags: bool,
 	threshold: float,
 	max_file_size: int | None,
 	effective_line_threshold: float,
@@ -804,6 +835,7 @@ def _proc_worker_task(
 		search_root=search_root,
 		search_names=search_names,
 		search_contents=search_contents,
+		search_docs_tags=search_docs_tags,
 		threshold=threshold,
 		max_file_size=max_file_size,
 		effective_line_threshold=effective_line_threshold,
@@ -822,6 +854,7 @@ def magic_file_search(
 	*,
 	search_names: bool = True,
 	search_contents: bool = True,
+	search_docs_tags: bool = True,
 	threshold: float = 0.35,
 	max_file_size: int | None = None,
 	max_matches: int = 50,
@@ -849,8 +882,20 @@ def magic_file_search(
 			stacklevel=2,
 		)
 		max_matches = max_line_matches
-	if not search_names and not search_contents and not semantic_image_requested(semantic_image):
-		raise ValueError("Enable at least one of search_names, search_contents, or semantic_image")
+	if not search_names and not search_contents:
+		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
+	if search_contents and not (
+		search_docs_tags
+		or ocr_requested(ocr)
+		or transcribe_requested(transcribe)
+		or semantic_image_requested(semantic_image)
+	):
+		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
+
+	effective_ocr = ocr if search_contents else False
+	effective_transcribe = transcribe if search_contents else False
+	effective_semantic_image = semantic_image if search_contents else False
+	effective_docs_tags = search_docs_tags if search_contents else False
 
 	root = Path(path).expanduser().resolve()
 	query_expr = coerce_file_query(query)
@@ -873,7 +918,9 @@ def magic_file_search(
 		include_archives=include_archives,
 		include_subdirectories=include_subdirectories,
 	)
-	if is_semantic_image_active(semantic_image) and any(is_semantic_image_path(file_path) for file_path in files):
+	if is_semantic_image_active(effective_semantic_image) and any(
+		is_semantic_image_path(file_path) for file_path in files
+	):
 		emit_activity(on_activity, "Encoding image query…")
 		try:
 			query_image_embedding = encode_semantic_image_query(clip_query)
@@ -899,13 +946,14 @@ def magic_file_search(
 			search_root=search_root,
 			search_names=search_names,
 			search_contents=search_contents,
+			search_docs_tags=effective_docs_tags,
 			threshold=threshold,
 			max_file_size=max_file_size,
 			effective_line_threshold=effective_line_threshold,
 			max_matches=max_matches,
-			ocr=ocr,
-			transcribe=transcribe,
-			semantic_image=semantic_image,
+			ocr=effective_ocr,
+			transcribe=effective_transcribe,
+			semantic_image=effective_semantic_image,
 			query_image_embedding=query_image_embedding,
 			semantic_image_threshold=semantic_image_threshold,
 			transcribe_threshold=transcribe_threshold,
@@ -933,18 +981,11 @@ def magic_file_search(
 	#   raw-mode handles, which corrupts the terminal state when child processes exit.
 	#
 	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
-	_heavy = is_ocr_active(ocr) or is_transcribe_active(transcribe) or is_semantic_image_active(semantic_image)
-	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
-	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
-	_use_processes = (
-		threading.current_thread() is threading.main_thread()
-		and not _use_threads
-		and len(files) >= _MIN_PROCESS_FILES
-		and max_workers != 1
-		and not _heavy
-		and not _semantic_text
+	_heavy = (
+		is_ocr_active(effective_ocr)
+		or is_transcribe_active(effective_transcribe)
+		or is_semantic_image_active(effective_semantic_image)
 	)
-	_heavy = is_ocr_active(ocr) or is_transcribe_active(transcribe) or is_semantic_image_active(semantic_image)
 	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
 	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
 	_use_processes = (
@@ -984,6 +1025,7 @@ def magic_file_search(
 						search_root,
 						search_names,
 						search_contents,
+						effective_docs_tags,
 						threshold,
 						max_file_size,
 						effective_line_threshold,
@@ -1021,7 +1063,7 @@ def magic_file_search(
 	finally:
 		clear_activity(on_activity)
 
-	results.sort(key=lambda result: result.score, reverse=True)
+	results.sort(key=lambda item: item.score, reverse=True)
 	if limit is not None:
 		results = results[:limit]
 	return results

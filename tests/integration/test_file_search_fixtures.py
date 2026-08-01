@@ -210,7 +210,8 @@ def test_given_portrait_when_semantic_image_person_then_finds_image(file_search_
 		photo,
 		"person",
 		search_names=False,
-		search_contents=False,
+		search_contents=True,
+		search_docs_tags=False,
 		semantic_image=True,
 		limit=10,
 	)

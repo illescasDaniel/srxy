@@ -5,6 +5,7 @@ from __future__ import annotations
 
 SUMMARY_WHERE_NAMES = "Names"
 SUMMARY_WHERE_CONTENT = "Content"
+SUMMARY_HOW_DOCS_TAGS = "Docs & tags"
 SUMMARY_HOW_SEMANTIC = "Meaning"
 SUMMARY_HOW_OCR = "Image text"
 SUMMARY_HOW_TRANSCRIBE = "Speech"
@@ -17,6 +18,9 @@ SUMMARY_SCAN_TOP_LEVEL = "This folder only"
 SUMMARY_PREFIX_WHERE = "Where"
 SUMMARY_PREFIX_HOW = "How"
 SUMMARY_PREFIX_SCAN = "Scan"
+
+# Back-compat alias from when docs/tags lived under Where/How as SUMMARY_HOW_CONTENT.
+SUMMARY_HOW_CONTENT = SUMMARY_HOW_DOCS_TAGS
 
 FILTER_SECTION_LIMITS = "Limits"
 FILTER_SECTION_SENSITIVITY = "Sensitivity"

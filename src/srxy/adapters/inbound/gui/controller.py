@@ -39,9 +39,12 @@ from srxy.application.search_filters import (
 	validate_search_filters,
 )
 from srxy.application.search_options import (
+	SEARCH_SOURCE_REQUIRED_MESSAGE,
 	SearchOptions,
 	apply_search_options_to_args,
 	format_search_options_summary,
+	has_search_source,
+	normalize_content_dependent_options,
 	search_options_from_args,
 )
 from srxy.application.search_session import (
@@ -240,12 +243,13 @@ class SearchController(QObject):
 
 	def _clamp_options_to_capabilities(self):
 		caps = self._capabilities
+		options = normalize_content_dependent_options(self._options)
 		self._options = replace(
-			self._options,
-			semantic=self._options.semantic and caps.semantic_enabled,
-			semantic_image=self._options.semantic_image and caps.semantic_image_enabled,
-			ocr=self._options.ocr and caps.ocr_enabled,
-			transcribe=self._options.transcribe and caps.transcribe_enabled,
+			options,
+			semantic=options.semantic and caps.semantic_enabled,
+			semantic_image=options.semantic_image and caps.semantic_image_enabled,
+			ocr=options.ocr and caps.ocr_enabled,
+			transcribe=options.transcribe and caps.transcribe_enabled,
 		)
 
 	def _get_results_model(self) -> ResultsModel:
@@ -822,14 +826,18 @@ class SearchController(QObject):
 		if location:
 			QGuiApplication.clipboard().setText(location)
 
-	@Slot(str)
-	def applyOptionsJson(self, payload: str):  # noqa: N802
+	@Slot(str, result=str)
+	def applyOptionsJson(self, payload: str) -> str:  # noqa: N802
 		data = json.loads(payload)
-		self._options = SearchOptions(**data)
+		options = normalize_content_dependent_options(SearchOptions(**data))
+		if not has_search_source(options):
+			return SEARCH_SOURCE_REQUIRED_MESSAGE
+		self._options = options
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		self.optionsSummaryChanged.emit()
 		self._refresh_stale()
+		return ""
 
 	@Slot(str)
 	def applyFiltersJson(self, payload: str):  # noqa: N802

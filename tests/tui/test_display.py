@@ -86,6 +86,7 @@ def test_given_options_summary_when_composed_then_shows_enabled_modes():
 			summary = format_search_options_summary(app.search_options)
 			assert "Names" in summary
 			assert "Content" in summary
+			assert "Docs & tags" in summary
 
 	# when / then
 	asyncio.run(run())

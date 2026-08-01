@@ -78,13 +78,20 @@ def execute_search(
 	on_result: Callable[[FileSearchResult], None] | None = None,
 ) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 	search_names, search_contents = resolve_search_modes(args)
+	raw_docs = getattr(args, "search_docs_tags", None)
+	search_docs_tags = True if raw_docs is None else bool(raw_docs)
+	if not search_contents:
+		search_docs_tags = False
 	effective_skipped = skipped_files if skipped_files is not None else []
 	query_expr = resolve_file_query(args)
+	ocr = ocr_requested(None) if search_contents else False
+	transcribe = transcribe_requested(None) if search_contents else False
 	results = magic_file_search(
 		args.path,
 		query_expr,
 		search_names=search_names,
 		search_contents=search_contents,
+		search_docs_tags=search_docs_tags,
 		threshold=args.threshold,
 		semantic_image_threshold=args.semantic_image_threshold,
 		transcribe_threshold=args.transcribe_threshold,
@@ -95,11 +102,9 @@ def execute_search(
 		skip_noise_folders=not args.include_noise,
 		include_archives=bool(getattr(args, "include_archives", False)),
 		include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
-		skipped_files=effective_skipped
-		if search_contents or ocr_requested(None) or transcribe_requested(None)
-		else None,
-		ocr=ocr_requested(None),
-		transcribe=transcribe_requested(None),
+		skipped_files=effective_skipped if search_contents or ocr or transcribe else None,
+		ocr=ocr,
+		transcribe=transcribe,
 		on_progress=on_progress,
 		on_activity=on_activity,
 		on_result=on_result,

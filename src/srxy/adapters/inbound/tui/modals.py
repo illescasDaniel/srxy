@@ -25,7 +25,12 @@ from srxy.adapters.inbound.tui.labels import (
 	option_label,
 )
 from srxy.application.search_filters import SearchFilters, validate_search_filters
-from srxy.application.search_options import SearchOptions
+from srxy.application.search_options import (
+	SEARCH_SOURCE_REQUIRED_MESSAGE,
+	SearchOptions,
+	has_search_source,
+	normalize_content_dependent_options,
+)
 from srxy.application.size_limits import SizeLimits
 
 
@@ -448,12 +453,11 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	}
 	"""
 
-	_CONTENT_ONLY_IDS = ("so-ocr", "so-transcribe", "so-semantic-image")
-	_POWERUP_IDS = ("so-semantic", "so-ocr", "so-transcribe", "so-semantic-image")
+	_CONTENT_DEPENDENT_IDS = ("so-docs-tags", "so-ocr", "so-transcribe", "so-semantic-image")
 
 	def __init__(self, initial: SearchOptions):
 		super().__init__()
-		self._initial = initial
+		self._initial = normalize_content_dependent_options(initial)
 		self._syncing_checkboxes = False
 
 	def _compose_option(self, checkbox_id: str, *, value: bool) -> ComposeResult:
@@ -474,6 +478,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 				yield from self._compose_option("so-content", value=self._initial.search_contents)
 				yield Static(SEARCH_OPTIONS_SECTION_HOW, classes="search-options-section")
 				yield Static(CLASSIC_MATCHING_HINT, classes="search-options-hint")
+				yield from self._compose_option("so-docs-tags", value=self._initial.search_docs_tags)
 				yield from self._compose_option("so-semantic", value=self._initial.semantic)
 				yield from self._compose_option("so-ocr", value=self._initial.ocr)
 				yield from self._compose_option("so-transcribe", value=self._initial.transcribe)
@@ -533,20 +538,30 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	def _sync_content_dependent_controls(self):
 		content_enabled = self._content_enabled()
-		for checkbox_id in self._CONTENT_ONLY_IDS:
+		for checkbox_id in self._CONTENT_DEPENDENT_IDS:
 			checkbox = self.query_one(f"#{checkbox_id}", Checkbox)
 			checkbox.disabled = not content_enabled
+			if not content_enabled and checkbox.value:
+				self._syncing_checkboxes = True
+				try:
+					checkbox.value = False
+				finally:
+					self._syncing_checkboxes = False
+		self._sync_enable_all_from_powerups()
 
 	def _current_options(self) -> SearchOptions:
 		search_contents = self._content_enabled()
 		semantic, ocr, transcribe, semantic_image = self._powerup_values()
+		docs_tags = self.query_one("#so-docs-tags", Checkbox).value
 		if not search_contents:
+			docs_tags = False
 			ocr = False
 			transcribe = False
 			semantic_image = False
 		return SearchOptions(
 			search_names=self.query_one("#so-names", Checkbox).value,
 			search_contents=search_contents,
+			search_docs_tags=docs_tags,
 			semantic=semantic,
 			semantic_image=semantic_image,
 			ocr=ocr,
@@ -565,11 +580,12 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	def _on_enable_all_changed(self, event: Checkbox.Changed):
 		if self._syncing_checkboxes:
 			return
+		content_enabled = self._content_enabled()
 		self._set_powerups(
 			semantic=event.value,
-			ocr=event.value and self._content_enabled(),
-			transcribe=event.value and self._content_enabled(),
-			semantic_image=event.value and self._content_enabled(),
+			ocr=event.value and content_enabled,
+			transcribe=event.value and content_enabled,
+			semantic_image=event.value and content_enabled,
 		)
 
 	@on(Checkbox.Changed, "#so-semantic")
@@ -589,8 +605,8 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			return
 		error = self.query_one("#search-options-error", Label)
 		options = self._current_options()
-		if not options.search_names and not options.search_contents:
-			error.update("Enable at least one of File names or File contents.")
+		if not has_search_source(options):
+			error.update(SEARCH_SOURCE_REQUIRED_MESSAGE)
 			return
 		error.update("")
 		self.dismiss(options)

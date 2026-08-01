@@ -1,12 +1,13 @@
 # Power-ups
 
-Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI, power-ups live under **Match with** in the **Search options** dialog.
+Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI and GUI, power-ups live under **How to match** in the **Search options** dialog. They require **File contents** (Where) to be on; **Docs, tags & metadata** is a separate recommended-ON how option.
 
 ## OCR
 
-Text in photos and embedded document images (PDF pages, Office media).
+Text in photos and embedded document images (PDF pages, Office media). Needs File contents on; can skip docs/tags with `--no-docs-tags`.
 
 ```bash
+srxy "invoice" ./photos --ocr --content-only --no-docs-tags
 srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```

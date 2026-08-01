@@ -346,11 +346,50 @@ def test_given_no_search_modes_when_searching_then_raises_value_error(tmp_path: 
 	(tmp_path / "item.txt").write_text("hello", encoding="utf-8")
 
 	# when
-	with pytest.raises(ValueError, match="search_names, search_contents, or semantic_image"):
+	with pytest.raises(ValueError, match="File names and/or File contents"):
 		magic_file_search(tmp_path, "hello", search_names=False, search_contents=False)
 
 	# then
 	assert True
+
+
+def test_given_contents_without_how_sources_when_searching_then_raises_value_error(tmp_path: Path):
+	# given
+	(tmp_path / "item.txt").write_text("hello", encoding="utf-8")
+
+	# when
+	with pytest.raises(ValueError, match="Docs, tags"):
+		magic_file_search(
+			tmp_path,
+			"hello",
+			search_names=False,
+			search_contents=True,
+			search_docs_tags=False,
+			ocr=False,
+			transcribe=False,
+			semantic_image=False,
+		)
+
+	# then
+	assert True
+
+
+def test_given_ocr_only_when_searching_then_allows_without_docs_tags(tmp_path: Path):
+	# given
+	(tmp_path / "item.txt").write_text("hello", encoding="utf-8")
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"hello",
+		search_names=False,
+		search_contents=True,
+		search_docs_tags=False,
+		ocr=True,
+	)
+
+	# then
+	assert results == []
 
 
 def test_given_pdf_with_matching_content_when_searching_contents_then_returns_file(tmp_path: Path):
@@ -1054,7 +1093,8 @@ def test_given_image_when_searching_with_semantic_image_then_adds_breakdown_scor
 			tmp_path,
 			query,
 			search_names=False,
-			search_contents=False,
+			search_contents=True,
+			search_docs_tags=False,
 			semantic_image=True,
 		)
 
@@ -1171,7 +1211,8 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 			tmp_path,
 			query,
 			search_names=False,
-			search_contents=False,
+			search_contents=True,
+			search_docs_tags=False,
 			semantic_image=True,
 			threshold=0.35,
 		)
@@ -1221,7 +1262,8 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 			tmp_path,
 			"sunset",
 			search_names=False,
-			search_contents=False,
+			search_contents=True,
+			search_docs_tags=False,
 			semantic_image=True,
 			on_activity=activities.append,
 		)

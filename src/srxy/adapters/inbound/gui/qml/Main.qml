@@ -43,6 +43,7 @@ ApplicationWindow {
 		const draft = JSON.parse(controller.optionsJson())
 		optNames.checked = !!draft.search_names
 		optContents.checked = !!draft.search_contents
+		optDocsTags.checked = draft.search_docs_tags !== false
 		optSemantic.checked = !!draft.semantic
 		optOcr.checked = !!draft.ocr
 		optTranscribe.checked = !!draft.transcribe
@@ -51,19 +52,36 @@ ApplicationWindow {
 		optNoise.checked = !!draft.include_noise
 		optArchives.checked = !!draft.include_archives
 		optSubdirs.checked = draft.include_subdirectories !== false
+		syncContentDependentOptions()
 		syncingOptions = false
+	}
+
+	function syncContentDependentOptions() {
+		const contentOn = optContents.checked
+		optDocsTags.enabled = contentOn
+		optOcr.enabled = contentOn && (controller ? controller.isFeatureEnabled("ocr") : false)
+		optTranscribe.enabled = contentOn && (controller ? controller.isFeatureEnabled("transcribe") : false)
+		optSemanticImage.enabled = contentOn && (controller ? controller.isFeatureEnabled("semantic_image") : false)
+		if (!contentOn) {
+			optDocsTags.checked = false
+			optOcr.checked = false
+			optTranscribe.checked = false
+			optSemanticImage.checked = false
+		}
 	}
 
 	function pushOptionsToController() {
 		if (!controller || syncingOptions)
-			return
-		controller.applyOptionsJson(JSON.stringify({
+			return ""
+		const contentOn = optContents.checked
+		return controller.applyOptionsJson(JSON.stringify({
 			search_names: optNames.checked,
-			search_contents: optContents.checked,
+			search_contents: contentOn,
+			search_docs_tags: contentOn && optDocsTags.checked,
 			semantic: optSemantic.checked && controller.isFeatureEnabled("semantic"),
-			ocr: optOcr.checked && controller.isFeatureEnabled("ocr"),
-			transcribe: optTranscribe.checked && controller.isFeatureEnabled("transcribe"),
-			semantic_image: optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
+			ocr: contentOn && optOcr.checked && controller.isFeatureEnabled("ocr"),
+			transcribe: contentOn && optTranscribe.checked && controller.isFeatureEnabled("transcribe"),
+			semantic_image: contentOn && optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
 			include_hidden: optHidden.checked,
 			include_noise: optNoise.checked,
 			include_archives: optArchives.checked,
@@ -564,23 +582,60 @@ ApplicationWindow {
 		modal: true
 		standardButtons: Dialog.Ok | Dialog.Cancel
 		anchors.centerIn: parent
-		width: 480
-		implicitWidth: 480
+		width: 520
+		implicitWidth: 520
 		onAboutToShow: loadOptionsFromController()
-		onAccepted: pushOptionsToController()
+		onAccepted: {
+			const err = pushOptionsToController()
+			if (err) {
+				errorLabel.text = err
+				errorDialog.open()
+				Qt.callLater(function () { optionsDialog.open() })
+			}
+		}
 
 		ScrollView {
 			clip: true
 			ColumnLayout {
-				spacing: 4
+				spacing: 6
+				width: optionsDialog.availableWidth - 24
 
+				Label {
+					text: "Where to search"
+					font.bold: true
+				}
 				RowLayout {
 					CheckBox { id: optNames; text: "File names"; checked: true }
 					InfoButton { helpKey: "search_names" }
 				}
 				RowLayout {
-					CheckBox { id: optContents; text: "File contents"; checked: true }
+					CheckBox {
+						id: optContents
+						text: "File contents"
+						checked: true
+						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
+					}
 					InfoButton { helpKey: "search_contents" }
+				}
+
+				Label {
+					text: "How to match"
+					font.bold: true
+					Layout.topMargin: 8
+				}
+				Label {
+					text: "Fuzzy, phonetic, and substring matching (always on)"
+					opacity: 0.7
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				RowLayout {
+					CheckBox {
+						id: optDocsTags
+						text: "Docs, tags & metadata (recommended ON)"
+						checked: true
+					}
+					InfoButton { helpKey: "search_docs_tags" }
 				}
 				RowLayout {
 					CheckBox {
@@ -613,6 +668,12 @@ ApplicationWindow {
 						enabled: controller ? controller.isFeatureEnabled("semantic_image") : false
 					}
 					InfoButton { helpKey: "semantic_image"; enabled: true }
+				}
+
+				Label {
+					text: "Which files to scan"
+					font.bold: true
+					Layout.topMargin: 8
 				}
 				RowLayout {
 					CheckBox { id: optSubdirs; text: "Include subdirectories"; checked: true }
