@@ -83,8 +83,21 @@ By default srxy skips hidden paths. Enable this to search them.""",
 	"include_noise": """\
 Include common cache and vendor directories.
 
-By default srxy skips noise folders such as __pycache__, node_modules,
-.git, and similar. Enable this to search inside them.""",
+By default srxy skips noise folders such as __pycache__ and node_modules.
+Enable this to search inside them.""",
+	"include_noise_files": """\
+Include common junk, lock, and temp files.
+
+By default srxy skips files such as uv.lock, package-lock.json, yarn.lock,
+*.min.js, source maps, Office lock temps (~$), Thumbs.db, and similar.
+Enable this to search their contents.""",
+	"match_skipped_names": """\
+Match filenames of otherwise-skipped noisy paths.
+
+Requires File names to be on. When Hidden, Cache & vendor, or Junk & lock
+files are off, enable this to still find those paths by name. Content
+inside them stays skipped. May walk large trees such as node_modules just
+to score names.""",
 	"include_archives": """\
 Search inside compressed archives (.zip, .tar, .tar.gz, .gz).
 

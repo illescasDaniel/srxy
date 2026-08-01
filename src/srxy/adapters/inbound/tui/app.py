@@ -51,6 +51,11 @@ from srxy.adapters.outbound.worker.search_worker import (
 	file_result_from_dict,
 	skipped_file_from_dict,
 )
+from srxy.application.labels import (
+	RESULTS_EMPTY_BEFORE_SEARCH,
+	RESULTS_EMPTY_NO_MATCHES,
+	RESULTS_EMPTY_SEARCHING,
+)
 from srxy.application.search_filters import (
 	SearchFilters,
 	apply_search_filters_to_args,
@@ -166,15 +171,8 @@ class SrxyApp(App[int]):
 		height: 1;
 		min-width: 10;
 		border: none;
-		background: $primary;
-		color: $button-foreground;
 		padding: 0 1;
 		content-align: center middle;
-	}
-
-	#search-button.-stale {
-		background: $warning;
-		color: $button-foreground;
 	}
 
 	#filters-bar {
@@ -240,6 +238,21 @@ class SrxyApp(App[int]):
 
 	#results-table {
 		height: 1fr;
+	}
+
+	#results-panel.-empty #results-table {
+		height: auto;
+	}
+
+	#results-empty {
+		display: none;
+		height: 1fr;
+		content-align: center middle;
+		color: $text-muted;
+	}
+
+	#results-panel.-empty #results-empty {
+		display: block;
 	}
 
 	#preview-header {
@@ -330,6 +343,7 @@ class SrxyApp(App[int]):
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
 				yield DataTable(id="results-table", cursor_type="row", zebra_stripes=True)
+				yield Static("", id="results-empty")
 			with Vertical(id="preview-panel"):
 				yield Static("", id="preview-header")
 				yield DataTable(id="preview-matches", cursor_type="row", zebra_stripes=True)
@@ -347,8 +361,28 @@ class SrxyApp(App[int]):
 		self._refresh_options_summary()
 		self._refresh_filters_summary()
 		self._update_search_button_state()
+		self._sync_results_empty_hint()
 		if self._auto_start and (self._args.query or "").strip():
 			self.call_after_refresh(self.action_start_search)
+
+	def _sync_results_empty_hint(self):
+		try:
+			panel = self.query_one("#results-panel", Vertical)
+			empty = self.query_one("#results-empty", Static)
+		except NoMatches:
+			return
+		if self._results:
+			panel.remove_class("-empty")
+			empty.update("")
+			return
+		if self._searching:
+			message = RESULTS_EMPTY_SEARCHING
+		elif self._last_search_snapshot is not None:
+			message = RESULTS_EMPTY_NO_MATCHES
+		else:
+			message = RESULTS_EMPTY_BEFORE_SEARCH
+		empty.update(message)
+		panel.add_class("-empty")
 
 	def _setup_preview_columns(self, table: DataTable[Any]):
 		table.add_column("Match", width=_PREVIEW_MATCH_WIDTH)
@@ -382,6 +416,7 @@ class SrxyApp(App[int]):
 		snapshot = self._current_snapshot()
 		is_stale = self._last_search_snapshot is None or snapshot != self._last_search_snapshot
 		button.set_class(is_stale, "-stale")
+		button.variant = "warning" if is_stale else "primary"
 
 	def _save_search_snapshot(self):
 		self._last_search_snapshot = self._current_snapshot()
@@ -420,6 +455,7 @@ class SrxyApp(App[int]):
 		self.query_one("#warnings-log", Static).update("")
 		self._warnings_text = ""
 		self._preview_rows = []
+		self._sync_results_empty_hint()
 
 	def _set_status(self, message: str):
 		self.query_one("#status-message", Label).update(message)
@@ -478,6 +514,7 @@ class SrxyApp(App[int]):
 				select_row = index
 		if self._results:
 			table.move_cursor(row=select_row)
+		self._sync_results_empty_hint()
 
 	def _insert_result_row(self, result: FileSearchResult):
 		path_key = result.path.as_posix()
@@ -586,10 +623,10 @@ class SrxyApp(App[int]):
 			self.notify("Enter a search query", severity="warning")
 			return
 		self._active_file_limit = args.limit
-		self._reset_results()
 		self._searching = True
 		self._cancel_search = False
 		self._exit_code = 0
+		self._reset_results()
 		progress = self.query_one("#scan-progress", ProgressBar)
 		progress.update(total=100, progress=0)
 		self._clear_activity_status()
@@ -608,6 +645,7 @@ class SrxyApp(App[int]):
 			self._searching = False
 			self._set_status(error)
 			self._save_search_snapshot()
+			self._sync_results_empty_hint()
 			return
 		await self._run_search_with_queue(args)
 
@@ -832,6 +870,7 @@ class SrxyApp(App[int]):
 		self.push_screen(ErrorModal(message.error))
 		self._set_status(message.error)
 		self._save_search_snapshot()
+		self._sync_results_empty_hint()
 
 	@on(SearchFinished)
 	def _on_search_finished(self, message: SearchFinished):
@@ -859,6 +898,7 @@ class SrxyApp(App[int]):
 		progress.update(total=100, progress=100)
 		self._clear_activity_status()
 		self._save_search_snapshot()
+		self._sync_results_empty_hint()
 
 	@on(DataTable.RowHighlighted, "#results-table")
 	def _on_results_row_highlighted(self, event: DataTable.RowHighlighted):

@@ -68,6 +68,7 @@ Text
 │
 │
 │
+Run a search to see matching files
 │
 │
 │

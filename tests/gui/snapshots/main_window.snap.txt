@@ -15,6 +15,7 @@ mainWindow:
   capabilityKeys: ffmpeg, has_gpu, ocr, ocr_enabled, semantic_deps, semantic_enabled, semantic_image_enabled, transcribe_deps, transcribe_enabled
   stale: True
   hasSearched: False
+  resultsEmptyHint: Run a search to see matching files
   canSearch: False
   buttons: Browse…, Search, Options, Filters, Cancel
   menus: Open file, Copy path, Copy all matches, Copy line, Copy location

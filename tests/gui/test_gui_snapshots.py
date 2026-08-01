@@ -42,6 +42,7 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  capabilityKeys: {capability_keys}",
 		f"  stale: {controller.stale}",
 		f"  hasSearched: {controller.hasSearched}",
+		f"  resultsEmptyHint: {controller.resultsEmptyHint}",
 		f"  canSearch: {controller.canSearch}",
 		"  buttons: Browse…, Search, Options, Filters, Cancel",
 		"  menus: Open file, Copy path, Copy all matches, Copy line, Copy location",

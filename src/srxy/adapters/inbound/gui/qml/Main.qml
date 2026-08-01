@@ -50,6 +50,8 @@ ApplicationWindow {
 		optSemanticImage.checked = !!draft.semantic_image
 		optHidden.checked = !!draft.include_hidden
 		optNoise.checked = !!draft.include_noise
+		optNoiseFiles.checked = !!draft.include_noise_files
+		optMatchSkippedNames.checked = !!draft.match_skipped_names
 		optArchives.checked = !!draft.include_archives
 		optSubdirs.checked = draft.include_subdirectories !== false
 		syncContentDependentOptions()
@@ -62,6 +64,7 @@ ApplicationWindow {
 		optOcr.enabled = contentOn && (controller ? controller.isFeatureEnabled("ocr") : false)
 		optTranscribe.enabled = contentOn && (controller ? controller.isFeatureEnabled("transcribe") : false)
 		optSemanticImage.enabled = contentOn && (controller ? controller.isFeatureEnabled("semantic_image") : false)
+		optMatchSkippedNames.enabled = optNames.checked
 	}
 
 	function pushOptionsToController() {
@@ -77,6 +80,8 @@ ApplicationWindow {
 			semantic_image: optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
 			include_hidden: optHidden.checked,
 			include_noise: optNoise.checked,
+			include_noise_files: optNoiseFiles.checked,
+			match_skipped_names: optMatchSkippedNames.checked,
 			include_archives: optArchives.checked,
 			include_subdirectories: optSubdirs.checked
 		}))
@@ -329,14 +334,10 @@ ApplicationWindow {
 					id: searchButton
 					objectName: "searchButton"
 					text: "Search"
-					highlighted: true
+					highlighted: controller ? controller.stale : true
 					implicitWidth: 160
 					enabled: controller !== null && controller !== undefined && controller.canSearch
 					onClicked: if (controller) controller.startSearch()
-					Binding on palette.button {
-						when: controller && controller.stale
-						value: "#e67e22"
-					}
 				}
 				ToolButton {
 					objectName: "queryIssueButton"
@@ -375,56 +376,68 @@ ApplicationWindow {
 							Label { text: "Path"; font.bold: true; Layout.fillWidth: true; padding: 6 }
 							Label { text: "Matched"; font.bold: true; Layout.preferredWidth: 88; padding: 6 }
 						}
-						ListView {
-							id: resultsView
-							objectName: "resultsView"
+						Item {
 							Layout.fillWidth: true
 							Layout.fillHeight: true
-							clip: true
-							model: controller ? controller.resultsModel : null
-							delegate: Item {
-								id: resultRow
-								required property int index
-								required property string score
-								required property string path
-								required property string labels
-								width: resultsView.width
-								height: resultRowLayout.implicitHeight
-								Rectangle {
-									anchors.fill: parent
-									color: resultRow.index % 2 === 0
-										? (palette.alternateBase && palette.alternateBase !== palette.base
-											? palette.alternateBase
-											: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
-										: palette.base
-									opacity: resultsView.currentIndex === resultRow.index ? 0.65 : 1
-								}
-								RowLayout {
-									id: resultRowLayout
-									anchors.fill: parent
-									spacing: 0
-									Label { text: String(resultRow.index + 1); Layout.preferredWidth: 36; padding: 6; elide: Text.ElideRight }
-									Label { text: resultRow.score; Layout.preferredWidth: 56; padding: 6; elide: Text.ElideRight }
-									Label { text: resultRow.path; Layout.fillWidth: true; padding: 6; elide: Text.ElideMiddle }
-									Label { text: resultRow.labels; Layout.preferredWidth: 88; padding: 6; elide: Text.ElideRight }
-								}
-								MouseArea {
-									anchors.fill: parent
-									acceptedButtons: Qt.LeftButton | Qt.RightButton
-									onClicked: (mouse) => {
-										resultsView.currentIndex = resultRow.index
-										controller.selectResult(resultRow.index)
-										if (mouse.button === Qt.RightButton)
-											resultMenu.popup()
+							ListView {
+								id: resultsView
+								objectName: "resultsView"
+								anchors.fill: parent
+								clip: true
+								model: controller ? controller.resultsModel : null
+								delegate: Item {
+									id: resultRow
+									required property int index
+									required property string score
+									required property string path
+									required property string labels
+									width: resultsView.width
+									height: resultRowLayout.implicitHeight
+									Rectangle {
+										anchors.fill: parent
+										color: resultRow.index % 2 === 0
+											? (palette.alternateBase && palette.alternateBase !== palette.base
+												? palette.alternateBase
+												: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
+											: palette.base
+										opacity: resultsView.currentIndex === resultRow.index ? 0.65 : 1
 									}
-									onDoubleClicked: controller.openResult(resultRow.index)
+									RowLayout {
+										id: resultRowLayout
+										anchors.fill: parent
+										spacing: 0
+										Label { text: String(resultRow.index + 1); Layout.preferredWidth: 36; padding: 6; elide: Text.ElideRight }
+										Label { text: resultRow.score; Layout.preferredWidth: 56; padding: 6; elide: Text.ElideRight }
+										Label { text: resultRow.path; Layout.fillWidth: true; padding: 6; elide: Text.ElideMiddle }
+										Label { text: resultRow.labels; Layout.preferredWidth: 88; padding: 6; elide: Text.ElideRight }
+									}
+									MouseArea {
+										anchors.fill: parent
+										acceptedButtons: Qt.LeftButton | Qt.RightButton
+										onClicked: (mouse) => {
+											resultsView.currentIndex = resultRow.index
+											controller.selectResult(resultRow.index)
+											if (mouse.button === Qt.RightButton)
+												resultMenu.popup()
+										}
+										onDoubleClicked: controller.openResult(resultRow.index)
+									}
+									Menu {
+										id: resultMenu
+										MenuItem { text: "Open file"; onTriggered: controller.openResult(resultRow.index) }
+										MenuItem { text: "Copy path"; onTriggered: controller.copyResultPath(resultRow.index) }
+										MenuItem { text: "Copy all matches"; onTriggered: controller.copyAllMatches(resultRow.index) }
+									}
 								}
-								Menu {
-									id: resultMenu
-									MenuItem { text: "Open file"; onTriggered: controller.openResult(resultRow.index) }
-									MenuItem { text: "Copy path"; onTriggered: controller.copyResultPath(resultRow.index) }
-									MenuItem { text: "Copy all matches"; onTriggered: controller.copyAllMatches(resultRow.index) }
-								}
+							}
+							Label {
+								anchors.centerIn: parent
+								width: parent.width - 32
+								horizontalAlignment: Text.AlignHCenter
+								wrapMode: Text.WordWrap
+								opacity: 0.65
+								visible: controller && controller.resultsEmptyHint.length > 0
+								text: controller ? controller.resultsEmptyHint : ""
 							}
 						}
 					}
@@ -623,7 +636,12 @@ ApplicationWindow {
 					font.bold: true
 				}
 				RowLayout {
-					CheckBox { id: optNames; text: "File names"; checked: true }
+					CheckBox {
+						id: optNames
+						text: "File names"
+						checked: true
+						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
+					}
 					InfoButton { helpKey: "search_names" }
 				}
 				RowLayout {
@@ -698,16 +716,42 @@ ApplicationWindow {
 					InfoButton { helpKey: "include_subdirectories" }
 				}
 				RowLayout {
+					CheckBox { id: optArchives; text: "Inside zip/tar files" }
+					InfoButton { helpKey: "include_archives" }
+				}
+				Label {
+					text: "Noisy files"
+					font.bold: true
+					Layout.leftMargin: 12
+					Layout.topMargin: 4
+					opacity: 0.75
+				}
+				RowLayout {
+					Layout.leftMargin: 12
 					CheckBox { id: optHidden; text: "Hidden files & folders" }
 					InfoButton { helpKey: "include_hidden" }
 				}
 				RowLayout {
+					Layout.leftMargin: 12
 					CheckBox { id: optNoise; text: "Cache & vendor folders" }
 					InfoButton { helpKey: "include_noise" }
 				}
 				RowLayout {
-					CheckBox { id: optArchives; text: "Inside zip/tar files" }
-					InfoButton { helpKey: "include_archives" }
+					Layout.leftMargin: 12
+					CheckBox { id: optNoiseFiles; text: "Junk & lock files" }
+					InfoButton { helpKey: "include_noise_files" }
+				}
+				RowLayout {
+					Layout.leftMargin: 12
+					CheckBox { id: optMatchSkippedNames; text: "Skipped file names" }
+					InfoButton { helpKey: "match_skipped_names" }
+				}
+				Label {
+					text: "Binary-looking files (null byte in first 8 KiB) skip body text; names can still match"
+					wrapMode: Text.WordWrap
+					opacity: 0.7
+					Layout.fillWidth: true
+					Layout.topMargin: 4
 				}
 			}
 		}

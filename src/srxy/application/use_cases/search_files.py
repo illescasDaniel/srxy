@@ -6,6 +6,7 @@ import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
+from srxy.adapters.outbound.content.file_walker import is_names_only_path
 from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
 from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.matching.composite import CompositeMatcher
@@ -717,6 +718,8 @@ def _execute_file_search(
 	max_matches: int = 50,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
+	skip_noise_files: bool = True,
+	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
 	skipped_files: list[SkippedFile] | None = None,
@@ -776,6 +779,8 @@ def _execute_file_search(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
+		skip_noise_files=skip_noise_files,
+		match_skipped_names=match_skipped_names,
 		include_archives=include_archives,
 		include_subdirectories=include_subdirectories,
 	)
@@ -798,22 +803,31 @@ def _execute_file_search(
 		# on_activity is intentionally omitted: concurrent activity messages from
 		# multiple threads would conflict in the TUI; the caller's spinner covers
 		# the wait instead.
+		names_only = is_names_only_path(
+			file_path,
+			search_root=search_root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			skip_noise_files=skip_noise_files,
+			match_skipped_names=match_skipped_names,
+		)
+		file_search_contents = search_contents and not names_only
 		return _search_single_file(
 			file_path,
 			matcher=matcher,
 			query_expr=query_expr,
 			search_root=search_root,
 			search_names=search_names,
-			search_contents=search_contents,
-			search_docs_tags=effective_docs_tags,
+			search_contents=file_search_contents,
+			search_docs_tags=effective_docs_tags if file_search_contents else False,
 			threshold=threshold,
 			max_file_size=max_file_size,
 			effective_line_threshold=effective_line_threshold,
 			max_matches=max_matches,
-			ocr=effective_ocr,
-			transcribe=effective_transcribe,
-			semantic_image=effective_semantic_image,
-			query_image_embedding=query_image_embedding,
+			ocr=effective_ocr if file_search_contents else False,
+			transcribe=effective_transcribe if file_search_contents else False,
+			semantic_image=effective_semantic_image if file_search_contents else False,
+			query_image_embedding=query_image_embedding if file_search_contents else None,
 			semantic_image_threshold=semantic_image_threshold,
 			transcribe_threshold=transcribe_threshold,
 		)
@@ -876,24 +890,34 @@ def _execute_file_search(
 						on_result(result)
 		elif _use_processes:
 			with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_proc_worker) as pool:
-				futures = {
-					pool.submit(
-						_proc_worker_task,
+				futures = {}
+				for file_path in files:
+					names_only = is_names_only_path(
 						file_path,
-						query_expr,
-						search_root,
-						search_names,
-						search_contents,
-						effective_docs_tags,
-						threshold,
-						max_file_size,
-						effective_line_threshold,
-						max_matches,
-						semantic_image_threshold,
-						transcribe_threshold,
-					): file_path
-					for file_path in files
-				}
+						search_root=search_root,
+						skip_hidden_folders=skip_hidden_folders,
+						skip_noise_folders=skip_noise_folders,
+						skip_noise_files=skip_noise_files,
+						match_skipped_names=match_skipped_names,
+					)
+					file_search_contents = search_contents and not names_only
+					futures[
+						pool.submit(
+							_proc_worker_task,
+							file_path,
+							query_expr,
+							search_root,
+							search_names,
+							file_search_contents,
+							effective_docs_tags if file_search_contents else False,
+							threshold,
+							max_file_size,
+							effective_line_threshold,
+							max_matches,
+							semantic_image_threshold,
+							transcribe_threshold,
+						)
+					] = file_path
 				for future in as_completed(futures):
 					result, file_skipped = future.result()
 					completed += 1
@@ -957,6 +981,8 @@ class FileSearchUseCase:
 		max_matches: int = 50,
 		skip_hidden_folders: bool = True,
 		skip_noise_folders: bool = True,
+		skip_noise_files: bool = True,
+		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 		skipped_files: list[SkippedFile] | None = None,
@@ -992,6 +1018,8 @@ class FileSearchUseCase:
 				max_matches=max_matches,
 				skip_hidden_folders=skip_hidden_folders,
 				skip_noise_folders=skip_noise_folders,
+				skip_noise_files=skip_noise_files,
+				match_skipped_names=match_skipped_names,
 				include_archives=include_archives,
 				include_subdirectories=include_subdirectories,
 				skipped_files=skipped_files,
@@ -1023,6 +1051,8 @@ def magic_file_search(
 	max_matches: int = 50,
 	skip_hidden_folders: bool = True,
 	skip_noise_folders: bool = True,
+	skip_noise_files: bool = True,
+	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
 	skipped_files: list[SkippedFile] | None = None,
@@ -1050,6 +1080,8 @@ def magic_file_search(
 		max_matches=max_matches,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
+		skip_noise_files=skip_noise_files,
+		match_skipped_names=match_skipped_names,
 		include_archives=include_archives,
 		include_subdirectories=include_subdirectories,
 		skipped_files=skipped_files,

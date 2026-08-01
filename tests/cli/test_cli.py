@@ -460,6 +460,38 @@ def test_given_noise_directory_when_running_cli_with_include_noise_then_searches
 	assert "visible.txt:line:1:" in captured.out
 
 
+def test_given_noise_file_when_running_cli_with_include_noise_files_then_searches_junk(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "uv.lock").write_text("needle lock", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+
+	# when
+	exit_code = main(["needle", str(tmp_path), "--content-only", "--format", "flat", "--include-noise-files"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "uv.lock:line:1:" in captured.out
+
+
+def test_given_noise_file_when_running_cli_with_match_skipped_names_then_matches_filename(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	(tmp_path / "uv.lock").write_text("body", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+
+	# when
+	exit_code = main(["uv.lock", str(tmp_path), "--names-only", "--format", "flat", "--match-skipped-names"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert "uv.lock" in captured.out
+
+
 def test_given_nested_file_when_running_cli_without_subdirectories_then_skips_nested(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):

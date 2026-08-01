@@ -265,6 +265,112 @@ def test_given_hidden_and_noise_directories_when_both_skip_flags_disabled_then_i
 	assert path_names == {"cache.txt", "config", "visible.txt"}
 
 
+def test_given_noise_file_when_searching_then_skips_junk_entries(tmp_path: Path):
+	# given
+	(tmp_path / "uv.lock").write_text("needle dependency pin", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("needle", encoding="utf-8")
+	query = "needle"
+
+	# when
+	results = magic_file_search(tmp_path, query, skip_noise_files=True)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "visible.txt"
+
+
+def test_given_noise_file_when_skip_noise_files_disabled_then_includes_junk_content(tmp_path: Path):
+	# given
+	(tmp_path / "package-lock.json").write_text("needle dependency pin", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+	query = "needle"
+
+	# when
+	results = magic_file_search(tmp_path, query, search_names=False, skip_noise_files=False)
+
+	# then
+	assert len(results) == 1
+	assert results[0].path.name == "package-lock.json"
+
+
+def test_given_match_skipped_names_when_junk_file_then_matches_name_not_content(tmp_path: Path):
+	# given
+	(tmp_path / "uv.lock").write_text("secret body token", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+
+	# when — name hit
+	name_results = magic_file_search(
+		tmp_path,
+		"uv.lock",
+		search_contents=False,
+		match_skipped_names=True,
+	)
+	# when — content must stay skipped
+	content_results = magic_file_search(
+		tmp_path,
+		"secret",
+		search_names=False,
+		match_skipped_names=True,
+	)
+
+	# then
+	assert len(name_results) == 1
+	assert name_results[0].path.name == "uv.lock"
+	assert content_results == []
+
+
+def test_given_match_skipped_names_when_noise_dir_then_matches_name_not_content(tmp_path: Path):
+	# given
+	noise_dir = tmp_path / "node_modules"
+	noise_dir.mkdir()
+	(noise_dir / "package.txt").write_text("secret body token", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+
+	# when
+	name_results = magic_file_search(
+		tmp_path,
+		"package.txt",
+		search_contents=False,
+		match_skipped_names=True,
+	)
+	content_results = magic_file_search(
+		tmp_path,
+		"secret",
+		search_names=False,
+		match_skipped_names=True,
+	)
+
+	# then
+	assert len(name_results) == 1
+	assert name_results[0].path.name == "package.txt"
+	assert content_results == []
+
+
+def test_given_match_skipped_names_when_hidden_file_then_matches_name_not_content(tmp_path: Path):
+	# given
+	(tmp_path / ".secret_config").write_text("hidden body token", encoding="utf-8")
+	(tmp_path / "visible.txt").write_text("other", encoding="utf-8")
+
+	# when
+	name_results = magic_file_search(
+		tmp_path,
+		".secret_config",
+		search_contents=False,
+		match_skipped_names=True,
+	)
+	content_results = magic_file_search(
+		tmp_path,
+		"hidden",
+		search_names=False,
+		match_skipped_names=True,
+	)
+
+	# then
+	assert len(name_results) == 1
+	assert name_results[0].path.name == ".secret_config"
+	assert content_results == []
+
+
 def test_given_binary_file_when_searching_contents_then_skips_binary(tmp_path: Path):
 	# given
 	(tmp_path / "data.bin").write_bytes(b"\x00\x01secret\xff")

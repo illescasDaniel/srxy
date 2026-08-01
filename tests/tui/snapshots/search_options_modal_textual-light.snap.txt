@@ -20,9 +20,9 @@ File names
 █
 █
 Match the path and filename
-█
-█
 ▃▃
+█
+█
 █
 █
 X

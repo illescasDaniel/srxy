@@ -41,6 +41,7 @@ File names
 ┌
 █
 Match the path and filename
+▃▃
 █
 ┐
 │
@@ -48,7 +49,6 @@ Match
 Path
 Mat
 █
-▃▃
 █
 │
 │
@@ -82,6 +82,7 @@ Fuzzy, phonetic, and substring matching (always on)
 █
 │
 │
+Run a search to
 █
 X
 Docs, tags & metadata (recommended ON)

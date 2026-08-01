@@ -7,6 +7,7 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Static
 
 from srxy.adapters.inbound.tui.labels import (
+	BINARY_SKIP_HINT,
 	CLASSIC_MATCHING_HINT,
 	FILTER_LABEL_AUDIO_VIDEO_SIZE,
 	FILTER_LABEL_DOCUMENT_SIZE,
@@ -21,6 +22,7 @@ from srxy.adapters.inbound.tui.labels import (
 	SEARCH_OPTIONS_SECTION_HOW,
 	SEARCH_OPTIONS_SECTION_SCAN,
 	SEARCH_OPTIONS_SECTION_WHERE,
+	SEARCH_OPTIONS_SUBSECTION_NOISY,
 	option_hint,
 	option_label,
 )
@@ -156,7 +158,7 @@ class HelpModal(ModalScreen[None]):
 [b]Search[/b]
   Enter / Ctrl+S   Run search
   /              Focus query input
-  Orange Search  Settings changed since last run — search again
+  Warning Search Settings changed since last run — search again
 
 [b]Filters[/b]
   Filters            Result limits, file size caps, and match sensitivity
@@ -381,6 +383,15 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		margin-top: 1;
 	}
 
+	.search-options-subsection {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		text-style: bold;
+		margin-top: 1;
+		padding-left: 1;
+	}
+
 	.search-options-hint {
 		width: 100%;
 		height: auto;
@@ -393,6 +404,14 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		margin-top: 0;
 		margin-bottom: 1;
 		padding-left: 2;
+	}
+
+	.search-options-noisy-option {
+		padding-left: 1;
+	}
+
+	.search-options-noisy-hint {
+		padding-left: 3;
 	}
 
 	#search-options-scroll Checkbox {
@@ -459,11 +478,28 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		self._initial = initial
 		self._syncing_checkboxes = False
 
-	def _compose_option(self, checkbox_id: str, *, value: bool) -> ComposeResult:
-		yield Checkbox(option_label(checkbox_id), id=checkbox_id, value=value)
+	def _compose_option(
+		self,
+		checkbox_id: str,
+		*,
+		value: bool,
+		noisy: bool = False,
+	) -> ComposeResult:
+		if noisy:
+			yield Checkbox(
+				option_label(checkbox_id),
+				id=checkbox_id,
+				value=value,
+				classes="search-options-noisy-option",
+			)
+		else:
+			yield Checkbox(option_label(checkbox_id), id=checkbox_id, value=value)
 		hint = option_hint(checkbox_id)
 		if hint:
-			yield Static(hint, classes="search-options-hint search-options-option-hint")
+			hint_classes = "search-options-hint search-options-option-hint"
+			if noisy:
+				hint_classes = f"{hint_classes} search-options-noisy-hint"
+			yield Static(hint, classes=hint_classes)
 
 	def compose(self) -> ComposeResult:
 		all_powerups = (
@@ -485,9 +521,21 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 				yield from self._compose_option("so-enable-all", value=all_powerups)
 				yield Static(SEARCH_OPTIONS_SECTION_SCAN, classes="search-options-section")
 				yield from self._compose_option("so-subdirs", value=self._initial.include_subdirectories)
-				yield from self._compose_option("so-hidden", value=self._initial.include_hidden)
-				yield from self._compose_option("so-noise", value=self._initial.include_noise)
 				yield from self._compose_option("so-archives", value=self._initial.include_archives)
+				yield Static(SEARCH_OPTIONS_SUBSECTION_NOISY, classes="search-options-subsection")
+				yield from self._compose_option("so-hidden", value=self._initial.include_hidden, noisy=True)
+				yield from self._compose_option("so-noise", value=self._initial.include_noise, noisy=True)
+				yield from self._compose_option(
+					"so-noise-files",
+					value=self._initial.include_noise_files,
+					noisy=True,
+				)
+				yield from self._compose_option(
+					"so-match-skipped-names",
+					value=self._initial.match_skipped_names,
+					noisy=True,
+				)
+				yield Static(BINARY_SKIP_HINT, classes="search-options-hint")
 			yield Label("", id="search-options-error")
 			with Grid(id="search-options-buttons"):
 				yield Button("Cancel", id="search-options-cancel")
@@ -495,9 +543,13 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	def on_mount(self):
 		self._sync_content_dependent_controls()
+		self._sync_names_dependent_controls()
 
 	def _content_enabled(self) -> bool:
 		return self.query_one("#so-content", Checkbox).value
+
+	def _names_enabled(self) -> bool:
+		return self.query_one("#so-names", Checkbox).value
 
 	def _powerup_values(self) -> tuple[bool, bool, bool, bool]:
 		return (
@@ -542,6 +594,10 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			checkbox.disabled = not content_enabled
 		self._sync_enable_all_from_powerups()
 
+	def _sync_names_dependent_controls(self):
+		checkbox = self.query_one("#so-match-skipped-names", Checkbox)
+		checkbox.disabled = not self._names_enabled()
+
 	def _current_options(self) -> SearchOptions:
 		semantic, ocr, transcribe, semantic_image = self._powerup_values()
 		return SearchOptions(
@@ -554,6 +610,8 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			transcribe=transcribe,
 			include_hidden=self.query_one("#so-hidden", Checkbox).value,
 			include_noise=self.query_one("#so-noise", Checkbox).value,
+			include_noise_files=self.query_one("#so-noise-files", Checkbox).value,
+			match_skipped_names=self.query_one("#so-match-skipped-names", Checkbox).value,
 			include_archives=self.query_one("#so-archives", Checkbox).value,
 			include_subdirectories=self.query_one("#so-subdirs", Checkbox).value,
 		)
@@ -561,6 +619,10 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 	@on(Checkbox.Changed, "#so-content")
 	def _on_content_changed(self):
 		self._sync_content_dependent_controls()
+
+	@on(Checkbox.Changed, "#so-names")
+	def _on_names_changed(self):
+		self._sync_names_dependent_controls()
 
 	@on(Checkbox.Changed, "#so-enable-all")
 	def _on_enable_all_changed(self, event: Checkbox.Changed):

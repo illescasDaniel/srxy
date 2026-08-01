@@ -136,6 +136,40 @@ def test_given_fresh_controller_when_search_starts_then_has_searched_becomes_tru
 	assert not controller.searching
 
 
+def test_given_controller_when_results_empty_then_hint_follows_search_state(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	from srxy.application.labels import (
+		RESULTS_EMPTY_BEFORE_SEARCH,
+		RESULTS_EMPTY_NO_MATCHES,
+		RESULTS_EMPTY_SEARCHING,
+	)
+
+	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# then — before any search
+	assert controller.resultsEmptyHint == RESULTS_EMPTY_BEFORE_SEARCH
+
+	# when — search starts
+	controller.startSearch()
+	assert controller.hasSearched is True
+	assert controller.resultsEmptyHint == RESULTS_EMPTY_SEARCHING
+
+	# when — cancel leaves an empty, post-search table
+	controller.cancelSearch()
+	deadline = time.monotonic() + 30
+	while controller.searching and time.monotonic() < deadline:
+		qapp.processEvents()
+		time.sleep(0.01)
+	assert controller.resultsEmptyHint == RESULTS_EMPTY_NO_MATCHES
+
+	# when — results present
+	result = FileSearchResult(path=tmp_path / "note.txt", score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	assert controller.resultsEmptyHint == ""
+
+
 def test_given_ampersand_simple_query_when_syncing_then_treats_term_as_literal(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	args = build_parser().parse_args(["", str(tmp_path), "--cli"])

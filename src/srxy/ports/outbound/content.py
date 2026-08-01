@@ -18,6 +18,8 @@ class FileWalkerPort(Protocol):
 		*,
 		skip_hidden_folders: bool = True,
 		skip_noise_folders: bool = True,
+		skip_noise_files: bool = True,
+		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 	) -> Iterator[Path]: ...
@@ -28,6 +30,8 @@ class FileWalkerPort(Protocol):
 		*,
 		skip_hidden_folders: bool = True,
 		skip_noise_folders: bool = True,
+		skip_noise_files: bool = True,
+		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 	) -> list[Path]: ...

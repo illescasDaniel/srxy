@@ -100,6 +100,8 @@ def execute_search(
 		max_matches=args.max_matches,
 		skip_hidden_folders=not args.include_hidden,
 		skip_noise_folders=not args.include_noise,
+		skip_noise_files=not bool(getattr(args, "include_noise_files", False)),
+		match_skipped_names=bool(getattr(args, "match_skipped_names", False)) and search_names,
 		include_archives=bool(getattr(args, "include_archives", False)),
 		include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
 		skipped_files=effective_skipped if search_contents or ocr or transcribe else None,

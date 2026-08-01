@@ -25,6 +25,11 @@ from srxy.adapters.outbound.worker.search_worker import (
 	iter_subprocess_search_events,
 	skipped_file_from_dict,
 )
+from srxy.application.labels import (
+	RESULTS_EMPTY_BEFORE_SEARCH,
+	RESULTS_EMPTY_NO_MATCHES,
+	RESULTS_EMPTY_SEARCHING,
+)
 from srxy.application.model_preflight import (
 	PendingModelDownload,
 	download_fn_for_kind,
@@ -181,6 +186,7 @@ class SearchController(QObject):
 	staleChanged = Signal()
 	searchingChanged = Signal()
 	hasSearchedChanged = Signal()
+	resultsEmptyHintChanged = Signal()
 	queryPreviewChanged = Signal()
 	pathChanged = Signal()
 	pathIssueChanged = Signal()
@@ -308,6 +314,20 @@ class SearchController(QObject):
 		return self._has_searched
 
 	hasSearched = Property(bool, _get_has_searched, notify=hasSearchedChanged)
+
+	def _get_results_empty_hint(self) -> str:
+		if self._results_model.rowCount() > 0:
+			return ""
+		if not self._has_searched:
+			return RESULTS_EMPTY_BEFORE_SEARCH
+		if self._searching:
+			return RESULTS_EMPTY_SEARCHING
+		return RESULTS_EMPTY_NO_MATCHES
+
+	resultsEmptyHint = Property(str, _get_results_empty_hint, notify=resultsEmptyHintChanged)
+
+	def _notify_results_empty_hint(self):
+		self.resultsEmptyHintChanged.emit()
 
 	def _get_query_mode(self) -> str:
 		return self._query_mode
@@ -576,6 +596,7 @@ class SearchController(QObject):
 		if self._searching != value:
 			self._searching = value
 			self.searchingChanged.emit()
+			self._notify_results_empty_hint()
 			self.canSearchChanged.emit()
 
 	def _set_download_confirm(self, open_: bool, message: str = ""):
@@ -733,6 +754,7 @@ class SearchController(QObject):
 		self.previewChanged.emit()
 		self._progress = 0.0
 		self.progressChanged.emit()
+		self._notify_results_empty_hint()
 		self._set_status("Starting search…")
 		self._set_searching(True)
 		self._args = args
@@ -764,6 +786,7 @@ class SearchController(QObject):
 			self._set_status(format_activity_status(event.update) or self._status)
 		elif isinstance(event, SearchResultEvent):
 			self._results_model.insert_result(event.result)
+			self._notify_results_empty_hint()
 			self._set_status(f"{self._results_model.rowCount()} matches…")
 		elif isinstance(event, SearchErrorEvent):
 			self.errorOccurred.emit(event.message)
@@ -772,6 +795,7 @@ class SearchController(QObject):
 		elif isinstance(event, SearchFinishedEvent):
 			self._results_model.replace_results(event.results)
 			count = self._results_model.rowCount()
+			self._notify_results_empty_hint()
 			self._exit_code = 0 if count else 1
 			self._progress = 100.0
 			self.progressChanged.emit()

@@ -87,3 +87,42 @@ def test_given_content_how_ticked_when_toggling_file_contents_off_then_on_then_t
 			assert ocr.value is True
 
 	asyncio.run(run())
+
+
+def test_given_file_names_off_when_toggled_then_disables_skipped_file_names():
+	# given
+	app = _SearchOptionsModalHostApp()
+	initial = SearchOptions(
+		search_names=True,
+		search_contents=True,
+		match_skipped_names=True,
+	)
+
+	async def run():
+		async with app.run_test(size=(80, 40)) as pilot:
+			app.push_screen(SearchOptionsModal(initial), wait_for_dismiss=False)
+			await pilot.pause()
+			modal = app.screen
+			assert isinstance(modal, SearchOptionsModal)
+			names = modal.query_one("#so-names", Checkbox)
+			skipped = modal.query_one("#so-match-skipped-names", Checkbox)
+			assert skipped.value is True
+			assert skipped.disabled is False
+
+			# when
+			names.value = False
+			await pilot.pause()
+
+			# then
+			assert skipped.disabled is True
+			assert skipped.value is True
+
+			# when
+			names.value = True
+			await pilot.pause()
+
+			# then
+			assert skipped.disabled is False
+			assert skipped.value is True
+
+	asyncio.run(run())

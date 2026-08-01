@@ -51,7 +51,7 @@ srxy "token" . --include-archives
 srxy "token" . --no-include-subdirectories
 ```
 
-Recursive walk by default (`--include-subdirectories`). Use `--no-include-subdirectories` to search only files directly in the chosen folder. Default skips dot-hidden entries and noise dirs (`__pycache__`, `node_modules`). Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
+Recursive walk by default (`--include-subdirectories`). Use `--no-include-subdirectories` to search only files directly in the chosen folder. Default skips dot-hidden entries, noise dirs (`__pycache__`, `node_modules`), and junk/lock files (`uv.lock`, `package-lock.json`, …). Use `--match-skipped-names` to still match those paths by filename. Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
 
 ## Flags
 
@@ -61,7 +61,7 @@ Recursive walk by default (`--include-subdirectories`). Use `--no-include-subdir
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
 | **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
-| **Walk** | `--include-subdirectories` / `--no-include-subdirectories`, `--include-hidden`, `--include-noise`, `--include-archives` |
+| **Walk** | `--include-subdirectories` / `--no-include-subdirectories`, `--include-hidden`, `--include-noise`, `--include-noise-files`, `--match-skipped-names`, `--include-archives` |
 | **UX** | `--progress` / `--no-progress`, `--cli`, `--tui`, `--version` |
 
 `--max-line-matches` is deprecated; use `--max-matches`.

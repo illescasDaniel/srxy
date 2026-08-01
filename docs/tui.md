@@ -43,7 +43,7 @@ Heavy modes run in a background worker so the UI stays responsive.
 3. **j** / **k** (or arrows) through results — preview updates.
 4. **o** opens the selected file in the OS default app.
 
-Changing query, path, options, or filters after a search marks **Search** **orange** (stale results).
+Changing query, path, options, or filters after a search marks **Search** with the theme warning tint (stale results).
 
 ## Query builder
 

@@ -101,6 +101,7 @@ Image text size limit (MiB)
 █
 │
 │
+Run a search to s
 █
 Audio/video size limit (MiB)
 █

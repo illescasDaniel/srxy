@@ -52,6 +52,49 @@ def test_given_args_when_building_search_options_then_reflects_flags():
 	)
 
 
+def test_given_args_when_building_search_options_then_reflects_noise_file_flags():
+	# given
+	args = argparse.Namespace(
+		names_only=False,
+		content_only=False,
+		search_names=True,
+		search_contents=True,
+		search_docs_tags=True,
+		semantic=False,
+		semantic_image=False,
+		semantic_all=False,
+		ocr=False,
+		transcribe=False,
+		include_hidden=False,
+		include_noise=False,
+		include_noise_files=True,
+		match_skipped_names=True,
+		include_archives=False,
+		include_subdirectories=True,
+	)
+
+	# when
+	options = search_options_from_args(args)
+
+	# then
+	assert options.include_noise_files is True
+	assert options.match_skipped_names is True
+	summary = format_search_options_summary(options)
+	assert "Junk files" in summary
+	assert "Skipped" in summary
+
+
+def test_given_names_off_when_formatting_summary_then_omits_skipped_names_chip():
+	# given
+	options = SearchOptions(search_names=False, search_contents=True, match_skipped_names=True)
+
+	# when
+	summary = format_search_options_summary(options)
+
+	# then
+	assert "Skipped" not in summary
+
+
 def test_given_search_options_when_applying_to_args_then_sets_include_archives():
 	# given
 	args = argparse.Namespace(

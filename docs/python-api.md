@@ -20,6 +20,8 @@ for result in results:
 
 results = magic_file_search(Path("."), "token", skip_hidden_folders=False)
 results = magic_file_search(Path("."), "token", skip_noise_folders=False)
+results = magic_file_search(Path("."), "token", skip_noise_files=False)
+results = magic_file_search(Path("."), "uv.lock", match_skipped_names=True)
 results = magic_file_search(Path("."), "token", include_archives=True)
 results = magic_file_search(Path("."), "token", include_subdirectories=False)
 

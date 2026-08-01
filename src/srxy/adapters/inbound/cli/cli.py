@@ -811,6 +811,16 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Search noise directories like __pycache__ and node_modules (default: skip)",
 	)
 	parser.add_argument(
+		"--include-noise-files",
+		action="store_true",
+		help="Search junk/lock/temp files like uv.lock, package-lock.json, *.min.js (default: skip)",
+	)
+	parser.add_argument(
+		"--match-skipped-names",
+		action="store_true",
+		help="Match filenames of otherwise-skipped hidden/cache/junk paths (content still skipped)",
+	)
+	parser.add_argument(
 		"--include-archives",
 		action="store_true",
 		help="Search inside compressed archives (.zip, .tar, .tar.gz, .gz) (default: skip)",
@@ -907,6 +917,8 @@ def sync_options_to_args(
 	transcribe: bool,
 	include_hidden: bool,
 	include_noise: bool,
+	include_noise_files: bool = False,
+	match_skipped_names: bool = False,
 	include_archives: bool,
 	include_subdirectories: bool = True,
 ):
@@ -923,6 +935,8 @@ def sync_options_to_args(
 		transcribe=transcribe,
 		include_hidden=include_hidden,
 		include_noise=include_noise,
+		include_noise_files=include_noise_files,
+		match_skipped_names=match_skipped_names,
 		include_archives=include_archives,
 		include_subdirectories=include_subdirectories,
 	)

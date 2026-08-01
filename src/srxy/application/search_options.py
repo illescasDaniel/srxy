@@ -15,6 +15,8 @@ from srxy.application.labels import (
 	SUMMARY_SCAN_ARCHIVES,
 	SUMMARY_SCAN_HIDDEN,
 	SUMMARY_SCAN_NOISE,
+	SUMMARY_SCAN_NOISE_FILES,
+	SUMMARY_SCAN_SKIPPED_NAMES,
 	SUMMARY_SCAN_TOP_LEVEL,
 	SUMMARY_WHERE_CONTENT,
 	SUMMARY_WHERE_NAMES,
@@ -38,6 +40,8 @@ class SearchOptions:
 	transcribe: bool = False
 	include_hidden: bool = False
 	include_noise: bool = False
+	include_noise_files: bool = False
+	match_skipped_names: bool = False
 	include_archives: bool = False
 	include_subdirectories: bool = True
 
@@ -53,13 +57,30 @@ def has_search_source(options: SearchOptions) -> bool:
 
 
 def effective_search_options(options: SearchOptions) -> SearchOptions:
-	"""Return options with content-only how-flags inactive when File contents is off.
+	"""Return options with inactive flags cleared for summary / effective run state.
 
 	Preferred ticks are kept in the stored ``SearchOptions`` for UI round-trips;
 	use this when summarizing or reasoning about what will actually run.
 	"""
-	if options.search_contents:
+	match_skipped_names = bool(options.match_skipped_names and options.search_names)
+	if options.search_contents and match_skipped_names == options.match_skipped_names:
 		return options
+	if options.search_contents:
+		return SearchOptions(
+			search_names=options.search_names,
+			search_contents=True,
+			search_docs_tags=options.search_docs_tags,
+			semantic=options.semantic,
+			semantic_image=options.semantic_image,
+			ocr=options.ocr,
+			transcribe=options.transcribe,
+			include_hidden=options.include_hidden,
+			include_noise=options.include_noise,
+			include_noise_files=options.include_noise_files,
+			match_skipped_names=match_skipped_names,
+			include_archives=options.include_archives,
+			include_subdirectories=options.include_subdirectories,
+		)
 	return SearchOptions(
 		search_names=options.search_names,
 		search_contents=False,
@@ -70,6 +91,8 @@ def effective_search_options(options: SearchOptions) -> SearchOptions:
 		transcribe=False,
 		include_hidden=options.include_hidden,
 		include_noise=options.include_noise,
+		include_noise_files=options.include_noise_files,
+		match_skipped_names=match_skipped_names,
 		include_archives=options.include_archives,
 		include_subdirectories=options.include_subdirectories,
 	)
@@ -93,6 +116,8 @@ def search_options_from_args(args: argparse.Namespace) -> SearchOptions:
 		transcribe=bool(args.transcribe or args.semantic_all),
 		include_hidden=bool(args.include_hidden),
 		include_noise=bool(args.include_noise),
+		include_noise_files=bool(getattr(args, "include_noise_files", False)),
+		match_skipped_names=bool(getattr(args, "match_skipped_names", False)),
 		include_archives=bool(getattr(args, "include_archives", False)),
 		include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
 	)
@@ -110,6 +135,8 @@ def sync_options_to_args(
 	transcribe: bool,
 	include_hidden: bool,
 	include_noise: bool,
+	include_noise_files: bool = False,
+	match_skipped_names: bool = False,
 	include_archives: bool,
 	include_subdirectories: bool = True,
 ):
@@ -125,6 +152,8 @@ def sync_options_to_args(
 	args.transcribe = transcribe
 	args.include_hidden = include_hidden
 	args.include_noise = include_noise
+	args.include_noise_files = include_noise_files
+	args.match_skipped_names = match_skipped_names
 	args.include_archives = include_archives
 	args.include_subdirectories = include_subdirectories
 
@@ -141,6 +170,8 @@ def apply_search_options_to_args(args: argparse.Namespace, options: SearchOption
 		transcribe=options.transcribe,
 		include_hidden=options.include_hidden,
 		include_noise=options.include_noise,
+		include_noise_files=options.include_noise_files,
+		match_skipped_names=options.match_skipped_names,
 		include_archives=options.include_archives,
 		include_subdirectories=options.include_subdirectories,
 	)
@@ -179,6 +210,10 @@ def format_search_options_summary(options: SearchOptions) -> str:
 		scan_labels.append(SUMMARY_SCAN_HIDDEN)
 	if effective.include_noise:
 		scan_labels.append(SUMMARY_SCAN_NOISE)
+	if effective.include_noise_files:
+		scan_labels.append(SUMMARY_SCAN_NOISE_FILES)
+	if effective.match_skipped_names:
+		scan_labels.append(SUMMARY_SCAN_SKIPPED_NAMES)
 	if effective.include_archives:
 		scan_labels.append(SUMMARY_SCAN_ARCHIVES)
 	if scan_labels:

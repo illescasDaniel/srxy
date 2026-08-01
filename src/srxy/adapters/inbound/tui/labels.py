@@ -25,6 +25,8 @@ from srxy.application.labels import (
 	SUMMARY_SCAN_ARCHIVES,
 	SUMMARY_SCAN_HIDDEN,
 	SUMMARY_SCAN_NOISE,
+	SUMMARY_SCAN_NOISE_FILES,
+	SUMMARY_SCAN_SKIPPED_NAMES,
 	SUMMARY_SCAN_TOP_LEVEL,
 	SUMMARY_WHERE_CONTENT,
 	SUMMARY_WHERE_NAMES,
@@ -47,15 +49,25 @@ OPTION_LABELS: dict[str, tuple[str, str | None]] = {
 	"so-enable-all": ("All advanced matching", "Turn on Similar meaning, Text in images, Spoken words, and Visual"),
 	"so-hidden": ("Hidden files & folders", "Include dotfiles and hidden directories"),
 	"so-noise": ("Cache & vendor folders", "Include __pycache__, node_modules, etc."),
+	"so-noise-files": (
+		"Junk & lock files",
+		"Include uv.lock, package-lock.json, *.min.js, Office temps, …",
+	),
+	"so-match-skipped-names": (
+		"Skipped file names",
+		"Also match names of files skipped by Hidden / Cache & vendor / Junk",
+	),
 	"so-archives": ("Inside zip/tar files", "Search within compressed archives"),
 	"so-subdirs": ("Include subdirectories", "Also search folders nested under the path"),
 }
 
 CLASSIC_MATCHING_HINT = "Fuzzy, phonetic, and substring matching (always on)"
+BINARY_SKIP_HINT = "Binary-looking files (null byte in first 8 KiB) skip body text; names can still match"
 
 SEARCH_OPTIONS_SECTION_WHERE = "Where to search"
 SEARCH_OPTIONS_SECTION_HOW = "How to match"
 SEARCH_OPTIONS_SECTION_SCAN = "Which files to scan"
+SEARCH_OPTIONS_SUBSECTION_NOISY = "Noisy files"
 
 MATCH_SOURCE_LABELS: dict[str, str] = {
 	"name": "filename",
@@ -91,6 +103,7 @@ __all__ = [
 	"SEARCH_OPTIONS_SECTION_HOW",
 	"SEARCH_OPTIONS_SECTION_SCAN",
 	"SEARCH_OPTIONS_SECTION_WHERE",
+	"SEARCH_OPTIONS_SUBSECTION_NOISY",
 	"SUMMARY_HOW_CONTENT",
 	"SUMMARY_HOW_DOCS_TAGS",
 	"SUMMARY_HOW_OCR",
@@ -103,9 +116,13 @@ __all__ = [
 	"SUMMARY_SCAN_ARCHIVES",
 	"SUMMARY_SCAN_HIDDEN",
 	"SUMMARY_SCAN_NOISE",
+	"SUMMARY_SCAN_NOISE_FILES",
+	"SUMMARY_SCAN_SKIPPED_NAMES",
 	"SUMMARY_SCAN_TOP_LEVEL",
 	"SUMMARY_WHERE_CONTENT",
 	"SUMMARY_WHERE_NAMES",
+	"BINARY_SKIP_HINT",
+	"CLASSIC_MATCHING_HINT",
 	"format_tui_match_labels",
 	"option_hint",
 	"option_label",
