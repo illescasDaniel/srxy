@@ -3,7 +3,8 @@
 set -u
 
 # Quality gate — ruff, shell, basedpyright, pip-audit, build, and optionally pytest.
-# --fix: ruff autofix+format and shfmt write; ignored when CI=true.
+# --fix: ruff autofix+format and shfmt write; sequential (writers first).
+# Without --fix: verify steps run in parallel; pytest workers capped to half nproc.
 
 quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 internal_dir="${quality_dir}/internal"
@@ -46,8 +47,13 @@ fi
 export LIB_PYTEST_FULL="${FULL}"
 export LIB_PYTEST_FULL_CPU="${FULL_CPU}"
 
-GATE_PLANNED_STEPS=5
+HAS_PYTEST=false
 if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
+	HAS_PYTEST=true
+fi
+
+GATE_PLANNED_STEPS=5
+if [[ "${HAS_PYTEST}" == true ]]; then
 	# shellcheck disable=SC2034
 	GATE_PLANNED_STEPS=6
 fi
@@ -57,20 +63,21 @@ cd "${LIB_REPO_ROOT}" || exit
 
 set +e
 
-# --- 1. ruff ---
-gate_step_start "ruff"
-if [[ "${FIX}" == true ]]; then
-	ruff_output="$("${quality_dir}/ruff.sh" 2>&1)"
-	ruff_exit=$?
-	printf '%s\n' "${ruff_output}"
-	if [[ "${ruff_exit}" -eq 0 ]]; then
-		gate_record_pass
-	else
-		gate_gha_error "" "" "" "ruff" "ruff fix/format failed (exit ${ruff_exit})"
-		gate_record_fail 1 0
-		gate_add_detail "[ruff] exit ${ruff_exit}"
+gate_step_ruff() {
+	if [[ "${FIX}" == true ]]; then
+		ruff_output="$("${quality_dir}/ruff.sh" 2>&1)"
+		ruff_exit=$?
+		printf '%s\n' "${ruff_output}"
+		if [[ "${ruff_exit}" -eq 0 ]]; then
+			gate_record_pass
+		else
+			gate_gha_error "" "" "" "ruff" "ruff fix/format failed (exit ${ruff_exit})"
+			gate_add_detail "[ruff] exit ${ruff_exit}"
+			gate_record_fail 1 0
+		fi
+		return 0
 	fi
-else
+
 	lib_ruff_targets
 	ruff_check_out="$(lib_uv_run ruff check "${LIB_RUFF_TARGETS[@]}" --output-format=github 2>&1)"
 	printf '%s\n' "${ruff_check_out}"
@@ -100,87 +107,85 @@ else
 	if [[ "${ruff_errors}" -gt 0 || "${ruff_format_exit}" -ne 0 ]]; then
 		gate_record_fail "${ruff_errors:-1}" "${ruff_warnings:-0}"
 	elif [[ "${ruff_warnings:-0}" -gt 0 ]]; then
-		gate_record_step "warn" 0 "${ruff_warnings}"
+		gate_emit_result "warn" 0 "${ruff_warnings}"
 	else
 		gate_record_pass
 	fi
-fi
+}
 
-# --- 2. shell ---
-gate_step_start "shell"
-if [[ "${FIX}" == true ]]; then
-	shell_output="$("${quality_dir}/shellcheck.sh" --fix 2>&1)"
-else
-	shell_output="$("${quality_dir}/shellcheck.sh" 2>&1)"
-fi
-shell_exit=$?
-printf '%s\n' "${shell_output}"
-if [[ "${shell_exit}" -eq 0 ]]; then
-	gate_record_pass
-else
-	gate_gha_error "" "" "" "shell" "shell lint/format failed (exit ${shell_exit})"
-	gate_record_fail 1 0
-	gate_add_detail "[shell] exit ${shell_exit}"
-fi
-
-# --- 3. pyright ---
-gate_step_start "basedpyright"
-pyright_stderr="$(mktemp)"
-pyright_json="$("${quality_dir}/pyright.sh" --outputjson 2>"${pyright_stderr}")"
-pyright_exit=$?
-emit_out="$(printf '%s' "${pyright_json}" | lib_uv_run python "${internal_dir}/gate_emit.py" pyright 2>&1)"
-summary=""
-while IFS= read -r line; do
-	if [[ "${line}" == GATE_SUMMARY* ]]; then
-		summary="${line}"
-	elif [[ "${line}" == ::* ]]; then
-		echo "${line}"
-		if [[ "${line}" == *"basedpyright returned invalid JSON"* ]] && [[ -s "${pyright_stderr}" ]]; then
-			cat "${pyright_stderr}" >&2
-		fi
+gate_step_shell() {
+	if [[ "${FIX}" == true ]]; then
+		shell_output="$("${quality_dir}/shellcheck.sh" --fix 2>&1)"
+	else
+		shell_output="$("${quality_dir}/shellcheck.sh" 2>&1)"
 	fi
-done <<<"${emit_out}"
-rm -f "${pyright_stderr}"
-if [[ -n "${summary}" ]]; then
-	gate_apply_emit_summary "${summary}"
-else
-	if [[ "${pyright_exit}" -eq 0 ]]; then
+	shell_exit=$?
+	printf '%s\n' "${shell_output}"
+	if [[ "${shell_exit}" -eq 0 ]]; then
 		gate_record_pass
 	else
-		gate_gha_error "" "" "" "basedpyright" "type check failed (exit ${pyright_exit})"
+		gate_gha_error "" "" "" "shell" "shell lint/format failed (exit ${shell_exit})"
+		gate_add_detail "[shell] exit ${shell_exit}"
 		gate_record_fail 1 0
 	fi
-fi
+}
 
-# --- 4. pip-audit ---
-gate_step_start "pip-audit"
-audit_output="$("${internal_dir}/audit_deps.sh" 2>&1)"
-audit_exit=$?
-printf '%s\n' "${audit_output}"
-if [[ "${audit_exit}" -eq 0 ]]; then
-	gate_record_pass
-else
-	gate_gha_error "" "" "" "pip-audit" "dependency audit failed (exit ${audit_exit})"
-	gate_record_fail 1 0
-	gate_add_detail "[pip-audit] exit ${audit_exit}"
-fi
+gate_step_pyright() {
+	pyright_stderr="$(mktemp)"
+	pyright_json="$("${quality_dir}/pyright.sh" --outputjson 2>"${pyright_stderr}")"
+	pyright_exit=$?
+	emit_out="$(printf '%s' "${pyright_json}" | lib_uv_run python "${internal_dir}/gate_emit.py" pyright 2>&1)"
+	summary=""
+	while IFS= read -r line; do
+		if [[ "${line}" == GATE_SUMMARY* ]]; then
+			summary="${line}"
+		elif [[ "${line}" == ::* ]]; then
+			echo "${line}"
+			if [[ "${line}" == *"basedpyright returned invalid JSON"* ]] && [[ -s "${pyright_stderr}" ]]; then
+				cat "${pyright_stderr}" >&2
+			fi
+		fi
+	done <<<"${emit_out}"
+	rm -f "${pyright_stderr}"
+	if [[ -n "${summary}" ]]; then
+		gate_apply_emit_summary "${summary}"
+	else
+		if [[ "${pyright_exit}" -eq 0 ]]; then
+			gate_record_pass
+		else
+			gate_gha_error "" "" "" "basedpyright" "type check failed (exit ${pyright_exit})"
+			gate_record_fail 1 0
+		fi
+	fi
+}
 
-# --- 5. build ---
-gate_step_start "build"
-build_output="$("${quality_dir}/build.sh" 2>&1)"
-build_exit=$?
-printf '%s\n' "${build_output}"
-if [[ "${build_exit}" -eq 0 ]]; then
-	gate_record_pass
-else
-	gate_gha_error "" "" "" "build" "package build failed (exit ${build_exit})"
-	gate_record_fail 1 0
-	gate_add_detail "[build] exit ${build_exit}"
-fi
+gate_step_pip_audit() {
+	audit_output="$("${internal_dir}/audit_deps.sh" 2>&1)"
+	audit_exit=$?
+	printf '%s\n' "${audit_output}"
+	if [[ "${audit_exit}" -eq 0 ]]; then
+		gate_record_pass
+	else
+		gate_gha_error "" "" "" "pip-audit" "dependency audit failed (exit ${audit_exit})"
+		gate_add_detail "[pip-audit] exit ${audit_exit}"
+		gate_record_fail 1 0
+	fi
+}
 
-# --- 6. pytest (when project uses pytest) ---
-if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
-	gate_step_start "pytest"
+gate_step_build() {
+	build_output="$("${quality_dir}/build.sh" 2>&1)"
+	build_exit=$?
+	printf '%s\n' "${build_output}"
+	if [[ "${build_exit}" -eq 0 ]]; then
+		gate_record_pass
+	else
+		gate_gha_error "" "" "" "build" "package build failed (exit ${build_exit})"
+		gate_add_detail "[build] exit ${build_exit}"
+		gate_record_fail 1 0
+	fi
+}
+
+gate_step_pytest() {
 	if [[ "${CI:-}" == "true" ]]; then
 		pytest_output="$("${quality_dir}/pytest.sh" 2>&1)"
 		pytest_exit=$?
@@ -193,9 +198,85 @@ if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
 		gate_record_pass
 	else
 		gate_gha_error "" "" "" "pytest" "tests failed (exit ${pytest_exit})"
-		gate_record_fail 1 0
 		gate_add_detail "[pytest] exit ${pytest_exit}"
+		gate_record_fail 1 0
 	fi
+}
+
+gate_run_step_logged() {
+	local name="$1"
+	local fn="$2"
+	local log_dir="$3"
+
+	(
+		export GATE_STATUS_FILE="${log_dir}/${name}.status"
+		rm -f "${GATE_STATUS_FILE}" "${GATE_STATUS_FILE}.details"
+		"${fn}" >"${log_dir}/${name}.log" 2>&1
+	) &
+}
+
+gate_finish_step() {
+	local name="$1"
+	local log_dir="$2"
+
+	gate_step_start "${name}"
+	if [[ -f "${log_dir}/${name}.log" ]]; then
+		cat "${log_dir}/${name}.log"
+	fi
+	unset GATE_STATUS_FILE
+	gate_load_result "${log_dir}/${name}.status"
+}
+
+if [[ "${FIX}" == true ]]; then
+	gate_step_start "ruff"
+	gate_step_ruff
+
+	gate_step_start "shell"
+	gate_step_shell
+
+	gate_step_start "basedpyright"
+	gate_step_pyright
+
+	gate_step_start "pip-audit"
+	gate_step_pip_audit
+
+	gate_step_start "build"
+	gate_step_build
+
+	if [[ "${HAS_PYTEST}" == true ]]; then
+		gate_step_start "pytest"
+		gate_step_pytest
+	fi
+else
+	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
+	workers="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+	workers=$((workers / 2))
+	if [[ "${workers}" -lt 1 ]]; then
+		workers=1
+	fi
+	export LIB_PYTEST_WORKERS="${workers}"
+
+	echo "Parallel verify (${GATE_PLANNED_STEPS} steps; pytest -n ${LIB_PYTEST_WORKERS})"
+
+	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
+	gate_run_step_logged "shell" gate_step_shell "${parallel_dir}"
+	gate_run_step_logged "basedpyright" gate_step_pyright "${parallel_dir}"
+	gate_run_step_logged "pip-audit" gate_step_pip_audit "${parallel_dir}"
+	gate_run_step_logged "build" gate_step_build "${parallel_dir}"
+	if [[ "${HAS_PYTEST}" == true ]]; then
+		gate_run_step_logged "pytest" gate_step_pytest "${parallel_dir}"
+	fi
+	wait
+
+	gate_finish_step "ruff" "${parallel_dir}"
+	gate_finish_step "shell" "${parallel_dir}"
+	gate_finish_step "basedpyright" "${parallel_dir}"
+	gate_finish_step "pip-audit" "${parallel_dir}"
+	gate_finish_step "build" "${parallel_dir}"
+	if [[ "${HAS_PYTEST}" == true ]]; then
+		gate_finish_step "pytest" "${parallel_dir}"
+	fi
+	rm -rf "${parallel_dir}"
 fi
 
 gate_exit

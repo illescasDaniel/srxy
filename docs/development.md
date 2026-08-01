@@ -25,16 +25,16 @@ uv run python scripts/bench_file_search.py
 
 ## Quality gate
 
-Order: Ruff → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
+Without `--fix`, verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build, pytest) run **in parallel**; pytest xdist workers are capped to half of `nproc` to leave CPU for the other steps. With `--fix`, steps stay **sequential** so autofix writers finish before later checks.
 
 | Command | pytest |
 |---------|--------|
-| `checks.sh` | Integration + TUI/GUI; excludes `integration_full` and `transcribe_device_matrix`. Runs with `-n auto --dist=loadgroup`, `--testmon-forceselect --ff`, no coverage |
-| `checks.sh --full` | Full local suite; `-n auto --dist=loadgroup`, no testmon, with coverage |
+| `checks.sh` | Integration + TUI/GUI; excludes `integration_full` and `transcribe_device_matrix`. Runs with `-n auto --dist=loadgroup` (half `nproc` when parallel verify), `--testmon-forceselect --ff`, no coverage |
+| `checks.sh --full` | Full local suite; parallel verify; no testmon, with coverage |
 | `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` |
-| `CI=true checks.sh` | `unit` marker only, excluding `semantic` and `transcribe`. Parallel (`-n auto`); no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
+| `CI=true checks.sh` | `unit` marker only, excluding `semantic` and `transcribe`. Parallel verify + `-n` half `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
 
-`--fix` = Ruff + shell only; ignored in CI.
+`--fix` = Ruff + shell autofix, then remaining steps sequentially; ignored in CI.
 
 ## Fixtures
 

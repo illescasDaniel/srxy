@@ -124,7 +124,11 @@ lib_pytest_args() {
 	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--integration-test-cpu)
 	fi
-	LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup)
+	if [[ -n "${LIB_PYTEST_WORKERS:-}" ]]; then
+		LIB_PYTEST_ARGS+=(-n "${LIB_PYTEST_WORKERS}" --dist=loadgroup)
+	else
+		LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup)
+	fi
 	# Change-aware selection for local day-to-day gate only (not CI, not --full).
 	if [[ "${CI:-}" != "true" && "${LIB_PYTEST_FULL:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--testmon-forceselect --ff)
