@@ -23,6 +23,8 @@ src/srxy/
 
 Public API (`from srxy import magic_file_search, FileQ, …`) is the contract in [`src/srxy/__init__.py`](../src/srxy/__init__.py) (`__all__`). Everything under `adapters/`, `ports/`, `bootstrap`, and application UI helpers is internal. Generated reference: [api-reference.md](api-reference.md).
 
+Composition root: [`bootstrap.build_app_services()`](../src/srxy/bootstrap.py) wires `FileSearchPort` → `SearchSession` → `SearchRunnerPort` (`AdaptiveSearchRunner`), `DesktopPort` (OS / Qt / Textual), and content ports (`TextExtractorPort`, `FileWalkerPort`, `ImageSimilarityPort`, `ContentCachePort`). `run_tui` / `run_gui` / CLI inject those into UI constructors; the search worker subprocess calls `build_worker_services()`. File search orchestration is `FileSearchUseCase`; line sources and filesystem walking live under [`adapters/outbound/content/`](../src/srxy/adapters/outbound/content/); [`magic_file_search`](../src/srxy/application/use_cases/search_files.py) remains the public facade. Library callers still use `from srxy import …` only.
+
 ## Launch modes
 
 | Mode | When |

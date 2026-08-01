@@ -990,6 +990,8 @@ def execute_search(
 
 
 def run_plain(args: argparse.Namespace) -> int:
+	from srxy.bootstrap import build_app_services
+
 	if args.query is None:
 		print("error: the following arguments are required: query", file=sys.stderr)
 		return 2
@@ -1005,6 +1007,7 @@ def run_plain(args: argparse.Namespace) -> int:
 		print(f"error: invalid query: {error}", file=sys.stderr)
 		return 2
 
+	services = build_app_services()
 	skipped_files: list[SkippedFile] = []
 	show_progress = resolve_show_progress(args)
 	progress = ProgressBar() if show_progress else None
@@ -1031,7 +1034,7 @@ def run_plain(args: argparse.Namespace) -> int:
 			progress.flash_match()
 
 	try:
-		results, skipped_files = execute_search(
+		results, skipped_files = services.file_search.execute(
 			args,
 			skipped_files=skipped_files,
 			on_progress=on_progress,

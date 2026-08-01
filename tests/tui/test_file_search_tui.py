@@ -93,7 +93,7 @@ def test_given_name_match_when_tui_results_rendered_then_snapshot_includes_readm
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):
@@ -124,7 +124,7 @@ def test_given_completed_search_when_query_edited_then_search_button_becomes_sta
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 40)) as pilot:
 				button = app.query_one("#search-button")
@@ -172,7 +172,7 @@ def test_given_ocr_result_when_preview_rendered_then_location_and_text_visible(t
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):
@@ -201,7 +201,7 @@ def test_given_transcript_result_when_preview_rendered_then_transcript_visible(t
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):
@@ -236,8 +236,8 @@ def test_given_semantic_image_flag_when_search_completes_then_results_table_popu
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.adapters.inbound.tui.app.search_uses_subprocess", return_value=False),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_session.search_uses_subprocess", return_value=False),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(120, 40)) as pilot:
 				for _ in range(30):

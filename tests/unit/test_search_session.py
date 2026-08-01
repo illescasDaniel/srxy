@@ -1,17 +1,22 @@
 from __future__ import annotations
 
 import argparse
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
 
+from srxy.application.search_runner import FileSearchService
 from srxy.application.search_session import (
+	SearchErrorEvent,
 	SearchFinishedEvent,
 	SearchProgressEvent,
 	SearchResultEvent,
 	SearchSession,
 )
-from srxy.domain.models import FileSearchResult
+from srxy.domain.models import FileSearchResult, SkippedFile
+from srxy.domain.progress import ActivityCallback
+from srxy.ports.inbound.file_search import FileSearchPort
 
 
 pytestmark = pytest.mark.unit
@@ -23,10 +28,38 @@ def _args(path: Path, query: str) -> argparse.Namespace:
 	return build_parser().parse_args([query, str(path), "--cli"])
 
 
+class _FakeFileSearch:
+	def __init__(self, results: list[FileSearchResult] | None = None, *, error: Exception | None = None):
+		self.results = results or []
+		self.error = error
+		self.calls = 0
+
+	def execute(
+		self,
+		args: argparse.Namespace,
+		*,
+		skipped_files: list[SkippedFile] | None = None,
+		on_progress: Callable[[int, int], None] | None = None,
+		on_activity: ActivityCallback | None = None,
+		on_result: Callable[[FileSearchResult], None] | None = None,
+	) -> tuple[list[FileSearchResult], list[SkippedFile]]:
+		self.calls += 1
+		_ = args
+		if self.error is not None:
+			raise self.error
+		if on_progress is not None:
+			on_progress(1, 1)
+		for result in self.results:
+			if on_result is not None:
+				on_result(result)
+		effective = skipped_files if skipped_files is not None else []
+		return self.results, effective
+
+
 def test_given_fixture_tree_when_search_session_runs_then_emits_progress_and_results(tmp_path: Path):
 	(tmp_path / "hello.txt").write_text("hello world\n", encoding="utf-8")
 	events: list[object] = []
-	session = SearchSession()
+	session = SearchSession(FileSearchService())
 
 	session.run_blocking(_args(tmp_path, "hello"), on_event=events.append)
 
@@ -37,3 +70,27 @@ def test_given_fixture_tree_when_search_session_runs_then_emits_progress_and_res
 	assert len(finished) == 1
 	assert finished[0].results
 	assert all(isinstance(item, FileSearchResult) for item in finished[0].results)
+
+
+def test_given_fake_file_search_when_session_runs_then_uses_injected_port(tmp_path: Path):
+	result = FileSearchResult(path=tmp_path / "a.txt", score=0.9, breakdown={"content": 0.9}, lines=[])
+	fake: FileSearchPort = _FakeFileSearch([result])
+	events: list[object] = []
+
+	SearchSession(fake).run_blocking(_args(tmp_path, "a"), on_event=events.append)
+
+	assert fake.calls == 1  # type: ignore[attr-defined]
+	assert any(isinstance(event, SearchResultEvent) and event.result is result for event in events)
+	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
+	assert len(finished) == 1
+	assert finished[0].results == [result]
+
+
+def test_given_file_search_raises_when_session_runs_then_emits_error(tmp_path: Path):
+	fake = _FakeFileSearch(error=RuntimeError("boom"))
+	events: list[object] = []
+
+	SearchSession(fake).run_blocking(_args(tmp_path, "a"), on_event=events.append)
+
+	assert any(isinstance(event, SearchErrorEvent) and event.message == "boom" for event in events)
+	assert not any(isinstance(event, SearchFinishedEvent) for event in events)

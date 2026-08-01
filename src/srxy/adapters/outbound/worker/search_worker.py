@@ -10,7 +10,7 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, TextIO
 
-from srxy.application.search_runner import apply_args_to_env, execute_search
+from srxy.application.search_runner import apply_args_to_env
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.domain.progress import ActivityUpdate
 
@@ -149,6 +149,9 @@ def run_worker_main():
 		args = argparse.Namespace(**json.loads(line))
 		_detach_worker_stdin()
 		apply_args_to_env(args)
+		from srxy.bootstrap import build_worker_services
+
+		services = build_worker_services()
 		skipped_files: list[SkippedFile] = []
 
 		def on_progress(current: int, total: int):
@@ -169,7 +172,7 @@ def run_worker_main():
 			_emit_event({"type": "result", "result": file_result_to_dict(result)})
 
 		try:
-			results, skipped_files = execute_search(
+			results, skipped_files = services.file_search.execute(
 				args,
 				skipped_files=skipped_files,
 				on_progress=on_progress,

@@ -8,7 +8,7 @@ from dataclasses import asdict, replace
 from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices, QGuiApplication
+from PySide6.QtGui import QDesktopServices
 
 from srxy.adapters.inbound.cli.cli import apply_args_to_env, format_score_percent
 from srxy.adapters.inbound.gui.capabilities import (
@@ -20,7 +20,6 @@ from srxy.adapters.inbound.gui.capabilities import (
 from srxy.adapters.inbound.gui.help_text import help_text as lookup_help_text
 from srxy.adapters.inbound.gui.models import MatchesModel, ResultsModel
 from srxy.adapters.inbound.gui.preview import format_preview_html, format_preview_message
-from srxy.adapters.outbound.os.desktop import open_path
 from srxy.adapters.outbound.worker.search_worker import (
 	file_result_from_dict,
 	iter_subprocess_search_events,
@@ -53,8 +52,8 @@ from srxy.application.search_session import (
 	SearchFinishedEvent,
 	SearchProgressEvent,
 	SearchResultEvent,
-	SearchSession,
 )
+from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import (
 	FileQ,
 	FileQueryParseError,
@@ -66,6 +65,8 @@ from srxy.domain.file_query import (
 )
 from srxy.domain.models import FileSearchResult
 from srxy.domain.progress import format_activity_status
+from srxy.ports.inbound.search_runner import SearchRunnerPort
+from srxy.ports.outbound.desktop import DesktopPort
 
 
 _PREVIEW_MAX_BYTES = 512_000
@@ -75,18 +76,19 @@ class _SearchWorker(QObject):
 	event_ready = Signal(object)
 	finished = Signal()
 
-	def __init__(self, args: argparse.Namespace):
+	def __init__(self, args: argparse.Namespace, search_runner: SearchRunnerPort):
 		super().__init__()
 		self._args = args
+		self._search_runner = search_runner
 		self._cancel = False
 
 	@Slot()
 	def run(self):
-		session = SearchSession()
-		if session.uses_subprocess(self._args):
+		runner = self._search_runner
+		if runner.uses_subprocess(self._args):
 			self._run_subprocess()
 		else:
-			session.run_blocking(self._args, on_event=self.event_ready.emit, cancel_check=lambda: self._cancel)
+			runner.run_blocking(self._args, on_event=self.event_ready.emit, cancel_check=lambda: self._cancel)
 		self.finished.emit()
 
 	def request_cancel(self):
@@ -193,9 +195,25 @@ class SearchController(QObject):
 	downloadProgressUiChanged = Signal()
 	errorOccurred = Signal(str)
 
-	def __init__(self, args: argparse.Namespace, parent: QObject | None = None):
+	def __init__(
+		self,
+		args: argparse.Namespace,
+		parent: QObject | None = None,
+		*,
+		search_runner: SearchRunnerPort | None = None,
+		desktop: DesktopPort | None = None,
+	):
 		super().__init__(parent)
 		self._args = argparse.Namespace(**vars(args))
+		if search_runner is None:
+			services = build_app_services()
+			search_runner = services.search_runner
+		if desktop is None:
+			from srxy.adapters.inbound.gui.desktop import QtDesktopAdapter
+
+			desktop = QtDesktopAdapter()
+		self._search_runner = search_runner
+		self._desktop = desktop
 		self._query_mode = "simple"
 		self._simple_query = (args.query or "").strip()
 		self._advanced_query = self._simple_query
@@ -722,7 +740,7 @@ class SearchController(QObject):
 		self._args = args
 
 		self._thread = QThread(self)
-		self._worker = _SearchWorker(args)
+		self._worker = _SearchWorker(args, self._search_runner)
 		self._worker.moveToThread(self._thread)
 		self._thread.started.connect(self._worker.run)
 		self._worker.event_ready.connect(self._on_search_event)
@@ -796,7 +814,7 @@ class SearchController(QObject):
 		if result is None:
 			return
 		try:
-			open_path(result.path)
+			self._desktop.open_path(result.path)
 		except OSError as error:
 			self.errorOccurred.emit(str(error))
 
@@ -805,26 +823,38 @@ class SearchController(QObject):
 		result = self._results_model.result_at(row)
 		if result is None:
 			return
-		QGuiApplication.clipboard().setText(result.path.as_posix())
+		try:
+			self._desktop.copy_text(result.path.as_posix())
+		except OSError as error:
+			self.errorOccurred.emit(str(error))
 
 	@Slot(int)
 	def copyAllMatches(self, row: int):  # noqa: N802
 		self.selectResult(row)
 		text = "\n".join(self._matches_model.all_plain_lines())
 		if text:
-			QGuiApplication.clipboard().setText(text)
+			try:
+				self._desktop.copy_text(text)
+			except OSError as error:
+				self.errorOccurred.emit(str(error))
 
 	@Slot(int)
 	def copyMatchLine(self, row: int):  # noqa: N802
 		_location, plain = self._matches_model.row_plain(row)
 		if plain:
-			QGuiApplication.clipboard().setText(plain)
+			try:
+				self._desktop.copy_text(plain)
+			except OSError as error:
+				self.errorOccurred.emit(str(error))
 
 	@Slot(int)
 	def copyMatchLocation(self, row: int):  # noqa: N802
 		location, _plain = self._matches_model.row_plain(row)
 		if location:
-			QGuiApplication.clipboard().setText(location)
+			try:
+				self._desktop.copy_text(location)
+			except OSError as error:
+				self.errorOccurred.emit(str(error))
 
 	@Slot(str, result=str)
 	def applyOptionsJson(self, payload: str) -> str:  # noqa: N802

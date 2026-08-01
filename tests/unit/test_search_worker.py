@@ -77,7 +77,7 @@ def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypat
 	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
 	monkeypatch.setattr("sys.stdout", stdout)
 	monkeypatch.setattr(
-		"srxy.adapters.outbound.worker.search_worker.execute_search",
+		"srxy.application.search_runner.FileSearchService.execute",
 		MagicMock(return_value=([result], skipped)),
 	)
 
@@ -122,7 +122,7 @@ def test_given_worker_args_when_run_worker_main_then_sets_worker_env(
 	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
 	monkeypatch.setattr("sys.stdout", stdout)
 	monkeypatch.setattr(
-		"srxy.adapters.outbound.worker.search_worker.execute_search",
+		"srxy.application.search_runner.FileSearchService.execute",
 		MagicMock(return_value=([], [])),
 	)
 

@@ -165,6 +165,8 @@ Fields:
 magic_file_search(path: Path | str, query: str | FileQ, *, search_names: bool = True, search_contents: bool = True, search_docs_tags: bool = True, threshold: float = 0.35, max_file_size: int | None = None, max_matches: int = 50, skip_hidden_folders: bool = True, skip_noise_folders: bool = True, include_archives: bool = False, include_subdirectories: bool = True, skipped_files: list[SkippedFile] | None = None, ocr: bool | None = None, transcribe: bool | None = None, semantic_image: bool | None = None, semantic_image_threshold: float = 0.18, transcribe_threshold: float = 0.25, limit: int | None = None, on_progress: Callable[[int, int], None] | None = None, on_activity: ActivityCallback | None = None, on_result: Callable[[FileSearchResult], None] | None = None, max_line_matches: int | None = None, max_workers: int | None = None) -> list[FileSearchResult]
 ```
 
+Public library facade — builds a default ``FileSearchUseCase``.
+
 ## `magic_search`
 
 ```python

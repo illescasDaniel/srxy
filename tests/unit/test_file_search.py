@@ -667,7 +667,7 @@ def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcr
 	query = "all the other boys"
 
 	with patch(
-		"srxy.application.use_cases.search_files.iter_transcript_lines",
+		"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
 		return_value=iter([(160, "And all the other boys")]),
 	):
 		# when
@@ -692,7 +692,7 @@ def test_given_transcript_at_two_forty_when_searching_for_minute_token_then_does
 	copy_media_fixture("minimal.mp3", tmp_path / "song.flac")
 
 	with patch(
-		"srxy.application.use_cases.search_files.iter_transcript_lines",
+		"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
 		return_value=iter([(160, "And all the other boys")]),
 	):
 		# when
@@ -1084,7 +1084,7 @@ def test_given_image_when_searching_with_semantic_image_then_adds_breakdown_scor
 	query = "sunset beach"
 
 	with (
-		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
 		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
 		patch("srxy.application.use_cases.search_files.score_image", return_value=0.71) as score_image,
 	):
@@ -1115,12 +1115,12 @@ def test_given_ocr_near_match_when_semantic_image_wins_then_includes_ocr_preview
 	query = "sibling"
 
 	with (
-		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
-		patch("srxy.application.use_cases.search_files.is_semantic_image_path", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_path", return_value=True),
 		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
 		patch("srxy.application.use_cases.search_files.score_image", return_value=0.27),
 		patch(
-			"srxy.application.use_cases.search_files._iter_searchable_lines",
+			"srxy.adapters.outbound.content.line_sources.iter_searchable_lines",
 			return_value=[(1, "Sister (=)", "ocr")],
 		),
 		patch("srxy.application.use_cases.search_files.CompositeMatcher") as composite_matcher,
@@ -1154,7 +1154,7 @@ def test_given_exif_tag_key_when_searching_sibling_then_does_not_match_tag_line(
 	query = "sibling"
 
 	with patch(
-		"srxy.application.use_cases.search_files._iter_searchable_lines",
+		"srxy.adapters.outbound.content.line_sources.iter_searchable_lines",
 		return_value=[(11, "[Ycbcrpositioning] 1", "tag")],
 	):
 		# when
@@ -1177,7 +1177,7 @@ def test_given_short_transcript_when_searching_sibling_then_does_not_match(tmp_p
 	query = "sibling"
 
 	with patch(
-		"srxy.application.use_cases.search_files._iter_searchable_lines",
+		"srxy.adapters.outbound.content.line_sources.iter_searchable_lines",
 		return_value=[(0, "I", "transcript")],
 	):
 		# when
@@ -1202,7 +1202,7 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	query = "person"
 
 	with (
-		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
 		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
 		patch("srxy.application.use_cases.search_files.score_image", return_value=0.198),
 	):
@@ -1228,7 +1228,7 @@ def test_given_text_only_path_when_searching_with_semantic_image_then_skips_quer
 	text_path.write_text("recents\n", encoding="utf-8")
 
 	with (
-		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
 		patch("srxy.application.use_cases.search_files.encode_semantic_image_query") as encode_query,
 	):
 		# when
@@ -1253,7 +1253,7 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 	activities: list[ActivityUpdate | None] = []
 
 	with (
-		patch("srxy.application.use_cases.search_files.is_semantic_image_active", return_value=True),
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
 		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
 		patch("srxy.application.use_cases.search_files.score_image", return_value=0.71),
 	):
@@ -1414,7 +1414,7 @@ def test_given_xmp_seq_token_when_searching_sig_on_tag_then_does_not_match(tmp_p
 
 	# when
 	with patch(
-		"srxy.application.use_cases.search_files.iter_media_metadata_lines",
+		"srxy.adapters.outbound.content.line_sources.iter_media_metadata_lines",
 		return_value=iter([(1, "[Metadata] Seq")]),
 	):
 		results = magic_file_search(

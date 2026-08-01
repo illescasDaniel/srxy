@@ -1,55 +1,13 @@
 from __future__ import annotations
 
-import os
 import re
 import threading
 import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
-from srxy.adapters.outbound.archive.archive_search import (
-	archive_member_path,
-	is_archive_member_path,
-	is_searchable_path,
-	is_standalone_archive,
-	iter_archive_member_lines,
-	list_archive_members,
-)
-from srxy.adapters.outbound.cache.cache import get_file_content_hash, reset_run_file_hashes
-from srxy.adapters.outbound.documents.document_text import (
-	is_document_path,
-	iter_document_lines,
-	iter_document_metadata_lines,
-)
-from srxy.adapters.outbound.metadata.media_metadata import is_media_path, iter_media_metadata_lines
-from srxy.adapters.outbound.metadata.windows_metadata import (
-	has_windows_searchable_metadata,
-	iter_windows_metadata_lines,
-)
-from srxy.adapters.outbound.metadata.xattr_metadata import has_searchable_xattrs, iter_xattr_metadata_lines
-from srxy.adapters.outbound.ocr.ocr_text import (
-	is_ocr_active,
-	is_ocr_image_path,
-	iter_image_ocr_lines,
-	ocr_max_file_size,
-	ocr_requested,
-)
-from srxy.adapters.outbound.semantic.semantic_image import (
-	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
-	encode_semantic_image_query,
-	is_semantic_image_active,
-	is_semantic_image_path,
-	score_image,
-	semantic_image_requested,
-)
-from srxy.adapters.outbound.transcribe.transcribe_text import (
-	DEFAULT_TRANSCRIBE_THRESHOLD,
-	is_transcribe_active,
-	is_transcribe_path,
-	iter_transcript_lines,
-	transcribe_max_file_size,
-	transcribe_requested,
-)
+from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
+from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.matching.composite import CompositeMatcher
 from srxy.application.search_options import SEARCH_SOURCE_REQUIRED_MESSAGE
 from srxy.application.utils import normalize_text, query_words, word_pair_match_allowed
@@ -64,6 +22,12 @@ from srxy.domain.file_query import (
 )
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.domain.progress import ActivityCallback, clear_activity, emit_activity
+from srxy.ports.outbound.content import (
+	ContentCachePort,
+	FileWalkerPort,
+	ImageSimilarityPort,
+	TextExtractorPort,
+)
 
 
 _MIN_SEARCHABLE_WORD_LENGTH = 3
@@ -77,83 +41,102 @@ _TOKEN_SCORING_LOCATION_KINDS = frozenset({"ocr", "tag", "transcript"})
 _TEXT_MATCH_LOCATION_KINDS = frozenset({"ocr", "transcript", "line", "page", "paragraph", "row", "slide"})
 _VISUAL_MATCH_PREVIEW = "(visual match)"
 
-
-_NOISE_DIR_NAMES = frozenset({"__pycache__", "node_modules"})
-_TEXT_SAMPLE_SIZE = 8192
-
-
-def _is_hidden_path_part(name: str) -> bool:
-	return name.startswith(".")
+_default_text_extractor: TextExtractorPort | None = None
+_default_file_walker: FileWalkerPort | None = None
+_default_image_similarity: ImageSimilarityPort | None = None
+_default_content_cache: ContentCachePort | None = None
 
 
-def _should_skip_dirname(
-	name: str,
+def _get_text_extractor() -> TextExtractorPort:
+	global _default_text_extractor
+	if _default_text_extractor is None:
+		from srxy.adapters.outbound.content.text_extractor import DefaultTextExtractor
+
+		_default_text_extractor = DefaultTextExtractor()
+	return _default_text_extractor
+
+
+def _get_file_walker() -> FileWalkerPort:
+	global _default_file_walker
+	if _default_file_walker is None:
+		from srxy.adapters.outbound.content.file_walker import DefaultFileWalker
+
+		_default_file_walker = DefaultFileWalker()
+	return _default_file_walker
+
+
+def _get_image_similarity() -> ImageSimilarityPort:
+	global _default_image_similarity
+	if _default_image_similarity is None:
+		from srxy.adapters.outbound.content.image_similarity import ClipImageSimilarity
+
+		_default_image_similarity = ClipImageSimilarity()
+	return _default_image_similarity
+
+
+def _get_content_cache() -> ContentCachePort:
+	global _default_content_cache
+	if _default_content_cache is None:
+		from srxy.adapters.outbound.content.content_cache import SqliteContentCache
+
+		_default_content_cache = SqliteContentCache()
+	return _default_content_cache
+
+
+def set_text_extractor(extractor: TextExtractorPort | None):
+	"""Override the default text extractor (tests / composition root)."""
+	global _default_text_extractor
+	_default_text_extractor = extractor
+
+
+def set_content_ports(
 	*,
-	skip_hidden_folders: bool,
-	skip_noise_folders: bool,
-) -> bool:
-	if skip_hidden_folders and _is_hidden_path_part(name):
-		return True
-	if skip_noise_folders and name in _NOISE_DIR_NAMES:
-		return True
-	return False
+	text_extractor: TextExtractorPort | None = None,
+	file_walker: FileWalkerPort | None = None,
+	image_similarity: ImageSimilarityPort | None = None,
+	content_cache: ContentCachePort | None = None,
+):
+	"""Override content ports used by file search (composition root / tests)."""
+	global _default_text_extractor, _default_file_walker, _default_image_similarity, _default_content_cache
+	if text_extractor is not None:
+		_default_text_extractor = text_extractor
+	if file_walker is not None:
+		_default_file_walker = file_walker
+	if image_similarity is not None:
+		_default_image_similarity = image_similarity
+	if content_cache is not None:
+		_default_content_cache = content_cache
 
 
-def _iter_files(
-	root: Path,
-	*,
-	skip_hidden_folders: bool = True,
-	skip_noise_folders: bool = True,
-	include_archives: bool = False,
-	include_subdirectories: bool = True,
-) -> Iterator[Path]:
-	if root.is_file():
-		yield root
-		return
-	if not root.is_dir():
-		return
-
-	for dirpath, dirnames, filenames in os.walk(root):
-		if not include_subdirectories:
-			dirnames[:] = []
-		else:
-			dirnames[:] = [
-				name
-				for name in dirnames
-				if not _should_skip_dirname(
-					name,
-					skip_hidden_folders=skip_hidden_folders,
-					skip_noise_folders=skip_noise_folders,
-				)
-			]
-		current = Path(dirpath)
-		for filename in filenames:
-			if skip_hidden_folders and _is_hidden_path_part(filename):
-				continue
-			file_path = current / filename
-			yield file_path
-			if include_archives and is_standalone_archive(file_path):
-				for member in list_archive_members(file_path):
-					yield archive_member_path(file_path, member)
-
-
-def _collect_files(
-	root: Path,
-	*,
-	skip_hidden_folders: bool = True,
-	skip_noise_folders: bool = True,
-	include_archives: bool = False,
-	include_subdirectories: bool = True,
-) -> list[Path]:
-	return list(
-		_iter_files(
-			root,
-			skip_hidden_folders=skip_hidden_folders,
-			skip_noise_folders=skip_noise_folders,
-			include_archives=include_archives,
-			include_subdirectories=include_subdirectories,
-		)
+def _snapshot_content_ports() -> tuple[
+	TextExtractorPort | None,
+	FileWalkerPort | None,
+	ImageSimilarityPort | None,
+	ContentCachePort | None,
+]:
+	return (
+		_default_text_extractor,
+		_default_file_walker,
+		_default_image_similarity,
+		_default_content_cache,
 	)
+
+
+def _restore_content_ports(
+	snapshot: tuple[
+		TextExtractorPort | None,
+		FileWalkerPort | None,
+		ImageSimilarityPort | None,
+		ContentCachePort | None,
+	],
+):
+	global _default_text_extractor, _default_file_walker, _default_image_similarity, _default_content_cache
+	(
+		_default_text_extractor,
+		_default_file_walker,
+		_default_image_similarity,
+		_default_content_cache,
+	) = snapshot
 
 
 def content_location_kind(path: Path) -> str:
@@ -177,120 +160,27 @@ def suggest_max_file_size(file_size_bytes: int) -> int:
 	return max(file_size_bytes + 1, ((file_size_bytes // chunk) + 1) * chunk)
 
 
-def _effective_max_file_size(path: Path, max_file_size: int | None, *, ocr: bool | None = None) -> int | None:
-	if max_file_size is None or is_media_path(path):
-		return None
-	if is_document_path(path) and is_ocr_active(ocr):
-		return ocr_max_file_size()
-	return max_file_size
+# Thin wrappers kept for unit-test patch targets.
+def encode_semantic_image_query(query: str) -> object | None:
+	return _get_image_similarity().encode_query(query)
 
 
-def _can_search_without_reading_body(path: Path) -> bool:
-	return is_media_path(path) or has_searchable_xattrs(path) or has_windows_searchable_metadata(path)
-
-
-def _file_within_size_limit(path: Path, max_file_size: int | None) -> bool:
-	if is_archive_member_path(path):
-		from srxy.adapters.outbound.archive.archive_search import archive_member_size_bytes
-
-		size = archive_member_size_bytes(path)
-		if size is None:
-			return False
-		if size == 0:
-			return True
-		if max_file_size is not None and size > max_file_size:
-			return False
-		return True
-	try:
-		size = path.stat().st_size
-	except OSError:
-		return False
-	if size == 0:
-		return True
-	if max_file_size is not None and size > max_file_size:
-		return False
-	return True
-
-
-def _is_probably_text(path: Path, max_file_size: int | None) -> bool:
-	if is_archive_member_path(path):
-		from srxy.adapters.outbound.archive.archive_search import read_archive_member_bytes
-
-		if not _file_within_size_limit(path, max_file_size):
-			return False
-		sample = read_archive_member_bytes(path, max_bytes=_TEXT_SAMPLE_SIZE)
-		return sample is not None and b"\x00" not in sample
-	if not _file_within_size_limit(path, max_file_size):
-		return False
-	try:
-		size = path.stat().st_size
-	except OSError:
-		return False
-	with path.open("rb") as handle:
-		sample = handle.read(min(_TEXT_SAMPLE_SIZE, size))
-	return b"\x00" not in sample
-
-
-def _iter_utf8_lines(path: Path, max_file_size: int | None) -> Iterator[tuple[int, str]]:
-	bytes_read = 0
-	with path.open(encoding="utf-8", errors="ignore") as handle:
-		for line_number, raw_line in enumerate(handle, start=1):
-			if max_file_size is not None:
-				bytes_read += len(raw_line.encode("utf-8", errors="ignore"))
-				if bytes_read > max_file_size:
-					break
-			yield line_number, raw_line.rstrip("\n\r")
-
-
-def _iter_body_searchable_lines(
+def score_image(
+	query: str,
 	path: Path,
-	max_file_size: int | None,
 	*,
-	ocr: bool | None = None,
-	on_activity: ActivityCallback | None = None,
-) -> Iterator[tuple[int, str, str]]:
-	if is_archive_member_path(path):
-		content_byte_limit = max_file_size
-		if not _file_within_size_limit(path, content_byte_limit):
-			return
-		for line_number, raw_line in iter_archive_member_lines(path, content_byte_limit):
-			yield line_number, raw_line, "line"
-		return
-	content_byte_limit = _effective_max_file_size(path, max_file_size, ocr=ocr)
-	if is_media_path(path):
-		return
-	if not _file_within_size_limit(path, content_byte_limit):
-		return
-	if is_document_path(path):
-		yield from iter_document_lines(path, ocr=ocr, on_activity=on_activity)
-		return
-	if not _is_probably_text(path, content_byte_limit):
-		return
-	for line_number, raw_line in _iter_utf8_lines(path, content_byte_limit):
-		yield line_number, raw_line, "line"
+	file_hash: str | None = None,
+	query_embedding: object | None = None,
+) -> float:
+	return _get_image_similarity().score(
+		query,
+		path,
+		file_hash=file_hash,
+		query_embedding=query_embedding,
+	)
 
 
-def _append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None):
-	if skipped_files is None:
-		return
-	try:
-		size_bytes = path.stat().st_size
-	except OSError:
-		size_bytes = 0
-	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes, reason="ocr_too_large"))
-
-
-def _append_transcribe_skip(path: Path, skipped_files: list[SkippedFile] | None):
-	if skipped_files is None:
-		return
-	try:
-		size_bytes = path.stat().st_size
-	except OSError:
-		size_bytes = 0
-	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes, reason="transcribe_too_large"))
-
-
-def _iter_searchable_lines(
+def iter_searchable_lines(
 	path: Path,
 	max_file_size: int | None,
 	*,
@@ -300,51 +190,18 @@ def _iter_searchable_lines(
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: ActivityCallback | None = None,
 ) -> Iterator[tuple[int, str, str]]:
-	if is_archive_member_path(path):
-		if search_docs_tags:
-			yield from _iter_body_searchable_lines(path, max_file_size, ocr=ocr, on_activity=on_activity)
-		return
-	if is_media_path(path):
-		if search_docs_tags:
-			for line_number, raw_line in iter_media_metadata_lines(path):
-				yield line_number, raw_line, "tag"
-		if is_ocr_active(ocr) and is_ocr_image_path(path):
-			ocr_byte_limit = ocr_max_file_size()
-			if ocr_byte_limit is not None and not _file_within_size_limit(path, ocr_byte_limit):
-				_append_ocr_skip(path, skipped_files)
-			else:
-				emit_activity(on_activity, f"OCR · {path.name}")
-				try:
-					for line_number, raw_line in iter_image_ocr_lines(path):
-						yield line_number, raw_line, "ocr"
-				finally:
-					clear_activity(on_activity)
-		if is_transcribe_active(transcribe) and is_transcribe_path(path):
-			transcribe_byte_limit = transcribe_max_file_size()
-			if transcribe_byte_limit is not None and not _file_within_size_limit(path, transcribe_byte_limit):
-				_append_transcribe_skip(path, skipped_files)
-			else:
-				emit_activity(on_activity, f"Transcribe · {path.name}")
-				try:
-					for line_number, raw_line in iter_transcript_lines(path, on_activity=on_activity):
-						yield line_number, raw_line, "transcript"
-				finally:
-					clear_activity(on_activity)
-	elif search_docs_tags or is_ocr_active(ocr):
-		for line_number, raw_line, location_kind in _iter_body_searchable_lines(
-			path, max_file_size, ocr=ocr, on_activity=on_activity
-		):
-			if not search_docs_tags and location_kind != "ocr":
-				continue
-			yield line_number, raw_line, location_kind
+	"""Compatibility wrapper — prefer TextExtractorPort.iter_units."""
+	from srxy.adapters.outbound.content.line_sources import iter_searchable_lines as _iter
 
-	if search_docs_tags:
-		for line_number, raw_line in iter_xattr_metadata_lines(path):
-			yield line_number, raw_line, "tag"
-		for line_number, raw_line in iter_document_metadata_lines(path):
-			yield line_number, raw_line, "tag"
-		for line_number, raw_line in iter_windows_metadata_lines(path):
-			yield line_number, raw_line, "tag"
+	yield from _iter(
+		path,
+		max_file_size,
+		search_docs_tags=search_docs_tags,
+		ocr=ocr,
+		transcribe=transcribe,
+		skipped_files=skipped_files,
+		on_activity=on_activity,
+	)
 
 
 _PREVIEW_LOCATION_KINDS = frozenset({"ocr", "transcript"})
@@ -525,15 +382,17 @@ def _score_lines(
 	transcribe: bool | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 	on_activity: ActivityCallback | None = None,
+	text_extractor: TextExtractorPort | None = None,
 ) -> tuple[float, list[LineMatch], LineMatch | None, dict[str, float]]:
 	matches: list[LineMatch] = []
 	best_near_match: LineMatch | None = None
 	term_best_scores: dict[str, float] = {term: 0.0 for term in iter_terms(expr)}
 	term_best_lines: dict[str, LineMatch] = {}
 	bytes_read = 0
-	content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=ocr)
+	extractor = text_extractor if text_extractor is not None else _get_text_extractor()
+	content_byte_limit = extractor.effective_max_file_size(file_path, max_file_size, ocr=ocr)
 
-	for line_number, raw_line, location_kind in _iter_searchable_lines(
+	for unit in extractor.iter_units(
 		file_path,
 		max_file_size,
 		search_docs_tags=search_docs_tags,
@@ -542,6 +401,9 @@ def _score_lines(
 		skipped_files=skipped_files,
 		on_activity=on_activity,
 	):
+		line_number = unit.line_number
+		raw_line = unit.text
+		location_kind = unit.location_kind
 		if content_byte_limit is not None and location_kind not in {"tag", "ocr", "transcript"}:
 			bytes_read += len(raw_line.encode("utf-8", errors="ignore"))
 			if bytes_read > content_byte_limit:
@@ -633,10 +495,14 @@ def _search_single_file(
 	local list and returned rather than mutating a shared structure.
 	"""
 	local_skipped: list[SkippedFile] = []
+	walker = _get_file_walker()
+	extractor = _get_text_extractor()
+	images = _get_image_similarity()
+	cache = _get_content_cache()
 
-	if not is_searchable_path(file_path):
+	if not walker.is_searchable(file_path):
 		return None, local_skipped
-	archive_member = is_archive_member_path(file_path)
+	archive_member = walker.is_archive_member(file_path)
 
 	breakdown: dict[str, float] = {}
 	term_bests: dict[str, float] = {term: 0.0 for term in iter_terms(query_expr)}
@@ -658,31 +524,21 @@ def _search_single_file(
 			term_bests[term] = max(term_bests[term], name_term_score)
 
 	needs_line_search = (
-		effective_docs_tags or is_ocr_active(effective_ocr) or is_transcribe_active(effective_transcribe)
+		effective_docs_tags or extractor.ocr_active(effective_ocr) or extractor.transcribe_active(effective_transcribe)
 	)
 	if needs_line_search:
-		content_byte_limit = _effective_max_file_size(file_path, max_file_size, ocr=effective_ocr)
+		content_byte_limit = extractor.effective_max_file_size(file_path, max_file_size, ocr=effective_ocr)
 		exceeds_size_limit = (
 			effective_docs_tags
 			and content_byte_limit is not None
-			and not _file_within_size_limit(file_path, content_byte_limit)
+			and not extractor.within_size_limit(file_path, content_byte_limit)
 		)
 		if (
 			exceeds_size_limit
-			and not _can_search_without_reading_body(file_path)
-			and not (is_ocr_active(effective_ocr) or is_transcribe_active(effective_transcribe))
+			and not extractor.can_search_without_reading_body(file_path)
+			and not (extractor.ocr_active(effective_ocr) or extractor.transcribe_active(effective_transcribe))
 		):
-			size_bytes = 0
-			if archive_member:
-				from srxy.adapters.outbound.archive.archive_search import archive_member_size_bytes
-
-				size_bytes = archive_member_size_bytes(file_path) or 0
-			else:
-				try:
-					size_bytes = file_path.stat().st_size
-				except OSError:
-					size_bytes = 0
-			local_skipped.append(SkippedFile(path=file_path, size_bytes=size_bytes))
+			local_skipped.append(SkippedFile(path=file_path, size_bytes=extractor.size_bytes(file_path)))
 		else:
 			content_score, line_matches, near_match, content_term_bests = _score_lines(
 				matcher,
@@ -698,6 +554,7 @@ def _search_single_file(
 				transcribe=effective_transcribe,
 				skipped_files=local_skipped,
 				on_activity=on_activity,
+				text_extractor=extractor,
 			)
 			breakdown["content"] = content_score
 			for term, score in content_term_bests.items():
@@ -705,10 +562,10 @@ def _search_single_file(
 				term_bests[term] = max(term_bests[term], score)
 
 	semantic_image_score = 0.0
-	if not archive_member and is_semantic_image_active(effective_semantic_image) and is_semantic_image_path(file_path):
+	if not archive_member and images.is_active(effective_semantic_image) and images.is_image_path(file_path):
 		emit_activity(on_activity, f"CLIP · {file_path.name}")
 		try:
-			file_hash = get_file_content_hash(file_path)
+			file_hash = cache.get_file_content_hash(file_path)
 			clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
 			semantic_image_score = score_image(
 				clip_query,
@@ -848,7 +705,7 @@ def _proc_worker_task(
 	)
 
 
-def magic_file_search(
+def _execute_file_search(
 	path: Path | str,
 	query: str | FileQ,
 	*,
@@ -884,11 +741,15 @@ def magic_file_search(
 		max_matches = max_line_matches
 	if not search_names and not search_contents:
 		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
+	extractor = _get_text_extractor()
+	images = _get_image_similarity()
+	cache = _get_content_cache()
+	walker = _get_file_walker()
 	if search_contents and not (
 		search_docs_tags
-		or ocr_requested(ocr)
-		or transcribe_requested(transcribe)
-		or semantic_image_requested(semantic_image)
+		or extractor.ocr_requested(ocr)
+		or extractor.transcribe_requested(transcribe)
+		or images.requested(semantic_image)
 	):
 		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
 
@@ -904,23 +765,21 @@ def magic_file_search(
 	if not root.exists():
 		raise FileNotFoundError(f"Path does not exist: {root}")
 
-	reset_run_file_hashes()
+	cache.reset_run_file_hashes()
 	effective_line_threshold = threshold
 	search_root = root if root.is_dir() else root.parent
 	matcher = CompositeMatcher()
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
-	files = _collect_files(
+	files = walker.collect_files(
 		root,
 		skip_hidden_folders=skip_hidden_folders,
 		skip_noise_folders=skip_noise_folders,
 		include_archives=include_archives,
 		include_subdirectories=include_subdirectories,
 	)
-	if is_semantic_image_active(effective_semantic_image) and any(
-		is_semantic_image_path(file_path) for file_path in files
-	):
+	if images.is_active(effective_semantic_image) and any(images.is_image_path(file_path) for file_path in files):
 		emit_activity(on_activity, "Encoding image query…")
 		try:
 			query_image_embedding = encode_semantic_image_query(clip_query)
@@ -982,9 +841,9 @@ def magic_file_search(
 	#
 	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
 	_heavy = (
-		is_ocr_active(effective_ocr)
-		or is_transcribe_active(effective_transcribe)
-		or is_semantic_image_active(effective_semantic_image)
+		extractor.ocr_active(effective_ocr)
+		or extractor.transcribe_active(effective_transcribe)
+		or images.is_active(effective_semantic_image)
 	)
 	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
 	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
@@ -1067,3 +926,142 @@ def magic_file_search(
 	if limit is not None:
 		results = results[:limit]
 	return results
+
+
+class FileSearchUseCase:
+	"""Application file-search orchestration with injectable content ports."""
+
+	def __init__(
+		self,
+		*,
+		text_extractor: TextExtractorPort | None = None,
+		file_walker: FileWalkerPort | None = None,
+		image_similarity: ImageSimilarityPort | None = None,
+		content_cache: ContentCachePort | None = None,
+	):
+		self._text_extractor = text_extractor
+		self._file_walker = file_walker
+		self._image_similarity = image_similarity
+		self._content_cache = content_cache
+
+	def search(
+		self,
+		path: Path | str,
+		query: str | FileQ,
+		*,
+		search_names: bool = True,
+		search_contents: bool = True,
+		search_docs_tags: bool = True,
+		threshold: float = 0.35,
+		max_file_size: int | None = None,
+		max_matches: int = 50,
+		skip_hidden_folders: bool = True,
+		skip_noise_folders: bool = True,
+		include_archives: bool = False,
+		include_subdirectories: bool = True,
+		skipped_files: list[SkippedFile] | None = None,
+		ocr: bool | None = None,
+		transcribe: bool | None = None,
+		semantic_image: bool | None = None,
+		semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+		transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
+		limit: int | None = None,
+		on_progress: Callable[[int, int], None] | None = None,
+		on_activity: ActivityCallback | None = None,
+		on_result: Callable[[FileSearchResult], None] | None = None,
+		max_line_matches: int | None = None,
+		max_workers: int | None = None,
+	) -> list[FileSearchResult]:
+		previous = _snapshot_content_ports()
+		if self._text_extractor is not None:
+			set_text_extractor(self._text_extractor)
+		set_content_ports(
+			file_walker=self._file_walker,
+			image_similarity=self._image_similarity,
+			content_cache=self._content_cache,
+		)
+		try:
+			return _execute_file_search(
+				path,
+				query,
+				search_names=search_names,
+				search_contents=search_contents,
+				search_docs_tags=search_docs_tags,
+				threshold=threshold,
+				max_file_size=max_file_size,
+				max_matches=max_matches,
+				skip_hidden_folders=skip_hidden_folders,
+				skip_noise_folders=skip_noise_folders,
+				include_archives=include_archives,
+				include_subdirectories=include_subdirectories,
+				skipped_files=skipped_files,
+				ocr=ocr,
+				transcribe=transcribe,
+				semantic_image=semantic_image,
+				semantic_image_threshold=semantic_image_threshold,
+				transcribe_threshold=transcribe_threshold,
+				limit=limit,
+				on_progress=on_progress,
+				on_activity=on_activity,
+				on_result=on_result,
+				max_line_matches=max_line_matches,
+				max_workers=max_workers,
+			)
+		finally:
+			_restore_content_ports(previous)
+
+
+def magic_file_search(
+	path: Path | str,
+	query: str | FileQ,
+	*,
+	search_names: bool = True,
+	search_contents: bool = True,
+	search_docs_tags: bool = True,
+	threshold: float = 0.35,
+	max_file_size: int | None = None,
+	max_matches: int = 50,
+	skip_hidden_folders: bool = True,
+	skip_noise_folders: bool = True,
+	include_archives: bool = False,
+	include_subdirectories: bool = True,
+	skipped_files: list[SkippedFile] | None = None,
+	ocr: bool | None = None,
+	transcribe: bool | None = None,
+	semantic_image: bool | None = None,
+	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
+	limit: int | None = None,
+	on_progress: Callable[[int, int], None] | None = None,
+	on_activity: ActivityCallback | None = None,
+	on_result: Callable[[FileSearchResult], None] | None = None,
+	max_line_matches: int | None = None,
+	max_workers: int | None = None,
+) -> list[FileSearchResult]:
+	"""Public library facade — builds a default ``FileSearchUseCase``."""
+	return FileSearchUseCase(text_extractor=_get_text_extractor()).search(
+		path,
+		query,
+		search_names=search_names,
+		search_contents=search_contents,
+		search_docs_tags=search_docs_tags,
+		threshold=threshold,
+		max_file_size=max_file_size,
+		max_matches=max_matches,
+		skip_hidden_folders=skip_hidden_folders,
+		skip_noise_folders=skip_noise_folders,
+		include_archives=include_archives,
+		include_subdirectories=include_subdirectories,
+		skipped_files=skipped_files,
+		ocr=ocr,
+		transcribe=transcribe,
+		semantic_image=semantic_image,
+		semantic_image_threshold=semantic_image_threshold,
+		transcribe_threshold=transcribe_threshold,
+		limit=limit,
+		on_progress=on_progress,
+		on_activity=on_activity,
+		on_result=on_result,
+		max_line_matches=max_line_matches,
+		max_workers=max_workers,
+	)

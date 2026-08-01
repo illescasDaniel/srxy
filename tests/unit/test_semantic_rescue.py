@@ -123,7 +123,7 @@ def test_given_transcript_token_with_weak_semantic_when_scoring_then_does_not_re
 
 	with (
 		patch(
-			"srxy.application.use_cases.search_files._iter_searchable_lines",
+			"srxy.adapters.outbound.content.line_sources.iter_searchable_lines",
 			return_value=[(40, "A little pace that they're focusing", "transcript")],
 		),
 		patch("srxy.application.use_cases.search_files.CompositeMatcher") as composite_matcher,

@@ -1,4 +1,4 @@
-"""OS desktop adapter — open files and clipboard."""
+"""OS desktop adapter — open files and clipboard via system tools."""
 
 from __future__ import annotations
 
@@ -9,7 +9,7 @@ import subprocess
 from pathlib import Path
 
 
-def open_path(path: Path) -> None:
+def open_path(path: Path):
 	"""Open ``path`` with the OS default application (archive-aware)."""
 	from srxy.adapters.outbound.archive.archive_search import split_archive_member_path
 
@@ -24,7 +24,7 @@ def open_path(path: Path) -> None:
 		subprocess.run(["xdg-open", str(open_target)], check=False)  # noqa: S603, S607
 
 
-def copy_text(text: str) -> None:
+def copy_text(text: str):
 	"""Copy plain text to the system clipboard when possible."""
 	system = platform.system()
 	if system == "Darwin":
@@ -68,9 +68,15 @@ def copy_text(text: str) -> None:
 	raise OSError("no clipboard utility available")
 
 
-class DesktopAdapter:
+class OsDesktopAdapter:
+	"""DesktopPort using OS openers and clipboard CLIs."""
+
 	def open_path(self, path: Path):
 		open_path(path)
 
 	def copy_text(self, text: str):
 		copy_text(text)
+
+
+# Back-compat alias used by earlier bootstrap wiring.
+DesktopAdapter = OsDesktopAdapter

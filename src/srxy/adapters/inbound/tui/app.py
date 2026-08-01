@@ -3,10 +3,7 @@ from __future__ import annotations
 import argparse
 import asyncio
 import multiprocessing
-import platform
 import queue
-import shutil
-import subprocess
 import sys
 from collections.abc import Callable
 from dataclasses import dataclass
@@ -37,6 +34,7 @@ from srxy.adapters.inbound.cli.cli import (
 	format_skipped_file_warnings,
 	iter_grouped_line_displays,
 )
+from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 from srxy.adapters.inbound.tui.labels import format_tui_match_labels
 from srxy.adapters.inbound.tui.messages import (
 	ActivityChanged,
@@ -51,8 +49,6 @@ from srxy.adapters.inbound.tui.query_builder import QueryBuilder
 from srxy.adapters.inbound.tui.theme import detect_app_theme
 from srxy.adapters.outbound.worker.search_worker import (
 	file_result_from_dict,
-	iter_subprocess_search_events,
-	search_uses_subprocess,
 	skipped_file_from_dict,
 )
 from srxy.application.search_filters import (
@@ -67,9 +63,13 @@ from srxy.application.search_options import (
 	format_search_options_summary,
 	search_options_from_args,
 )
+from srxy.application.search_runner_adapter import AdaptiveSearchRunner
+from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import file_q_to_dict
 from srxy.domain.models import FileSearchResult
 from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.ports.inbound.search_runner import SearchRunnerPort
+from srxy.ports.outbound.desktop import DesktopPort
 
 
 _SEARCH_SENTINEL = object()
@@ -278,11 +278,20 @@ class SrxyApp(App[int]):
 		args: argparse.Namespace,
 		*,
 		auto_start: bool = False,
+		search_runner: SearchRunnerPort | None = None,
+		desktop: DesktopPort | None = None,
 	):
 		super().__init__()
 		self.theme = detect_app_theme()
 		self._args = args
 		self._auto_start = auto_start
+		if search_runner is None:
+			services = build_app_services()
+			search_runner = services.search_runner
+		self._search_runner = search_runner
+		if desktop is None:
+			desktop = TextualDesktopAdapter(copy_fallback=lambda text: App.copy_to_clipboard(self, text))
+		self._desktop = desktop
 		self._results: list[FileSearchResult] = []
 		self._result_index: dict[str, FileSearchResult] = {}
 		self._searching = False
@@ -527,24 +536,12 @@ class SrxyApp(App[int]):
 		if not text.strip():
 			self.notify(f"Nothing to copy ({label})", severity="warning")
 			return
-		self.copy_to_clipboard(text)
+		try:
+			self._desktop.copy_text(text)
+		except OSError:
+			self.notify(f"Could not copy {label}", severity="error")
+			return
 		self.notify(f"Copied {label}", timeout=1.5)
-
-	def copy_to_clipboard(self, text: str) -> None:
-		if platform.system() == "Darwin":
-			pbcopy = shutil.which("pbcopy")
-			if pbcopy is not None:
-				try:
-					subprocess.run(  # noqa: S603
-						[pbcopy],
-						input=text.encode("utf-8"),
-						check=True,
-						timeout=3,
-					)
-					return
-				except (OSError, subprocess.SubprocessError):
-					pass
-		super().copy_to_clipboard(text)
 
 	def action_copy_path(self):
 		result = self._selected_result()
@@ -572,10 +569,8 @@ class SrxyApp(App[int]):
 		self._copy_text("\n".join(lines), label="all matches")
 
 	def _open_path(self, path: Path):
-		from srxy.adapters.outbound.os.desktop import open_path
-
 		try:
-			open_path(path)
+			self._desktop.open_path(path)
 		except OSError:
 			self.notify(f"Could not open {path}", severity="error")
 
@@ -617,7 +612,7 @@ class SrxyApp(App[int]):
 		await self._run_search_with_queue(args)
 
 	async def _run_search_with_queue(self, args: argparse.Namespace):
-		if search_uses_subprocess(args):
+		if self._search_runner.uses_subprocess(args):
 			await self._run_search_in_subprocess(args)
 			return
 		await self._run_search_in_thread(args)
@@ -703,11 +698,9 @@ class SrxyApp(App[int]):
 			SearchFinishedEvent,
 			SearchProgressEvent,
 			SearchResultEvent,
-			SearchSession,
 		)
 
 		event_queue: queue.Queue[_SearchEvent | object] = queue.Queue()
-		session = SearchSession()
 
 		def run_search():
 			def on_event(event: object):
@@ -722,7 +715,7 @@ class SrxyApp(App[int]):
 				elif isinstance(event, SearchFinishedEvent):
 					event_queue.put(SearchFinished(results=event.results, skipped_files=event.skipped_files))
 
-			session.run_blocking(args, on_event=on_event, cancel_check=lambda: self._cancel_search)
+			self._search_runner.run_blocking(args, on_event=on_event, cancel_check=lambda: self._cancel_search)
 			event_queue.put(_SEARCH_SENTINEL)
 
 		search_task = asyncio.create_task(asyncio.to_thread(run_search))
@@ -748,8 +741,12 @@ class SrxyApp(App[int]):
 			self._save_search_snapshot()
 
 	async def _run_search_in_subprocess(self, args: argparse.Namespace):
+		runner = self._search_runner
+		if not isinstance(runner, AdaptiveSearchRunner):
+			self.post_message(SearchError("subprocess search requires AdaptiveSearchRunner"))
+			return
 		terminal_event = False
-		events = iter_subprocess_search_events(
+		events = runner.iter_subprocess_events(
 			args,
 			cancel_check=lambda: self._cancel_search,
 			on_process=self._register_search_subprocess,
@@ -924,7 +921,12 @@ def run_tui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 			multiprocessing.set_start_method("fork", force=True)
 		except (RuntimeError, ValueError):
 			pass
-	app = SrxyApp(args, auto_start=auto_start)
+	services = build_app_services()
+	app = SrxyApp(
+		args,
+		auto_start=auto_start,
+		search_runner=services.search_runner,
+	)
 	result = app.run()
 	return result if result is not None else 0
 

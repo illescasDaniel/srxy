@@ -259,10 +259,10 @@ def test_given_changed_mode_runtime_when_scanning_files_then_does_not_crash(tmp_
 	# when
 	with (
 		patch(
-			"srxy.application.use_cases.search_files.has_windows_searchable_metadata",
+			"srxy.adapters.outbound.content.line_sources.has_windows_searchable_metadata",
 			side_effect=fake_has_windows_metadata,
 		),
-		patch("srxy.application.use_cases.search_files.iter_windows_metadata_lines", return_value=iter([])),
+		patch("srxy.adapters.outbound.content.line_sources.iter_windows_metadata_lines", return_value=iter([])),
 		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_tags_supported", return_value=True),
 	):
 		reset_thread_com_state_for_tests()

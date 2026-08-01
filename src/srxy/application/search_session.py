@@ -8,9 +8,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 
 from srxy.adapters.outbound.worker.search_worker import search_uses_subprocess
-from srxy.application.search_runner import execute_search
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
+from srxy.ports.inbound.file_search import FileSearchPort
 
 
 @dataclass(frozen=True, slots=True)
@@ -62,6 +62,9 @@ class SearchSession:
 	instead of this method.
 	"""
 
+	def __init__(self, file_search: FileSearchPort):
+		self._file_search = file_search
+
 	def uses_subprocess(self, args: argparse.Namespace) -> bool:
 		return search_uses_subprocess(args)
 
@@ -91,7 +94,7 @@ class SearchSession:
 			on_event(SearchResultEvent(result))
 
 		try:
-			results, skipped_files = execute_search(
+			results, skipped_files = self._file_search.execute(
 				args,
 				skipped_files=skipped_files,
 				on_progress=on_progress,

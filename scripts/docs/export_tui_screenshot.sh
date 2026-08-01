@@ -129,7 +129,7 @@ async def run():
 	with (
 		patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
 		patch("srxy.adapters.inbound.tui.app.search_uses_subprocess", return_value=False),
-		patch("srxy.application.search_session.execute_search", return_value=(results, [])),
+		patch("srxy.application.search_runner.execute_search", return_value=(results, [])),
 	):
 		async with app.run_test(size=TERMINAL_SIZE) as pilot:
 			app.stylesheet.add_source(SCREENSHOT_CSS)

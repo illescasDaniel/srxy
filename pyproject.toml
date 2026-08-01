@@ -157,3 +157,4 @@ export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help 
 export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
 upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
 test-package = { cmd = "./scripts/test-package.sh", help = "install from PyPI into a fresh venv and smoke-test" }
+format = { cmd = "ruff check --fix src tests && ruff format src tests", help = "format code" }

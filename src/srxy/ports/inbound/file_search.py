@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import argparse
 from collections.abc import Callable
 from typing import Protocol
 
@@ -14,7 +15,7 @@ class FileSearchPort(Protocol):
 
 	def execute(
 		self,
-		args: object,
+		args: argparse.Namespace,
 		*,
 		skipped_files: list[SkippedFile] | None = None,
 		on_progress: Callable[[int, int], None] | None = None,

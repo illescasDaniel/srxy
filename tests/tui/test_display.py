@@ -149,7 +149,7 @@ def test_given_result_selected_when_preview_rendered_then_match_table_headers_ar
 	async def run():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):

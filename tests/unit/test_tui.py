@@ -138,7 +138,7 @@ def test_given_matches_when_tui_search_completes_then_lists_results(tmp_path: Pa
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
 			patch(
-				"srxy.application.search_session.execute_search",
+				"srxy.application.search_runner.execute_search",
 				return_value=([result], []),
 			),
 		):
@@ -202,7 +202,7 @@ def test_given_matches_when_search_callbacks_fire_then_updates_table_live(tmp_pa
 		app = SrxyApp(args, auto_start=True)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", side_effect=fake_execute_search),
+			patch("srxy.application.search_runner.execute_search", side_effect=fake_execute_search),
 		):
 			async with app.run_test() as pilot:
 				table = app.query_one("#results-table", DataTable)
@@ -226,7 +226,7 @@ def test_given_no_matches_when_tui_search_completes_then_sets_exit_code(tmp_path
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
 			patch(
-				"srxy.application.search_session.execute_search",
+				"srxy.application.search_runner.execute_search",
 				return_value=([], []),
 			),
 		):
@@ -258,7 +258,7 @@ def test_given_result_with_many_lines_when_preview_updated_then_scrolls_to_top(t
 		app = SrxyApp(args, auto_start=True)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				table = app.query_one("#results-table", DataTable)
@@ -289,7 +289,7 @@ def test_given_completed_search_when_option_changes_then_search_button_becomes_s
 		app = SrxyApp(args, auto_start=True)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test() as pilot:
 				button = app.query_one("#search-button")
@@ -378,7 +378,7 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 	# when / then
 	with (
 		patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-		patch("srxy.application.search_session.execute_search", side_effect=fake_execute_search),
+		patch("srxy.application.search_runner.execute_search", side_effect=fake_execute_search),
 	):
 		asyncio.run(run_app())
 
@@ -396,11 +396,11 @@ def test_given_selected_result_when_copy_path_then_puts_path_on_clipboard(tmp_pa
 	args = _build_args(["transform", str(tmp_path), "--content-only"])
 
 	async def run_app():
-		app = SrxyApp(args, auto_start=True)
+		desktop = MagicMock()
+		app = SrxyApp(args, auto_start=True, desktop=desktop)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
-			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test() as pilot:
 				for _ in range(30):
@@ -408,7 +408,7 @@ def test_given_selected_result_when_copy_path_then_puts_path_on_clipboard(tmp_pa
 					if app.query_one("#results-table", DataTable).row_count == 1:
 						break
 				app.action_copy_path()
-				copy_mock.assert_called_once_with(file_path.as_posix())
+				desktop.copy_text.assert_called_once_with(file_path.as_posix())
 
 	# when / then
 	asyncio.run(run_app())
@@ -427,11 +427,11 @@ def test_given_preview_match_when_copy_match_button_pressed_then_copies_location
 	args = _build_args(["transform", str(tmp_path), "--content-only"])
 
 	async def run_app():
-		app = SrxyApp(args, auto_start=True)
+		desktop = MagicMock()
+		app = SrxyApp(args, auto_start=True, desktop=desktop)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
-			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(120, 30)) as pilot:
 				for _ in range(30):
@@ -439,45 +439,41 @@ def test_given_preview_match_when_copy_match_button_pressed_then_copies_location
 					if app.query_one("#preview-matches", DataTable).row_count == 1:
 						break
 				app.action_copy_match()
-				copy_mock.assert_called_once_with("line 1\ttransform model")
+				desktop.copy_text.assert_called_once_with("line 1\ttransform model")
 
 	# when / then
 	asyncio.run(run_app())
 
 
-def test_given_darwin_when_copy_to_clipboard_then_uses_pbcopy():
-	# given
-	app = SrxyApp(_build_args(["query", "."]))
+def test_given_darwin_when_textual_desktop_copies_then_uses_pbcopy():
+	from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 
-	# when
+	adapter = TextualDesktopAdapter()
 	with (
-		patch("srxy.adapters.inbound.tui.app.platform.system", return_value="Darwin"),
-		patch("srxy.adapters.inbound.tui.app.shutil.which", return_value="/usr/bin/pbcopy"),
-		patch("srxy.adapters.inbound.tui.app.subprocess.run") as run_mock,
+		patch("srxy.adapters.inbound.tui.desktop.platform.system", return_value="Darwin"),
+		patch("srxy.adapters.inbound.tui.desktop.shutil.which", return_value="/usr/bin/pbcopy"),
+		patch("srxy.adapters.inbound.tui.desktop.subprocess.run") as run_mock,
 	):
-		app.copy_to_clipboard("hello there")
+		adapter.copy_text("hello there")
 
-	# then
 	run_mock.assert_called_once()
 	assert run_mock.call_args.args[0] == ["/usr/bin/pbcopy"]
 	assert run_mock.call_args.kwargs["input"] == b"hello there"
 
 
-def test_given_darwin_when_pbcopy_fails_then_falls_back_to_textual_clipboard():
-	# given
-	app = SrxyApp(_build_args(["query", "."]))
+def test_given_darwin_when_pbcopy_fails_then_falls_back_to_callback():
+	from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 
-	# when
+	fallback = MagicMock()
+	adapter = TextualDesktopAdapter(copy_fallback=fallback)
 	with (
-		patch("srxy.adapters.inbound.tui.app.platform.system", return_value="Darwin"),
-		patch("srxy.adapters.inbound.tui.app.shutil.which", return_value="/usr/bin/pbcopy"),
-		patch("srxy.adapters.inbound.tui.app.subprocess.run", side_effect=OSError("pbcopy failed")),
-		patch.object(SrxyApp.__bases__[0], "copy_to_clipboard") as super_mock,
+		patch("srxy.adapters.inbound.tui.desktop.platform.system", return_value="Darwin"),
+		patch("srxy.adapters.inbound.tui.desktop.shutil.which", return_value="/usr/bin/pbcopy"),
+		patch("srxy.adapters.inbound.tui.desktop.subprocess.run", side_effect=OSError("pbcopy failed")),
 	):
-		app.copy_to_clipboard("fallback text")
+		adapter.copy_text("fallback text")
 
-	# then
-	super_mock.assert_called_once_with("fallback text")
+	fallback.assert_called_once_with("fallback text")
 
 
 def test_given_preview_match_when_rendered_then_uses_bold_text_for_query_hit(tmp_path: Path):
@@ -496,7 +492,7 @@ def test_given_preview_match_when_rendered_then_uses_bold_text_for_query_hit(tmp
 		app = SrxyApp(args, auto_start=True)
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([result], [])),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test() as pilot:
 				for _ in range(30):
@@ -540,13 +536,13 @@ def test_given_long_location_preview_when_switching_to_short_preview_then_locati
 		lines=[LineMatch(line_number=104, text="thank you", score=0.85)],
 	)
 	args = _build_args(["test", str(tmp_path), "--content-only"])
-	app = SrxyApp(args, auto_start=True)
+	desktop = MagicMock()
+	app = SrxyApp(args, auto_start=True, desktop=desktop)
 
 	async def run_app():
 		with (
 			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.application.search_session.execute_search", return_value=([long_result, short_result], [])),
-			patch.object(SrxyApp, "copy_to_clipboard") as copy_mock,
+			patch("srxy.application.search_runner.execute_search", return_value=([long_result, short_result], [])),
 		):
 			async with app.run_test(size=(120, 30)) as pilot:
 				for _ in range(30):
@@ -560,7 +556,7 @@ def test_given_long_location_preview_when_switching_to_short_preview_then_locati
 				assert displayed.endswith("…")
 
 				app.action_copy_match()
-				copied = copy_mock.call_args.args[0]
+				copied = desktop.copy_text.call_args.args[0]
 				assert long_term in copied
 				assert displayed not in copied
 
