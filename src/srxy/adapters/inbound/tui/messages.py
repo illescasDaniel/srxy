@@ -26,9 +26,16 @@ class ResultFound(Message):
 
 
 class SearchFinished(Message):
-	def __init__(self, results: list[FileSearchResult], skipped_files: list[SkippedFile]):
+	def __init__(
+		self,
+		results: list[FileSearchResult],
+		skipped_files: list[SkippedFile],
+		*,
+		cancelled: bool = False,
+	):
 		self.results = results
 		self.skipped_files = skipped_files
+		self.cancelled = cancelled
 		super().__init__()
 
 

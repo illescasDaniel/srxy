@@ -11,11 +11,12 @@ from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QGuiApplication
 from pytestqt.qtbot import QtBot
 
-from srxy.adapters.inbound.cli.cli import build_parser, format_score_percent, match_labels
+from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.application.search_formatting import format_score_percent, match_labels
 
 
-pytestmark = [pytest.mark.integration, pytest.mark.gui]
+pytestmark = [pytest.mark.unit, pytest.mark.gui]
 
 _SNAPSHOTS = Path(__file__).resolve().parent / "snapshots"
 _UPDATE = os.environ.get("UPDATE_GUI_SNAPSHOTS", "").strip() in {"1", "true", "yes"}
@@ -142,6 +143,7 @@ def test_given_default_controller_when_dumping_chrome_then_matches_snapshot(qapp
 	_assert_snapshot("main_window", _chrome_tree(controller))
 
 
+@pytest.mark.integration
 def test_given_uppercase_readme_when_search_completes_then_results_tree_matches_snapshot(
 	qapp: QCoreApplication,
 	qtbot: QtBot,

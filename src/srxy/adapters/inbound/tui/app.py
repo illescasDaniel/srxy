@@ -27,13 +27,7 @@ from textual.widgets import (
 	Static,
 )
 
-from srxy.adapters.inbound.cli.cli import (
-	format_grouped_summary,
-	format_no_matches_message,
-	format_score_percent,
-	format_skipped_file_warnings,
-	iter_grouped_line_displays,
-)
+from srxy.adapters.inbound.cli.cli import format_no_matches_message, format_skipped_file_warnings
 from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 from srxy.adapters.inbound.tui.labels import format_tui_match_labels
 from srxy.adapters.inbound.tui.messages import (
@@ -47,20 +41,21 @@ from srxy.adapters.inbound.tui.modals import ErrorModal, HelpModal, SearchFilter
 from srxy.adapters.inbound.tui.preflight import run_tui_preflight
 from srxy.adapters.inbound.tui.query_builder import QueryBuilder
 from srxy.adapters.inbound.tui.theme import detect_app_theme
-from srxy.adapters.outbound.worker.search_worker import (
-	file_result_from_dict,
-	skipped_file_from_dict,
-)
 from srxy.application.labels import (
-	RESULTS_EMPTY_BEFORE_SEARCH,
-	RESULTS_EMPTY_NO_MATCHES,
-	RESULTS_EMPTY_SEARCHING,
+	results_empty_before_search,
+	results_empty_no_matches,
+	results_empty_searching,
 )
 from srxy.application.search_filters import (
 	SearchFilters,
 	apply_search_filters_to_args,
 	format_search_filters_summary,
 	search_filters_from_args,
+)
+from srxy.application.search_formatting import (
+	format_grouped_summary,
+	format_score_percent,
+	iter_grouped_line_displays,
 )
 from srxy.application.search_options import (
 	SearchOptions,
@@ -69,10 +64,12 @@ from srxy.application.search_options import (
 	search_options_from_args,
 )
 from srxy.application.search_runner_adapter import AdaptiveSearchRunner
+from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import file_q_to_dict
 from srxy.domain.models import FileSearchResult
 from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.i18n import tr
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
@@ -331,14 +328,14 @@ class SrxyApp(App[int]):
 		yield Header()
 		with Horizontal(id="search-bar"):
 			yield QueryBuilder(id="query-builder", initial_query=self._args.query or "")
-			yield Label("Path", id="path-label")
+			yield Label(tr("tui.path"), id="path-label")
 			yield Input(id="path-input", value=str(self._args.path), placeholder="")
-			yield Button("Search", variant="primary", id="search-button")
+			yield Button(tr("tui.search"), variant="primary", id="search-button")
 		with Horizontal(id="options-bar"):
-			yield Button("Search options", id="search-options-button")
+			yield Button(tr("tui.search_options"), id="search-options-button")
 			yield Static(format_search_options_summary(self.search_options), id="options-summary")
 		with Horizontal(id="filters-bar"):
-			yield Button("Filters", id="search-filters-button")
+			yield Button(tr("tui.filters"), id="search-filters-button")
 			yield Static(format_search_filters_summary(self.search_filters), id="filters-summary")
 		with Horizontal(id="main-pane"):
 			with Vertical(id="results-panel"):
@@ -351,12 +348,12 @@ class SrxyApp(App[int]):
 		with Horizontal(id="status-bar"):
 			yield ProgressBar(total=100, show_eta=False, id="scan-progress")
 			# Plain text: Rich markup would swallow pip extras like [semantic].
-			yield Label("Ready", id="status-message", markup=False)
+			yield Label(tr("status.ready"), id="status-message", markup=False)
 		yield Footer(show_command_palette=False)
 
 	def on_mount(self):
 		table = self.query_one("#results-table", DataTable)
-		table.add_columns("Match", "Path", "Matched")
+		table.add_columns(tr("tui.col.match"), tr("tui.col.path"), tr("tui.col.matched"))
 		self._setup_preview_columns(self.query_one("#preview-matches", DataTable))
 		self._refresh_options_summary()
 		self._refresh_filters_summary()
@@ -376,18 +373,18 @@ class SrxyApp(App[int]):
 			empty.update("")
 			return
 		if self._searching:
-			message = RESULTS_EMPTY_SEARCHING
+			message = results_empty_searching()
 		elif self._last_search_snapshot is not None:
-			message = RESULTS_EMPTY_NO_MATCHES
+			message = results_empty_no_matches()
 		else:
-			message = RESULTS_EMPTY_BEFORE_SEARCH
+			message = results_empty_before_search()
 		empty.update(message)
 		panel.add_class("-empty")
 
 	def _setup_preview_columns(self, table: DataTable[Any]):
-		table.add_column("Match", width=_PREVIEW_MATCH_WIDTH)
-		table.add_column("Location", width=_PREVIEW_LOCATION_WIDTH)
-		table.add_column("Text")
+		table.add_column(tr("tui.col.match"), width=_PREVIEW_MATCH_WIDTH)
+		table.add_column(tr("tui.col.location"), width=_PREVIEW_LOCATION_WIDTH)
+		table.add_column(tr("tui.col.text"))
 
 	def _reset_preview_table(self, table: DataTable[Any]):
 		table.clear(columns=True)
@@ -620,7 +617,7 @@ class SrxyApp(App[int]):
 			self.notify(str(error), severity="warning")
 			return
 		if not self._query_builder().has_nonempty_term():
-			self.notify("Enter a search query", severity="warning")
+			self.notify(tr("error.enter_search_query"), severity="warning")
 			return
 		self._active_file_limit = args.limit
 		self._searching = True
@@ -630,7 +627,7 @@ class SrxyApp(App[int]):
 		progress = self.query_one("#scan-progress", ProgressBar)
 		progress.update(total=100, progress=0)
 		self._clear_activity_status()
-		self._set_status("Starting search…")
+		self._set_status(tr("status.starting"))
 		self._start_search_flow(args)
 
 	@work(exclusive=True)
@@ -661,44 +658,46 @@ class SrxyApp(App[int]):
 		if isinstance(message, (ProgressUpdated, ActivityChanged, ResultFound, SearchError, SearchFinished)):
 			self.post_message(message)
 
+	def _refresh_i18n(self):
+		try:
+			self.query_one("#path-label", Label).update(tr("tui.path"))
+			self.query_one("#search-button", Button).label = tr("tui.search")
+			self.query_one("#search-options-button", Button).label = tr("tui.search_options")
+			self.query_one("#search-filters-button", Button).label = tr("tui.filters")
+		except NoMatches:
+			pass
+		if not self._searching:
+			self._set_status(tr("status.ready"))
+		self._sync_results_empty_hint()
+		self._refresh_options_summary()
+		self._refresh_filters_summary()
+
 	def _post_subprocess_event(self, event: dict[str, object]):
-		kind = event.get("type")
-		if kind == "progress":
-			current = event.get("current")
-			total = event.get("total")
-			if isinstance(current, int) and isinstance(total, int):
-				self.post_message(ProgressUpdated(current, total))
-		elif kind == "activity":
-			message = event.get("message")
-			if message is None:
-				self.post_message(ActivityChanged(None))
-			elif isinstance(message, str):
-				current = event.get("current")
-				total = event.get("total")
-				self.post_message(
-					ActivityChanged(
-						ActivityUpdate(
-							label=message,
-							current=current if isinstance(current, int) else None,
-							total=total if isinstance(total, int) else None,
-						)
-					)
+		from srxy.application.search_session import (
+			SearchActivityEvent,
+			SearchErrorEvent,
+			SearchFinishedEvent,
+			SearchProgressEvent,
+			SearchResultEvent,
+		)
+
+		parsed = subprocess_event_to_search_event(event)
+		if isinstance(parsed, SearchProgressEvent):
+			self.post_message(ProgressUpdated(parsed.current, parsed.total))
+		elif isinstance(parsed, SearchActivityEvent):
+			self.post_message(ActivityChanged(parsed.update))
+		elif isinstance(parsed, SearchResultEvent):
+			self.post_message(ResultFound(parsed.result))
+		elif isinstance(parsed, SearchErrorEvent):
+			self.post_message(SearchError(parsed.message))
+		elif isinstance(parsed, SearchFinishedEvent):
+			self.post_message(
+				SearchFinished(
+					results=parsed.results,
+					skipped_files=parsed.skipped_files,
+					cancelled=parsed.cancelled,
 				)
-		elif kind == "result":
-			result_data = event.get("result")
-			if isinstance(result_data, dict):
-				self.post_message(ResultFound(file_result_from_dict(result_data)))
-		elif kind == "error":
-			message = event.get("message")
-			self.post_message(SearchError(str(message)))
-		elif kind == "finished":
-			results_data = event.get("results")
-			skipped_data = event.get("skipped_files")
-			results = [file_result_from_dict(item) for item in results_data] if isinstance(results_data, list) else []
-			skipped_files = (
-				[skipped_file_from_dict(item) for item in skipped_data] if isinstance(skipped_data, list) else []
 			)
-			self.post_message(SearchFinished(results=results, skipped_files=skipped_files))
 
 	async def _drain_search_events(
 		self,
@@ -718,15 +717,15 @@ class SrxyApp(App[int]):
 				break
 			post_event(message)
 
-		if self._cancel_search:
-			return
-
 		while True:
 			message = get_event()
 			if message is None:
-				break
-			if message is _SEARCH_SENTINEL:
+				if is_done():
+					break
+				await asyncio.sleep(0.05)
 				continue
+			if message is _SEARCH_SENTINEL:
+				break
 			post_event(message)
 
 	async def _run_search_in_thread(self, args: argparse.Namespace):
@@ -751,7 +750,13 @@ class SrxyApp(App[int]):
 				elif isinstance(event, SearchErrorEvent):
 					event_queue.put(SearchError(event.message))
 				elif isinstance(event, SearchFinishedEvent):
-					event_queue.put(SearchFinished(results=event.results, skipped_files=event.skipped_files))
+					event_queue.put(
+						SearchFinished(
+							results=event.results,
+							skipped_files=event.skipped_files,
+							cancelled=event.cancelled,
+						)
+					)
 
 			self._search_runner.run_blocking(args, on_event=on_event, cancel_check=lambda: self._cancel_search)
 			event_queue.put(_SEARCH_SENTINEL)
@@ -772,11 +777,6 @@ class SrxyApp(App[int]):
 			)
 		finally:
 			await search_task
-
-		if self._cancel_search:
-			self._searching = False
-			self._set_status("Search cancelled")
-			self._save_search_snapshot()
 
 	async def _run_search_in_subprocess(self, args: argparse.Namespace):
 		runner = self._search_runner
@@ -810,7 +810,7 @@ class SrxyApp(App[int]):
 
 		if self._cancel_search:
 			self._searching = False
-			self._set_status("Search cancelled")
+			self._set_status(tr("status.search_cancelled"))
 			self._save_search_snapshot()
 
 	@on(ProgressUpdated)
@@ -822,7 +822,7 @@ class SrxyApp(App[int]):
 		percent = int((message.current / message.total) * 100)
 		progress.update(total=100, progress=percent)
 		if self._activity is None:
-			self._set_status(f"Scanning {message.current}/{message.total} files")
+			self._set_status(tr("tui.status.scanning_files", current=message.current, total=message.total))
 
 	def _clear_activity_status(self):
 		if self._activity_spinner_timer is not None:
@@ -861,7 +861,7 @@ class SrxyApp(App[int]):
 	@on(ResultFound)
 	def _on_result_found(self, message: ResultFound):
 		self._insert_result_row(message.result)
-		self._set_status(f"Match found · {message.result.path.name}")
+		self._set_status(tr("tui.status.match_found", name=message.result.path.name))
 
 	@on(SearchError)
 	def _on_search_error(self, message: SearchError):
@@ -875,6 +875,15 @@ class SrxyApp(App[int]):
 	@on(SearchFinished)
 	def _on_search_finished(self, message: SearchFinished):
 		self._searching = False
+		if message.cancelled:
+			self._clear_activity_status()
+			progress = self.query_one("#scan-progress", ProgressBar)
+			progress.update(total=100, progress=100)
+			self._exit_code = 2
+			self._set_status(tr("status.search_cancelled"))
+			self._save_search_snapshot()
+			self._sync_results_empty_hint()
+			return
 		for result in message.results:
 			self._insert_result_row(result)
 		self._trim_results_to_limit()
@@ -885,12 +894,13 @@ class SrxyApp(App[int]):
 		if warnings:
 			self._warnings_text = warnings
 			self.query_one("#warnings-log", Static).update(warnings)
-		if not message.results:
+		match_count = len(message.results) if message.results else len(self._results)
+		if match_count == 0:
 			self._exit_code = 1
 			self._set_status(format_no_matches_message(query, path))
 		else:
 			self._exit_code = 0
-			summary = format_grouped_summary(match_count=len(message.results), query=query)
+			summary = format_grouped_summary(match_count=match_count, query=query)
 			self._set_status(summary)
 			if self._results:
 				self._update_preview(self._results[0])

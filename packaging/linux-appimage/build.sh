@@ -1,14 +1,19 @@
 #!/usr/bin/env bash
 # Build a thin Linux AppImage for the srxy install/uninstall wizard.
-# Requires: curl, uv. Downloads appimagetool (type2 static runtime) if missing.
+# Requires: curl, uv. Downloads pinned appimagetool (type2 static runtime) if missing.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.."
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 APPDIR="${APPDIR:-$OUT_DIR/srxy-installer.AppDir}"
 ARCH="${ARCH:-x86_64}"
-APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-${ARCH}.AppImage}"
+# Pin appimagetool to an immutable release tag (never "continuous").
+APPIMAGETOOL_VERSION="${APPIMAGETOOL_VERSION:-1.9.1}"
+APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${ARCH}.AppImage}"
+# SHA-256 of appimagetool-x86_64.AppImage @ 1.9.1 (override when bumping the pin).
+APPIMAGETOOL_SHA256="${APPIMAGETOOL_SHA256:-ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0}"
 ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-256.png}"
+PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 cd "$ROOT"
 mkdir -p "$OUT_DIR"
@@ -25,15 +30,60 @@ if [[ ! -f "$ICON_SRC" ]]; then
 	exit 1
 fi
 
-echo "Creating AppDir venv…"
-uv venv --python 3.12 "$APPDIR/usr/venv"
+echo "Installing managed CPython ${PYTHON_VERSION} into AppDir…"
+# Install a full interpreter tree under the AppDir so the AppImage never
+# depends on ~/.local/share/uv/python from the build host.
+export UV_PYTHON_PREFERENCE=only-managed
+export UV_LINK_MODE=copy
+uv python install "$PYTHON_VERSION" --install-dir "$APPDIR/usr/python" --no-bin
+APP_PYTHON="$(find "$APPDIR/usr/python" -type f \( -name "python${PYTHON_VERSION}" -o -name python3 -o -name python \) | head -n 1)"
+if [[ -z "$APP_PYTHON" || ! -x "$APP_PYTHON" ]]; then
+	echo "error: managed python not found under $APPDIR/usr/python" >&2
+	find "$APPDIR/usr/python" -maxdepth 4 -type f -name 'python*' >&2 || true
+	exit 1
+fi
+echo "Creating relocatable AppDir venv from $APP_PYTHON…"
+uv venv --python "$APP_PYTHON" --relocatable --link-mode copy "$APPDIR/usr/venv"
 uv pip install --python "$APPDIR/usr/venv/bin/python" "$ROOT"
+
+# Fail closed if the venv python still points at the build host uv cache / home.
+VENV_PY="$APPDIR/usr/venv/bin/python"
+RESOLVED_PY="$(readlink -f "$VENV_PY" 2>/dev/null || realpath "$VENV_PY")"
+case "$RESOLVED_PY" in
+"$APPDIR"/*) ;;
+*)
+	echo "error: AppDir python is not relocatable: $VENV_PY -> $RESOLVED_PY" >&2
+	echo "expected an interpreter under $APPDIR." >&2
+	exit 1
+	;;
+esac
+case "$RESOLVED_PY" in
+*"/.local/share/uv/python/"*)
+	echo "error: AppDir python still resolves into host uv cache: $RESOLVED_PY" >&2
+	exit 1
+	;;
+esac
+echo "AppDir python OK: $RESOLVED_PY"
 
 echo "Building wheel for prefix installs…"
 WHEEL_DIR="$APPDIR/usr/share/srxy"
 mkdir -p "$WHEEL_DIR"
-uv build --wheel --out-dir "$OUT_DIR/installer-wheels" "$ROOT"
-WHEEL="$(ls -1 "$OUT_DIR/installer-wheels"/srxy-*.whl | tail -n 1)"
+rm -rf "$OUT_DIR/installer-wheels"
+mkdir -p "$OUT_DIR/installer-wheels"
+# Capture the wheel path uv build prints (avoid lexical ls|tail traps).
+mapfile -t BUILT_WHEELS < <(uv build --wheel --out-dir "$OUT_DIR/installer-wheels" "$ROOT" 2>&1 | tee /dev/stderr | rg -o '/[^ ]+/srxy-[^ ]+\.whl' || true)
+if [[ ${#BUILT_WHEELS[@]} -eq 0 ]]; then
+	# Fallback: exactly one wheel in the clean output dir.
+	shopt -s nullglob
+	BUILT_WHEELS=("$OUT_DIR/installer-wheels"/srxy-*.whl)
+	shopt -u nullglob
+fi
+if [[ ${#BUILT_WHEELS[@]} -ne 1 || ! -f "${BUILT_WHEELS[0]}" ]]; then
+	echo "error: expected exactly one wheel in $OUT_DIR/installer-wheels" >&2
+	ls -la "$OUT_DIR/installer-wheels" >&2 || true
+	exit 1
+fi
+WHEEL="${BUILT_WHEELS[0]}"
 cp "$WHEEL" "$WHEEL_DIR/"
 cp "$WHEEL" "$WHEEL_DIR/srxy.whl"
 cp "$ROOT/packaging/installer_meta.toml" "$WHEEL_DIR/installer_meta.toml"
@@ -66,7 +116,6 @@ cp "$APPDIR/srxy-installer.desktop" "$APPDIR/usr/share/applications/"
 
 cp "$ICON_SRC" "$APPDIR/srxy-installer.png"
 cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/srxy-installer.png"
-# Extra sizes when available (helps desktop environments).
 for size in 16 32 48 64 128 512; do
 	src="$ROOT/src/srxy/resources/icons/srxy-${size}.png"
 	if [[ -f "$src" ]]; then
@@ -76,14 +125,35 @@ for size in 16 32 48 64 128 512; do
 done
 
 TOOL="$OUT_DIR/appimagetool-${ARCH}.AppImage"
+NEED_FETCH=0
 if [[ ! -x "$TOOL" ]]; then
-	echo "Fetching appimagetool…"
+	NEED_FETCH=1
+elif [[ -n "$APPIMAGETOOL_SHA256" ]]; then
+	ACTUAL="$(sha256sum "$TOOL" | awk '{print $1}')"
+	if [[ "$ACTUAL" != "$APPIMAGETOOL_SHA256" ]]; then
+		echo "appimagetool digest mismatch; re-fetching…"
+		NEED_FETCH=1
+	fi
+fi
+if [[ "$NEED_FETCH" -eq 1 ]]; then
+	echo "Fetching appimagetool ${APPIMAGETOOL_VERSION}…"
 	curl -fsSL -o "$TOOL" "$APPIMAGETOOL_URL"
 	chmod +x "$TOOL"
 fi
+if [[ -n "$APPIMAGETOOL_SHA256" ]]; then
+	echo "$APPIMAGETOOL_SHA256  $TOOL" | sha256sum -c -
+fi
 
 OUTPUT="$OUT_DIR/srxy-installer-${VERSION}-${ARCH}.AppImage"
-echo "Packing $OUTPUT (appimagetool continuous / type2 static runtime)…"
+echo "Packing $OUTPUT…"
 ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
 echo "Built $OUTPUT"
+
+# Write checksums alongside the artifact for release uploads.
+(
+	cd "$OUT_DIR"
+	sha256sum "$(basename "$OUTPUT")" >"$(basename "$OUTPUT").sha256"
+	sha256sum "$(basename "$OUTPUT")" >SHA256SUMS
+)
+echo "Wrote $OUT_DIR/SHA256SUMS"

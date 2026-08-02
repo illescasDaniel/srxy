@@ -42,9 +42,11 @@ class _FakeFileSearch:
 		on_progress: Callable[[int, int], None] | None = None,
 		on_activity: ActivityCallback | None = None,
 		on_result: Callable[[FileSearchResult], None] | None = None,
+		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 		self.calls += 1
-		_ = args
+		_ = (args, cancel_check, allow_process_pool)
 		if self.error is not None:
 			raise self.error
 		if on_progress is not None:
@@ -68,8 +70,9 @@ def test_given_fixture_tree_when_search_session_runs_then_emits_progress_and_res
 	)
 	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
 	assert len(finished) == 1
-	assert finished[0].results
-	assert all(isinstance(item, FileSearchResult) for item in finished[0].results)
+	all_results = finished[0].results or [event.result for event in events if isinstance(event, SearchResultEvent)]
+	assert all_results
+	assert all(isinstance(item, FileSearchResult) for item in all_results)
 
 
 def test_given_fake_file_search_when_session_runs_then_uses_injected_port(tmp_path: Path):
@@ -83,7 +86,8 @@ def test_given_fake_file_search_when_session_runs_then_uses_injected_port(tmp_pa
 	assert any(isinstance(event, SearchResultEvent) and event.result is result for event in events)
 	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
 	assert len(finished) == 1
-	assert finished[0].results == [result]
+	finished_results = finished[0].results or [event.result for event in events if isinstance(event, SearchResultEvent)]
+	assert finished_results == [result]
 
 
 def test_given_file_search_raises_when_session_runs_then_emits_error(tmp_path: Path):
@@ -125,8 +129,10 @@ def test_given_cancel_during_progress_when_session_runs_then_returns_partial_fin
 			on_progress: Callable[[int, int], None] | None = None,
 			on_activity: ActivityCallback | None = None,
 			on_result: Callable[[FileSearchResult], None] | None = None,
+			cancel_check: Callable[[], bool] | None = None,
+			allow_process_pool: bool = False,
 		) -> tuple[list[FileSearchResult], list[SkippedFile]]:
-			_ = args
+			_ = (args, on_activity, cancel_check, allow_process_pool)
 			effective = skipped_files if skipped_files is not None else []
 			if on_progress is not None:
 				on_progress(1, 10)
@@ -146,5 +152,7 @@ def test_given_cancel_during_progress_when_session_runs_then_returns_partial_fin
 		cancel_check=cancel_check,
 	)
 
-	assert any(isinstance(event, SearchFinishedEvent) for event in events)
+	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
+	assert len(finished) == 1
+	assert finished[0].cancelled is True
 	assert not any(isinstance(event, SearchErrorEvent) for event in events)

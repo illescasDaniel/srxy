@@ -25,8 +25,14 @@ class AdaptiveSearchRunner:
 		*,
 		on_event: Callable[[object], None],
 		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	):
-		self._search_session.run_blocking(args, on_event=on_event, cancel_check=cancel_check)
+		self._search_session.run_blocking(
+			args,
+			on_event=on_event,
+			cancel_check=cancel_check,
+			allow_process_pool=allow_process_pool,
+		)
 
 	def iter_subprocess_events(
 		self,

@@ -2,139 +2,83 @@ from __future__ import annotations
 
 from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
 from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
-from srxy.application.labels import (
-	FILTER_LABEL_AUDIO_VIDEO_SIZE,
-	FILTER_LABEL_DOCUMENT_SIZE,
-	FILTER_LABEL_HITS_PER_FILE,
-	FILTER_LABEL_IMAGE_TEXT_SIZE,
-	FILTER_LABEL_MAX_RESULTS,
-	FILTER_LABEL_MIN_MATCH,
-	FILTER_LABEL_SPEECH_MIN,
-	FILTER_LABEL_VISUAL_MIN,
-	FILTER_SECTION_LIMITS,
-	FILTER_SECTION_SENSITIVITY,
-	SUMMARY_HOW_CONTENT,
-	SUMMARY_HOW_DOCS_TAGS,
-	SUMMARY_HOW_OCR,
-	SUMMARY_HOW_SEMANTIC,
-	SUMMARY_HOW_SEMANTIC_IMAGE,
-	SUMMARY_HOW_TRANSCRIBE,
-	SUMMARY_PREFIX_HOW,
-	SUMMARY_PREFIX_SCAN,
-	SUMMARY_PREFIX_WHERE,
-	SUMMARY_SCAN_ARCHIVES,
-	SUMMARY_SCAN_HIDDEN,
-	SUMMARY_SCAN_NOISE,
-	SUMMARY_SCAN_NOISE_FILES,
-	SUMMARY_SCAN_SKIPPED_NAMES,
-	SUMMARY_SCAN_TOP_LEVEL,
-	SUMMARY_WHERE_CONTENT,
-	SUMMARY_WHERE_NAMES,
-)
+from srxy.application.search_formatting import match_labels
 from srxy.domain.models import FileSearchResult
+from srxy.i18n import tr
 
 
-# Search options modal: checkbox id -> (label, optional hint)
-OPTION_LABELS: dict[str, tuple[str, str | None]] = {
-	"so-names": ("File names", "Match the path and filename"),
-	"so-content": ("File contents", "Search inside files (docs, images, audio, …)"),
-	"so-docs-tags": (
-		"Docs, tags & metadata (recommended ON)",
-		"Text inside documents, tags, and metadata",
-	),
-	"so-semantic": ("Similar meaning", "Find related words, not just exact spelling"),
-	"so-ocr": ("Text in images", "Read text in photos, scans, and PDF pages"),
-	"so-transcribe": ("Spoken words", "Search speech in audio and video"),
-	"so-semantic-image": ("Visual description", "Match what an image looks like (CLIP)"),
-	"so-enable-all": ("All advanced matching", "Turn on Similar meaning, Text in images, Spoken words, and Visual"),
-	"so-hidden": ("Hidden files & folders", "Include dotfiles and hidden directories"),
-	"so-noise": ("Cache & vendor folders", "Include __pycache__, node_modules, etc."),
-	"so-noise-files": (
-		"Junk & lock files",
-		"Include uv.lock, package-lock.json, *.min.js, Office temps, …",
-	),
-	"so-match-skipped-names": (
-		"Skipped file names",
-		"Also match names of files skipped by Hidden / Cache & vendor / Junk",
-	),
-	"so-archives": ("Inside zip/tar files", "Search within compressed archives"),
-	"so-subdirs": ("Include subdirectories", "Also search folders nested under the path"),
+_OPTION_KEYS: dict[str, tuple[str, str]] = {
+	"so-names": ("gui.options.file_names", "tui.hint.file_names"),
+	"so-content": ("gui.options.file_contents", "tui.hint.file_contents"),
+	"so-docs-tags": ("tui.options.docs_tags", "tui.hint.docs_tags"),
+	"so-semantic": ("gui.options.semantic", "tui.hint.semantic"),
+	"so-ocr": ("gui.options.ocr", "tui.hint.ocr"),
+	"so-transcribe": ("gui.options.transcribe", "tui.hint.transcribe"),
+	"so-semantic-image": ("gui.options.semantic_image", "tui.hint.semantic_image"),
+	"so-enable-all": ("tui.options.enable_all", "tui.hint.enable_all"),
+	"so-hidden": ("gui.options.hidden", "tui.hint.hidden"),
+	"so-noise": ("gui.options.noise", "tui.hint.noise"),
+	"so-noise-files": ("gui.options.noise_files", "tui.hint.noise_files"),
+	"so-match-skipped-names": ("gui.options.match_skipped", "tui.hint.match_skipped_names"),
+	"so-archives": ("gui.options.archives", "tui.hint.archives"),
+	"so-subdirs": ("gui.options.subdirs", "tui.hint.subdirs"),
 }
 
-CLASSIC_MATCHING_HINT = "Fuzzy, phonetic, and substring matching (always on)"
-BINARY_SKIP_HINT = "Binary-looking files (null byte in first 8 KiB) skip body text; names can still match"
-
-SEARCH_OPTIONS_SECTION_WHERE = "Where to search"
-SEARCH_OPTIONS_SECTION_HOW = "How to match"
-SEARCH_OPTIONS_SECTION_SCAN = "Which files to scan"
-SEARCH_OPTIONS_SUBSECTION_NOISY = "Noisy files"
-
-MATCH_SOURCE_LABELS: dict[str, str] = {
-	"name": "filename",
-	"content": "content",
-	"ocr": "image text",
-	"transcript": "speech",
-	"image semantic": "visual",
-	"tag": "tags",
-	"match": "match",
+_MATCH_SOURCE_KEYS = {
+	"name": "tui.match.filename",
+	"content": "tui.match.content",
+	"ocr": "tui.match.image_text",
+	"transcript": "tui.match.speech",
+	"image semantic": "tui.match.visual",
+	"tag": "tui.match.tags",
+	"match": "tui.match.generic",
 }
-
-QUERY_ADD_TERM = "Add term"
-QUERY_TERM_PLACEHOLDER = "Type a word or phrase"
-QUERY_ADVANCED_PLACEHOLDER = "e.g. revenue | amphibian & person"
-
-__all__ = [
-	"CLASSIC_MATCHING_HINT",
-	"FILTER_LABEL_AUDIO_VIDEO_SIZE",
-	"FILTER_LABEL_DOCUMENT_SIZE",
-	"FILTER_LABEL_HITS_PER_FILE",
-	"FILTER_LABEL_IMAGE_TEXT_SIZE",
-	"FILTER_LABEL_MAX_RESULTS",
-	"FILTER_LABEL_MIN_MATCH",
-	"FILTER_LABEL_SPEECH_MIN",
-	"FILTER_LABEL_VISUAL_MIN",
-	"FILTER_SECTION_LIMITS",
-	"FILTER_SECTION_SENSITIVITY",
-	"MATCH_SOURCE_LABELS",
-	"OPTION_LABELS",
-	"QUERY_ADD_TERM",
-	"QUERY_ADVANCED_PLACEHOLDER",
-	"QUERY_TERM_PLACEHOLDER",
-	"SEARCH_OPTIONS_SECTION_HOW",
-	"SEARCH_OPTIONS_SECTION_SCAN",
-	"SEARCH_OPTIONS_SECTION_WHERE",
-	"SEARCH_OPTIONS_SUBSECTION_NOISY",
-	"SUMMARY_HOW_CONTENT",
-	"SUMMARY_HOW_DOCS_TAGS",
-	"SUMMARY_HOW_OCR",
-	"SUMMARY_HOW_SEMANTIC",
-	"SUMMARY_HOW_SEMANTIC_IMAGE",
-	"SUMMARY_HOW_TRANSCRIBE",
-	"SUMMARY_PREFIX_HOW",
-	"SUMMARY_PREFIX_SCAN",
-	"SUMMARY_PREFIX_WHERE",
-	"SUMMARY_SCAN_ARCHIVES",
-	"SUMMARY_SCAN_HIDDEN",
-	"SUMMARY_SCAN_NOISE",
-	"SUMMARY_SCAN_NOISE_FILES",
-	"SUMMARY_SCAN_SKIPPED_NAMES",
-	"SUMMARY_SCAN_TOP_LEVEL",
-	"SUMMARY_WHERE_CONTENT",
-	"SUMMARY_WHERE_NAMES",
-	"BINARY_SKIP_HINT",
-	"CLASSIC_MATCHING_HINT",
-	"format_tui_match_labels",
-	"option_hint",
-	"option_label",
-]
 
 
 def option_label(checkbox_id: str) -> str:
-	return OPTION_LABELS[checkbox_id][0]
+	label_key, _hint_key = _OPTION_KEYS[checkbox_id]
+	return tr(label_key)
 
 
 def option_hint(checkbox_id: str) -> str | None:
-	return OPTION_LABELS[checkbox_id][1]
+	_label_key, hint_key = _OPTION_KEYS[checkbox_id]
+	return tr(hint_key)
+
+
+def classic_matching_hint() -> str:
+	return tr("tui.hint.classic")
+
+
+def binary_skip_hint() -> str:
+	return tr("tui.hint.binary_skip")
+
+
+def search_options_section_where() -> str:
+	return tr("tui.section.where")
+
+
+def search_options_section_how() -> str:
+	return tr("tui.section.how")
+
+
+def search_options_section_scan() -> str:
+	return tr("tui.section.scan")
+
+
+def search_options_subsection_noisy() -> str:
+	return tr("tui.section.noisy")
+
+
+def query_add_term() -> str:
+	return tr("gui.add_term")
+
+
+def query_term_placeholder() -> str:
+	return tr("gui.term_placeholder")
+
+
+def query_advanced_placeholder() -> str:
+	return tr("gui.advanced_placeholder")
 
 
 def format_tui_match_labels(
@@ -144,8 +88,6 @@ def format_tui_match_labels(
 	semantic_image_threshold: float = DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	transcribe_threshold: float = DEFAULT_TRANSCRIBE_THRESHOLD,
 ) -> str:
-	from srxy.adapters.inbound.cli.cli import match_labels
-
 	raw = match_labels(
 		result,
 		threshold=threshold,
@@ -153,6 +95,22 @@ def format_tui_match_labels(
 		transcribe_threshold=transcribe_threshold,
 	)
 	if not raw:
-		return MATCH_SOURCE_LABELS["match"]
+		return tr("tui.match.generic")
 	parts = [part.strip() for part in raw.split(",")]
-	return ", ".join(MATCH_SOURCE_LABELS.get(part, part) for part in parts)
+	return ", ".join(tr(_MATCH_SOURCE_KEYS.get(part, part)) for part in parts)
+
+
+__all__ = [
+	"binary_skip_hint",
+	"classic_matching_hint",
+	"format_tui_match_labels",
+	"option_hint",
+	"option_label",
+	"query_add_term",
+	"query_advanced_placeholder",
+	"query_term_placeholder",
+	"search_options_section_how",
+	"search_options_section_scan",
+	"search_options_section_where",
+	"search_options_subsection_noisy",
+]

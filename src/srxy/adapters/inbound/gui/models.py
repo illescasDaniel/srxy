@@ -7,7 +7,7 @@ from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, QPersistentModelIndex, Qt, Slot
 
-from srxy.adapters.inbound.cli.cli import format_score_percent, iter_grouped_line_displays, match_labels
+from srxy.application.search_formatting import format_score_percent, iter_grouped_line_displays, match_labels
 from srxy.domain.models import FileSearchResult
 
 

@@ -10,7 +10,15 @@ from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from typing import Any, TextIO
 
+from srxy.application.search_control import (
+	ProgressiveEmitState,
+	SearchCancelled,
+	emit_progress_if_due,
+	emit_result_if_under_cap,
+	finished_results_payload,
+)
 from srxy.application.search_runner import apply_args_to_env
+from srxy.application.worker_env import bootstrap_worker_env
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.domain.progress import ActivityUpdate
 
@@ -18,20 +26,11 @@ from srxy.domain.progress import ActivityUpdate
 _worker_stdin: TextIO | None = None
 
 
-def _bootstrap_worker_env():
-	os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-	os.environ.setdefault("OMP_NUM_THREADS", "1")
-	os.environ.setdefault("TQDM_DISABLE", "1")
-	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
-
-
 def build_worker_env() -> dict[str, str]:
 	# Inherit the full parent environment so Windows subprocesses can load
 	# Winsock (_overlapped/asyncio) and locate system DLLs (SystemRoot, etc.).
 	env = dict(os.environ)
-	_bootstrap_worker_env()
+	bootstrap_worker_env()
 	for key in (
 		"TOKENIZERS_PARALLELISM",
 		"OMP_NUM_THREADS",
@@ -133,7 +132,7 @@ async def _terminate_subprocess(process: asyncio.subprocess.Process):
 
 
 def run_worker_main():
-	_bootstrap_worker_env()
+	bootstrap_worker_env()
 	if sys.platform != "win32":
 		try:
 			multiprocessing.set_start_method("fork", force=True)
@@ -153,9 +152,16 @@ def run_worker_main():
 
 		services = build_worker_services()
 		skipped_files: list[SkippedFile] = []
+		emit_state = ProgressiveEmitState()
+		cancelled = False
 
 		def on_progress(current: int, total: int):
-			_emit_event({"type": "progress", "current": current, "total": total})
+			emit_progress_if_due(
+				current,
+				total,
+				emit_state,
+				lambda c, t: _emit_event({"type": "progress", "current": c, "total": t}),
+			)
 
 		def on_activity(update: ActivityUpdate | None):
 			if update is None:
@@ -169,7 +175,10 @@ def run_worker_main():
 			_emit_event(event)
 
 		def on_result(result: FileSearchResult):
-			_emit_event({"type": "result", "result": file_result_to_dict(result)})
+			emit_result_if_under_cap(
+				emit_state,
+				lambda: _emit_event({"type": "result", "result": file_result_to_dict(result)}),
+			)
 
 		try:
 			results, skipped_files = services.file_search.execute(
@@ -178,26 +187,34 @@ def run_worker_main():
 				on_progress=on_progress,
 				on_activity=on_activity,
 				on_result=on_result,
+				allow_process_pool=True,
 			)
+		except SearchCancelled as error:
+			cancelled = True
+			results = error.results
+			if error.skipped_files:
+				skipped_files = error.skipped_files
 		except Exception as error:
 			_emit_event({"type": "error", "message": str(error)})
 			_emit_event({"type": "done"})
 			return
 
-		_emit_event(
-			{
-				"type": "finished",
-				"results": [file_result_to_dict(result) for result in results],
-				"skipped_files": [
-					{
-						"path": str(skipped.path),
-						"size_bytes": skipped.size_bytes,
-						"reason": skipped.reason,
-					}
-					for skipped in skipped_files
-				],
-			}
-		)
+		finished_payload: dict[str, object] = {
+			"type": "finished",
+			"cancelled": cancelled,
+			"skipped_files": [
+				{
+					"path": str(skipped.path),
+					"size_bytes": skipped.size_bytes,
+					"reason": skipped.reason,
+				}
+				for skipped in skipped_files
+			],
+		}
+		finished_results = finished_results_payload(results, emit_state)
+		if finished_results is not None:
+			finished_payload["results"] = [file_result_to_dict(result) for result in finished_results]
+		_emit_event(finished_payload)
 		_emit_event({"type": "done"})
 	finally:
 		_close_worker_stdin()

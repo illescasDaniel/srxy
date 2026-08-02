@@ -117,9 +117,9 @@ lib_pytest_args() {
 	fi
 	# Local checks.sh runs integration tests; integration_full requires --full.
 	if [[ "${CI:-}" == "true" ]]; then
-		LIB_PYTEST_ARGS+=(-m "unit and not semantic and not transcribe")
+		LIB_PYTEST_ARGS+=(-m "(unit or gui) and not integration and not semantic and not transcribe")
 	elif [[ "${LIB_PYTEST_FULL:-}" != "true" ]]; then
-		LIB_PYTEST_ARGS+=(-m "not integration_full and not transcribe_device_matrix")
+		LIB_PYTEST_ARGS+=(-m "not integration_full and not transcribe_device_matrix and not (integration and gui)")
 	fi
 	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--integration-test-cpu)
@@ -139,4 +139,18 @@ lib_pytest_args() {
 		# shellcheck disable=SC2034
 		LIB_PYTEST_COV=(--cov=src --cov-report=term-missing)
 	fi
+}
+
+lib_pytest_gui_integration_args() {
+	# shellcheck disable=SC2034  # consumed by pytest.sh after sourcing
+	LIB_PYTEST_GUI_INTEGRATION_ARGS=()
+	if [[ "${CI:-}" == "true" || "${LIB_PYTEST_FULL:-}" == "true" ]]; then
+		return 0
+	fi
+	if [[ -d "${LIB_REPO_ROOT}/tests" ]]; then
+		LIB_PYTEST_GUI_INTEGRATION_ARGS+=(tests)
+	elif [[ -d "${LIB_REPO_ROOT}/test" ]]; then
+		LIB_PYTEST_GUI_INTEGRATION_ARGS+=(test)
+	fi
+	LIB_PYTEST_GUI_INTEGRATION_ARGS+=(-m "integration and gui" -n 0)
 }

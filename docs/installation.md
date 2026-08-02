@@ -37,7 +37,9 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 
 Language defaults to the system locale (English or Spanish). Override with the installer language combo, GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.
 
-The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip).
+The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip). After an update completes, restart srxy to load the new version.
+
+Linux CI builds the AppImage via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md) for relocatable build notes, checksum refresh, and smoke tests).
 
 Run the wizard from a checked-out tree with:
 

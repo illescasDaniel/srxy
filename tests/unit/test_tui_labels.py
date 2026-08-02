@@ -5,34 +5,52 @@ from pathlib import Path
 import pytest
 
 from srxy.adapters.inbound.tui.labels import (
-	MATCH_SOURCE_LABELS,
-	OPTION_LABELS,
 	format_tui_match_labels,
 	option_hint,
 	option_label,
 )
 from srxy.domain.models import FileSearchResult, LineMatch
+from srxy.i18n import set_language, tr
 
 
 pytestmark = pytest.mark.unit
 
+_OPTION_IDS = (
+	"so-ocr",
+	"so-semantic",
+	"so-names",
+	"so-content",
+	"so-docs-tags",
+	"so-hidden",
+	"so-noise",
+	"so-noise-files",
+	"so-match-skipped-names",
+	"so-archives",
+	"so-subdirs",
+	"so-enable-all",
+	"so-semantic-image",
+	"so-transcribe",
+)
+
 
 def test_given_option_ids_when_resolving_labels_then_returns_plain_language():
-	assert option_label("so-ocr") == "Text in images"
-	assert option_hint("so-ocr") == "Read text in photos, scans, and PDF pages"
-	assert option_label("so-semantic") == "Similar meaning"
+	set_language("en")
+	assert option_label("so-ocr") == tr("gui.options.ocr")
+	assert option_hint("so-ocr") == tr("tui.hint.ocr")
+	assert option_label("so-semantic") == tr("gui.options.semantic")
 
 
 def test_given_all_option_ids_when_resolving_then_each_has_label_and_hint():
-	for checkbox_id, (label, hint) in OPTION_LABELS.items():
-		assert option_label(checkbox_id) == label
-		assert option_hint(checkbox_id) == hint
+	set_language("en")
+	for checkbox_id in _OPTION_IDS:
+		label = option_label(checkbox_id)
+		hint = option_hint(checkbox_id)
 		assert label
 		assert hint
 
 
 def test_given_result_with_sources_when_formatting_tui_labels_then_maps_known_sources():
-	# given
+	set_language("en")
 	result = FileSearchResult(
 		path=Path(__file__),
 		score=0.8,
@@ -42,10 +60,6 @@ def test_given_result_with_sources_when_formatting_tui_labels_then_maps_known_so
 			LineMatch(line_number=1, text="world", score=0.9, location_kind="ocr"),
 		],
 	)
-
-	# when
 	labels = format_tui_match_labels(result, threshold=0.35, semantic_image_threshold=0.18)
-
-	# then
-	assert "content" in labels
-	assert MATCH_SOURCE_LABELS["ocr"] in labels
+	assert tr("tui.match.content") in labels
+	assert tr("tui.match.image_text") in labels

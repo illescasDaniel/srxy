@@ -8,6 +8,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Static
 
 from srxy.adapters.inbound.tui.modals import DownloadProgressModal
+from srxy.application.model_preflight import download_progress_label, semantic_text_model_label
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]
@@ -26,7 +27,8 @@ def test_given_download_progress_modal_when_screenshot_then_matches_snapshot(the
 
 	async def run():
 		async with app.run_test(size=(80, 12)) as pilot:
-			app.push_screen(DownloadProgressModal("Downloading semantic text model…"), wait_for_dismiss=False)
+			label = semantic_text_model_label()
+			app.push_screen(DownloadProgressModal(download_progress_label(label)), wait_for_dismiss=False)
 			await pilot.pause()
 			modal = app.screen
 			assert isinstance(modal, DownloadProgressModal)

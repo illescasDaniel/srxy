@@ -11,7 +11,7 @@ from PySide6.QtCore import QCoreApplication
 from srxy.adapters.inbound.installer.controller import InstallerController
 
 
-pytestmark = [pytest.mark.integration, pytest.mark.gui]
+pytestmark = [pytest.mark.unit, pytest.mark.gui]
 
 _SNAPSHOTS = Path(__file__).resolve().parent / "snapshots"
 _UPDATE = os.environ.get("UPDATE_GUI_SNAPSHOTS", "").strip() in {"1", "true", "yes"}
@@ -39,7 +39,7 @@ def _chrome_tree(controller: InstallerController) -> str:
 		"  optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files",
 		"  pathCheckbox: Also let me run srxy from the Terminal",
 		"  languageCombo: English, Español",
-		"  buttons: Back, Next, Install, Uninstall, Close, Info (i), GPU warning (!)",
+		"  buttons: Back, Next, Install, Uninstall, Close, Browse…, Info (i), GPU warning (!)",
 		"  helpMenu: (installer uses language combo on mode page)",
 	]
 	return "\n".join(lines) + "\n"

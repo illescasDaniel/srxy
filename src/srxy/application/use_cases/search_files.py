@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import re
-import threading
 import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -10,7 +9,8 @@ from srxy.adapters.outbound.content.file_walker import is_names_only_path
 from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
 from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.matching.composite import CompositeMatcher
-from srxy.application.search_options import SEARCH_SOURCE_REQUIRED_MESSAGE
+from srxy.application.search_control import SearchCancelled
+from srxy.application.search_options import search_source_required_message
 from srxy.application.utils import normalize_text, query_words, word_pair_match_allowed
 from srxy.domain.file_query import (
 	FileQ,
@@ -734,6 +734,8 @@ def _execute_file_search(
 	on_result: Callable[[FileSearchResult], None] | None = None,
 	max_line_matches: int | None = None,
 	max_workers: int | None = None,
+	cancel_check: Callable[[], bool] | None = None,
+	allow_process_pool: bool = False,
 ) -> list[FileSearchResult]:
 	if max_line_matches is not None:
 		warnings.warn(
@@ -743,7 +745,7 @@ def _execute_file_search(
 		)
 		max_matches = max_line_matches
 	if not search_names and not search_contents:
-		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
+		raise ValueError(search_source_required_message())
 	extractor = _get_text_extractor()
 	images = _get_image_similarity()
 	cache = _get_content_cache()
@@ -754,7 +756,7 @@ def _execute_file_search(
 		or extractor.transcribe_requested(transcribe)
 		or images.requested(semantic_image)
 	):
-		raise ValueError(SEARCH_SOURCE_REQUIRED_MESSAGE)
+		raise ValueError(search_source_required_message())
 
 	effective_ocr = ocr if search_contents else False
 	effective_transcribe = transcribe if search_contents else False
@@ -771,15 +773,19 @@ def _execute_file_search(
 	cache.reset_run_file_hashes()
 	effective_line_threshold = threshold
 	search_root = root if root.is_dir() else root.parent
+	resolved_search_root = search_root.resolve()
 	matcher = CompositeMatcher()
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
 	from srxy.i18n import tr
 
+	_listing_progress_interval = 256
 	emit_activity(on_activity, tr("activity.listing_files"))
+	files: list[Path] = []
+	listed = 0
 	try:
-		files = walker.collect_files(
+		for file_path in walker.iter_files(
 			root,
 			skip_hidden_folders=skip_hidden_folders,
 			skip_noise_folders=skip_noise_folders,
@@ -787,7 +793,14 @@ def _execute_file_search(
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
-		)
+			cancel_check=cancel_check,
+		):
+			files.append(file_path)
+			listed += 1
+			if listed % _listing_progress_interval == 0:
+				emit_activity(on_activity, tr("activity.listing_files"), current=listed)
+	except SearchCancelled as error:
+		raise SearchCancelled(results=results, skipped_files=skipped_files or error.skipped_files) from error
 	finally:
 		clear_activity(on_activity)
 	if images.is_active(effective_semantic_image) and any(images.is_image_path(file_path) for file_path in files):
@@ -803,12 +816,15 @@ def _execute_file_search(
 	from srxy.application.matching.registry import is_matcher_available
 	from srxy.domain.models import MatchType
 
-	def _submit_file(file_path: Path) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+	def _submit_file(
+		file_path: Path,
+		*,
+		activity: ActivityCallback | None = None,
+	) -> tuple[FileSearchResult | None, list[SkippedFile]]:
 		# Captures all search parameters from the enclosing scope. Each call is
 		# self-contained so no shared mutable state is touched inside the worker.
-		# on_activity is intentionally omitted: concurrent activity messages from
-		# multiple threads would conflict in the TUI; the caller's spinner covers
-		# the wait instead.
+		# Activity is passed only for sequential search; concurrent pools omit it
+		# because overlapping OCR/transcribe labels would conflict in the TUI.
 		names_only = is_names_only_path(
 			file_path,
 			search_root=search_root,
@@ -816,6 +832,7 @@ def _execute_file_search(
 			skip_noise_folders=skip_noise_folders,
 			skip_noise_files=skip_noise_files,
 			match_skipped_names=match_skipped_names,
+			resolved_search_root=resolved_search_root,
 		)
 		file_search_contents = search_contents and not names_only
 		return _search_single_file(
@@ -836,6 +853,7 @@ def _execute_file_search(
 			query_image_embedding=query_image_embedding if file_search_contents else None,
 			semantic_image_threshold=semantic_image_threshold,
 			transcribe_threshold=transcribe_threshold,
+			on_activity=activity,
 		)
 
 	# Execution strategy selection:
@@ -854,10 +872,10 @@ def _execute_file_search(
 	#   (SRXY_SEMANTIC=1) is excluded because loading the ~400 MB embedding model in
 	#   every worker would be prohibitively slow and memory-heavy.
 	#
-	#   SAFETY: the process pool must only be started from the main thread.  When
-	#   called from a background thread (e.g. the TUI's asyncio.to_thread worker),
-	#   fork() inherits all open file descriptors including Textual's terminal
-	#   raw-mode handles, which corrupts the terminal state when child processes exit.
+	#   SAFETY: only enable the process pool when ``allow_process_pool`` is set.
+	#   TUI searches run on a background thread and must keep this off so fork()
+	#   does not inherit Textual's terminal raw-mode handles. GUI worker threads
+	#   and CLI callers set the flag explicitly.
 	#
 	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
 	_heavy = (
@@ -868,7 +886,7 @@ def _execute_file_search(
 	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
 	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
 	_use_processes = (
-		threading.current_thread() is threading.main_thread()
+		allow_process_pool
 		and not _use_threads
 		and len(files) >= _MIN_PROCESS_FILES
 		and max_workers != 1
@@ -878,13 +896,17 @@ def _execute_file_search(
 
 	emit_activity(on_activity, tr("activity.searching"))
 	completed = 0
-	from srxy.application.search_control import SearchCancelled
+	cancelled = False
 
 	try:
 		if _use_threads:
-			with ThreadPoolExecutor(max_workers=max_workers) as pool:
+			pool = ThreadPoolExecutor(max_workers=max_workers)
+			try:
 				future_to_path = {pool.submit(_submit_file, file_path): file_path for file_path in files}
 				for future in as_completed(future_to_path):
+					if cancel_check is not None and cancel_check():
+						pool.shutdown(wait=False, cancel_futures=True)
+						raise SearchCancelled()
 					result, file_skipped = future.result()
 					completed += 1
 					if skipped_files is not None:
@@ -896,8 +918,11 @@ def _execute_file_search(
 					results.append(result)
 					if on_result is not None:
 						on_result(result)
+			finally:
+				pool.shutdown(wait=True)
 		elif _use_processes:
-			with ProcessPoolExecutor(max_workers=max_workers, initializer=_init_proc_worker) as pool:
+			pool = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_proc_worker)
+			try:
 				futures = {}
 				for file_path in files:
 					names_only = is_names_only_path(
@@ -907,6 +932,7 @@ def _execute_file_search(
 						skip_noise_folders=skip_noise_folders,
 						skip_noise_files=skip_noise_files,
 						match_skipped_names=match_skipped_names,
+						resolved_search_root=resolved_search_root,
 					)
 					file_search_contents = search_contents and not names_only
 					futures[
@@ -927,6 +953,9 @@ def _execute_file_search(
 						)
 					] = file_path
 				for future in as_completed(futures):
+					if cancel_check is not None and cancel_check():
+						pool.shutdown(wait=False, cancel_futures=True)
+						raise SearchCancelled()
 					result, file_skipped = future.result()
 					completed += 1
 					if skipped_files is not None:
@@ -938,9 +967,13 @@ def _execute_file_search(
 					results.append(result)
 					if on_result is not None:
 						on_result(result)
+			finally:
+				pool.shutdown(wait=True)
 		else:
 			for file_path in files:
-				result, file_skipped = _submit_file(file_path)
+				if cancel_check is not None and cancel_check():
+					raise SearchCancelled()
+				result, file_skipped = _submit_file(file_path, activity=on_activity)
 				completed += 1
 				if skipped_files is not None:
 					skipped_files.extend(file_skipped)
@@ -952,9 +985,12 @@ def _execute_file_search(
 				if on_result is not None:
 					on_result(result)
 	except SearchCancelled:
-		pass
+		cancelled = True
 	finally:
 		clear_activity(on_activity)
+
+	if cancelled:
+		raise SearchCancelled(results=results, skipped_files=skipped_files or [])
 
 	results.sort(key=lambda item: item.score, reverse=True)
 	if limit is not None:
@@ -1007,6 +1043,8 @@ class FileSearchUseCase:
 		on_result: Callable[[FileSearchResult], None] | None = None,
 		max_line_matches: int | None = None,
 		max_workers: int | None = None,
+		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	) -> list[FileSearchResult]:
 		previous = _snapshot_content_ports()
 		if self._text_extractor is not None:
@@ -1044,6 +1082,8 @@ class FileSearchUseCase:
 				on_result=on_result,
 				max_line_matches=max_line_matches,
 				max_workers=max_workers,
+				cancel_check=cancel_check,
+				allow_process_pool=allow_process_pool,
 			)
 		finally:
 			_restore_content_ports(previous)
@@ -1077,6 +1117,8 @@ def magic_file_search(
 	on_result: Callable[[FileSearchResult], None] | None = None,
 	max_line_matches: int | None = None,
 	max_workers: int | None = None,
+	cancel_check: Callable[[], bool] | None = None,
+	allow_process_pool: bool = False,
 ) -> list[FileSearchResult]:
 	"""Public library facade — builds a default ``FileSearchUseCase``."""
 	return FileSearchUseCase(text_extractor=_get_text_extractor()).search(
@@ -1106,4 +1148,6 @@ def magic_file_search(
 		on_result=on_result,
 		max_line_matches=max_line_matches,
 		max_workers=max_workers,
+		cancel_check=cancel_check,
+		allow_process_pool=allow_process_pool,
 	)

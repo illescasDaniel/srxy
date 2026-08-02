@@ -6,7 +6,11 @@ from textual.containers import Horizontal, Vertical
 from textual.message import Message
 from textual.widgets import Button, Input, Label, Select, Static
 
-from srxy.adapters.inbound.tui.labels import QUERY_ADD_TERM, QUERY_ADVANCED_PLACEHOLDER, QUERY_TERM_PLACEHOLDER
+from srxy.adapters.inbound.tui.labels import (
+	query_add_term,
+	query_advanced_placeholder,
+	query_term_placeholder,
+)
 from srxy.domain.file_query import (
 	FileQ,
 	FileQueryParseError,
@@ -120,12 +124,12 @@ class QueryBuilder(Horizontal):
 				yield from self._compose_row(index, term=term, join=join or _DEFAULT_JOIN)
 			yield Input(
 				value=self._initial_query,
-				placeholder=QUERY_ADVANCED_PLACEHOLDER,
+				placeholder=query_advanced_placeholder(),
 				id="query-raw-input",
 			)
 			yield Static("", id="query-preview")
 			with Horizontal(id="query-actions"):
-				yield Button(QUERY_ADD_TERM, id="add-term-button", variant="default")
+				yield Button(query_add_term(), id="add-term-button", variant="default")
 				yield Button("Advanced", id="mode-toggle-button", variant="default")
 
 	def on_mount(self):
@@ -143,7 +147,7 @@ class QueryBuilder(Horizontal):
 					compact=True,
 				)
 			)
-		widgets.append(Input(value=term, placeholder=QUERY_TERM_PLACEHOLDER, id=f"query-term-{index}"))
+		widgets.append(Input(value=term, placeholder=query_term_placeholder(), id=f"query-term-{index}"))
 		if index > 0:
 			widgets.append(Button("×", id=f"query-remove-{index}", variant="default"))
 		return widgets

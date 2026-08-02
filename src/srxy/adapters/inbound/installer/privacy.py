@@ -84,20 +84,26 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 	)
 
 
-def _title_key(*, for_app: bool) -> str:
-	return "privacy.app_title" if for_app else "privacy.title"
+PRIVACY_NOTICE_VERSION = "1"
+
+
+def _copy_key(stem: str, *, for_app: bool) -> str:
+	"""Pick installer vs in-app catalog key for shared privacy prose."""
+	if stem == "title":
+		return "privacy.app_title" if for_app else "privacy.title"
+	return f"privacy.app_{stem}" if for_app else f"privacy.{stem}"
 
 
 def privacy_disclaimer_text(*, for_app: bool = False) -> str:
 	"""Plain-text notice (docs / fallbacks)."""
 	parts = [
-		tr(_title_key(for_app=for_app)),
+		tr(_copy_key("title", for_app=for_app)),
 		"",
-		tr("privacy.intro_mit"),
+		tr(_copy_key("intro_mit", for_app=for_app)),
 		"",
-		tr("privacy.intro_downloads"),
+		tr(_copy_key("intro_downloads", for_app=for_app)),
 		"",
-		tr("privacy.what_heading"),
+		tr(_copy_key("what_heading", for_app=for_app)),
 		"",
 		f"• {_plain_link(*_UV)}",
 		f"• {_plain_link(*_PYPI)} — {tr('privacy.includes_qt')}:",
@@ -122,7 +128,7 @@ def privacy_disclaimer_text(*, for_app: bool = False) -> str:
 		f"• {tr('privacy.bullet_third_party')}",
 		f"• {tr('privacy.bullet_cache')}",
 		"",
-		tr("privacy.ack_footer"),
+		tr(_copy_key("ack_footer", for_app=for_app)),
 	]
 	return "\n".join(parts)
 
@@ -130,10 +136,10 @@ def privacy_disclaimer_text(*, for_app: bool = False) -> str:
 def privacy_disclaimer_html(*, for_app: bool = False) -> str:
 	"""Rich-text notice with clickable links for the installer / About UI."""
 	parts = [
-		f"<p><b>{escape(tr(_title_key(for_app=for_app)))}</b></p>",
-		f"<p>{escape(tr('privacy.intro_mit'))}</p>",
-		f"<p>{escape(tr('privacy.intro_downloads'))}</p>",
-		f"<p><b>{escape(tr('privacy.what_heading'))}</b></p>",
+		f"<p><b>{escape(tr(_copy_key('title', for_app=for_app)))}</b></p>",
+		f"<p>{escape(tr(_copy_key('intro_mit', for_app=for_app)))}</p>",
+		f"<p>{escape(tr(_copy_key('intro_downloads', for_app=for_app)))}</p>",
+		f"<p><b>{escape(tr(_copy_key('what_heading', for_app=for_app)))}</b></p>",
 		"<ul>",
 		f"<li>{_html_link(*_UV)}</li>",
 		f"<li>{_html_link(*_PYPI)} — {escape(tr('privacy.includes_qt'))}:<br/>{_html_link(*_QT)}</li>",
@@ -157,12 +163,13 @@ def privacy_disclaimer_html(*, for_app: bool = False) -> str:
 		f"<li>{escape(tr('privacy.bullet_third_party'))}</li>",
 		f"<li>{escape(tr('privacy.bullet_cache'))}</li>",
 		"</ul>",
-		f"<p>{escape(tr('privacy.ack_footer'))}</p>",
+		f"<p>{escape(tr(_copy_key('ack_footer', for_app=for_app)))}</p>",
 	]
 	return "\n".join(parts)
 
 
 __all__ = [
+	"PRIVACY_NOTICE_VERSION",
 	"privacy_disclaimer_html",
 	"privacy_disclaimer_text",
 ]

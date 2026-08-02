@@ -3,10 +3,8 @@ from __future__ import annotations
 import argparse
 import asyncio
 from collections.abc import Callable
-from pathlib import Path
 from typing import Any, Protocol
 
-from srxy.adapters.inbound.cli.cli import apply_args_to_env
 from srxy.adapters.inbound.tui.modals import DownloadConfirmModal, DownloadProgressModal
 from srxy.adapters.outbound.models.model_store import (
 	download_semantic_image_model,
@@ -20,27 +18,15 @@ from srxy.adapters.outbound.models.model_store import (
 	semantic_image_model_missing_message,
 	semantic_text_model_dir,
 	semantic_text_model_missing_message,
-	transcribe_faster_whisper_model_dir,
 	transcribe_model_missing_message,
-	transcribe_transformers_model_dir,
 )
-from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_requested, ocr_unavailable_message
-from srxy.adapters.outbound.semantic.semantic_image import (
-	is_semantic_image_available,
-	semantic_image_requested,
-	semantic_image_unavailable_message,
-)
-from srxy.adapters.outbound.transcribe.transcribe_text import (
-	ffmpeg_available,
-	ffmpeg_unavailable_message,
-	transcribe_deps_installed,
-	transcribe_requested,
-	transcribe_unavailable_message,
-)
-from srxy.application.matching.semantic import (
-	semantic_deps_unavailable_message,
-	semantic_env_enabled,
-	sentence_transformers_installed,
+from srxy.application.deps_preflight import deps_only_preflight
+from srxy.application.model_preflight import (
+	download_progress_label,
+	format_download_prompt,
+	semantic_image_model_label,
+	semantic_text_model_label,
+	transcribe_model_download_info,
 )
 
 
@@ -55,29 +41,18 @@ class TuiPreflightApp(Protocol):
 
 
 async def run_tui_preflight(app: Any, args: argparse.Namespace) -> str | None:
-	apply_args_to_env(args)
+	error = deps_only_preflight(args)
+	if error is not None:
+		return error
 
-	if ocr_requested(args.ocr or args.semantic_all) and not is_ocr_available():
-		return ocr_unavailable_message()
-
-	if transcribe_requested(args.transcribe or args.semantic_all) and not transcribe_deps_installed():
-		return transcribe_unavailable_message()
-	if transcribe_requested(args.transcribe or args.semantic_all) and not ffmpeg_available():
-		return ffmpeg_unavailable_message()
-	if transcribe_requested(args.transcribe or args.semantic_all) and not await _ensure_transcribe_model_tui(app):
+	if not await _ensure_transcribe_model_tui(app, args):
 		return transcribe_model_missing_message()
 
-	if semantic_env_enabled() and (args.semantic or args.semantic_all):
-		if not sentence_transformers_installed():
-			return semantic_deps_unavailable_message()
-		if not await _ensure_semantic_text_model_tui(app):
-			return semantic_text_model_missing_message()
+	if (args.semantic or args.semantic_all) and not await _ensure_semantic_text_model_tui(app):
+		return semantic_text_model_missing_message()
 
-	if semantic_image_requested(args.semantic_image or args.semantic_all):
-		if not is_semantic_image_available():
-			return semantic_image_unavailable_message()
-		if not await _ensure_semantic_image_model_tui(app):
-			return semantic_image_model_missing_message()
+	if (args.semantic_image or args.semantic_all) and not await _ensure_semantic_image_model_tui(app):
+		return semantic_image_model_missing_message()
 
 	return None
 
@@ -102,48 +77,34 @@ async def _run_download_with_progress(
 async def _ensure_semantic_text_model_tui(app: TuiPreflightApp) -> bool:
 	if ensure_semantic_text_model(interactive=False):
 		return True
-	if not await app.push_screen_wait(
-		DownloadConfirmModal(_download_prompt("Semantic text model", semantic_text_model_dir()))
-	):
+	label = semantic_text_model_label()
+	if not await app.push_screen_wait(DownloadConfirmModal(format_download_prompt(label, semantic_text_model_dir()))):
 		return False
-	await _run_download_with_progress(app, "Downloading semantic text model…", download_semantic_text_model)
+	await _run_download_with_progress(app, download_progress_label(label), download_semantic_text_model)
 	return True
 
 
 async def _ensure_semantic_image_model_tui(app: TuiPreflightApp) -> bool:
 	if ensure_semantic_image_model(interactive=False):
 		return True
-	if not await app.push_screen_wait(
-		DownloadConfirmModal(_download_prompt("Semantic image model", semantic_image_model_dir()))
-	):
+	label = semantic_image_model_label()
+	if not await app.push_screen_wait(DownloadConfirmModal(format_download_prompt(label, semantic_image_model_dir()))):
 		return False
-	await _run_download_with_progress(app, "Downloading semantic image model…", download_semantic_image_model)
+	await _run_download_with_progress(app, download_progress_label(label), download_semantic_image_model)
 	return True
 
 
-async def _ensure_transcribe_model_tui(app: TuiPreflightApp) -> bool:
+async def _ensure_transcribe_model_tui(app: TuiPreflightApp, args: argparse.Namespace) -> bool:
+	from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_requested
+
+	if not transcribe_requested(args.transcribe or args.semantic_all):
+		return True
 	if ensure_transcribe_model(interactive=False):
 		return True
-	from srxy.adapters.outbound.models.device import resolve_transcribe_device, transcribe_backend_for_device
-
-	device = resolve_transcribe_device()
-	backend = transcribe_backend_for_device(device)
-	if backend == "transformers":
-		target = transcribe_transformers_model_dir()
-		label = "Transcription model (transformers)"
-		size_hint = "~290 MB"
-	else:
-		target = transcribe_faster_whisper_model_dir()
-		label = "Transcription model (faster-whisper)"
-		size_hint = "~150 MB"
+	label, size_hint, target = transcribe_model_download_info()
 	if is_model_installed(target):
 		return True
-	if not await app.push_screen_wait(DownloadConfirmModal(_download_prompt(label, target, size_hint=size_hint))):
+	if not await app.push_screen_wait(DownloadConfirmModal(format_download_prompt(label, target, size_hint=size_hint))):
 		return False
-	await _run_download_with_progress(app, f"Downloading {label}…", download_transcribe_model)
+	await _run_download_with_progress(app, download_progress_label(label), download_transcribe_model)
 	return True
-
-
-def _download_prompt(label: str, target_dir: Path, *, size_hint: str = "") -> str:
-	hint = f" ({size_hint})" if size_hint else ""
-	return f"{label} is not cached at {target_dir}.\nDownload{hint}?"

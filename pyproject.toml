@@ -158,6 +158,7 @@ bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark 
 export-api = { cmd = "uv run python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
 export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
 export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
+export-installer-screenshot = { cmd = "./scripts/docs/export_installer_screenshot.sh", help = "regenerate installer docs screenshot" }
 upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
 test-package = { cmd = "./scripts/test-package.sh", help = "install from PyPI into a fresh venv and smoke-test" }
 format = { cmd = "uv run ruff check --fix src tests && uv run ruff format src tests", help = "format code" }

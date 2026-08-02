@@ -4,12 +4,18 @@ from __future__ import annotations
 
 import os
 import pwd
-import shutil
+from dataclasses import dataclass
 from pathlib import Path
 
 
 PATH_BEGIN = "# >>> srxy PATH >>>"
 PATH_END = "# <<< srxy PATH <<<"
+
+
+@dataclass(frozen=True, slots=True)
+class PathBlockRemovalResult:
+	changed: bool
+	incomplete_block: bool = False
 
 
 def detect_login_shell() -> str:
@@ -21,9 +27,6 @@ def detect_login_shell() -> str:
 		if entry.pw_shell:
 			return Path(entry.pw_shell).name
 	except KeyError:
-		pass
-	if shutil.which("getent"):
-		# Best-effort; ignore failures
 		pass
 	return "bash"
 
@@ -48,31 +51,29 @@ def _block_for_shell(bin_dir: Path, *, shell_name: str) -> str:
 	return f"{PATH_BEGIN}\n{body}\n{PATH_END}\n"
 
 
-def remove_path_block(rc_path: Path) -> bool:
-	"""Remove an existing srxy PATH block. Returns True if the file changed."""
+def remove_path_block(rc_path: Path) -> PathBlockRemovalResult:
+	"""Remove an existing srxy PATH block. Leaves the file intact if the end marker is missing."""
 	if not rc_path.is_file():
-		return False
+		return PathBlockRemovalResult(changed=False)
 	try:
 		text = rc_path.read_text(encoding="utf-8")
 	except OSError:
-		return False
+		return PathBlockRemovalResult(changed=False)
 	begin = text.find(PATH_BEGIN)
 	if begin < 0:
-		return False
+		return PathBlockRemovalResult(changed=False)
 	end = text.find(PATH_END, begin)
 	if end < 0:
-		# Truncate from marker to EOF if end marker missing
-		new_text = text[:begin].rstrip() + ("\n" if text[:begin].strip() else "")
-	else:
-		end += len(PATH_END)
-		while end < len(text) and text[end] == "\n":
-			end += 1
-		new_text = text[:begin] + text[end:]
-		new_text = new_text.rstrip() + ("\n" if new_text.strip() else "")
+		return PathBlockRemovalResult(changed=False, incomplete_block=True)
+	end += len(PATH_END)
+	while end < len(text) and text[end] == "\n":
+		end += 1
+	new_text = text[:begin] + text[end:]
+	new_text = new_text.rstrip() + ("\n" if new_text.strip() else "")
 	if new_text == text:
-		return False
+		return PathBlockRemovalResult(changed=False)
 	rc_path.write_text(new_text, encoding="utf-8")
-	return True
+	return PathBlockRemovalResult(changed=True)
 
 
 def ensure_path_block(
@@ -99,7 +100,9 @@ def ensure_path_block(
 	return target
 
 
-def remove_srxy_path_from_shell(*, shell_name: str | None = None, rc_path: Path | None = None) -> bool:
+def remove_srxy_path_from_shell(
+	*, shell_name: str | None = None, rc_path: Path | None = None
+) -> PathBlockRemovalResult:
 	target = rc_path if rc_path is not None else shell_rc_path(shell_name)
 	return remove_path_block(target)
 
@@ -107,6 +110,7 @@ def remove_srxy_path_from_shell(*, shell_name: str | None = None, rc_path: Path 
 __all__ = [
 	"PATH_BEGIN",
 	"PATH_END",
+	"PathBlockRemovalResult",
 	"detect_login_shell",
 	"ensure_path_block",
 	"remove_path_block",

@@ -20,6 +20,7 @@ from srxy.adapters.outbound.models.model_store import (
 	transcribe_faster_whisper_model_dir,
 	transcribe_transformers_model_dir,
 )
+from srxy.i18n import tr
 
 
 @dataclass(frozen=True, slots=True)
@@ -29,9 +30,32 @@ class PendingModelDownload:
 	prompt: str
 
 
+def semantic_text_model_label() -> str:
+	return tr("model.label.semantic_text")
+
+
+def semantic_image_model_label() -> str:
+	return tr("model.label.semantic_image")
+
+
+def transcribe_model_download_info() -> tuple[str, str, Path]:
+	from srxy.adapters.outbound.models.device import resolve_transcribe_device, transcribe_backend_for_device
+
+	device = resolve_transcribe_device()
+	backend = transcribe_backend_for_device(device)
+	if backend == "transformers":
+		return tr("model.label.transcribe_transformers"), "~290 MB", transcribe_transformers_model_dir()
+	return tr("model.label.transcribe_faster_whisper"), "~150 MB", transcribe_faster_whisper_model_dir()
+
+
 def format_download_prompt(label: str, target_dir: Path, *, size_hint: str = "") -> str:
-	hint = f" ({size_hint})" if size_hint else ""
-	return f"{label} is not cached at {target_dir}.\nDownload{hint}?"
+	if size_hint:
+		return tr("model.download_prompt_with_size", label=label, path=target_dir, size_hint=size_hint)
+	return tr("model.download_prompt", label=label, path=target_dir)
+
+
+def download_progress_label(label: str) -> str:
+	return tr("status.downloading", label=label)
 
 
 def list_pending_model_downloads(args: argparse.Namespace) -> list[PendingModelDownload]:
@@ -46,7 +70,7 @@ def list_pending_model_downloads(args: argparse.Namespace) -> list[PendingModelD
 	want_transcribe = bool(getattr(args, "transcribe", False) or getattr(args, "semantic_all", False))
 
 	if want_semantic and not ensure_semantic_text_model(interactive=False):
-		label = "Semantic text model"
+		label = semantic_text_model_label()
 		pending.append(
 			PendingModelDownload(
 				kind="semantic_text",
@@ -56,7 +80,7 @@ def list_pending_model_downloads(args: argparse.Namespace) -> list[PendingModelD
 		)
 
 	if want_semantic_image and not ensure_semantic_image_model(interactive=False):
-		label = "Semantic image model"
+		label = semantic_image_model_label()
 		pending.append(
 			PendingModelDownload(
 				kind="semantic_image",
@@ -66,18 +90,7 @@ def list_pending_model_downloads(args: argparse.Namespace) -> list[PendingModelD
 		)
 
 	if want_transcribe and not ensure_transcribe_model(interactive=False):
-		from srxy.adapters.outbound.models.device import resolve_transcribe_device, transcribe_backend_for_device
-
-		device = resolve_transcribe_device()
-		backend = transcribe_backend_for_device(device)
-		if backend == "transformers":
-			target = transcribe_transformers_model_dir()
-			label = "Transcription model (transformers)"
-			size_hint = "~290 MB"
-		else:
-			target = transcribe_faster_whisper_model_dir()
-			label = "Transcription model (faster-whisper)"
-			size_hint = "~150 MB"
+		label, size_hint, target = transcribe_model_download_info()
 		if not is_model_installed(target):
 			pending.append(
 				PendingModelDownload(
@@ -103,6 +116,10 @@ def download_fn_for_kind(kind: str) -> Callable[..., None]:
 __all__ = [
 	"PendingModelDownload",
 	"download_fn_for_kind",
+	"download_progress_label",
 	"format_download_prompt",
 	"list_pending_model_downloads",
+	"semantic_image_model_label",
+	"semantic_text_model_label",
+	"transcribe_model_download_info",
 ]

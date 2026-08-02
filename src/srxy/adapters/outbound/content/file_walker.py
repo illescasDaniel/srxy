@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import fnmatch
 import os
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from srxy.adapters.outbound.archive.archive_search import (
@@ -15,9 +15,13 @@ from srxy.adapters.outbound.archive.archive_search import (
 	list_archive_members,
 	split_archive_member_path,
 )
+from srxy.application.search_control import SearchCancelled
 
 
 _NOISE_DIR_NAMES = frozenset({"__pycache__", "node_modules"})
+
+# Skip kernel pseudo-filesystems when walking from filesystem root.
+_PSEUDO_FS_DIR_NAMES = frozenset({"proc", "sys", "dev", "run"})
 
 _NOISE_FILE_BASENAMES = frozenset(
 	{
@@ -152,13 +156,15 @@ def is_names_only_path(
 	skip_noise_folders: bool = True,
 	skip_noise_files: bool = True,
 	match_skipped_names: bool = False,
+	resolved_search_root: Path | None = None,
 ) -> bool:
 	"""True when path is only searchable for names (skipped category + match_skipped_names)."""
 	if not match_skipped_names:
 		return False
 	fs_path = _filesystem_path_for_skip_check(path)
+	resolved_root = resolved_search_root if resolved_search_root is not None else search_root.resolve()
 	try:
-		relative = fs_path.resolve().relative_to(search_root.resolve())
+		relative = fs_path.resolve().relative_to(resolved_root)
 	except ValueError:
 		relative = fs_path
 	parts = relative.parts
@@ -178,6 +184,29 @@ def is_names_only_path(
 	)
 
 
+def _filter_dirnames(
+	dirnames: list[str],
+	*,
+	at_filesystem_root: bool,
+	skip_hidden_folders: bool,
+	skip_noise_folders: bool,
+	match_skipped_names: bool,
+) -> list[str]:
+	filtered: list[str] = []
+	for name in dirnames:
+		if at_filesystem_root and name in _PSEUDO_FS_DIR_NAMES:
+			continue
+		if _should_skip_dirname(
+			name,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			match_skipped_names=match_skipped_names,
+		):
+			continue
+		filtered.append(name)
+	return filtered
+
+
 def iter_files(
 	root: Path,
 	*,
@@ -187,6 +216,7 @@ def iter_files(
 	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
+	cancel_check: Callable[[], bool] | None = None,
 ) -> Iterator[Path]:
 	if root.is_file():
 		yield root
@@ -194,20 +224,21 @@ def iter_files(
 	if not root.is_dir():
 		return
 
+	listed = 0
+	at_filesystem_root = root.resolve() == Path("/")
 	for dirpath, dirnames, filenames in os.walk(root):
+		if cancel_check is not None and cancel_check():
+			raise SearchCancelled()
 		if not include_subdirectories:
 			dirnames[:] = []
 		else:
-			dirnames[:] = [
-				name
-				for name in dirnames
-				if not _should_skip_dirname(
-					name,
-					skip_hidden_folders=skip_hidden_folders,
-					skip_noise_folders=skip_noise_folders,
-					match_skipped_names=match_skipped_names,
-				)
-			]
+			dirnames[:] = _filter_dirnames(
+				dirnames,
+				at_filesystem_root=at_filesystem_root and Path(dirpath).resolve() == Path("/"),
+				skip_hidden_folders=skip_hidden_folders,
+				skip_noise_folders=skip_noise_folders,
+				match_skipped_names=match_skipped_names,
+			)
 		current = Path(dirpath)
 		for filename in filenames:
 			if _should_skip_filename(
@@ -219,6 +250,9 @@ def iter_files(
 				continue
 			file_path = current / filename
 			yield file_path
+			listed += 1
+			if cancel_check is not None and cancel_check():
+				raise SearchCancelled()
 			if include_archives and is_standalone_archive(file_path):
 				for member in list_archive_members(file_path):
 					yield archive_member_path(file_path, member)
@@ -233,6 +267,7 @@ def collect_files(
 	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
+	cancel_check: Callable[[], bool] | None = None,
 ) -> list[Path]:
 	return list(
 		iter_files(
@@ -243,6 +278,7 @@ def collect_files(
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			cancel_check=cancel_check,
 		)
 	)
 
@@ -260,6 +296,7 @@ class DefaultFileWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		cancel_check: Callable[[], bool] | None = None,
 	) -> Iterator[Path]:
 		yield from iter_files(
 			root,
@@ -269,6 +306,7 @@ class DefaultFileWalker:
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			cancel_check=cancel_check,
 		)
 
 	def collect_files(
@@ -281,6 +319,7 @@ class DefaultFileWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		cancel_check: Callable[[], bool] | None = None,
 	) -> list[Path]:
 		return collect_files(
 			root,
@@ -290,6 +329,7 @@ class DefaultFileWalker:
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			cancel_check=cancel_check,
 		)
 
 	def is_searchable(self, path: Path) -> bool:

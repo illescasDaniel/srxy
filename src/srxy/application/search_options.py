@@ -4,10 +4,10 @@ import argparse
 from dataclasses import dataclass
 
 
-SEARCH_SOURCE_REQUIRED_MESSAGE = (
-	"Enable File names and/or File contents. With File contents on, enable at least "
-	"one of Docs, tags & metadata; Text in images; Spoken words; or Visual description"
-)
+def search_source_required_message() -> str:
+	from srxy.i18n import tr
+
+	return tr("error.search_source_required")
 
 
 @dataclass(frozen=True, slots=True)

@@ -21,4 +21,6 @@ class FileSearchPort(Protocol):
 		on_progress: Callable[[int, int], None] | None = None,
 		on_activity: ActivityCallback | None = None,
 		on_result: Callable[[FileSearchResult], None] | None = None,
+		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	) -> tuple[list[FileSearchResult], list[SkippedFile]]: ...

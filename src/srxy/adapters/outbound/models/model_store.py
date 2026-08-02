@@ -265,30 +265,21 @@ def ensure_semantic_image_model(
 
 
 def semantic_text_model_missing_message() -> str:
-	path = semantic_text_model_dir()
-	return (
-		f"Semantic text model is not cached at {path}. "
-		"Run with --semantic on an interactive terminal to download it, "
-		"or set SRXY_AUTO_DOWNLOAD=1."
-	)
+	from srxy.i18n import tr
+
+	return tr("error.model_semantic_text_missing", path=semantic_text_model_dir())
 
 
 def semantic_image_model_missing_message() -> str:
-	path = semantic_image_model_dir()
-	return (
-		f"Semantic image model is not cached at {path}. "
-		"Run with --semantic-image on an interactive terminal to download it, "
-		"or set SRXY_AUTO_DOWNLOAD=1."
-	)
+	from srxy.i18n import tr
+
+	return tr("error.model_semantic_image_missing", path=semantic_image_model_dir())
 
 
 def transcribe_model_missing_message() -> str:
-	path = transcribe_model_root()
-	return (
-		f"Transcription model is not cached at {path}. "
-		"Run with --transcribe on an interactive terminal to download it, "
-		"or set SRXY_AUTO_DOWNLOAD=1."
-	)
+	from srxy.i18n import tr
+
+	return tr("error.model_transcribe_missing", path=transcribe_model_root())
 
 
 def ensure_transcribe_model(

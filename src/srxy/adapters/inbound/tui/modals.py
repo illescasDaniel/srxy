@@ -7,32 +7,35 @@ from textual.screen import ModalScreen
 from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Select, Static
 
 from srxy.adapters.inbound.tui.labels import (
-	BINARY_SKIP_HINT,
-	CLASSIC_MATCHING_HINT,
-	FILTER_LABEL_AUDIO_VIDEO_SIZE,
-	FILTER_LABEL_DOCUMENT_SIZE,
-	FILTER_LABEL_HITS_PER_FILE,
-	FILTER_LABEL_IMAGE_TEXT_SIZE,
-	FILTER_LABEL_MAX_RESULTS,
-	FILTER_LABEL_MIN_MATCH,
-	FILTER_LABEL_SPEECH_MIN,
-	FILTER_LABEL_VISUAL_MIN,
-	FILTER_SECTION_LIMITS,
-	FILTER_SECTION_SENSITIVITY,
-	SEARCH_OPTIONS_SECTION_HOW,
-	SEARCH_OPTIONS_SECTION_SCAN,
-	SEARCH_OPTIONS_SECTION_WHERE,
-	SEARCH_OPTIONS_SUBSECTION_NOISY,
+	binary_skip_hint,
+	classic_matching_hint,
 	option_hint,
 	option_label,
+	search_options_section_how,
+	search_options_section_scan,
+	search_options_section_where,
+	search_options_subsection_noisy,
+)
+from srxy.application.labels import (
+	filter_label_audio_video_size,
+	filter_label_document_size,
+	filter_label_hits_per_file,
+	filter_label_image_text_size,
+	filter_label_max_results,
+	filter_label_min_match,
+	filter_label_speech_min,
+	filter_label_visual_min,
+	filter_section_limits,
+	filter_section_sensitivity,
 )
 from srxy.application.search_filters import SearchFilters, validate_search_filters
 from srxy.application.search_options import (
-	SEARCH_SOURCE_REQUIRED_MESSAGE,
 	SearchOptions,
 	has_search_source,
+	search_source_required_message,
 )
 from srxy.application.size_limits import SizeLimits
+from srxy.i18n import tr
 
 
 class DownloadConfirmModal(ModalScreen[bool]):
@@ -72,8 +75,8 @@ class DownloadConfirmModal(ModalScreen[bool]):
 		with Vertical(id="download-dialog"):
 			yield Static(self._prompt, id="download-prompt")
 			with Grid(id="download-buttons"):
-				yield Button("Download", variant="primary", id="download-yes")
-				yield Button("Cancel", id="download-no")
+				yield Button(tr("tui.download"), variant="primary", id="download-yes")
+				yield Button(tr("common.cancel"), id="download-no")
 
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "download-yes":
@@ -124,7 +127,7 @@ class DownloadProgressModal(ModalScreen[None]):
 		with Vertical(id="download-progress-dialog"):
 			yield Static(self._label, id="download-progress-title")
 			yield ProgressBar(total=100, show_eta=False, id="download-progress-bar")
-			yield Label("Preparing download…", id="download-progress-status")
+			yield Label(tr("status.preparing_download"), id="download-progress-status")
 
 	def update_progress(self, current: int, total: int, message: str):
 		progress = self.query_one("#download-progress-bar", ProgressBar)
@@ -133,7 +136,7 @@ class DownloadProgressModal(ModalScreen[None]):
 			progress.update(total=total, progress=min(current, total))
 		else:
 			progress.update(total=100, progress=0)
-		status.update(message or "Downloading…")
+		status.update(message or tr("gui.downloading"))
 
 
 class HelpModal(ModalScreen[None]):
@@ -152,36 +155,13 @@ class HelpModal(ModalScreen[None]):
 	}
 	"""
 
-	HELP_TEXT = """\
-[bold]Srxy TUI[/]
-
-[b]Search[/b]
-  Enter / Ctrl+S   Run search
-  /              Focus query input
-  Warning Search Settings changed since last run — search again
-
-[b]Filters[/b]
-  Filters            Result limits, file size caps, and match sensitivity
-  Search options     Where to search, how to match, which files to scan
-
-[b]Results[/b]
-  j / k          Move selection
-  o              Open selected file
-  y              Copy selected file path
-  m              Copy focused preview match
-  M              Copy all preview matches
-  Scores         Shown as match percentages (e.g. 86%)
-
-[b]General[/b]
-  ?              Show this help
-  q / Ctrl+C     Quit
-"""
+	HELP_TEXT_ID = "help-text"
 
 	def compose(self) -> ComposeResult:
 		from srxy.i18n import get_language, tr
 
 		with Vertical(id="help-dialog"):
-			yield Static(self.HELP_TEXT, markup=True)
+			yield Static(tr("tui.help.text"), id=self.HELP_TEXT_ID, markup=True)
 			yield Static(tr("tui.language"), id="help-language-label")
 			yield Select(
 				(("English", "en"), ("Español", "es")),
@@ -189,7 +169,7 @@ class HelpModal(ModalScreen[None]):
 				id="help-language",
 				allow_blank=False,
 			)
-			yield Button("Close", variant="primary", id="help-close")
+			yield Button(tr("common.close"), variant="primary", id="help-close")
 
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "help-close":
@@ -198,7 +178,7 @@ class HelpModal(ModalScreen[None]):
 	@on(Select.Changed, "#help-language")
 	def _on_language_changed(self, event: Select.Changed):
 		from srxy.application.settings import set_language_setting
-		from srxy.i18n import get_language, set_language
+		from srxy.i18n import get_language, set_language, tr
 
 		value = event.value
 		if value not in {"en", "es"}:
@@ -207,6 +187,10 @@ class HelpModal(ModalScreen[None]):
 			return
 		set_language(str(value))
 		set_language_setting(str(value))
+		self.query_one(f"#{self.HELP_TEXT_ID}", Static).update(tr("tui.help.text"))
+		app = self.app
+		if hasattr(app, "_refresh_i18n"):
+			app._refresh_i18n()
 
 
 class SearchFiltersModal(ModalScreen[SearchFilters | None]):
@@ -297,30 +281,30 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 
 	def compose(self) -> ComposeResult:
 		with Vertical(id="search-filters-dialog"):
-			yield Static("Search filters", id="search-filters-title")
+			yield Static(tr("tui.search_filters"), id="search-filters-title")
 			with VerticalScroll(id="search-filters-scroll"):
-				yield Static(FILTER_SECTION_LIMITS, classes="search-filters-section")
-				yield Label(FILTER_LABEL_MAX_RESULTS, classes="search-filters-label")
+				yield Static(filter_section_limits(), classes="search-filters-section")
+				yield Label(filter_label_max_results(), classes="search-filters-label")
 				yield Input(
 					id="sf-top-files",
 					classes="search-filters-input",
 					placeholder="all",
 					compact=True,
 				)
-				yield Label(FILTER_LABEL_HITS_PER_FILE, classes="search-filters-label")
+				yield Label(filter_label_hits_per_file(), classes="search-filters-label")
 				yield Input(id="sf-max-matches", classes="search-filters-input", compact=True)
-				yield Label(FILTER_LABEL_DOCUMENT_SIZE, classes="search-filters-label")
+				yield Label(filter_label_document_size(), classes="search-filters-label")
 				yield Input(id="sf-size-text", classes="search-filters-input", compact=True)
-				yield Label(FILTER_LABEL_IMAGE_TEXT_SIZE, classes="search-filters-label")
+				yield Label(filter_label_image_text_size(), classes="search-filters-label")
 				yield Input(id="sf-size-ocr", classes="search-filters-input", compact=True)
-				yield Label(FILTER_LABEL_AUDIO_VIDEO_SIZE, classes="search-filters-label")
+				yield Label(filter_label_audio_video_size(), classes="search-filters-label")
 				yield Input(id="sf-size-transcribe", classes="search-filters-input", compact=True)
-				yield Static(FILTER_SECTION_SENSITIVITY, classes="search-filters-section")
-				yield Label(FILTER_LABEL_MIN_MATCH, classes="search-filters-label")
+				yield Static(filter_section_sensitivity(), classes="search-filters-section")
+				yield Label(filter_label_min_match(), classes="search-filters-label")
 				yield Input(id="sf-threshold", classes="search-filters-input", compact=True)
-				yield Label(FILTER_LABEL_VISUAL_MIN, classes="search-filters-label")
+				yield Label(filter_label_visual_min(), classes="search-filters-label")
 				yield Input(id="sf-semantic-image-threshold", classes="search-filters-input", compact=True)
-				yield Label(FILTER_LABEL_SPEECH_MIN, classes="search-filters-label")
+				yield Label(filter_label_speech_min(), classes="search-filters-label")
 				yield Input(id="sf-transcribe-threshold", classes="search-filters-input", compact=True)
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
@@ -528,23 +512,23 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			self._initial.semantic and self._initial.ocr and self._initial.transcribe and self._initial.semantic_image
 		)
 		with Vertical(id="search-options-dialog"):
-			yield Static("Search options", id="search-options-title")
+			yield Static(tr("tui.search_options"), id="search-options-title")
 			with VerticalScroll(id="search-options-scroll"):
-				yield Static(SEARCH_OPTIONS_SECTION_WHERE, classes="search-options-section")
+				yield Static(search_options_section_where(), classes="search-options-section")
 				yield from self._compose_option("so-names", value=self._initial.search_names)
 				yield from self._compose_option("so-content", value=self._initial.search_contents)
-				yield Static(SEARCH_OPTIONS_SECTION_HOW, classes="search-options-section")
-				yield Static(CLASSIC_MATCHING_HINT, classes="search-options-hint")
+				yield Static(search_options_section_how(), classes="search-options-section")
+				yield Static(classic_matching_hint(), classes="search-options-hint")
 				yield from self._compose_option("so-docs-tags", value=self._initial.search_docs_tags)
 				yield from self._compose_option("so-semantic", value=self._initial.semantic)
 				yield from self._compose_option("so-ocr", value=self._initial.ocr)
 				yield from self._compose_option("so-transcribe", value=self._initial.transcribe)
 				yield from self._compose_option("so-semantic-image", value=self._initial.semantic_image)
 				yield from self._compose_option("so-enable-all", value=all_powerups)
-				yield Static(SEARCH_OPTIONS_SECTION_SCAN, classes="search-options-section")
+				yield Static(search_options_section_scan(), classes="search-options-section")
 				yield from self._compose_option("so-subdirs", value=self._initial.include_subdirectories)
 				yield from self._compose_option("so-archives", value=self._initial.include_archives)
-				yield Static(SEARCH_OPTIONS_SUBSECTION_NOISY, classes="search-options-subsection")
+				yield Static(search_options_subsection_noisy(), classes="search-options-subsection")
 				yield from self._compose_option("so-hidden", value=self._initial.include_hidden, noisy=True)
 				yield from self._compose_option("so-noise", value=self._initial.include_noise, noisy=True)
 				yield from self._compose_option(
@@ -557,7 +541,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 					value=self._initial.match_skipped_names,
 					noisy=True,
 				)
-				yield Static(BINARY_SKIP_HINT, classes="search-options-hint")
+				yield Static(binary_skip_hint(), classes="search-options-hint")
 			yield Label("", id="search-options-error")
 			with Grid(id="search-options-buttons"):
 				yield Button("Cancel", id="search-options-cancel")
@@ -675,7 +659,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		error = self.query_one("#search-options-error", Label)
 		options = self._current_options()
 		if not has_search_source(options):
-			error.update(SEARCH_SOURCE_REQUIRED_MESSAGE)
+			error.update(search_source_required_message())
 			return
 		error.update("")
 		self.dismiss(options)
@@ -712,7 +696,7 @@ class ErrorModal(ModalScreen[None]):
 		with Vertical(id="error-dialog"):
 			# Plain text: Rich markup would swallow pip extras like [semantic].
 			yield Label(self._message, id="error-message", markup=False)
-			yield Button("Close", variant="primary", id="error-close")
+			yield Button(tr("common.close"), variant="primary", id="error-close")
 
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "error-close":

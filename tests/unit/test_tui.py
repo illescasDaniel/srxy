@@ -193,6 +193,7 @@ def test_given_matches_when_search_callbacks_fire_then_updates_table_live(tmp_pa
 		on_progress: Any,
 		on_activity: Any,
 		on_result: Any,
+		**_kwargs: Any,
 	):
 		on_progress(1, 2)
 		on_result(result)
@@ -356,6 +357,7 @@ def test_given_file_limit_when_results_stream_in_then_table_respects_top_n(tmp_p
 		on_progress: Any,
 		on_activity: Any,
 		on_result: Any,
+		**_kwargs: Any,
 	):
 		for result in results:
 			on_result(result)

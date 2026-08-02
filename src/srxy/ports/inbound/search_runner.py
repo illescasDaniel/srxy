@@ -18,4 +18,5 @@ class SearchRunnerPort(Protocol):
 		*,
 		on_event: Callable[[object], None],
 		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	): ...

@@ -36,6 +36,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 		search_runner=services.search_runner,
 		desktop=services.desktop,
 	)
+	app.aboutToQuit.connect(controller.shutdown)
 	engine.rootContext().setContextProperty("controller", controller)
 	qml_path = qml_dir() / "Main.qml"
 	engine.load(QUrl.fromLocalFile(str(qml_path)))

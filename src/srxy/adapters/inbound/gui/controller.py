@@ -4,27 +4,29 @@ from __future__ import annotations
 
 import argparse
 import json
+from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QThread, QUrl, Signal, Slot
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
 
-from srxy.adapters.inbound.cli.cli import apply_args_to_env, format_score_percent
+from srxy.adapters.inbound.cli.cli import apply_args_to_env
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
 	capabilities_to_dict,
+	default_capabilities,
 	probe_capabilities,
 	unavailable_reason,
 )
 from srxy.adapters.inbound.gui.help_text import help_text as lookup_help_text
 from srxy.adapters.inbound.gui.models import MatchesModel, ResultsModel
-from srxy.adapters.inbound.gui.preview import format_preview_html, format_preview_message
-from srxy.adapters.outbound.worker.search_worker import (
-	file_result_from_dict,
-	iter_subprocess_search_events,
-	skipped_file_from_dict,
+from srxy.adapters.inbound.gui.preview import (
+	PREVIEW_MAX_BYTES,
+	format_preview_for_file,
+	format_preview_message,
 )
+from srxy.adapters.outbound.worker.search_worker import iter_subprocess_search_events
+from srxy.application.deps_preflight import deps_only_preflight
 from srxy.application.model_preflight import (
 	PendingModelDownload,
 	download_fn_for_kind,
@@ -37,13 +39,14 @@ from srxy.application.search_filters import (
 	search_filters_from_args,
 	validate_search_filters,
 )
+from srxy.application.search_formatting import format_score_percent
 from srxy.application.search_options import (
-	SEARCH_SOURCE_REQUIRED_MESSAGE,
 	SearchOptions,
 	apply_search_options_to_args,
 	format_search_options_summary,
 	has_search_source,
 	search_options_from_args,
+	search_source_required_message,
 )
 from srxy.application.search_session import (
 	SearchActivityEvent,
@@ -52,6 +55,7 @@ from srxy.application.search_session import (
 	SearchProgressEvent,
 	SearchResultEvent,
 )
+from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import (
 	FileQ,
@@ -68,17 +72,21 @@ from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
 
-_PREVIEW_MAX_BYTES = 512_000
-
-
 class _SearchWorker(QObject):
 	event_ready = Signal(object)
 	finished = Signal()
 
-	def __init__(self, args: argparse.Namespace, search_runner: SearchRunnerPort):
+	def __init__(
+		self,
+		args: argparse.Namespace,
+		search_runner: SearchRunnerPort,
+		*,
+		on_subprocess: Callable[[object], None] | None = None,
+	):
 		super().__init__()
 		self._args = args
 		self._search_runner = search_runner
+		self._on_subprocess = on_subprocess
 		self._cancel = False
 
 	@Slot()
@@ -87,7 +95,12 @@ class _SearchWorker(QObject):
 		if runner.uses_subprocess(self._args):
 			self._run_subprocess()
 		else:
-			runner.run_blocking(self._args, on_event=self.event_ready.emit, cancel_check=lambda: self._cancel)
+			runner.run_blocking(
+				self._args,
+				on_event=self.event_ready.emit,
+				cancel_check=lambda: self._cancel,
+				allow_process_pool=True,
+			)
 		self.finished.emit()
 
 	def request_cancel(self):
@@ -100,49 +113,11 @@ class _SearchWorker(QObject):
 			async for event in iter_subprocess_search_events(
 				self._args,
 				cancel_check=lambda: self._cancel,
+				on_process=self._on_subprocess,
 			):
-				kind = event.get("type")
-				if kind == "progress":
-					current = event.get("current")
-					total = event.get("total")
-					if isinstance(current, int) and isinstance(total, int):
-						self.event_ready.emit(SearchProgressEvent(current, total))
-				elif kind == "activity":
-					message = event.get("message")
-					from srxy.domain.progress import ActivityUpdate
-
-					if message is None:
-						self.event_ready.emit(SearchActivityEvent(None))
-					elif isinstance(message, str):
-						current = event.get("current")
-						total = event.get("total")
-						self.event_ready.emit(
-							SearchActivityEvent(
-								ActivityUpdate(
-									label=message,
-									current=current if isinstance(current, int) else None,
-									total=total if isinstance(total, int) else None,
-								)
-							)
-						)
-				elif kind == "result":
-					data = event.get("result")
-					if isinstance(data, dict):
-						self.event_ready.emit(SearchResultEvent(file_result_from_dict(data)))
-				elif kind == "error":
-					self.event_ready.emit(SearchErrorEvent(str(event.get("message"))))
-				elif kind == "finished":
-					results_data = event.get("results")
-					skipped_data = event.get("skipped_files")
-					results = (
-						[file_result_from_dict(item) for item in results_data] if isinstance(results_data, list) else []
-					)
-					skipped = (
-						[skipped_file_from_dict(item) for item in skipped_data]
-						if isinstance(skipped_data, list)
-						else []
-					)
-					self.event_ready.emit(SearchFinishedEvent(results=results, skipped_files=skipped))
+				parsed = subprocess_event_to_search_event(event)
+				if parsed is not None:
+					self.event_ready.emit(parsed)
 
 		asyncio.run(_consume())
 
@@ -173,6 +148,14 @@ class _DownloadWorker(QObject):
 			self.finished.emit(True, "")
 		except Exception as error:  # noqa: BLE001 — surface any download failure to UI
 			self.finished.emit(False, str(error))
+
+
+class _CapabilitiesProbeWorker(QObject):
+	finished = Signal(object)
+
+	@Slot()
+	def run(self):
+		self.finished.emit(probe_capabilities())
 
 
 class _UpdateWorker(QObject):
@@ -260,7 +243,8 @@ class SearchController(QObject):
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
-		self._capabilities = probe_capabilities()
+		self._capabilities = default_capabilities()
+		self._capabilities_probing = True
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		apply_search_filters_to_args(self._args, self._filters)
@@ -273,6 +257,8 @@ class SearchController(QObject):
 		)
 		self._thread: QThread | None = None
 		self._worker: _SearchWorker | None = None
+		self._search_subprocess: object | None = None
+		self._default_result_limit_applied = False
 		self._download_thread: QThread | None = None
 		self._download_worker: _DownloadWorker | None = None
 		self._download_queue: list[PendingModelDownload] = []
@@ -288,9 +274,12 @@ class SearchController(QObject):
 		self._update_message = ""
 		self._update_can_apply = False
 		self._update_busy = False
+		self._update_silent = False
 		self._about_open = False
 		self._update_thread: QThread | None = None
 		self._update_worker: _UpdateWorker | None = None
+		self._capabilities_thread: QThread | None = None
+		self._capabilities_worker: _CapabilitiesProbeWorker | None = None
 		from srxy.i18n import get_language, resolve_language
 
 		lang = getattr(args, "language", None)
@@ -307,9 +296,13 @@ class SearchController(QObject):
 		self._refresh_stale()
 		self.pathIssueChanged.emit()
 		self.canSearchChanged.emit()
-		# Defer startup update check until QML is ready (skip under pytest).
 		import os
 
+		if os.environ.get("PYTEST_CURRENT_TEST"):
+			self._capabilities = probe_capabilities()
+			self._capabilities_probing = False
+		else:
+			self._start_capabilities_probe()
 		if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("SRXY_SKIP_UPDATE_CHECK"):
 			return
 		from PySide6.QtCore import QTimer
@@ -447,14 +440,16 @@ class SearchController(QObject):
 	path = Property(str, _get_path, _set_path, notify=pathChanged)
 
 	def _compute_path_issue(self) -> str:
+		from srxy.i18n import tr
+
 		raw = (self._path or "").strip()
 		if not raw:
-			return "Enter a search path"
+			return tr("error.enter_search_path")
 		candidate = Path(raw).expanduser()
 		if not candidate.exists():
-			return "Path does not exist"
+			return tr("error.path_not_exist")
 		if not candidate.is_dir():
-			return "Not a directory"
+			return tr("error.not_directory")
 		return ""
 
 	def _get_path_issue(self) -> str:
@@ -532,6 +527,16 @@ class SearchController(QObject):
 		return format_search_filters_summary(self._filters)
 
 	filtersSummary = Property(str, _get_filters_summary, notify=filtersSummaryChanged)
+
+	def _get_selected_result(self) -> int:
+		return self._selected_row
+
+	def _set_selected_result(self, row: int):
+		if row == self._selected_row:
+			return
+		self.selectResult(row)
+
+	selectedResult = Property(int, _get_selected_result, _set_selected_result, notify=selectedResultChanged)
 
 	def _get_capabilities_json(self) -> str:
 		return json.dumps(capabilities_to_dict(self._capabilities))
@@ -674,11 +679,41 @@ class SearchController(QObject):
 	@Slot()
 	def refreshCapabilities(self):  # noqa: N802
 		self._capabilities = probe_capabilities()
+		self._capabilities_probing = False
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		self.capabilitiesChanged.emit()
 		self.optionsSummaryChanged.emit()
 		self._refresh_stale()
+
+	def _start_capabilities_probe(self):
+		thread = QThread(self)
+		worker = _CapabilitiesProbeWorker()
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		worker.finished.connect(self._on_capabilities_probed)
+		worker.finished.connect(thread.quit)
+		thread.finished.connect(worker.deleteLater)
+		thread.finished.connect(thread.deleteLater)
+		thread.finished.connect(self._on_capabilities_thread_finished)
+		self._capabilities_thread = thread
+		self._capabilities_worker = worker
+		thread.start()
+
+	@Slot(object)
+	def _on_capabilities_probed(self, caps: object):
+		if isinstance(caps, Capabilities):
+			self._capabilities = caps
+			self._capabilities_probing = False
+			self._clamp_options_to_capabilities()
+			apply_search_options_to_args(self._args, self._options)
+			self.capabilitiesChanged.emit()
+			self.optionsSummaryChanged.emit()
+			self._refresh_stale()
+
+	def _on_capabilities_thread_finished(self):
+		self._capabilities_worker = None
+		self._capabilities_thread = None
 
 	@Slot(str, result=str)
 	def helpText(self, key: str) -> str:  # noqa: N802
@@ -686,10 +721,16 @@ class SearchController(QObject):
 
 	@Slot(str, result=str)
 	def unavailableReason(self, key: str) -> str:  # noqa: N802
+		if self._capabilities_probing and key in {"semantic", "semantic_image", "transcribe"}:
+			from srxy.i18n import tr
+
+			return tr("capabilities.detecting")
 		return unavailable_reason(key, self._capabilities)
 
 	@Slot(str, result=bool)
 	def isFeatureEnabled(self, key: str) -> bool:  # noqa: N802
+		if self._capabilities_probing and key in {"semantic", "semantic_image", "transcribe"}:
+			return False
 		caps = self._capabilities
 		mapping = {
 			"semantic": caps.semantic_enabled,
@@ -703,18 +744,19 @@ class SearchController(QObject):
 	def startSearch(self):  # noqa: N802
 		if self._searching or self._download_confirm_open or self._download_progress_open:
 			return
-		self.refreshCapabilities()
 		try:
 			args = self._sync_args()
 		except (ValueError, FileQueryParseError) as error:
 			self.errorOccurred.emit(str(error))
 			return
 		if not (args.query or "").strip():
-			self.errorOccurred.emit("Enter a search query")
+			from srxy.i18n import tr
+
+			self.errorOccurred.emit(tr("error.enter_search_query"))
 			return
 
 		# Hard deps only — models are handled via download dialogs.
-		error = _deps_only_preflight(args)
+		error = deps_only_preflight(args)
 		if error is not None:
 			self.errorOccurred.emit(error)
 			self._exit_code = 2
@@ -751,14 +793,7 @@ class SearchController(QObject):
 		from srxy.i18n import tr as translate
 
 		self._set_download_status_message(translate("status.downloading", label=item.label))
-		self._download_thread = QThread(self)
-		self._download_worker = _DownloadWorker(item.kind)
-		self._download_worker.moveToThread(self._download_thread)
-		self._download_thread.started.connect(self._download_worker.run)
-		self._download_worker.progress.connect(self._on_download_progress)
-		self._download_worker.finished.connect(self._on_download_finished)
-		self._download_worker.finished.connect(self._download_thread.quit)
-		self._download_thread.start()
+		self._start_download_worker(item.kind)
 
 	@Slot()
 	def rejectDownloadConfirm(self):  # noqa: N802
@@ -788,8 +823,6 @@ class SearchController(QObject):
 
 	def _on_download_finished(self, ok: bool, error_message: str):
 		self._set_download_progress_ui(False)
-		self._download_worker = None
-		self._download_thread = None
 		if not ok:
 			self._download_queue = []
 			self._pending_search_args = None
@@ -805,6 +838,11 @@ class SearchController(QObject):
 		if not self._has_searched:
 			self._has_searched = True
 			self.hasSearchedChanged.emit()
+		from srxy.application.search_filters import GUI_DEFAULT_RESULT_LIMIT
+
+		self._default_result_limit_applied = args.limit is None
+		if args.limit is None:
+			args.limit = GUI_DEFAULT_RESULT_LIMIT
 		self._results_model.set_limit(args.limit)
 		self._results_model.set_thresholds(
 			threshold=args.threshold,
@@ -822,20 +860,69 @@ class SearchController(QObject):
 		self._set_status_tr("status.starting")
 		self._set_searching(True)
 		self._args = args
+		self._start_search_worker(args)
 
-		self._thread = QThread(self)
-		self._worker = _SearchWorker(args, self._search_runner)
-		self._worker.moveToThread(self._thread)
-		self._thread.started.connect(self._worker.run)
-		self._worker.event_ready.connect(self._on_search_event)
-		self._worker.finished.connect(self._on_worker_finished)
-		self._worker.finished.connect(self._thread.quit)
-		self._thread.start()
+	def _start_search_worker(self, args: argparse.Namespace):
+		thread = QThread(self)
+		worker = _SearchWorker(
+			args,
+			self._search_runner,
+			on_subprocess=self._register_search_subprocess,
+		)
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		worker.event_ready.connect(self._on_search_event)
+		worker.finished.connect(self._on_worker_finished)
+		worker.finished.connect(thread.quit)
+		thread.finished.connect(worker.deleteLater)
+		thread.finished.connect(thread.deleteLater)
+		thread.finished.connect(self._on_search_thread_finished)
+		self._thread = thread
+		self._worker = worker
+		thread.start()
+
+	def _start_download_worker(self, kind: str):
+		thread = QThread(self)
+		worker = _DownloadWorker(kind)
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		worker.progress.connect(self._on_download_progress)
+		worker.finished.connect(self._on_download_finished)
+		worker.finished.connect(thread.quit)
+		thread.finished.connect(worker.deleteLater)
+		thread.finished.connect(thread.deleteLater)
+		thread.finished.connect(self._on_download_thread_finished)
+		self._download_thread = thread
+		self._download_worker = worker
+		thread.start()
+
+	def _register_search_subprocess(self, process: object):
+		self._search_subprocess = process
+
+	def _kill_search_subprocess_sync(self):
+		process = self._search_subprocess
+		self._search_subprocess = None
+		if process is None or getattr(process, "returncode", None) is not None:
+			return
+		try:
+			process.kill()  # type: ignore[union-attr]
+		except ProcessLookupError:
+			return
+
+	def _on_search_thread_finished(self):
+		self._worker = None
+		self._thread = None
+		self._search_subprocess = None
+
+	def _on_download_thread_finished(self):
+		self._download_worker = None
+		self._download_thread = None
 
 	@Slot()
 	def cancelSearch(self):  # noqa: N802
 		if self._worker is not None:
 			self._worker.request_cancel()
+		self._kill_search_subprocess_sync()
 		self._set_status_tr("status.cancelling")
 
 	def _on_search_event(self, event: object):
@@ -857,13 +944,22 @@ class SearchController(QObject):
 			self._exit_code = 2
 			self._set_status(event.message)
 		elif isinstance(event, SearchFinishedEvent):
-			self._results_model.replace_results(event.results)
+			if event.results:
+				self._results_model.replace_results(event.results)
 			count = self._results_model.rowCount()
 			self._notify_results_empty_hint()
+			if event.cancelled:
+				self._exit_code = 2
+				self._progress = 100.0
+				self.progressChanged.emit()
+				self._set_status_tr("status.search_cancelled")
+				return
 			self._exit_code = 0 if count else 1
 			self._progress = 100.0
 			self.progressChanged.emit()
-			if count == 1:
+			if self._default_result_limit_applied and count >= self._args.limit:
+				self._set_status_tr("status.default_result_limit", count=count, limit=self._args.limit)
+			elif count == 1:
 				self._set_status_tr("status.file_matched")
 			else:
 				self._set_status_tr("status.files_matched", count=count)
@@ -874,8 +970,7 @@ class SearchController(QObject):
 		self._set_searching(False)
 		self._last_snapshot = self._snapshot()
 		self._refresh_stale()
-		self._worker = None
-		self._thread = None
+		self._kill_search_subprocess_sync()
 
 	@Slot(int)
 	def selectResult(self, row: int):  # noqa: N802
@@ -950,7 +1045,7 @@ class SearchController(QObject):
 		data = json.loads(payload)
 		options = SearchOptions(**data)
 		if not has_search_source(options):
-			return SEARCH_SOURCE_REQUIRED_MESSAGE
+			return search_source_required_message()
 		self._options = options
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
@@ -958,17 +1053,22 @@ class SearchController(QObject):
 		self._refresh_stale()
 		return ""
 
-	@Slot(str)
-	def applyFiltersJson(self, payload: str):  # noqa: N802
+	@Slot(str, result=str)
+	def applyFiltersJson(self, payload: str) -> str:  # noqa: N802
 		from srxy.application.size_limits import SizeLimits
 
-		data = json.loads(payload)
-		size = data.pop("size_limits")
-		self._filters = SearchFilters(size_limits=SizeLimits(**size), **data)
-		validate_search_filters(self._filters)
+		try:
+			data = json.loads(payload)
+			size = data.pop("size_limits")
+			draft = SearchFilters(size_limits=SizeLimits(**size), **data)
+			validate_search_filters(draft)
+		except (ValueError, json.JSONDecodeError, TypeError, KeyError) as error:
+			return str(error)
+		self._filters = draft
 		apply_search_filters_to_args(self._args, self._filters)
 		self.filtersSummaryChanged.emit()
 		self._refresh_stale()
+		return ""
 
 	@Slot(result=str)
 	def optionsJson(self) -> str:  # noqa: N802
@@ -977,10 +1077,6 @@ class SearchController(QObject):
 	@Slot(result=str)
 	def filtersJson(self) -> str:  # noqa: N802
 		return json.dumps(asdict(self._filters))
-
-	@Slot()
-	def browsePath(self):  # noqa: N802
-		QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self._path).expanduser().resolve())))
 
 	@Slot(str, result=str)
 	def i18nTr(self, key: str) -> str:  # noqa: N802
@@ -1138,7 +1234,7 @@ class SearchController(QObject):
 		from srxy.i18n import tr as translate
 
 		self._update_busy = False
-		silent = getattr(self, "_update_silent", False)
+		silent = self._update_silent
 		if info is None:
 			self._update_dialog_mode = "info"
 			self._update_message = translate("update.offline")
@@ -1176,9 +1272,7 @@ class SearchController(QObject):
 		self._update_busy = False
 		self._update_dialog_mode = "info"
 		self._update_can_apply = False
-		self._update_message = translate("update.up_to_date", version=self.appVersion)
-		# Prefer a restart hint from apply_update status; keep a generic success line.
-		self._update_message = "Update complete. Restart srxy to use the new version."
+		self._update_message = translate("update.complete_restart")
 		self._update_dialog_open = True
 		self.updateUiChanged.emit()
 
@@ -1225,59 +1319,69 @@ class SearchController(QObject):
 
 	def set_capabilities_for_tests(self, caps: Capabilities):
 		self._capabilities = caps
+		self._capabilities_probing = False
 		self._clamp_options_to_capabilities()
 		self.capabilitiesChanged.emit()
 
+	def search_thread_for_tests(self) -> QThread | None:
+		return self._thread
 
-def _deps_only_preflight(args: argparse.Namespace) -> str | None:
-	from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
-	from srxy.adapters.outbound.semantic.semantic_image import (
-		is_semantic_image_available,
-		semantic_image_unavailable_message,
-	)
-	from srxy.adapters.outbound.transcribe.transcribe_text import (
-		ffmpeg_available,
-		ffmpeg_unavailable_message,
-		transcribe_deps_installed,
-		transcribe_unavailable_message,
-	)
-	from srxy.application.matching.semantic import (
-		semantic_deps_unavailable_message,
-		sentence_transformers_installed,
-	)
+	def set_search_subprocess_for_tests(self, process: object | None):
+		self._search_subprocess = process
 
-	apply_args_to_env(args)
-	if bool(args.ocr or args.semantic_all) and not is_ocr_available():
-		return ocr_unavailable_message()
-	if bool(args.transcribe or args.semantic_all) and not transcribe_deps_installed():
-		return transcribe_unavailable_message()
-	if bool(args.transcribe or args.semantic_all) and not ffmpeg_available():
-		return ffmpeg_unavailable_message()
-	if bool(args.semantic or args.semantic_all) and not sentence_transformers_installed():
-		return semantic_deps_unavailable_message()
-	if bool(args.semantic_image or args.semantic_all) and not is_semantic_image_available():
-		return semantic_image_unavailable_message()
-	return None
+	def search_subprocess_for_tests(self) -> object | None:
+		return self._search_subprocess
+
+	def shutdown(self, *, thread_wait_ms: int = 3000):
+		if self._worker is not None:
+			self._worker.request_cancel()
+		self._kill_search_subprocess_sync()
+		if self._download_worker is not None:
+			self._download_worker.request_cancel()
+		for thread in (
+			self._thread,
+			self._download_thread,
+			self._update_thread,
+			self._capabilities_thread,
+		):
+			if thread is not None and thread.isRunning():
+				thread.quit()
+				thread.wait(thread_wait_ms)
 
 
 def _load_preview_text(result: FileSearchResult) -> str:
+	from srxy.i18n import tr
+
 	path = result.path
+	truncated_footer = tr("preview.truncated")
 	try:
 		if not path.is_file():
 			if result.lines:
 				joined = "\n".join(line.text for line in result.lines[:50])
-				return format_preview_html(path, joined)
+				return format_preview_for_file(path, joined, truncated_footer=truncated_footer)
 			return format_preview_message("(No file preview available)")
-		data = path.read_bytes()[:_PREVIEW_MAX_BYTES]
+		raw = path.read_bytes()
+		file_truncated = len(raw) > PREVIEW_MAX_BYTES
+		data = raw[:PREVIEW_MAX_BYTES]
 		if b"\x00" in data[:4096]:
 			if result.lines:
 				joined = "\n".join(line.text for line in result.lines[:50])
-				return format_preview_html(path, joined)
+				return format_preview_for_file(
+					path,
+					joined,
+					truncated=file_truncated,
+					truncated_footer=truncated_footer,
+				)
 			return format_preview_message("(Binary file — showing matches only)")
 		text = data.decode("utf-8", errors="replace")
-		return format_preview_html(path, text)
+		return format_preview_for_file(
+			path,
+			text,
+			truncated=file_truncated,
+			truncated_footer=truncated_footer,
+		)
 	except OSError:
 		if result.lines:
 			joined = "\n".join(line.text for line in result.lines[:50])
-			return format_preview_html(path, joined)
+			return format_preview_for_file(path, joined, truncated_footer=truncated_footer)
 		return format_preview_message("(Could not read file)")

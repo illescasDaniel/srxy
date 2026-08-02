@@ -23,9 +23,9 @@ from tests.helpers import (
 )
 
 from srxy import FileQ, magic_file_search
-from srxy.adapters.inbound.cli.cli import match_labels
 from srxy.adapters.outbound.metadata.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.adapters.outbound.metadata.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
+from srxy.application.search_formatting import match_labels
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
 

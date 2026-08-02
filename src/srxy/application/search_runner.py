@@ -8,6 +8,7 @@ from collections.abc import Callable
 
 from srxy.adapters.outbound.ocr.ocr_text import ocr_requested
 from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_requested
+from srxy.application.search_control import SearchCancelled
 from srxy.application.use_cases.search_files import magic_file_search
 from srxy.domain.file_query import FileQ, coerce_file_query, file_q_from_dict
 from srxy.domain.models import FileSearchResult, SkippedFile
@@ -76,6 +77,8 @@ def execute_search(
 	on_progress: Callable[[int, int], None] | None = None,
 	on_activity: ActivityCallback | None = None,
 	on_result: Callable[[FileSearchResult], None] | None = None,
+	cancel_check: Callable[[], bool] | None = None,
+	allow_process_pool: bool = False,
 ) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 	search_names, search_contents = resolve_search_modes(args)
 	raw_docs = getattr(args, "search_docs_tags", None)
@@ -86,31 +89,38 @@ def execute_search(
 	query_expr = resolve_file_query(args)
 	ocr = ocr_requested(None) if search_contents else False
 	transcribe = transcribe_requested(None) if search_contents else False
-	results = magic_file_search(
-		args.path,
-		query_expr,
-		search_names=search_names,
-		search_contents=search_contents,
-		search_docs_tags=search_docs_tags,
-		threshold=args.threshold,
-		semantic_image_threshold=args.semantic_image_threshold,
-		transcribe_threshold=args.transcribe_threshold,
-		limit=args.limit,
-		max_file_size=normalize_max_file_size(args.max_file_size),
-		max_matches=args.max_matches,
-		skip_hidden_folders=not args.include_hidden,
-		skip_noise_folders=not args.include_noise,
-		skip_noise_files=not bool(getattr(args, "include_noise_files", False)),
-		match_skipped_names=bool(getattr(args, "match_skipped_names", False)) and search_names,
-		include_archives=bool(getattr(args, "include_archives", False)),
-		include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
-		skipped_files=effective_skipped if search_contents or ocr or transcribe else None,
-		ocr=ocr,
-		transcribe=transcribe,
-		on_progress=on_progress,
-		on_activity=on_activity,
-		on_result=on_result,
-	)
+	try:
+		results = magic_file_search(
+			args.path,
+			query_expr,
+			search_names=search_names,
+			search_contents=search_contents,
+			search_docs_tags=search_docs_tags,
+			threshold=args.threshold,
+			semantic_image_threshold=args.semantic_image_threshold,
+			transcribe_threshold=args.transcribe_threshold,
+			limit=args.limit,
+			max_file_size=normalize_max_file_size(args.max_file_size),
+			max_matches=args.max_matches,
+			skip_hidden_folders=not args.include_hidden,
+			skip_noise_folders=not args.include_noise,
+			skip_noise_files=not bool(getattr(args, "include_noise_files", False)),
+			match_skipped_names=bool(getattr(args, "match_skipped_names", False)) and search_names,
+			include_archives=bool(getattr(args, "include_archives", False)),
+			include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
+			skipped_files=effective_skipped if search_contents or ocr or transcribe else None,
+			ocr=ocr,
+			transcribe=transcribe,
+			on_progress=on_progress,
+			on_activity=on_activity,
+			on_result=on_result,
+			cancel_check=cancel_check,
+			allow_process_pool=allow_process_pool,
+		)
+	except SearchCancelled as error:
+		if error.skipped_files:
+			effective_skipped.extend(error.skipped_files)
+		raise SearchCancelled(results=error.results, skipped_files=effective_skipped) from error
 	return results, effective_skipped
 
 
@@ -125,6 +135,8 @@ class FileSearchService:
 		on_progress: Callable[[int, int], None] | None = None,
 		on_activity: ActivityCallback | None = None,
 		on_result: Callable[[FileSearchResult], None] | None = None,
+		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	) -> tuple[list[FileSearchResult], list[SkippedFile]]:
 		return execute_search(
 			args,
@@ -132,4 +144,6 @@ class FileSearchService:
 			on_progress=on_progress,
 			on_activity=on_activity,
 			on_result=on_result,
+			cancel_check=cancel_check,
+			allow_process_pool=allow_process_pool,
 		)

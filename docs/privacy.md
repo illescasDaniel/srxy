@@ -37,5 +37,7 @@ Each model card has its own license and usage terms.
 - srxy searches files **on your machine**. It does not upload your files to a remote srxy search service.
 - Choosing downloads contacts the third-party servers linked above. Those parties have their own privacy policies.
 - For prefix installs, cache and models live under the install folder (`SRXY_HOME`). For PyPI / `uv tool` installs, defaults remain under `~/.cache/srxy` unless overridden.
+- When srxy is launched from the desktop menu (non-interactive stdout), the prefix launcher appends output to `{SRXY_HOME}/logs/srxy.log`. Search command-line arguments are **not** logged by default; set `SRXY_DEBUG=1` before launch to include them in that log file.
+- The install manifest records which privacy-notice version you acknowledged (`privacy_ack_version`).
 
 By acknowledging the installer notice you confirm you understand these third-party downloads and accept responsibility for complying with their licenses and privacy policies.

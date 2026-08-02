@@ -33,10 +33,10 @@ Without `--fix`, verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, 
 
 | Command | pytest |
 |---------|--------|
-| `checks.sh` | Integration + TUI/GUI; excludes `integration_full` and `transcribe_device_matrix`. Runs with `-n auto --dist=loadgroup` (half `nproc` when parallel verify), `--testmon-forceselect --ff`, no coverage |
+| `checks.sh` | Integration + TUI/GUI; excludes `integration_full`, `transcribe_device_matrix`, and `(integration and gui)` from the parallel pass. After parallel pytest succeeds, runs `integration and gui` serially (`QT_QPA_PLATFORM=offscreen`, `-n 0`). Parallel pass uses `-n auto --dist=loadgroup` (half `nproc` when parallel verify), `--testmon-forceselect --ff`, no coverage |
 | `checks.sh --full` | Full local suite; parallel verify; no testmon, with coverage |
 | `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` |
-| `CI=true checks.sh` | `unit` marker only, excluding `semantic` and `transcribe`. Parallel verify + `-n` half `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
+| `CI=true checks.sh` | `unit` plus offscreen `gui` snapshot tests (excludes `integration`, `semantic`, and `transcribe`). Linux CI sets `QT_QPA_PLATFORM=offscreen`. Parallel verify + `-n` half `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
 
 `--fix` = Ruff + shell autofix, then remaining steps sequentially; ignored in CI.
 
@@ -53,7 +53,7 @@ Dev-only under `tests/fixtures/` (not in wheel). See [`tests/fixtures/README.md`
 
 Requires the `[semantic]` extra (`uv sync --extra semantic`); `SRXY_SEMANTIC=1` set in `tests/integration/conftest.py`.
 
-Default local gate pytest uses **pytest-xdist** (`-n auto --dist=loadgroup`): unit/cli fan out across workers; TUI, GUI, and integration each share one worker via `xdist_group`. **pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day gate only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu`. The `.testmondata` DB is local and gitignored; the first run builds it.
+Default local gate pytest uses **pytest-xdist** (`-n auto --dist=loadgroup`): unit/cli fan out across workers; TUI, GUI, and integration each share one worker via `xdist_group`. GUI integration tests (`integration and gui`) are excluded from the parallel pass and run in a second serial pass (`QT_QPA_PLATFORM=offscreen`, `-n 0`) to avoid xdist/Qt flakiness; skipped when `CI=true` or on `--full` / `--full+cpu`. **pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day gate only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu`. The `.testmondata` DB is local and gitignored; the first run builds it.
 
 ```bash
 uv run pytest -m unit -n auto
@@ -62,7 +62,7 @@ uv run pytest -m integration_full
 uv run pytest --integration-test-cpu
 ```
 
-Gate mapping: default `checks.sh` ≈ `pytest -m "not integration_full and not transcribe_device_matrix" -n auto --dist=loadgroup --testmon-forceselect --ff`; `--full` ≈ `pytest tests/ -n auto --dist=loadgroup --cov=src`.
+Gate mapping: default `checks.sh` ≈ parallel `pytest -m "not integration_full and not transcribe_device_matrix and not (integration and gui)" -n auto --dist=loadgroup --testmon-forceselect --ff`, then serial `QT_QPA_PLATFORM=offscreen pytest -m "integration and gui" -n 0`; `--full` ≈ `pytest tests/ -n auto --dist=loadgroup --cov=src`.
 
 Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`srxy[windows]`).
 

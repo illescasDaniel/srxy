@@ -6,11 +6,11 @@ from dataclasses import dataclass
 from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
 from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.labels import (
-	FILTER_LABEL_HITS_PER_FILE,
-	FILTER_LABEL_MAX_RESULTS,
-	FILTER_LABEL_MIN_MATCH,
-	FILTER_LABEL_SPEECH_MIN,
-	FILTER_LABEL_VISUAL_MIN,
+	filter_label_hits_per_file,
+	filter_label_max_results,
+	filter_label_min_match,
+	filter_label_speech_min,
+	filter_label_visual_min,
 )
 from srxy.application.size_limits import (
 	SizeLimits,
@@ -21,6 +21,7 @@ from srxy.application.size_limits import (
 
 
 _DEFAULT_THRESHOLD = 0.35
+GUI_DEFAULT_RESULT_LIMIT = 5000
 
 
 @dataclass(frozen=True, slots=True)
@@ -110,26 +111,26 @@ def _parse_threshold_percent(raw: str, *, field_name: str) -> float:
 
 def parse_search_filter_limits(filters: SearchFilters) -> tuple[int | None, int]:
 	limit = (
-		_parse_optional_positive_int(filters.top_files, field_name=FILTER_LABEL_MAX_RESULTS)
+		_parse_optional_positive_int(filters.top_files, field_name=filter_label_max_results())
 		if filters.top_files.strip()
 		else None
 	)
-	max_matches = _parse_optional_positive_int(filters.max_matches, field_name=FILTER_LABEL_HITS_PER_FILE) or 50
+	max_matches = _parse_optional_positive_int(filters.max_matches, field_name=filter_label_hits_per_file()) or 50
 	return limit, max_matches
 
 
 def parse_search_filter_thresholds(filters: SearchFilters) -> tuple[float, float, float]:
 	threshold = _parse_threshold_percent(
 		filters.threshold or _percent_text(_DEFAULT_THRESHOLD),
-		field_name=FILTER_LABEL_MIN_MATCH,
+		field_name=filter_label_min_match(),
 	)
 	semantic_image_threshold = _parse_threshold_percent(
 		filters.semantic_image_threshold or _percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD),
-		field_name=FILTER_LABEL_VISUAL_MIN,
+		field_name=filter_label_visual_min(),
 	)
 	transcribe_threshold = _parse_threshold_percent(
 		filters.transcribe_threshold or _percent_text(DEFAULT_TRANSCRIBE_THRESHOLD),
-		field_name=FILTER_LABEL_SPEECH_MIN,
+		field_name=filter_label_speech_min(),
 	)
 	return threshold, semantic_image_threshold, transcribe_threshold
 

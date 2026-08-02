@@ -102,7 +102,9 @@ def apply_update(
 		detail = (result.stderr or result.stdout or "").strip()
 		raise RuntimeError(f"Update failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
 	if status is not None:
-		status("Update complete. Restart srxy to use the new version.")
+		from srxy.i18n import tr
+
+		status(tr("update.complete_restart"))
 
 
 __all__ = [

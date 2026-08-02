@@ -154,8 +154,8 @@ ApplicationWindow {
 
 	function pushFiltersToController() {
 		if (!controller || syncingFilters)
-			return
-		controller.applyFiltersJson(JSON.stringify({
+			return ""
+		return controller.applyFiltersJson(JSON.stringify({
 			top_files: fltTopFiles.text,
 			max_matches: fltMaxMatches.text,
 			threshold: fltThreshold.text,
@@ -472,6 +472,7 @@ ApplicationWindow {
 								anchors.fill: parent
 								clip: true
 								model: controller ? controller.resultsModel : null
+								currentIndex: controller ? controller.selectedResult : -1
 								delegate: Item {
 									id: resultRow
 									required property int index
@@ -502,7 +503,6 @@ ApplicationWindow {
 										anchors.fill: parent
 										acceptedButtons: Qt.LeftButton | Qt.RightButton
 										onClicked: (mouse) => {
-											resultsView.currentIndex = resultRow.index
 											controller.selectResult(resultRow.index)
 											if (mouse.button === Qt.RightButton)
 												resultMenu.popup()
@@ -679,6 +679,8 @@ ApplicationWindow {
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
+			if (controller)
+				controller.refreshCapabilities()
 			loadOptionsFromController()
 		}
 		footer: DialogButtonBox {
@@ -853,17 +855,54 @@ ApplicationWindow {
 		objectName: "filtersDialog"
 		title: root.t("gui.filters.title")
 		modal: true
-		standardButtons: Dialog.Ok | Dialog.Cancel
 		anchors.centerIn: parent
 		width: 480
 		implicitWidth: 480
-		onAboutToShow: loadFiltersFromController()
-		onAccepted: pushFiltersToController()
+		onAboutToShow: {
+			filtersError.text = ""
+			filtersError.visible = false
+			loadFiltersFromController()
+		}
+		footer: DialogButtonBox {
+			Button {
+				text: root.t("common.cancel")
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: filtersDialog.reject()
+			}
+			Button {
+				text: root.t("common.ok")
+				highlighted: true
+				onClicked: {
+					const err = pushFiltersToController()
+					if (err) {
+						filtersError.text = err
+						filtersError.visible = true
+						return
+					}
+					filtersError.visible = false
+					filtersDialog.accept()
+				}
+			}
+		}
+
+		ColumnLayout {
+			width: filtersDialog.availableWidth - 24
+			spacing: 6
+
+			Label {
+				id: filtersError
+				objectName: "filtersError"
+				visible: false
+				color: "#c62828"
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+			}
 
 		GridLayout {
 			columns: 3
 			columnSpacing: 8
 			rowSpacing: 6
+			Layout.fillWidth: true
 
 			Label { text: root.t("gui.filters.max_results") }
 			TextField { id: fltTopFiles; placeholderText: root.t("gui.filters.max_results_ph"); Layout.fillWidth: true }
@@ -896,6 +935,7 @@ ApplicationWindow {
 			Label { text: root.t("gui.filters.media_mib") }
 			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
 			InfoButton { helpKey: "transcribe_mib" }
+		}
 		}
 	}
 
@@ -1132,7 +1172,6 @@ ApplicationWindow {
 			syncTermRows()
 			loadOptionsFromController()
 			loadFiltersFromController()
-			controller.refreshCapabilities()
 		}
 	}
 }

@@ -5,9 +5,30 @@ Builds `dist/srxy-installer-<version>-x86_64.AppImage` — an install/uninstall 
 ```bash
 ./packaging/linux-appimage/build.sh
 # or: task build-appimage
+./packaging/linux-appimage/smoke-appimage.sh
 ```
 
-Uses current [appimagetool](https://github.com/AppImage/appimagetool) with the [type2-runtime](https://github.com/AppImage/type2-runtime) (no host `libfuse2`).
+Uses pinned [appimagetool 1.9.1](https://github.com/AppImage/appimagetool/releases/tag/1.9.1) with the [type2-runtime](https://github.com/AppImage/type2-runtime) (no host `libfuse2`). The build script verifies the tool's SHA-256 before packing.
+
+## Relocatable Python
+
+The AppDir installs a uv-managed CPython under `AppDir/usr/python` (`UV_PYTHON_PREFERENCE=only-managed`, `--install-dir`), then creates a **relocatable** venv with `--link-mode copy`. After the venv is created, the build asserts that `usr/venv/bin/python` resolves inside the AppDir — never into `~/.local/share/uv/python` on the build host. `smoke-appimage.sh` re-checks `--help` / `--version` with an isolated `HOME` and a minimal `PATH` so a host uv Python cannot mask a broken AppImage.
+
+## Vendor checksums
+
+Installer downloads (uv, tesseract, tessdata, ffmpeg) are HTTPS-only and require a pinned SHA-256 unless `SRXY_INSTALLER_ALLOW_UNVERIFIED=1` (dev only). Refresh digests after changing catalog URLs:
+
+```bash
+./packaging/linux-appimage/refresh_checksums.sh
+./packaging/linux-appimage/refresh_checksums.sh --check   # print only
+./packaging/linux-appimage/refresh_checksums.sh uv ffmpeg # subset
+```
+
+## CI
+
+[`.github/workflows/appimage.yml`](../../.github/workflows/appimage.yml) builds and smokes the AppImage on PRs/main (artifacts retained a few days) and attaches the AppImage + `SHA256SUMS` to GitHub Releases on `v*` tags.
+
+## Icons and meta
 
 App icon assets live in [`src/srxy/resources/icons/`](../../src/srxy/resources/icons/) and are used for the AppImage, window chrome, and the installed `.desktop` entry.
 
@@ -16,3 +37,5 @@ Installer compatibility is declared in [`packaging/installer_meta.toml`](../inst
 The AppImage embeds Python + PySide6 for the wizard. It does **not** embed NVIDIA/CUDA, Hugging Face models, Tesseract, or ffmpeg — those are downloaded into `~/Applications/srxy` (or a chosen prefix) after the user acknowledges [docs/privacy.md](../../docs/privacy.md).
 
 macOS / Windows installers are planned separately; shared logic lives under `src/srxy/adapters/inbound/installer/` and `SRXY_HOME` path resolution.
+
+The prefix launcher writes runtime output to `{SRXY_HOME}/logs/srxy.log` when started from the desktop menu (see [docs/privacy.md](../../docs/privacy.md)).

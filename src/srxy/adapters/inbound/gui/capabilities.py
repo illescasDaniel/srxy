@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import functools
 import importlib.util
 from dataclasses import asdict, dataclass
 
@@ -38,6 +39,26 @@ def _probe_has_gpu() -> bool:
 	return resolve_torch_device() in {"cuda", "mps"}
 
 
+def default_capabilities() -> Capabilities:
+	"""Fast capability snapshot without a GPU/torch probe."""
+	semantic_deps = sentence_transformers_installed()
+	ocr = is_ocr_available()
+	ffmpeg = ffmpeg_available()
+	transcribe_deps = transcribe_deps_installed()
+	return Capabilities(
+		semantic_deps=semantic_deps,
+		has_gpu=False,
+		ocr=ocr,
+		ffmpeg=ffmpeg,
+		transcribe_deps=transcribe_deps,
+		semantic_enabled=False,
+		semantic_image_enabled=False,
+		transcribe_enabled=False,
+		ocr_enabled=ocr,
+	)
+
+
+@functools.lru_cache(maxsize=1)
 def probe_capabilities() -> Capabilities:
 	semantic_deps = sentence_transformers_installed()
 	has_gpu = _probe_has_gpu()
@@ -94,6 +115,7 @@ def unavailable_reason(feature: str, caps: Capabilities) -> str:
 __all__ = [
 	"Capabilities",
 	"capabilities_to_dict",
+	"default_capabilities",
 	"probe_capabilities",
 	"unavailable_reason",
 ]

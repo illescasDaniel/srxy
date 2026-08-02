@@ -86,7 +86,7 @@ def test_given_shell_rc_when_writing_path_block_twice_then_idempotent(tmp_path: 
 	assert text.count(PATH_BEGIN) == 1
 	assert text.count(PATH_END) == 1
 	assert str(bin_dir.resolve()) in text
-	assert remove_path_block(rc) is True
+	assert remove_path_block(rc).changed is True
 	assert PATH_BEGIN not in rc.read_text(encoding="utf-8")
 
 

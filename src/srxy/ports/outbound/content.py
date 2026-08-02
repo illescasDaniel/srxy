@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Protocol
 
@@ -22,6 +22,7 @@ class FileWalkerPort(Protocol):
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		cancel_check: Callable[[], bool] | None = None,
 	) -> Iterator[Path]: ...
 
 	def collect_files(
@@ -34,6 +35,7 @@ class FileWalkerPort(Protocol):
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		cancel_check: Callable[[], bool] | None = None,
 	) -> list[Path]: ...
 
 	def is_searchable(self, path: Path) -> bool: ...

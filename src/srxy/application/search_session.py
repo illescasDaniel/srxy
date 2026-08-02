@@ -3,17 +3,18 @@
 from __future__ import annotations
 
 import argparse
-import os
-import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from srxy.adapters.outbound.worker.search_worker import search_uses_subprocess
 from srxy.application.search_control import (
-	MAX_PROGRESSIVE_RESULT_EVENTS,
-	PROGRESS_EMIT_INTERVAL_S,
+	ProgressiveEmitState,
 	SearchCancelled,
+	emit_progress_if_due,
+	emit_result_if_under_cap,
+	finished_results_payload,
 )
+from srxy.application.worker_env import bootstrap_worker_env
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
 from srxy.ports.inbound.file_search import FileSearchPort
@@ -39,6 +40,7 @@ class SearchResultEvent:
 class SearchFinishedEvent:
 	results: list[FileSearchResult]
 	skipped_files: list[SkippedFile]
+	cancelled: bool = False
 
 
 @dataclass(frozen=True, slots=True)
@@ -51,15 +53,6 @@ SearchEvent = SearchProgressEvent | SearchActivityEvent | SearchResultEvent | Se
 EventCallback = Callable[[SearchEvent], None]
 
 
-def _bootstrap_worker_env():
-	os.environ.setdefault("TOKENIZERS_PARALLELISM", "false")
-	os.environ.setdefault("OMP_NUM_THREADS", "1")
-	os.environ.setdefault("TQDM_DISABLE", "1")
-	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
-	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
-	os.environ.setdefault("JOBLIB_MULTIPROCESSING", "0")
-
-
 class SearchSession:
 	"""Run a search and deliver progressive events via callbacks.
 
@@ -68,8 +61,8 @@ class SearchSession:
 	instead of this method.
 
 	Progress and early result events are paced so GUI/TUI frontends stay
-	responsive on huge trees; ``SearchFinishedEvent`` always carries the full
-	(limit-trimmed) result list.
+	responsive on huge trees; ``SearchFinishedEvent`` carries the full
+	(limit-trimmed) result list unless every hit was already streamed progressively.
 	"""
 
 	def __init__(self, file_search: FileSearchPort):
@@ -84,23 +77,20 @@ class SearchSession:
 		*,
 		on_event: EventCallback,
 		cancel_check: Callable[[], bool] | None = None,
+		allow_process_pool: bool = False,
 	):
-		_bootstrap_worker_env()
+		bootstrap_worker_env()
 		skipped_files: list[SkippedFile] = []
-		last_progress_at = 0.0
-		progressive_results = 0
-
-		def _raise_if_cancelled():
-			if cancel_check is not None and cancel_check():
-				raise SearchCancelled()
+		emit_state = ProgressiveEmitState()
 
 		def on_progress(current: int, total: int):
-			nonlocal last_progress_at
-			_raise_if_cancelled()
-			now = time.monotonic()
-			if current >= total or (now - last_progress_at) >= PROGRESS_EMIT_INTERVAL_S:
-				last_progress_at = now
-				on_event(SearchProgressEvent(current, total))
+			emit_progress_if_due(
+				current,
+				total,
+				emit_state,
+				lambda c, t: on_event(SearchProgressEvent(c, t)),
+				cancel_check=cancel_check,
+			)
 
 		def on_activity(update: ActivityUpdate | None):
 			# Do not raise here — listing/encoding may not be interruptible yet.
@@ -109,11 +99,11 @@ class SearchSession:
 			on_event(SearchActivityEvent(update))
 
 		def on_result(result: FileSearchResult):
-			nonlocal progressive_results
-			_raise_if_cancelled()
-			if progressive_results < MAX_PROGRESSIVE_RESULT_EVENTS:
-				on_event(SearchResultEvent(result))
-				progressive_results += 1
+			emit_result_if_under_cap(
+				emit_state,
+				lambda: on_event(SearchResultEvent(result)),
+				cancel_check=cancel_check,
+			)
 
 		try:
 			results, skipped_files = self._file_search.execute(
@@ -122,13 +112,30 @@ class SearchSession:
 				on_progress=on_progress,
 				on_activity=on_activity,
 				on_result=on_result,
+				cancel_check=cancel_check,
+				allow_process_pool=allow_process_pool,
 			)
-		except SearchCancelled:
-			# Ports that do not swallow cancel still surface it here.
-			on_event(SearchFinishedEvent(results=[], skipped_files=skipped_files))
+		except SearchCancelled as error:
+			results = error.results
+			if error.skipped_files:
+				skipped_files = error.skipped_files
+			finished_results = finished_results_payload(results, emit_state)
+			on_event(
+				SearchFinishedEvent(
+					results=[] if finished_results is None else finished_results,
+					skipped_files=skipped_files,
+					cancelled=True,
+				)
+			)
 			return
 		except Exception as error:
 			on_event(SearchErrorEvent(str(error)))
 			return
 
-		on_event(SearchFinishedEvent(results=results, skipped_files=skipped_files))
+		finished_results = finished_results_payload(results, emit_state)
+		on_event(
+			SearchFinishedEvent(
+				results=[] if finished_results is None else finished_results,
+				skipped_files=skipped_files,
+			)
+		)

@@ -9,13 +9,11 @@ from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
+from srxy.adapters.inbound.installer.manifest import is_non_empty_foreign_prefix, prefix_needs_confirmation
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html, privacy_disclaimer_text
-from srxy.adapters.inbound.installer.uninstall import (
-	UNINSTALL_SEARCH_HINT,
-	discover_default_prefix,
-	uninstall_prefix,
-)
+from srxy.adapters.inbound.installer.uninstall import discover_default_prefix, uninstall_prefix, uninstall_search_hint
 from srxy.application.install_paths import default_install_prefix
+from srxy.i18n import tr as translate
 
 
 class _Worker(QThread):
@@ -24,11 +22,19 @@ class _Worker(QThread):
 	finished_ok = Signal()
 	failed = Signal(str)
 
-	def __init__(self, action: str, options: InstallOptions | None, prefix: Path | None):
+	def __init__(
+		self,
+		action: str,
+		options: InstallOptions | None,
+		prefix: Path | None,
+		*,
+		confirm_unsafe: bool = False,
+	):
 		super().__init__()
 		self._action = action
 		self._options = options
 		self._prefix = prefix
+		self._confirm_unsafe = confirm_unsafe
 
 	def run(self):
 		try:
@@ -43,7 +49,11 @@ class _Worker(QThread):
 			elif self._action == "uninstall":
 				if self._prefix is None:
 					raise RuntimeError("uninstall requires a prefix")
-				uninstall_prefix(self._prefix, status=lambda message: self.status.emit(message))
+				uninstall_prefix(
+					self._prefix,
+					status=lambda message: self.status.emit(message),
+					confirm_unsafe=self._confirm_unsafe,
+				)
 			else:
 				raise RuntimeError(f"unknown action: {self._action}")
 			self.finished_ok.emit()
@@ -68,6 +78,7 @@ class InstallerController(QObject):
 	progressValueChanged = Signal()
 	pageChanged = Signal()
 	finishedChanged = Signal()
+	unsafeConfirmChanged = Signal()
 
 	def __init__(self):
 		super().__init__()
@@ -92,8 +103,11 @@ class InstallerController(QObject):
 		self._progress_value = 0.0
 		self._page = "mode"
 		self._finished = False
-		self._uninstall_hint = UNINSTALL_SEARCH_HINT
 		self._worker: _Worker | None = None
+		self._confirm_unsafe = False
+		self._unsafe_confirm_open = False
+		self._unsafe_confirm_message = ""
+		self._pending_unsafe_action: str | None = None
 		discovered = discover_default_prefix()
 		if discovered is not None:
 			self._uninstall_prefix = str(discovered)
@@ -263,6 +277,14 @@ class InstallerController(QObject):
 	def finished(self) -> bool:
 		return self._finished
 
+	@Property(bool, notify=unsafeConfirmChanged)
+	def unsafeConfirmOpen(self) -> bool:
+		return self._unsafe_confirm_open
+
+	@Property(str, notify=unsafeConfirmChanged)
+	def unsafeConfirmMessage(self) -> str:
+		return self._unsafe_confirm_message
+
 	@Property(str, notify=languageChanged)
 	def privacyText(self) -> str:
 		return privacy_disclaimer_html()
@@ -271,9 +293,9 @@ class InstallerController(QObject):
 	def privacyPlainText(self) -> str:
 		return privacy_disclaimer_text()
 
-	@Property(str, constant=True)
+	@Property(str, notify=languageChanged)
 	def uninstallHint(self) -> str:
-		return self._uninstall_hint
+		return uninstall_search_hint()
 
 	@Slot(str, result=str)
 	def helpText(self, key: str) -> str:
@@ -294,7 +316,7 @@ class InstallerController(QObject):
 		except ValueError:
 			return
 		if self._page == "privacy" and not self._privacy_ack:
-			self._error = "Please check the box to continue — it confirms you read the notice."
+			self._error = translate("installer.error.privacy_ack")
 			self.errorChanged.emit()
 			return
 		if index + 1 < len(order):
@@ -319,26 +341,26 @@ class InstallerController(QObject):
 			self._page = order[index - 1]
 			self.pageChanged.emit()
 
-	@Slot()
-	def startInstall(self):
-		if self._busy:
-			return
-		if not self._privacy_ack:
-			self._error = "Please acknowledge the privacy / third-party notice to continue."
-			self.errorChanged.emit()
-			return
-		prefix = Path(self._prefix).expanduser()
-		if not self._prefix.strip():
-			self._error = "Choose an install folder."
-			self.errorChanged.emit()
-			return
+	def _set_unsafe_confirm(self, open_: bool, message: str = "", *, action: str | None = None):
+		self._unsafe_confirm_open = open_
+		self._unsafe_confirm_message = message
+		self._pending_unsafe_action = action if open_ else None
+		self.unsafeConfirmChanged.emit()
+
+	def _validate_prefix_for_action(self, prefix: Path, *, for_install: bool) -> str | None:
+		"""Return an inline error message, or None if the prefix may proceed (or needs confirm)."""
+		if for_install and is_non_empty_foreign_prefix(prefix):
+			return translate("installer.error.non_empty_prefix", path=str(prefix))
+		return None
+
+	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):
 		self._page = "progress"
 		self.pageChanged.emit()
 		self._finished = False
 		self.finishedChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
-		self._status = "Starting install…"
+		self._status = translate("installer.status.starting_install")
 		self.statusChanged.emit()
 		self._set_busy(True)
 		options = InstallOptions(
@@ -348,42 +370,104 @@ class InstallerController(QObject):
 			install_semantic=self._install_semantic and self._has_gpu,
 			prefetch_models=self._prefetch_models and self._install_semantic,
 			add_to_path=self._add_to_path,
+			confirm_unsafe=confirm_unsafe,
 		)
-		self._worker = _Worker("install", options, None)
+		self._worker = _Worker("install", options, None, confirm_unsafe=confirm_unsafe)
 		self._worker.status.connect(self._on_status)
 		self._worker.progress.connect(self._on_progress)
 		self._worker.finished_ok.connect(self._on_finished_ok)
 		self._worker.failed.connect(self._on_failed)
 		self._worker.start()
 
-	@Slot()
-	def startUninstall(self):
-		if self._busy:
-			return
-		raw = self._uninstall_prefix.strip() or self._prefix.strip()
-		if not raw:
-			discovered = discover_default_prefix()
-			if discovered is None:
-				self._error = f"No install found at the default location.\n\n{UNINSTALL_SEARCH_HINT}"
-				self.errorChanged.emit()
-				return
-			raw = str(discovered)
-			self._uninstall_prefix = raw
-			self.prefixChanged.emit()
+	def _begin_uninstall(self, prefix: Path, *, confirm_unsafe: bool):
 		self._page = "progress"
 		self.pageChanged.emit()
 		self._finished = False
 		self.finishedChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
-		self._status = "Starting uninstall…"
+		self._status = translate("installer.status.starting_uninstall")
 		self.statusChanged.emit()
 		self._set_busy(True)
-		self._worker = _Worker("uninstall", None, Path(raw))
+		self._worker = _Worker("uninstall", None, prefix, confirm_unsafe=confirm_unsafe)
 		self._worker.status.connect(self._on_status)
 		self._worker.finished_ok.connect(self._on_finished_ok)
 		self._worker.failed.connect(self._on_failed)
 		self._worker.start()
+
+	@Slot()
+	def startInstall(self):
+		if self._busy or self._unsafe_confirm_open:
+			return
+		if not self._privacy_ack:
+			self._error = translate("installer.error.privacy_required")
+			self.errorChanged.emit()
+			return
+		if not self._prefix.strip():
+			self._error = translate("installer.error.choose_prefix")
+			self.errorChanged.emit()
+			return
+		prefix = Path(self._prefix).expanduser().resolve()
+		foreign_error = self._validate_prefix_for_action(prefix, for_install=True)
+		if foreign_error is not None:
+			self._error = foreign_error
+			self.errorChanged.emit()
+			return
+		if prefix_needs_confirmation(prefix) and not self._confirm_unsafe:
+			self._error = ""
+			self.errorChanged.emit()
+			self._set_unsafe_confirm(
+				True,
+				translate("installer.confirm.unsafe_prefix_body", path=str(prefix)),
+				action="install",
+			)
+			return
+		self._begin_install(prefix, confirm_unsafe=self._confirm_unsafe)
+
+	@Slot()
+	def startUninstall(self):
+		if self._busy or self._unsafe_confirm_open:
+			return
+		raw = self._uninstall_prefix.strip() or self._prefix.strip()
+		if not raw:
+			discovered = discover_default_prefix()
+			if discovered is None:
+				self._error = f"{translate('installer.error.no_default_install')}\n\n{uninstall_search_hint()}"
+				self.errorChanged.emit()
+				return
+			raw = str(discovered)
+			self._uninstall_prefix = raw
+			self.prefixChanged.emit()
+		prefix = Path(raw).expanduser().resolve()
+		if prefix_needs_confirmation(prefix) and not self._confirm_unsafe:
+			self._error = ""
+			self.errorChanged.emit()
+			self._set_unsafe_confirm(
+				True,
+				translate("installer.confirm.unsafe_prefix_body", path=str(prefix)),
+				action="uninstall",
+			)
+			return
+		self._begin_uninstall(prefix, confirm_unsafe=self._confirm_unsafe)
+
+	@Slot()
+	def acceptUnsafeConfirm(self):
+		action = self._pending_unsafe_action
+		self._set_unsafe_confirm(False)
+		self._confirm_unsafe = True
+		if action == "install":
+			prefix = Path(self._prefix).expanduser().resolve()
+			self._begin_install(prefix, confirm_unsafe=True)
+		elif action == "uninstall":
+			raw = self._uninstall_prefix.strip() or self._prefix.strip()
+			self._begin_uninstall(Path(raw).expanduser().resolve(), confirm_unsafe=True)
+
+	@Slot()
+	def rejectUnsafeConfirm(self):
+		self._set_unsafe_confirm(False)
+		self._confirm_unsafe = False
+		self._error = translate("installer.error.unsafe_prefix")
+		self.errorChanged.emit()
 
 	def _on_status(self, message: str):
 		self._status = message
@@ -402,14 +486,14 @@ class InstallerController(QObject):
 		self._set_busy(False)
 		self._finished = True
 		self.finishedChanged.emit()
-		self._status = "Done."
+		self._status = translate("installer.status.done")
 		self.statusChanged.emit()
 
 	def _on_failed(self, message: str):
 		self._set_busy(False)
 		self._error = message
 		self.errorChanged.emit()
-		self._status = "Failed."
+		self._status = translate("installer.status.failed")
 		self.statusChanged.emit()
 
 

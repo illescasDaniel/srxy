@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Dialogs
 import QtQuick.Layouts
 
 ApplicationWindow {
@@ -11,6 +12,8 @@ ApplicationWindow {
 	color: palette.window
 
 	property var c: controller
+	// Which path field the folder dialog should update ("prefix" or "uninstall").
+	property string browseTarget: "prefix"
 	// Bump when language changes so every t() binding re-evaluates.
 	property int langRev: 0
 	readonly property color primaryText: palette.windowText
@@ -122,10 +125,24 @@ ApplicationWindow {
 					color: root.secondaryText
 					Layout.fillWidth: true
 				}
-				TextField {
+				RowLayout {
 					Layout.fillWidth: true
-					text: c.prefix
-					onTextChanged: c.setPrefix(text)
+					spacing: 8
+					TextField {
+						id: prefixField
+						objectName: "prefixField"
+						Layout.fillWidth: true
+						text: c.prefix
+						onTextChanged: c.setPrefix(text)
+					}
+					Button {
+						objectName: "browsePrefixButton"
+						text: root.t("gui.browse")
+						onClicked: {
+							root.browseTarget = "prefix"
+							folderDialog.open()
+						}
+					}
 				}
 			}
 
@@ -346,11 +363,25 @@ ApplicationWindow {
 					color: root.secondaryText
 					Layout.fillWidth: true
 				}
-				TextField {
+				RowLayout {
 					Layout.fillWidth: true
-					placeholderText: c.prefix
-					text: c.uninstallPrefix
-					onTextChanged: c.setUninstallPrefix(text)
+					spacing: 8
+					TextField {
+						id: uninstallPrefixField
+						objectName: "uninstallPrefixField"
+						Layout.fillWidth: true
+						placeholderText: c.prefix
+						text: c.uninstallPrefix
+						onTextChanged: c.setUninstallPrefix(text)
+					}
+					Button {
+						objectName: "browseUninstallButton"
+						text: root.t("gui.browse")
+						onClicked: {
+							root.browseTarget = "uninstall"
+							folderDialog.open()
+						}
+					}
 				}
 				Label {
 					text: c.uninstallHint
@@ -439,6 +470,22 @@ ApplicationWindow {
 		}
 	}
 
+	FolderDialog {
+		id: folderDialog
+		title: root.browseTarget === "uninstall"
+			? root.t("installer.uninstall.title")
+			: root.t("installer.prefix.title")
+		onAccepted: {
+			if (!c)
+				return
+			const path = selectedFolder.toString().replace("file://", "")
+			if (root.browseTarget === "uninstall")
+				c.setUninstallPrefix(path)
+			else
+				c.setPrefix(path)
+		}
+	}
+
 	Dialog {
 		id: helpDialog
 		title: root.t("help.option_title")
@@ -460,6 +507,35 @@ ApplicationWindow {
 				Layout.fillWidth: true
 				color: root.primaryText
 			}
+		}
+	}
+
+	Dialog {
+		id: unsafePrefixDialog
+		objectName: "unsafePrefixDialog"
+		title: root.t("installer.confirm.unsafe_prefix_title")
+		modal: true
+		standardButtons: Dialog.Yes | Dialog.No
+		anchors.centerIn: parent
+		width: Math.min(root.width - 40, 480)
+		closePolicy: Popup.NoAutoClose
+		Label {
+			wrapMode: Text.WordWrap
+			width: parent ? parent.width : implicitWidth
+			text: c ? c.unsafeConfirmMessage : ""
+			color: root.primaryText
+		}
+		onAccepted: if (c) c.acceptUnsafeConfirm()
+		onRejected: if (c) c.rejectUnsafeConfirm()
+	}
+
+	Connections {
+		target: c
+		function onUnsafeConfirmChanged() {
+			if (c && c.unsafeConfirmOpen)
+				unsafePrefixDialog.open()
+			else
+				unsafePrefixDialog.close()
 		}
 	}
 }

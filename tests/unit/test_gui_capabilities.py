@@ -7,6 +7,7 @@ import pytest
 
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
+	default_capabilities,
 	probe_capabilities,
 	unavailable_reason,
 )
@@ -15,6 +16,7 @@ from srxy.application.model_preflight import (
 	format_download_prompt,
 	list_pending_model_downloads,
 )
+from srxy.i18n import tr
 
 
 pytestmark = pytest.mark.unit
@@ -30,7 +32,7 @@ def test_given_known_key_when_help_text_then_includes_guidance():
 
 
 def test_given_unknown_key_when_help_text_then_fallback_message():
-	assert help_text("not_a_real_key") == "No help available."
+	assert help_text("not_a_real_key") == tr("help.not_available")
 
 
 def test_given_no_gpu_when_unavailable_reason_then_mentions_gpu():
@@ -65,10 +67,37 @@ def test_given_missing_tesseract_when_unavailable_reason_then_mentions_tesseract
 
 
 def test_given_probe_when_called_then_returns_capabilities():
+	probe_capabilities.cache_clear()
 	caps = probe_capabilities()
 	assert isinstance(caps.semantic_deps, bool)
 	assert isinstance(caps.has_gpu, bool)
 	assert caps.ocr_enabled == caps.ocr
+
+
+def test_given_probe_when_called_twice_then_second_call_is_cached(monkeypatch: pytest.MonkeyPatch):
+	probe_capabilities.cache_clear()
+	calls = 0
+
+	def _count_gpu():
+		nonlocal calls
+		calls += 1
+		return False
+
+	monkeypatch.setattr("srxy.adapters.inbound.gui.capabilities._probe_has_gpu", _count_gpu)
+	first = probe_capabilities()
+	second = probe_capabilities()
+	assert first == second
+	assert calls == 1
+
+
+def test_given_default_capabilities_when_called_then_skips_gpu_probe(monkeypatch: pytest.MonkeyPatch):
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.gui.capabilities._probe_has_gpu",
+		lambda: (_ for _ in ()).throw(AssertionError("gpu probe should not run")),
+	)
+	caps = default_capabilities()
+	assert caps.has_gpu is False
+	assert caps.semantic_enabled is False
 
 
 def test_given_path_when_format_download_prompt_then_includes_target(tmp_path: Path):

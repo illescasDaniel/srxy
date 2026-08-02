@@ -86,11 +86,10 @@ def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypat
 
 	# then
 	events = [json.loads(line) for line in stdout.getvalue().splitlines() if line.strip()]
-	assert events[0] == {
-		"type": "finished",
-		"results": [file_result_to_dict(result)],
-		"skipped_files": [{"path": "big.png", "size_bytes": 99, "reason": "oversized"}],
-	}
+	finished = next(event for event in events if event.get("type") == "finished")
+	assert finished["cancelled"] is False
+	assert finished["results"] == [file_result_to_dict(result)]
+	assert finished["skipped_files"] == [{"path": "big.png", "size_bytes": 99, "reason": "oversized"}]
 	assert events[-1] == {"type": "done"}
 
 

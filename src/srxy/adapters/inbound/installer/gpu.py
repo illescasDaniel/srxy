@@ -58,18 +58,9 @@ def has_accelerated_gpu() -> bool:
 	return has_nvidia_gpu()
 
 
-def no_gpu_semantic_message() -> str:
-	return (
-		"No usable GPU found. AI extras (similar meaning, pictures, and spoken words) "
-		"need a GPU, so those options are turned off. You can still install srxy for "
-		"names, documents, and text in images."
-	)
-
-
 __all__ = [
 	"has_accelerated_gpu",
 	"has_nvidia_gpu",
-	"no_gpu_semantic_message",
 	"nvidia_device_nodes_present",
 	"nvidia_smi_available",
 	"nvidia_smi_reports_gpu",
