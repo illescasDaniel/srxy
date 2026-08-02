@@ -14,9 +14,18 @@ The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyri
 
 Locally, pytest runs integration and TUI tests (excluding `integration_full` unless you pass `--full`) with `-n auto --dist=loadgroup`. Day-to-day local runs also use `--testmon-forceselect --ff` (change-aware; `.testmondata` is gitignored). Coverage is enabled only for `--full` / `--full+cpu`. File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs `unit` tests only in parallel, excluding `semantic` and `transcribe` markers (`CI=true`); no testmon, no coverage.
 
+Local verify (no `--fix`) runs those six steps **in parallel**, and pytest itself uses many xdist workers. Locally, `integration and gui` tests are excluded from that parallel pytest pass and then run **serially** (`-n 0`, `QT_QPA_PLATFORM=offscreen`) so PySide6 + torch/CUDA do not kill xdist workers. CI skips that serial follow-up (`CI=true`).
+
 `--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `CI=true`.
 
 Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity). Full details: [docs/development.md](docs/development.md).
+
+### Running the gate (agent pitfalls)
+
+- **Do not** pipe the gate through `tail` (or anything that only prints on EOF). Prefer running `./scripts/quality/checks.sh` / `--fix` directly, or `tee` a log **without** truncating live output. With `| tee … | tail -N`, a healthy but long verify looks hung because nothing appears until the process exits.
+- Before starting a gate after an aborted or killed run, check for leftover `pytest` / `checks.sh` processes and stop them. Overlapping gates plus old workers look like a hang and can OOM or stall (especially with torch/CUDA probes in unit tests).
+- If verify seems stuck: inspect the process tree and the full log, don’t assume the suite is misconfigured. A clean re-run without leftover workers usually finishes in tens of seconds under `CI=true`.
+- Optional when GPU contention is noisy: `CUDA_VISIBLE_DEVICES="" ./scripts/quality/checks.sh` (or the same for `CI=true` local mimic runs).
 
 ## TUI changes
 
