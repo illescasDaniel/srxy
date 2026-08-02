@@ -12,7 +12,7 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 Needs **Python 3.11+**. `uv tool install 'srxy[semantic]'` recommended; `pipx install 'srxy[semantic]'` also works; `pipx install srxy` for core-only in a venv. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
 
-**Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md)
+**Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md). Optional Linux AppImage installer: [docs/installation.md#linux-appimage-installer-optional](docs/installation.md#linux-appimage-installer-optional). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 ## Quick start
 

@@ -58,6 +58,7 @@ build-backend = "uv_build"
 
 [project.scripts]
 srxy = "srxy.__main__:main"
+srxy-installer = "srxy.adapters.inbound.installer.__main__:main"
 
 # tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
 
@@ -144,6 +145,8 @@ omit = ["tests/*"]
 cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
 tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
+installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
+build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build Linux installer AppImage into dist/" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
 checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }

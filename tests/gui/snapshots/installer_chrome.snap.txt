@@ -1,0 +1,16 @@
+installerWindow:
+  title: srxy installer
+  mode: install
+  page: mode
+  hasGpu: False
+  privacyAck: False
+  downloadTesseract: True
+  downloadFfmpeg: True
+  installSemantic: False
+  prefetchModels: False
+  busy: False
+  finished: False
+  modes: Install srxy, Uninstall srxy
+  pages: mode, prefix, privacy, options, uninstall, progress
+  optionLabels: Text in images, Spoken words helper, AI search extras, Download AI models now
+  buttons: Back, Next, Install, Uninstall, Close, Info (i), GPU warning (!)

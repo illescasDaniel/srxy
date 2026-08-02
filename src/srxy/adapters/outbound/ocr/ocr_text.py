@@ -15,6 +15,7 @@ if TYPE_CHECKING:
 	from PIL import Image
 
 from srxy.adapters.outbound.documents.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
+from srxy.application.install_paths import resolve_tessdata_prefix, resolve_tesseract_binary
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
@@ -35,7 +36,8 @@ OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
 _OCR_UNAVAILABLE_MESSAGE = (
 	"Tesseract OCR is not available. Install the tesseract binary on PATH "
-	"(e.g. tesseract-ocr on Debian/Ubuntu, tesseract on Arch)."
+	"(e.g. tesseract-ocr on Debian/Ubuntu, tesseract on Arch), "
+	"or use the srxy desktop installer which can download it into SRXY_HOME."
 )
 
 _ocr_engine: OcrEngine | None = None
@@ -48,10 +50,20 @@ class OcrEngine(ABC):
 	def recognize(self, image: Image.Image) -> str: ...
 
 
+def _configure_pytesseract(pytesseract_module: object):
+	binary = resolve_tesseract_binary()
+	if binary is not None:
+		pytesseract_module.pytesseract.tesseract_cmd = str(binary)  # type: ignore[attr-defined]
+	tessdata = resolve_tessdata_prefix()
+	if tessdata is not None:
+		os.environ.setdefault("TESSDATA_PREFIX", str(tessdata))
+
+
 class TesseractEngine(OcrEngine):
 	def recognize(self, image: Image.Image) -> str:
 		import pytesseract
 
+		_configure_pytesseract(pytesseract)
 		best_text = ""
 		best_rank = (-1.0, 0)
 		for priority, psm in enumerate((3, 6, 11, 12)):
@@ -78,10 +90,17 @@ def ocr_env_enabled() -> bool:
 	return value in _TRUTHY_ENV_VALUES
 
 
+def tesseract_binary_path() -> str | None:
+	vendor = resolve_tesseract_binary()
+	if vendor is not None:
+		return str(vendor)
+	return shutil.which("tesseract")
+
+
 def tesseract_available() -> bool:
 	if importlib.util.find_spec("pytesseract") is None:
 		return False
-	return shutil.which("tesseract") is not None
+	return tesseract_binary_path() is not None
 
 
 def is_ocr_available() -> bool:

@@ -25,6 +25,24 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 `[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch first if you have an NVIDIA GPU ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
+## Linux AppImage installer (optional)
+
+PyPI / `uv tool install` remain the primary install paths. On Linux you can also use the **desktop installer AppImage** (install + uninstall wizard):
+
+1. Download `srxy-installer-*-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)).
+2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
+3. Choose install or uninstall. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
+4. Acknowledge the [privacy / third-party notice](privacy.md), then optionally download Tesseract, ffmpeg, semantic extras, and AI models.
+
+Run the wizard from a checked-out tree with:
+
+```bash
+uv run python -m srxy.adapters.inbound.installer
+# or: uv run srxy-installer
+```
+
+macOS and Windows installers are planned later.
+
 ## System dependencies
 
 **ffmpeg** (transcription) and **tesseract** (OCR) must be on `PATH` when you use `--transcribe`, `--ocr`, or `--semantic-all`. Verify with:

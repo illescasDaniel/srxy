@@ -14,7 +14,7 @@ export SRXY_OCR=1
 
 Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` adds Tesseract on embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`) — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
 
-Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs.
+Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
 
 Default OCR file cap: **50 MiB** (`--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE`).
 

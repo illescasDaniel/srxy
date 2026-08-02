@@ -10,6 +10,7 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
+from srxy.adapters.inbound.gui.app_icon import apply_app_icon, apply_desktop_file_name
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.desktop import QtDesktopAdapter
 from srxy.bootstrap import build_app_services
@@ -22,6 +23,8 @@ def qml_dir() -> Path:
 def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	app = QGuiApplication(sys.argv)
 	app.setApplicationName("srxy")
+	apply_desktop_file_name(app, "srxy")
+	apply_app_icon(app)
 	engine = QQmlApplicationEngine()
 	services = build_app_services(desktop=QtDesktopAdapter())
 	controller = SearchController(

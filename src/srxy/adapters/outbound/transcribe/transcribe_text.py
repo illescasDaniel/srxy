@@ -17,6 +17,7 @@ from srxy.adapters.outbound.models.device import (
 	transcribe_compute_type,
 	warn_if_cpu_device,
 )
+from srxy.application.install_paths import resolve_ffmpeg_binary
 from srxy.domain.progress import ActivityCallback, emit_activity
 
 
@@ -33,7 +34,8 @@ _TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE = (
 
 _FFMPEG_UNAVAILABLE_MESSAGE = (
 	"ffmpeg is not available. Install the ffmpeg binary on PATH "
-	"(e.g. ffmpeg on Debian/Ubuntu, ffmpeg on Arch, brew install ffmpeg on macOS)."
+	"(e.g. ffmpeg on Debian/Ubuntu, ffmpeg on Arch, brew install ffmpeg on macOS), "
+	"or use the srxy desktop installer which can download it into SRXY_HOME."
 )
 
 _faster_whisper_model: object | None = None
@@ -58,8 +60,15 @@ def transcribe_deps_installed() -> bool:
 	)
 
 
+def ffmpeg_binary_path() -> str | None:
+	vendor = resolve_ffmpeg_binary()
+	if vendor is not None:
+		return str(vendor)
+	return shutil.which("ffmpeg")
+
+
 def ffmpeg_available() -> bool:
-	return shutil.which("ffmpeg") is not None
+	return ffmpeg_binary_path() is not None
 
 
 def is_transcribe_available() -> bool:
@@ -229,7 +238,7 @@ def _decode_transcript_cache_line(raw_line: str) -> tuple[int, str] | None:
 
 
 def _extract_audio_wav(source: Path, destination: Path) -> bool:
-	ffmpeg = shutil.which("ffmpeg")
+	ffmpeg = ffmpeg_binary_path()
 	if ffmpeg is None:
 		return False
 	result = subprocess.run(  # noqa: S603

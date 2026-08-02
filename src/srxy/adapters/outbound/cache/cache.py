@@ -10,6 +10,8 @@ from pathlib import Path
 
 from cryptography.fernet import Fernet, InvalidToken
 
+from srxy.application.install_paths import default_cache_root
+
 
 CACHE_KIND_OCR_IMAGE = "ocr_image"
 CACHE_KIND_OCR_PDF_BLOB = "ocr_pdf_blob"
@@ -45,10 +47,7 @@ def _log_cache_event(event: str, kind: str, content_hash: str, variant: str):
 
 
 def cache_db_path() -> Path:
-	raw = os.environ.get("SRXY_CACHE_DIR", "").strip()
-	if raw:
-		return Path(raw).expanduser() / "cache.db"
-	return Path.home() / ".cache" / "srxy" / "cache.db"
+	return default_cache_root() / "cache.db"
 
 
 def cache_key_path() -> Path:

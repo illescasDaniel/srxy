@@ -166,7 +166,7 @@ def test_given_auto_download_when_ensuring_transcribe_model_then_downloads_witho
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	monkeypatch.setattr("srxy.adapters.outbound.models.model_store.default_cache_root", lambda: tmp_path)
+	monkeypatch.setattr("srxy.application.install_paths.default_cache_root", lambda: tmp_path)
 
 	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
 		target_dir.mkdir(parents=True, exist_ok=True)

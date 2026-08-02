@@ -6,6 +6,8 @@ import sys
 from pathlib import Path
 from typing import IO, Callable
 
+from srxy.application.install_paths import models_root
+
 
 SEMANTIC_TEXT_MODEL_ID = "sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
 SEMANTIC_IMAGE_MODEL_ID = "sentence-transformers/clip-ViT-B-32"
@@ -18,22 +20,18 @@ _MODEL_MARKERS = ("modules.json", "config.json", "model.safetensors", "pytorch_m
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
 
-def default_cache_root() -> Path:
-	return Path.home() / ".cache" / "srxy"
-
-
 def semantic_text_model_dir() -> Path:
 	override = os.environ.get("SRXY_SEMANTIC_MODEL_PATH", "").strip()
 	if override:
 		return Path(override).expanduser()
-	return default_cache_root() / "semantic-model"
+	return models_root() / "semantic-model"
 
 
 def semantic_image_model_dir() -> Path:
 	override = os.environ.get("SRXY_SEMANTIC_IMAGE_MODEL_PATH", "").strip()
 	if override:
 		return Path(override).expanduser()
-	return default_cache_root() / "semantic-image-model"
+	return models_root() / "semantic-image-model"
 
 
 def transcribe_model_name() -> str:
@@ -42,7 +40,7 @@ def transcribe_model_name() -> str:
 
 
 def transcribe_model_root() -> Path:
-	return default_cache_root() / "transcribe-model"
+	return models_root() / "transcribe-model"
 
 
 def transcribe_faster_whisper_model_dir() -> Path:
