@@ -111,8 +111,9 @@ def test_given_no_tesseract_when_reading_unavailable_message_then_returns_instal
 	message = ocr_unavailable_message()
 
 	# then
-	assert "tesseract binary on PATH" in message
-	assert "tesseract-ocr" in message
+	assert "Tesseract OCR" in message
+	assert "PATH" in message
+	assert "SRXY_TESSERACT_PATH" in message
 
 
 def test_given_mocked_image_ocr_when_iterating_lines_then_yields_text(tmp_path: Path):

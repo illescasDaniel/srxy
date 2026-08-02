@@ -6,8 +6,7 @@ import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtGui import QGuiApplication
-from pytestqt.qtbot import QtBot
+from PySide6.QtCore import QCoreApplication
 
 from srxy.adapters.inbound.installer.controller import InstallerController
 
@@ -24,18 +23,24 @@ def _chrome_tree(controller: InstallerController) -> str:
 		"  title: srxy installer",
 		f"  mode: {controller.mode}",
 		f"  page: {controller.page}",
+		f"  language: {controller.language}",
 		f"  hasGpu: {controller.hasGpu}",
 		f"  privacyAck: {controller.privacyAck}",
 		f"  downloadTesseract: {controller.downloadTesseract}",
 		f"  downloadFfmpeg: {controller.downloadFfmpeg}",
 		f"  installSemantic: {controller.installSemantic}",
 		f"  prefetchModels: {controller.prefetchModels}",
+		f"  addToPath: {controller.addToPath}",
 		f"  busy: {controller.busy}",
 		f"  finished: {controller.finished}",
 		"  modes: Install srxy, Uninstall srxy",
-		"  pages: mode, prefix, privacy, options, uninstall, progress",
-		"  optionLabels: Text in images, Spoken words helper, AI search extras, Download AI models now",
+		"  pages: mode, prefix, privacy, options, path, uninstall, progress",
+		"  optionLabels: Text in images, Audio/video helper, Smarter search (needs a GPU), Download AI models now (nested under Smarter search)",
+		"  optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files",
+		"  pathCheckbox: Also let me run srxy from the Terminal",
+		"  languageCombo: English, Español",
 		"  buttons: Back, Next, Install, Uninstall, Close, Info (i), GPU warning (!)",
+		"  helpMenu: (installer uses language combo on mode page)",
 	]
 	return "\n".join(lines) + "\n"
 
@@ -48,18 +53,21 @@ def _assert_snapshot(name: str, tree: str):
 	assert path.read_text(encoding="utf-8") == tree
 
 
-@pytest.fixture
-def qapp(qapp: QGuiApplication) -> QGuiApplication:
-	return qapp
+def _ensure_qt_core():
+	# Avoid pytest-qt QApplication vs QGuiApplication clashes under xdist.
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
 
 
 def test_given_installer_controller_when_snapshotting_chrome_then_matches(
-	qtbot: QtBot,
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
+	_ensure_qt_core()
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	monkeypatch.delenv("SRXY_LANGUAGE", raising=False)
 	controller = InstallerController()
+	controller.setLanguage("en")
 
 	# when
 	tree = _chrome_tree(controller)
@@ -67,4 +75,3 @@ def test_given_installer_controller_when_snapshotting_chrome_then_matches(
 	# then
 	_assert_snapshot("installer_chrome.snap.txt", tree)
 	assert controller.hasGpu is False
-	_ = qtbot  # keep pytest-qt app lifecycle

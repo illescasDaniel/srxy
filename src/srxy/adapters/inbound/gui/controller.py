@@ -25,11 +25,6 @@ from srxy.adapters.outbound.worker.search_worker import (
 	iter_subprocess_search_events,
 	skipped_file_from_dict,
 )
-from srxy.application.labels import (
-	RESULTS_EMPTY_BEFORE_SEARCH,
-	RESULTS_EMPTY_NO_MATCHES,
-	RESULTS_EMPTY_SEARCHING,
-)
 from srxy.application.model_preflight import (
 	PendingModelDownload,
 	download_fn_for_kind,
@@ -180,6 +175,31 @@ class _DownloadWorker(QObject):
 			self.finished.emit(False, str(error))
 
 
+class _UpdateWorker(QObject):
+	finished = Signal(object)
+	failed = Signal(str)
+	status = Signal(str)
+
+	def __init__(self, action: str):
+		super().__init__()
+		self._action = action  # check | apply
+
+	@Slot()
+	def run(self):
+		try:
+			if self._action == "check":
+				from srxy.application.updates import check_for_update
+
+				self.finished.emit(check_for_update())
+				return
+			from srxy.application.updates import apply_update
+
+			apply_update(status=lambda message: self.status.emit(message))
+			self.finished.emit(True)
+		except Exception as exc:  # noqa: BLE001
+			self.failed.emit(str(exc))
+
+
 class SearchController(QObject):
 	statusChanged = Signal()
 	progressChanged = Signal()
@@ -199,6 +219,9 @@ class SearchController(QObject):
 	downloadConfirmChanged = Signal()
 	downloadProgressUiChanged = Signal()
 	errorOccurred = Signal(str)
+	updateUiChanged = Signal()
+	aboutUiChanged = Signal()
+	languageChanged = Signal()
 
 	def __init__(
 		self,
@@ -226,7 +249,7 @@ class SearchController(QObject):
 		if self._simple_query:
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
 		self._path = str(getattr(args, "path", ".") or ".")
-		self._status = "Ready"
+		self._status = ""
 		self._progress = 0.0
 		self._stale = True
 		self._searching = False
@@ -260,9 +283,38 @@ class SearchController(QObject):
 		self._download_progress = 0.0
 		self._download_status = ""
 		self._exit_code = 0
+		self._update_dialog_open = False
+		self._update_dialog_mode = "prompt"  # prompt | info | progress
+		self._update_message = ""
+		self._update_can_apply = False
+		self._update_busy = False
+		self._about_open = False
+		self._update_thread: QThread | None = None
+		self._update_worker: _UpdateWorker | None = None
+		from srxy.i18n import get_language, resolve_language
+
+		lang = getattr(args, "language", None)
+		if lang:
+			from srxy.i18n import set_language
+
+			set_language(str(lang))
+		else:
+			resolve_language()
+		self._language = get_language()
+		from srxy.i18n import tr as translate
+
+		self._status = translate("status.ready")
 		self._refresh_stale()
 		self.pathIssueChanged.emit()
 		self.canSearchChanged.emit()
+		# Defer startup update check until QML is ready (skip under pytest).
+		import os
+
+		if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("SRXY_SKIP_UPDATE_CHECK"):
+			return
+		from PySide6.QtCore import QTimer
+
+		QTimer.singleShot(800, lambda: self.checkForUpdates(silent=True))
 
 	def _clamp_options_to_capabilities(self):
 		caps = self._capabilities
@@ -316,13 +368,15 @@ class SearchController(QObject):
 	hasSearched = Property(bool, _get_has_searched, notify=hasSearchedChanged)
 
 	def _get_results_empty_hint(self) -> str:
+		from srxy.i18n import tr
+
 		if self._results_model.rowCount() > 0:
 			return ""
 		if not self._has_searched:
-			return RESULTS_EMPTY_BEFORE_SEARCH
+			return tr("results.empty.before")
 		if self._searching:
-			return RESULTS_EMPTY_SEARCHING
-		return RESULTS_EMPTY_NO_MATCHES
+			return tr("results.empty.searching")
+		return tr("results.empty.none")
 
 	resultsEmptyHint = Property(str, _get_results_empty_hint, notify=resultsEmptyHintChanged)
 
@@ -592,6 +646,11 @@ class SearchController(QObject):
 			self._status = message
 			self.statusChanged.emit()
 
+	def _set_status_tr(self, key: str, **kwargs: object):
+		from srxy.i18n import tr as translate
+
+		self._set_status(translate(key, **kwargs))
+
 	def _set_searching(self, value: bool):
 		if self._searching != value:
 			self._searching = value
@@ -623,11 +682,11 @@ class SearchController(QObject):
 
 	@Slot(str, result=str)
 	def helpText(self, key: str) -> str:  # noqa: N802
-		reason = unavailable_reason(key, self._capabilities)
-		base = lookup_help_text(key)
-		if reason:
-			return f"{base}\n\nCurrently unavailable:\n{reason}"
-		return base
+		return lookup_help_text(key)
+
+	@Slot(str, result=str)
+	def unavailableReason(self, key: str) -> str:  # noqa: N802
+		return unavailable_reason(key, self._capabilities)
 
 	@Slot(str, result=bool)
 	def isFeatureEnabled(self, key: str) -> bool:  # noqa: N802
@@ -688,7 +747,10 @@ class SearchController(QObject):
 			return
 		item = self._download_queue[0]
 		self._set_download_confirm(False)
-		self._set_download_progress_ui(True, 0.0, f"Downloading {item.label}…")
+		self._set_download_progress_ui(True, 0.0, "")
+		from srxy.i18n import tr as translate
+
+		self._set_download_status_message(translate("status.downloading", label=item.label))
 		self._download_thread = QThread(self)
 		self._download_worker = _DownloadWorker(item.kind)
 		self._download_worker.moveToThread(self._download_thread)
@@ -703,14 +765,16 @@ class SearchController(QObject):
 		self._download_queue = []
 		self._pending_search_args = None
 		self._set_download_confirm(False)
-		self._set_status("Download cancelled — search not started")
+		self._set_status_tr("status.download_cancelled")
 		self._exit_code = 2
 
 	@Slot()
 	def cancelDownload(self):  # noqa: N802
 		if self._download_worker is not None:
 			self._download_worker.request_cancel()
-		self._set_download_status_message("Cancelling download…")
+		from srxy.i18n import tr as translate
+
+		self._set_download_status_message(translate("status.cancelling_download"))
 
 	def _set_download_status_message(self, message: str):
 		self._download_status = message
@@ -731,7 +795,7 @@ class SearchController(QObject):
 			self._pending_search_args = None
 			self.errorOccurred.emit(error_message or "Download failed")
 			self._exit_code = 2
-			self._set_status("Download failed")
+			self._set_status_tr("status.download_failed")
 			return
 		if self._download_queue:
 			self._download_queue.pop(0)
@@ -755,7 +819,7 @@ class SearchController(QObject):
 		self._progress = 0.0
 		self.progressChanged.emit()
 		self._notify_results_empty_hint()
-		self._set_status("Starting search…")
+		self._set_status_tr("status.starting")
 		self._set_searching(True)
 		self._args = args
 
@@ -772,14 +836,14 @@ class SearchController(QObject):
 	def cancelSearch(self):  # noqa: N802
 		if self._worker is not None:
 			self._worker.request_cancel()
-		self._set_status("Cancelling…")
+		self._set_status_tr("status.cancelling")
 
 	def _on_search_event(self, event: object):
 		if isinstance(event, SearchProgressEvent):
 			total = max(event.total, 1)
 			self._progress = min(100.0, 100.0 * event.current / total)
 			self.progressChanged.emit()
-			self._set_status(f"Scanning {event.current}/{event.total}")
+			self._set_status_tr("status.scanning", current=event.current, total=event.total)
 		elif isinstance(event, SearchActivityEvent):
 			if event.update is None:
 				return
@@ -787,7 +851,7 @@ class SearchController(QObject):
 		elif isinstance(event, SearchResultEvent):
 			self._results_model.insert_result(event.result)
 			self._notify_results_empty_hint()
-			self._set_status(f"{self._results_model.rowCount()} matches…")
+			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
 		elif isinstance(event, SearchErrorEvent):
 			self.errorOccurred.emit(event.message)
 			self._exit_code = 2
@@ -799,7 +863,10 @@ class SearchController(QObject):
 			self._exit_code = 0 if count else 1
 			self._progress = 100.0
 			self.progressChanged.emit()
-			self._set_status(f"{count} file matched" if count == 1 else f"{count} files matched")
+			if count == 1:
+				self._set_status_tr("status.file_matched")
+			else:
+				self._set_status_tr("status.files_matched", count=count)
 			if count:
 				self.selectResult(0)
 
@@ -914,6 +981,233 @@ class SearchController(QObject):
 	@Slot()
 	def browsePath(self):  # noqa: N802
 		QDesktopServices.openUrl(QUrl.fromLocalFile(str(Path(self._path).expanduser().resolve())))
+
+	@Slot(str, result=str)
+	def i18nTr(self, key: str) -> str:  # noqa: N802
+		from srxy.i18n import tr as translate
+
+		return translate(key)
+
+	@Property(str, notify=languageChanged)
+	def language(self) -> str:
+		return self._language
+
+	@Slot(str)
+	def setLanguage(self, language: str):  # noqa: N802
+		from PySide6.QtCore import QCoreApplication, QLocale
+
+		from srxy.application.settings import set_language_setting
+		from srxy.i18n import get_language, set_language
+		from srxy.i18n.qt import install_qt_translator
+
+		set_language(language)
+		set_language_setting(language)
+		self._language = get_language()
+		QLocale.setDefault(QLocale(self._language))
+		app = QCoreApplication.instance()
+		if app is not None:
+			install_qt_translator(app, self._language)
+		self.languageChanged.emit()
+		self.updateUiChanged.emit()
+		self.aboutUiChanged.emit()
+		self.optionsSummaryChanged.emit()
+		self.filtersSummaryChanged.emit()
+		self.resultsEmptyHintChanged.emit()
+		if not self._searching:
+			self._set_status_tr("status.ready")
+
+	@Property(str, constant=True)
+	def appVersion(self) -> str:  # noqa: N802
+		from srxy.application.updates import installed_version
+
+		return installed_version()
+
+	@Property(str, notify=languageChanged)
+	def aboutPrivacyHtml(self) -> str:  # noqa: N802
+		from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html
+
+		return privacy_disclaimer_html(for_app=True)
+
+	@Property(str, constant=True)
+	def pypiUrl(self) -> str:  # noqa: N802
+		from srxy.application.branding import PYPI_URL
+
+		return PYPI_URL
+
+	@Property(str, constant=True)
+	def githubUrl(self) -> str:  # noqa: N802
+		from srxy.application.branding import GITHUB_URL
+
+		return GITHUB_URL
+
+	@Property(str, constant=True)
+	def websiteUrl(self) -> str:  # noqa: N802
+		from srxy.application.branding import WEBSITE_URL
+
+		return WEBSITE_URL
+
+	@Property(bool, notify=aboutUiChanged)
+	def aboutOpen(self) -> bool:  # noqa: N802
+		return self._about_open
+
+	@Slot()
+	def openAbout(self):  # noqa: N802
+		self._about_open = True
+		self.aboutUiChanged.emit()
+
+	@Slot()
+	def closeAbout(self):  # noqa: N802
+		self._about_open = False
+		self.aboutUiChanged.emit()
+
+	@Property(bool, notify=updateUiChanged)
+	def updateDialogOpen(self) -> bool:  # noqa: N802
+		return self._update_dialog_open
+
+	@Property(str, notify=updateUiChanged)
+	def updateDialogMode(self) -> str:  # noqa: N802
+		return self._update_dialog_mode
+
+	@Property(str, notify=updateUiChanged)
+	def updateMessage(self) -> str:  # noqa: N802
+		return self._update_message
+
+	@Property(bool, notify=updateUiChanged)
+	def updateCanApply(self) -> bool:  # noqa: N802
+		return self._update_can_apply
+
+	@Property(bool, notify=updateUiChanged)
+	def updateBusy(self) -> bool:  # noqa: N802
+		return self._update_busy
+
+	@Slot()
+	def checkForUpdates(self, silent: bool = False):  # noqa: N802
+		if self._update_busy:
+			return
+		from srxy.i18n import tr as translate
+
+		self._update_busy = True
+		self._update_can_apply = False
+		self._update_dialog_mode = "progress"
+		self._update_message = translate("update.checking")
+		self._update_dialog_open = not silent
+		self._update_silent = silent
+		self.updateUiChanged.emit()
+		self._start_update_worker("check")
+
+	@Slot()
+	def applyUpdate(self):  # noqa: N802
+		if self._update_busy:
+			return
+		from srxy.i18n import tr as translate
+
+		self._update_busy = True
+		self._update_dialog_mode = "progress"
+		self._update_message = translate("update.updating")
+		self._update_dialog_open = True
+		self.updateUiChanged.emit()
+		self._start_update_worker("apply")
+
+	@Slot()
+	def closeUpdateDialog(self):  # noqa: N802
+		self._update_dialog_open = False
+		self.updateUiChanged.emit()
+
+	def _start_update_worker(self, action: str):
+		thread = QThread(self)
+		worker = _UpdateWorker(action)
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		if action == "check":
+			worker.finished.connect(self._on_update_check_finished)
+		else:
+			worker.finished.connect(self._on_update_apply_finished)
+		worker.failed.connect(self._on_update_failed)
+		worker.status.connect(self._on_update_status)
+		worker.finished.connect(thread.quit)
+		worker.failed.connect(thread.quit)
+		thread.finished.connect(worker.deleteLater)
+		thread.finished.connect(thread.deleteLater)
+		self._update_thread = thread
+		self._update_worker = worker
+		thread.start()
+
+	@Slot(object)
+	def _on_update_check_finished(self, info: object):
+		from srxy.application.updates import UpdateInfo
+		from srxy.i18n import tr as translate
+
+		self._update_busy = False
+		silent = getattr(self, "_update_silent", False)
+		if info is None:
+			self._update_dialog_mode = "info"
+			self._update_message = translate("update.offline")
+			self._update_can_apply = False
+			self._update_dialog_open = not silent
+			self.updateUiChanged.emit()
+			return
+		if not isinstance(info, UpdateInfo):
+			self._update_dialog_mode = "info"
+			self._update_message = translate("update.offline")
+			self._update_can_apply = False
+			self._update_dialog_open = not silent
+			self.updateUiChanged.emit()
+			return
+		if info.update_available:
+			self._update_dialog_mode = "prompt"
+			self._update_message = translate(
+				"update.available",
+				current=info.current_version,
+				latest=info.latest_version,
+			)
+			self._update_can_apply = True
+			self._update_dialog_open = True
+		else:
+			self._update_dialog_mode = "info"
+			self._update_message = translate("update.up_to_date", version=info.current_version)
+			self._update_can_apply = False
+			self._update_dialog_open = not silent
+		self.updateUiChanged.emit()
+
+	@Slot(object)
+	def _on_update_apply_finished(self, _ok: object):
+		from srxy.i18n import tr as translate
+
+		self._update_busy = False
+		self._update_dialog_mode = "info"
+		self._update_can_apply = False
+		self._update_message = translate("update.up_to_date", version=self.appVersion)
+		# Prefer a restart hint from apply_update status; keep a generic success line.
+		self._update_message = "Update complete. Restart srxy to use the new version."
+		self._update_dialog_open = True
+		self.updateUiChanged.emit()
+
+	@Slot(str)
+	def _on_update_failed(self, message: str):
+		from srxy.application.install_paths import srxy_home
+		from srxy.i18n import tr as translate
+
+		self._update_busy = False
+		self._update_dialog_mode = "info"
+		self._update_can_apply = False
+		self._update_message = translate("update.failed")
+		self._update_dialog_open = True
+		self.updateUiChanged.emit()
+		home = srxy_home()
+		if home is not None:
+			log_dir = home / "logs"
+			log_dir.mkdir(parents=True, exist_ok=True)
+			try:
+				with (log_dir / "srxy.log").open("a", encoding="utf-8") as handle:
+					handle.write(f"\n===== update failure =====\n{message}\n")
+			except OSError:
+				pass
+		self.errorOccurred.emit(message)
+
+	@Slot(str)
+	def _on_update_status(self, message: str):
+		self._update_message = message
+		self.updateUiChanged.emit()
 
 	def exit_code(self) -> int:
 		return self._exit_code

@@ -732,7 +732,7 @@ def test_given_ocr_flag_without_tesseract_when_running_cli_then_exits_two_with_m
 	captured = capsys.readouterr()
 	assert exit_code == 2
 	assert "Tesseract OCR is not available" in captured.err
-	assert "tesseract binary on PATH" in captured.err
+	assert "PATH" in captured.err
 	assert captured.out == ""
 
 

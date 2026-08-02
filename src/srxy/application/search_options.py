@@ -3,25 +3,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
-from srxy.application.labels import (
-	SUMMARY_HOW_DOCS_TAGS,
-	SUMMARY_HOW_OCR,
-	SUMMARY_HOW_SEMANTIC,
-	SUMMARY_HOW_SEMANTIC_IMAGE,
-	SUMMARY_HOW_TRANSCRIBE,
-	SUMMARY_PREFIX_HOW,
-	SUMMARY_PREFIX_SCAN,
-	SUMMARY_PREFIX_WHERE,
-	SUMMARY_SCAN_ARCHIVES,
-	SUMMARY_SCAN_HIDDEN,
-	SUMMARY_SCAN_NOISE,
-	SUMMARY_SCAN_NOISE_FILES,
-	SUMMARY_SCAN_SKIPPED_NAMES,
-	SUMMARY_SCAN_TOP_LEVEL,
-	SUMMARY_WHERE_CONTENT,
-	SUMMARY_WHERE_NAMES,
-)
-
 
 SEARCH_SOURCE_REQUIRED_MESSAGE = (
 	"Enable File names and/or File contents. With File contents on, enable at least "
@@ -178,49 +159,51 @@ def apply_search_options_to_args(args: argparse.Namespace, options: SearchOption
 
 
 def format_search_options_summary(options: SearchOptions) -> str:
+	from srxy.i18n import tr
+
 	effective = effective_search_options(options)
 	segments: list[str] = []
 
 	where_labels: list[str] = []
 	if effective.search_names:
-		where_labels.append(SUMMARY_WHERE_NAMES)
+		where_labels.append(tr("summary.where.names"))
 	if effective.search_contents:
-		where_labels.append(SUMMARY_WHERE_CONTENT)
+		where_labels.append(tr("summary.where.content"))
 	if where_labels:
-		segments.append(f"{SUMMARY_PREFIX_WHERE}: {', '.join(where_labels)}")
+		segments.append(f"{tr('summary.prefix.where')}: {', '.join(where_labels)}")
 
 	how_labels: list[str] = []
 	if effective.search_docs_tags:
-		how_labels.append(SUMMARY_HOW_DOCS_TAGS)
+		how_labels.append(tr("summary.how.docs_tags"))
 	if effective.semantic:
-		how_labels.append(SUMMARY_HOW_SEMANTIC)
+		how_labels.append(tr("summary.how.semantic"))
 	if effective.ocr:
-		how_labels.append(SUMMARY_HOW_OCR)
+		how_labels.append(tr("summary.how.ocr"))
 	if effective.transcribe:
-		how_labels.append(SUMMARY_HOW_TRANSCRIBE)
+		how_labels.append(tr("summary.how.transcribe"))
 	if effective.semantic_image:
-		how_labels.append(SUMMARY_HOW_SEMANTIC_IMAGE)
+		how_labels.append(tr("summary.how.semantic_image"))
 	if how_labels:
-		segments.append(f"{SUMMARY_PREFIX_HOW}: {', '.join(how_labels)}")
+		segments.append(f"{tr('summary.prefix.how')}: {', '.join(how_labels)}")
 
 	scan_labels: list[str] = []
 	if not effective.include_subdirectories:
-		scan_labels.append(SUMMARY_SCAN_TOP_LEVEL)
+		scan_labels.append(tr("summary.scan.top_level"))
 	if effective.include_hidden:
-		scan_labels.append(SUMMARY_SCAN_HIDDEN)
+		scan_labels.append(tr("summary.scan.hidden"))
 	if effective.include_noise:
-		scan_labels.append(SUMMARY_SCAN_NOISE)
+		scan_labels.append(tr("summary.scan.noise"))
 	if effective.include_noise_files:
-		scan_labels.append(SUMMARY_SCAN_NOISE_FILES)
+		scan_labels.append(tr("summary.scan.noise_files"))
 	if effective.match_skipped_names:
-		scan_labels.append(SUMMARY_SCAN_SKIPPED_NAMES)
+		scan_labels.append(tr("summary.scan.skipped_names"))
 	if effective.include_archives:
-		scan_labels.append(SUMMARY_SCAN_ARCHIVES)
+		scan_labels.append(tr("summary.scan.archives"))
 	if scan_labels:
-		segments.append(f"{SUMMARY_PREFIX_SCAN}: {', '.join(scan_labels)}")
+		segments.append(f"{tr('summary.prefix.scan')}: {', '.join(scan_labels)}")
 
 	if not segments:
-		return "None enabled"
+		return tr("summary.none")
 	text = " · ".join(segments)
 	if len(text) > 72:
 		return f"{text[:69]}…"

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import bisect
 from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, QPersistentModelIndex, Qt, Slot
@@ -76,14 +77,24 @@ class ResultsModel(QAbstractListModel):
 
 	def insert_result(self, result: FileSearchResult):
 		path_key = result.path.as_posix()
-		if any(item.path.as_posix() == path_key for item in self._results):
-			return
-		self._results.append(result)
-		self._results.sort(key=lambda item: item.score, reverse=True)
+		for item in self._results:
+			if item.path.as_posix() == path_key:
+				return
+		if self._limit is not None and len(self._results) >= self._limit:
+			worst = self._results[-1]
+			if result.score <= worst.score:
+				return
+		# Keep scores descending without resetting the whole model.
+		scores = [-item.score for item in self._results]
+		index = bisect.bisect_left(scores, -result.score)
+		self.beginInsertRows(_EMPTY_INDEX, index, index)
+		self._results.insert(index, result)
+		self.endInsertRows()
 		if self._limit is not None and len(self._results) > self._limit:
-			self._results = self._results[: self._limit]
-		self.beginResetModel()
-		self.endResetModel()
+			last = len(self._results) - 1
+			self.beginRemoveRows(_EMPTY_INDEX, last, last)
+			self._results.pop()
+			self.endRemoveRows()
 
 	def replace_results(self, results: list[FileSearchResult]):
 		self.beginResetModel()

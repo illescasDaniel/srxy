@@ -24,12 +24,46 @@ _UPDATE = os.environ.get("UPDATE_GUI_SNAPSHOTS", "").strip() in {"1", "true", "y
 def _chrome_tree(controller: SearchController) -> str:
 	progress = float(controller.progress)  # pyright: ignore[reportArgumentType]
 	capability_keys = ", ".join(sorted(json.loads(str(controller.capabilitiesJson))))
+	t = controller.i18nTr
+	sections = ", ".join(
+		[
+			t("gui.section.where"),
+			t("gui.section.what"),
+			t("gui.section.how"),
+			t("gui.section.search"),
+			t("gui.section.results"),
+			t("gui.section.progress"),
+		]
+	)
+	buttons = ", ".join(
+		[
+			t("gui.browse"),
+			t("gui.search"),
+			t("gui.options"),
+			t("gui.filters"),
+			t("gui.cancel"),
+		]
+	)
+	menus = ", ".join(
+		[
+			t("gui.menu.open_file"),
+			t("gui.menu.copy_path"),
+			t("gui.menu.copy_all_matches"),
+			t("gui.menu.copy_line"),
+			t("gui.menu.copy_location"),
+		]
+	)
+	help_menu = (
+		f"{t('menu.about')}, {t('menu.check_updates')}, "
+		f"{t('menu.language')} ({t('menu.language.en')} / {t('menu.language.es')})"
+	)
 	lines = [
 		"mainWindow:",
 		"  title: srxy",
 		f"  status: {controller.status}",
 		f"  progressPercent: {round(progress)}%",
-		"  sections: Where to search, What to search, How to search, Search, Search Results, Search progress",
+		f"  language: {controller.language}",
+		f"  sections: {sections}",
 		"  howStack: Options button + summary, Filters button + summary",
 		f"  queryMode: {controller.queryMode}",
 		f"  simpleQuery: {controller.simpleQuery}",
@@ -44,11 +78,13 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  hasSearched: {controller.hasSearched}",
 		f"  resultsEmptyHint: {controller.resultsEmptyHint}",
 		f"  canSearch: {controller.canSearch}",
-		"  buttons: Browse…, Search, Options, Filters, Cancel",
-		"  menus: Open file, Copy path, Copy all matches, Copy line, Copy location",
-		"  panels: Results, Matches in file, File preview",
-		"  resultColumns: #, Match, Path, Matched",
-		"  matchColumns: #, Match, Location, Text",
+		f"  buttons: {buttons}",
+		f"  menus: {menus}",
+		f"  helpMenu: {help_menu}",
+		"  dialogs: About, Update, Help setting",
+		f"  panels: {t('gui.results')}, {t('gui.matches_in_file')}, File preview",
+		f"  resultColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.path')}, {t('gui.col.matched')}",
+		f"  matchColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.location')}, {t('gui.col.text')}",
 	]
 	return "\n".join(lines) + "\n"
 
@@ -97,8 +133,12 @@ def qapp() -> QCoreApplication:
 
 
 def test_given_default_controller_when_dumping_chrome_then_matches_snapshot(qapp: QCoreApplication):
+	from srxy.i18n import set_language
+
+	set_language("en")
 	args = build_parser().parse_args(["", ".", "--cli"])
 	controller = SearchController(args)
+	controller.setLanguage("en")
 	_assert_snapshot("main_window", _chrome_tree(controller))
 
 

@@ -1,6 +1,6 @@
 [project]
 name = "srxy"
-version = "1.5.0"
+version = "1.6.0"
 description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -145,6 +145,7 @@ omit = ["tests/*"]
 cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
 tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
+gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bare (no semantic extras; --recreate to rebuild)" }
 installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
 build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build Linux installer AppImage into dist/" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }

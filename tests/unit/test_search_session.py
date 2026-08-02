@@ -94,3 +94,57 @@ def test_given_file_search_raises_when_session_runs_then_emits_error(tmp_path: P
 
 	assert any(isinstance(event, SearchErrorEvent) and event.message == "boom" for event in events)
 	assert not any(isinstance(event, SearchFinishedEvent) for event in events)
+
+
+def test_given_many_results_when_session_runs_then_caps_progressive_result_events(tmp_path: Path):
+	from srxy.application.search_control import MAX_PROGRESSIVE_RESULT_EVENTS
+
+	results = [
+		FileSearchResult(path=tmp_path / f"f{i}.txt", score=1.0, breakdown={"name": 1.0}, lines=[])
+		for i in range(MAX_PROGRESSIVE_RESULT_EVENTS + 40)
+	]
+	fake: FileSearchPort = _FakeFileSearch(results)
+	events: list[object] = []
+
+	SearchSession(fake).run_blocking(_args(tmp_path, "f"), on_event=events.append)
+
+	progressive = [event for event in events if isinstance(event, SearchResultEvent)]
+	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
+	assert len(progressive) == MAX_PROGRESSIVE_RESULT_EVENTS
+	assert len(finished) == 1
+	assert len(finished[0].results) == len(results)
+
+
+def test_given_cancel_during_progress_when_session_runs_then_returns_partial_finished(tmp_path: Path):
+	class _CancellingSearch:
+		def execute(
+			self,
+			args: argparse.Namespace,
+			*,
+			skipped_files: list[SkippedFile] | None = None,
+			on_progress: Callable[[int, int], None] | None = None,
+			on_activity: ActivityCallback | None = None,
+			on_result: Callable[[FileSearchResult], None] | None = None,
+		) -> tuple[list[FileSearchResult], list[SkippedFile]]:
+			_ = args
+			effective = skipped_files if skipped_files is not None else []
+			if on_progress is not None:
+				on_progress(1, 10)
+				on_progress(2, 10)
+			return [], effective
+
+	cancelled = {"n": 0}
+
+	def cancel_check():
+		cancelled["n"] += 1
+		return cancelled["n"] > 1
+
+	events: list[object] = []
+	SearchSession(_CancellingSearch()).run_blocking(
+		_args(tmp_path, "a"),
+		on_event=events.append,
+		cancel_check=cancel_check,
+	)
+
+	assert any(isinstance(event, SearchFinishedEvent) for event in events)
+	assert not any(isinstance(event, SearchErrorEvent) for event in events)

@@ -775,17 +775,23 @@ def _execute_file_search(
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
-	files = walker.collect_files(
-		root,
-		skip_hidden_folders=skip_hidden_folders,
-		skip_noise_folders=skip_noise_folders,
-		skip_noise_files=skip_noise_files,
-		match_skipped_names=match_skipped_names,
-		include_archives=include_archives,
-		include_subdirectories=include_subdirectories,
-	)
+	from srxy.i18n import tr
+
+	emit_activity(on_activity, tr("activity.listing_files"))
+	try:
+		files = walker.collect_files(
+			root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			skip_noise_files=skip_noise_files,
+			match_skipped_names=match_skipped_names,
+			include_archives=include_archives,
+			include_subdirectories=include_subdirectories,
+		)
+	finally:
+		clear_activity(on_activity)
 	if images.is_active(effective_semantic_image) and any(images.is_image_path(file_path) for file_path in files):
-		emit_activity(on_activity, "Encoding image query…")
+		emit_activity(on_activity, tr("activity.encoding_image_query"))
 		try:
 			query_image_embedding = encode_semantic_image_query(clip_query)
 		finally:
@@ -870,8 +876,10 @@ def _execute_file_search(
 		and not _semantic_text
 	)
 
-	emit_activity(on_activity, "Searching…")
+	emit_activity(on_activity, tr("activity.searching"))
 	completed = 0
+	from srxy.application.search_control import SearchCancelled
+
 	try:
 		if _use_threads:
 			with ThreadPoolExecutor(max_workers=max_workers) as pool:
@@ -943,6 +951,8 @@ def _execute_file_search(
 				results.append(result)
 				if on_result is not None:
 					on_result(result)
+	except SearchCancelled:
+		pass
 	finally:
 		clear_activity(on_activity)
 

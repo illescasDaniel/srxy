@@ -4,10 +4,16 @@ from __future__ import annotations
 
 import argparse
 import os
+import time
 from collections.abc import Callable
 from dataclasses import dataclass
 
 from srxy.adapters.outbound.worker.search_worker import search_uses_subprocess
+from srxy.application.search_control import (
+	MAX_PROGRESSIVE_RESULT_EVENTS,
+	PROGRESS_EMIT_INTERVAL_S,
+	SearchCancelled,
+)
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
 from srxy.ports.inbound.file_search import FileSearchPort
@@ -60,6 +66,10 @@ class SearchSession:
 	``run_blocking`` is safe to call from a worker thread. Heavy modes that need
 	process isolation should use ``search_uses_subprocess`` + the worker adapter
 	instead of this method.
+
+	Progress and early result events are paced so GUI/TUI frontends stay
+	responsive on huge trees; ``SearchFinishedEvent`` always carries the full
+	(limit-trimmed) result list.
 	"""
 
 	def __init__(self, file_search: FileSearchPort):
@@ -77,21 +87,33 @@ class SearchSession:
 	):
 		_bootstrap_worker_env()
 		skipped_files: list[SkippedFile] = []
+		last_progress_at = 0.0
+		progressive_results = 0
+
+		def _raise_if_cancelled():
+			if cancel_check is not None and cancel_check():
+				raise SearchCancelled()
 
 		def on_progress(current: int, total: int):
-			if cancel_check is not None and cancel_check():
-				return
-			on_event(SearchProgressEvent(current, total))
+			nonlocal last_progress_at
+			_raise_if_cancelled()
+			now = time.monotonic()
+			if current >= total or (now - last_progress_at) >= PROGRESS_EMIT_INTERVAL_S:
+				last_progress_at = now
+				on_event(SearchProgressEvent(current, total))
 
 		def on_activity(update: ActivityUpdate | None):
+			# Do not raise here — listing/encoding may not be interruptible yet.
 			if cancel_check is not None and cancel_check():
 				return
 			on_event(SearchActivityEvent(update))
 
 		def on_result(result: FileSearchResult):
-			if cancel_check is not None and cancel_check():
-				return
-			on_event(SearchResultEvent(result))
+			nonlocal progressive_results
+			_raise_if_cancelled()
+			if progressive_results < MAX_PROGRESSIVE_RESULT_EVENTS:
+				on_event(SearchResultEvent(result))
+				progressive_results += 1
 
 		try:
 			results, skipped_files = self._file_search.execute(
@@ -101,10 +123,12 @@ class SearchSession:
 				on_activity=on_activity,
 				on_result=on_result,
 			)
+		except SearchCancelled:
+			# Ports that do not swallow cancel still surface it here.
+			on_event(SearchFinishedEvent(results=[], skipped_files=skipped_files))
+			return
 		except Exception as error:
 			on_event(SearchErrorEvent(str(error)))
 			return
 
-		if cancel_check is not None and cancel_check():
-			return
 		on_event(SearchFinishedEvent(results=results, skipped_files=skipped_files))

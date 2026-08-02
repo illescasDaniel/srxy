@@ -13,6 +13,7 @@ from pathlib import Path
 
 from srxy.adapters.inbound.installer.download import ProgressCallback
 from srxy.adapters.inbound.installer.manifest import InstallManifest, utc_now_iso, write_manifest
+from srxy.adapters.inbound.installer.package_spec import resolve_srxy_install_spec, with_semantic_extra
 from srxy.adapters.inbound.installer.vendor import install_ffmpeg, install_tesseract, install_uv
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.resources.icons import app_icon_path, available_icon_sizes
@@ -28,7 +29,8 @@ class InstallOptions:
 	download_ffmpeg: bool = True
 	install_semantic: bool = False
 	prefetch_models: bool = False
-	srxy_spec: str = "srxy"
+	add_to_path: bool = True
+	srxy_spec: str = ""
 
 
 def _status(callback: StatusCallback | None, message: str):
@@ -52,6 +54,8 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
 def _write_launcher(prefix: Path):
 	bin_dir = prefix / "bin"
 	bin_dir.mkdir(parents=True, exist_ok=True)
+	log_dir = prefix / "logs"
+	log_dir.mkdir(parents=True, exist_ok=True)
 	venv_srxy = prefix / ".venv" / "bin" / "srxy"
 	launcher = bin_dir / "srxy"
 	vendor_bin_parts = [
@@ -61,6 +65,7 @@ def _write_launcher(prefix: Path):
 	]
 	path_prefix = ":".join(vendor_bin_parts)
 	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
+	log_file = log_dir / "srxy.log"
 	content = f"""#!/bin/sh
 set -eu
 SRXY_HOME="{prefix}"
@@ -69,7 +74,16 @@ export PATH="{path_prefix}:${{PATH}}"
 if [ -d "{tessdata}" ]; then
 	export TESSDATA_PREFIX="{tessdata}"
 fi
-exec "{venv_srxy}" "$@"
+LOG_DIR="{log_dir}"
+LOG_FILE="{log_file}"
+mkdir -p "$LOG_DIR"
+{{
+	echo "===== $(date -Iseconds 2>/dev/null || date) srxy start ====="
+	echo "argv: $*"
+	echo "SRXY_HOME=$SRXY_HOME"
+}} >>"$LOG_FILE"
+# Keep GUI stdout/stderr in the install folder for easy debugging.
+exec "{venv_srxy}" "$@" >>"$LOG_FILE" 2>&1
 """
 	launcher.write_text(content, encoding="utf-8")
 	launcher.chmod(0o755)
@@ -131,7 +145,18 @@ def _resolve_uv(prefix: Path) -> Path:
 	raise RuntimeError("uv is not available; vendor install failed")
 
 
-def _package_version() -> str:
+def _package_version(venv: Path | None = None) -> str:
+	if venv is not None:
+		python = venv / "bin" / "python"
+		if python.is_file():
+			result = subprocess.run(  # noqa: S603
+				[str(python), "-c", "from importlib.metadata import version; print(version('srxy'))"],
+				capture_output=True,
+				text=True,
+				check=False,
+			)
+			if result.returncode == 0 and result.stdout.strip():
+				return result.stdout.strip()
 	try:
 		return package_version("srxy")
 	except Exception:
@@ -146,6 +171,7 @@ def install_srxy(
 ) -> InstallManifest:
 	prefix = options.prefix.expanduser().resolve()
 	prefix.mkdir(parents=True, exist_ok=True)
+	(prefix / "logs").mkdir(parents=True, exist_ok=True)
 
 	_status(status, "Installing uv…")
 	install_uv(prefix, progress=progress)
@@ -153,18 +179,33 @@ def install_srxy(
 
 	_status(status, "Creating Python environment…")
 	venv = prefix / ".venv"
-	_run([str(uv), "venv", "--python", "3.12", str(venv)])
+	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)])
 
 	env = os.environ.copy()
 	env["VIRTUAL_ENV"] = str(venv)
 	env["PATH"] = f"{venv / 'bin'}:{env.get('PATH', '')}"
 
-	spec = options.srxy_spec
-	if options.install_semantic and "[" not in spec:
-		spec = f"{spec}[semantic]"
+	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
+	if options.install_semantic:
+		spec = with_semantic_extra(spec)
 
 	_status(status, f"Installing {spec}…")
 	_run([str(uv), "pip", "install", spec], env=env)
+
+	# Ensure GUI dependency is present (guards against stale PyPI metadata).
+	probe = subprocess.run(  # noqa: S603
+		[str(venv / "bin" / "python"), "-c", "import PySide6"],
+		capture_output=True,
+		text=True,
+		check=False,
+		env=env,
+	)
+	if probe.returncode != 0:
+		raise RuntimeError(
+			"Installed srxy is missing PySide6 (GUI). The installer must use a local "
+			"wheel/source build that includes the desktop UI — not an older PyPI build.\n"
+			f"{(probe.stderr or probe.stdout).strip()}"
+		)
 
 	vendor_tesseract = False
 	vendor_ffmpeg = False
@@ -189,15 +230,26 @@ def install_srxy(
 	_write_launcher(prefix)
 	_write_desktop_entry(prefix)
 
+	if options.add_to_path:
+		from srxy.adapters.inbound.installer.path_setup import ensure_path_block
+
+		_status(status, "Adding terminal PATH shortcut…")
+		rc = ensure_path_block(prefix / "bin")
+		_status(status, f"PATH updated in {rc} (open a new terminal to use `srxy`).")
+
 	manifest = InstallManifest(
-		version=_package_version(),
+		version=_package_version(venv),
 		prefix=str(prefix),
 		installed_at=utc_now_iso(),
 		semantic=options.install_semantic,
 		models_prefetched=models_prefetched,
 		vendor_tesseract=vendor_tesseract,
 		vendor_ffmpeg=vendor_ffmpeg,
-		extra={"python": sys.version.split()[0], "marker": MANIFEST_NAME},
+		extra={
+			"python": sys.version.split()[0],
+			"marker": MANIFEST_NAME,
+			"srxy_spec": spec,
+		},
 	)
 	write_manifest(prefix, manifest)
 	_status(status, "Install complete.")

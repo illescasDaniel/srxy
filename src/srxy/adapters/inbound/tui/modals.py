@@ -4,7 +4,7 @@ from textual import on
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Static
+from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Select, Static
 
 from srxy.adapters.inbound.tui.labels import (
 	BINARY_SKIP_HINT,
@@ -178,13 +178,35 @@ class HelpModal(ModalScreen[None]):
 """
 
 	def compose(self) -> ComposeResult:
+		from srxy.i18n import get_language, tr
+
 		with Vertical(id="help-dialog"):
 			yield Static(self.HELP_TEXT, markup=True)
+			yield Static(tr("tui.language"), id="help-language-label")
+			yield Select(
+				(("English", "en"), ("Español", "es")),
+				value=get_language(),
+				id="help-language",
+				allow_blank=False,
+			)
 			yield Button("Close", variant="primary", id="help-close")
 
 	def on_button_pressed(self, event: Button.Pressed):
 		if event.button.id == "help-close":
 			self.dismiss(None)
+
+	@on(Select.Changed, "#help-language")
+	def _on_language_changed(self, event: Select.Changed):
+		from srxy.application.settings import set_language_setting
+		from srxy.i18n import get_language, set_language
+
+		value = event.value
+		if value not in {"en", "es"}:
+			return
+		if str(value) == get_language():
+			return
+		set_language(str(value))
+		set_language_setting(str(value))
 
 
 class SearchFiltersModal(ModalScreen[SearchFilters | None]):

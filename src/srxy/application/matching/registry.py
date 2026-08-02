@@ -11,10 +11,11 @@ from srxy.application.matching.phonetic import PhoneticMatcher
 from srxy.domain.models import MatchType
 
 
-_SEMANTIC_UNAVAILABLE_MESSAGE = (
-	"Semantic matching is disabled. Set SRXY_SEMANTIC=1 and install the optional "
-	"dependency: uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
-)
+def _semantic_unavailable_message() -> str:
+	from srxy.application.install_method import semantic_enable_hint
+	from srxy.i18n import tr
+
+	return tr("unavailable.semantic_disabled", hint=semantic_enable_hint())
 
 
 def is_matcher_available(match_type: MatchType) -> bool:
@@ -47,7 +48,7 @@ def get_atomic_matcher(match_type: MatchType) -> Matcher:
 	if match_type == MatchType.PHONETIC:
 		return PhoneticMatcher()
 	if not is_matcher_available(MatchType.SEMANTIC):
-		raise RuntimeError(_SEMANTIC_UNAVAILABLE_MESSAGE)
+		raise RuntimeError(_semantic_unavailable_message())
 	from srxy.application.matching.semantic import SemanticMatcher
 
 	return SemanticMatcher()

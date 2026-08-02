@@ -14,11 +14,15 @@ uv sync --extra semantic
 
 On **Windows** with an NVIDIA GPU, install CUDA PyTorch in `.venv` before relying on GPU features ([installation.md → Windows](installation.md#windows)).
 
+When bumping AppImage installer compatibility, edit [`packaging/installer_meta.toml`](../packaging/installer_meta.toml) (`installer_version`, `min_srxy_version`) and rebuild the AppImage. Keep a copy in sync under `src/srxy/adapters/inbound/installer/installer_meta.toml` for packaged installs.
+
 Run tasks without activating the venv:
 
 ```bash
 uv run task checks
 uv run task cli -- "registry" ./src
+uv run task gui-bare            # GUI from gitignored .venv-bare (core-only; no AI extras)
+uv run task gui-bare -- --recreate
 uv run pytest -m integration
 uv run python scripts/bench_file_search.py
 ```

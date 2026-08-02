@@ -61,19 +61,24 @@ def apply_search_filters_to_args(args: argparse.Namespace, filters: SearchFilter
 
 
 def format_search_filters_summary(filters: SearchFilters) -> str:
+	from srxy.i18n import tr
+
 	top = filters.top_files.strip()
 	if top:
-		files_label = f"Top {top}"
+		files_label = tr("filters.summary.top", n=top)
 	else:
-		files_label = "All files"
+		files_label = tr("filters.summary.all_files")
 	per_file = filters.max_matches.strip() or "50"
 	text_mib = filters.size_limits.text_mib.strip() or "100"
 	match_threshold = filters.threshold.strip() or _percent_text(_DEFAULT_THRESHOLD)
-	return (
-		f"{files_label} · {per_file}/file · text {text_mib} MiB · "
-		f"match≥{match_threshold}% · "
-		f"image≥{filters.semantic_image_threshold.strip() or _percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD)}% · "
-		f"transcript≥{filters.transcribe_threshold.strip() or _percent_text(DEFAULT_TRANSCRIBE_THRESHOLD)}%"
+	return tr(
+		"filters.summary.body",
+		files=files_label,
+		per_file=per_file,
+		text_mib=text_mib,
+		match=match_threshold,
+		image=filters.semantic_image_threshold.strip() or _percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD),
+		transcript=filters.transcribe_threshold.strip() or _percent_text(DEFAULT_TRANSCRIBE_THRESHOLD),
 	)
 
 

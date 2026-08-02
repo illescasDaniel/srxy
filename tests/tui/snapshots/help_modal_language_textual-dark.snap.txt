@@ -1,0 +1,77 @@
+help-language
+█
+█
+█
+█
+█
+Srxy TUI
+█
+█
+█
+█
+Search
+█
+█
+Enter / Ctrl+S   Run search
+█
+█
+/              Focus query input
+█
+█
+Warning Search Settings changed since last run — search
+█
+█
+again
+█
+█
+█
+█
+Filters
+█
+█
+Filters            Result limits, file size caps, and
+█
+█
+match sensitivity
+█
+█
+Search options     Where to search, how to match, which
+█
+█
+files to scan
+█
+█
+█
+█
+Results
+█
+█
+j / k          Move selection
+█
+█
+o              Open selected file
+█
+█
+y              Copy selected file path
+█
+█
+m              Copy focused preview match
+█
+█
+M              Copy all preview matches
+█
+█
+Scores         Shown as match percentages (e.g. 86%)
+█
+█
+█
+█
+General
+█
+█
+?              Show this help
+█
+█
+█
+█
+█

@@ -647,6 +647,12 @@ def build_parser() -> argparse.ArgumentParser:
 		version=f"%(prog)s {package_version()}",
 	)
 	parser.add_argument(
+		"--language",
+		choices=["en", "es"],
+		default=None,
+		help="UI language (default: system / SRXY_LANGUAGE / settings)",
+	)
+	parser.add_argument(
 		"query",
 		nargs="?",
 		default=None,
@@ -1089,6 +1095,14 @@ def run_plain(args: argparse.Namespace) -> int:
 def main(argv: list[str] | None = None) -> int:
 	parser = build_parser()
 	args = parser.parse_args(argv)
+	from srxy.application.settings import set_language_setting
+	from srxy.i18n import resolve_language, set_language
+
+	if getattr(args, "language", None):
+		set_language(str(args.language))
+		set_language_setting(str(args.language))
+	else:
+		set_language(resolve_language())
 	auto_start = args.query is not None and bool(args.query.strip())
 
 	if should_use_gui(args):
@@ -1100,6 +1114,27 @@ def main(argv: list[str] | None = None) -> int:
 		from srxy.adapters.inbound.tui import run_tui
 
 		return run_tui(args, auto_start=auto_start)
+
+	from srxy.application.launch import gui_display_available, gui_importable
+
+	# Desktop / start-menu launches have no TTY. If the GUI cannot start, exit with a
+	# clear message instead of falling through to CLI (which needs a query).
+	explicit_cli = bool(
+		getattr(args, "cli", False)
+		or args.json
+		or args.format == "flat"
+		or args.output is not None
+		or os.environ.get("CI", "").strip().lower() in {"1", "true", "yes", "on"}
+	)
+	if gui_display_available() and not gui_importable() and not explicit_cli:
+		message = (
+			"srxy GUI could not start because PySide6 is not installed in this environment.\n"
+			"Reinstall with the desktop installer (local wheel/source), or:\n"
+			"  uv pip install 'PySide6>=6.6'\n"
+			"Logs (prefix installs): $SRXY_HOME/logs/srxy.log"
+		)
+		print(message, file=sys.stderr)
+		return 2
 
 	return run_plain(args)
 

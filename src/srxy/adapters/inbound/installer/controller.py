@@ -6,7 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
 
-from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu, no_gpu_semantic_message
+from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html, privacy_disclaimer_text
@@ -59,6 +59,8 @@ class InstallerController(QObject):
 	downloadFfmpegChanged = Signal()
 	installSemanticChanged = Signal()
 	prefetchModelsChanged = Signal()
+	addToPathChanged = Signal()
+	languageChanged = Signal()
 	busyChanged = Signal()
 	statusChanged = Signal()
 	errorChanged = Signal()
@@ -78,6 +80,11 @@ class InstallerController(QObject):
 		# When a usable GPU is present, opt into all AI-related extras by default.
 		self._install_semantic = self._has_gpu
 		self._prefetch_models = self._has_gpu
+		self._add_to_path = True
+		from srxy.i18n import get_language, resolve_language, set_language
+
+		set_language(resolve_language())
+		self._language = get_language()
 		self._busy = False
 		self._status = ""
 		self._error = ""
@@ -85,9 +92,6 @@ class InstallerController(QObject):
 		self._progress_value = 0.0
 		self._page = "mode"
 		self._finished = False
-		self._privacy_text = privacy_disclaimer_html()
-		self._privacy_plain = privacy_disclaimer_text()
-		self._no_gpu_message = no_gpu_semantic_message()
 		self._uninstall_hint = UNINSTALL_SEARCH_HINT
 		self._worker: _Worker | None = None
 		discovered = discover_default_prefix()
@@ -169,9 +173,11 @@ class InstallerController(QObject):
 	def hasGpu(self) -> bool:
 		return self._has_gpu
 
-	@Property(str, constant=True)
+	@Property(str, notify=languageChanged)
 	def noGpuMessage(self) -> str:
-		return self._no_gpu_message
+		from srxy.i18n import tr as translate
+
+		return translate("installer.no_gpu.banner")
 
 	@Property(bool, notify=installSemanticChanged)
 	def installSemantic(self) -> bool:
@@ -197,6 +203,37 @@ class InstallerController(QObject):
 		if self._prefetch_models != allowed:
 			self._prefetch_models = allowed
 			self.prefetchModelsChanged.emit()
+
+	@Property(bool, notify=addToPathChanged)
+	def addToPath(self) -> bool:
+		return self._add_to_path
+
+	@Slot(bool)
+	def setAddToPath(self, value: bool):
+		flag = bool(value)
+		if self._add_to_path != flag:
+			self._add_to_path = flag
+			self.addToPathChanged.emit()
+
+	@Property(str, notify=languageChanged)
+	def language(self) -> str:
+		return self._language
+
+	@Slot(str)
+	def setLanguage(self, value: str):
+		from srxy.application.settings import set_language_setting
+		from srxy.i18n import get_language, set_language
+
+		set_language(value)
+		set_language_setting(value)
+		self._language = get_language()
+		self.languageChanged.emit()
+
+	@Slot(str, result=str)
+	def i18nTr(self, key: str) -> str:
+		from srxy.i18n import tr as translate
+
+		return translate(key)
 
 	@Property(bool, notify=busyChanged)
 	def busy(self) -> bool:
@@ -226,13 +263,13 @@ class InstallerController(QObject):
 	def finished(self) -> bool:
 		return self._finished
 
-	@Property(str, constant=True)
+	@Property(str, notify=languageChanged)
 	def privacyText(self) -> str:
-		return self._privacy_text
+		return privacy_disclaimer_html()
 
-	@Property(str, constant=True)
+	@Property(str, notify=languageChanged)
 	def privacyPlainText(self) -> str:
-		return self._privacy_plain
+		return privacy_disclaimer_text()
 
 	@Property(str, constant=True)
 	def uninstallHint(self) -> str:
@@ -251,7 +288,7 @@ class InstallerController(QObject):
 				self._page = "uninstall"
 				self.pageChanged.emit()
 			return
-		order = ["mode", "prefix", "privacy", "options", "progress"]
+		order = ["mode", "prefix", "privacy", "options", "path", "progress"]
 		try:
 			index = order.index(self._page)
 		except ValueError:
@@ -273,7 +310,7 @@ class InstallerController(QObject):
 				self._page = "mode"
 				self.pageChanged.emit()
 			return
-		order = ["mode", "prefix", "privacy", "options", "progress"]
+		order = ["mode", "prefix", "privacy", "options", "path", "progress"]
 		try:
 			index = order.index(self._page)
 		except ValueError:
@@ -310,6 +347,7 @@ class InstallerController(QObject):
 			download_ffmpeg=self._download_ffmpeg,
 			install_semantic=self._install_semantic and self._has_gpu,
 			prefetch_models=self._prefetch_models and self._install_semantic,
+			add_to_path=self._add_to_path,
 		)
 		self._worker = _Worker("install", options, None)
 		self._worker.status.connect(self._on_status)

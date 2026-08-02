@@ -33,6 +33,11 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
 3. Choose install or uninstall. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
 4. Acknowledge the [privacy / third-party notice](privacy.md), then optionally download Tesseract, ffmpeg, semantic extras, and AI models.
+5. Optionally enable **Also let me run srxy from the Terminal** (default on). This prepends `$prefix/bin` to your shell startup file (`~/.bashrc`, `~/.zshrc`, or fish `config.fish`) with `# >>> srxy PATH >>>` markers. Open a **new** terminal after install. Uninstall removes that block.
+
+Language defaults to the system locale (English or Spanish). Override with the installer language combo, GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.
+
+The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip).
 
 Run the wizard from a checked-out tree with:
 

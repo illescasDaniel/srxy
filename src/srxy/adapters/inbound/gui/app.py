@@ -25,6 +25,10 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	app.setApplicationName("srxy")
 	apply_desktop_file_name(app, "srxy")
 	apply_app_icon(app)
+	from srxy.i18n import get_language
+	from srxy.i18n.qt import install_qt_translator
+
+	install_qt_translator(app, get_language())
 	engine = QQmlApplicationEngine()
 	services = build_app_services(desktop=QtDesktopAdapter())
 	controller = SearchController(

@@ -62,17 +62,19 @@ def capabilities_to_dict(caps: Capabilities) -> dict[str, bool]:
 
 
 def unavailable_reason(feature: str, caps: Capabilities) -> str:
+	from srxy.i18n import tr
+
 	if feature == "semantic":
 		if not caps.semantic_deps:
 			return semantic_deps_unavailable_message()
 		if not caps.has_gpu:
-			return "Semantic search needs a GPU (CUDA or Apple MPS) to run."
+			return tr("unavailable.semantic_gpu")
 		return ""
 	if feature == "semantic_image":
 		if not caps.semantic_deps:
-			return "Image semantic search requires the optional dependency: pip install 'srxy[semantic]'."
+			return semantic_deps_unavailable_message()
 		if not caps.has_gpu:
-			return "Image semantic search needs a GPU (CUDA or Apple MPS) to run."
+			return tr("unavailable.semantic_image_gpu")
 		return ""
 	if feature == "ocr":
 		if not caps.ocr:
@@ -84,7 +86,7 @@ def unavailable_reason(feature: str, caps: Capabilities) -> str:
 		if not caps.ffmpeg:
 			return ffmpeg_unavailable_message()
 		if not caps.has_gpu:
-			return "Speech transcription needs a GPU (CUDA or Apple MPS) for the GUI. Use the CLI with SRXY_TRANSCRIBE_DEVICE=cpu if you must run on CPU."
+			return tr("unavailable.transcribe_gpu")
 		return ""
 	return ""
 

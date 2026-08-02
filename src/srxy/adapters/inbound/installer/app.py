@@ -37,6 +37,11 @@ def run_installer() -> int:
 	apply_desktop_file_name(app, "srxy-installer")
 	_follow_system_color_scheme(app)
 	apply_app_icon(app)
+	from srxy.i18n import get_language, resolve_language, set_language
+	from srxy.i18n.qt import install_qt_translator
+
+	set_language(resolve_language())
+	install_qt_translator(app, get_language())
 	engine = QQmlApplicationEngine()
 	controller = InstallerController()
 	engine.rootContext().setContextProperty("controller", controller)

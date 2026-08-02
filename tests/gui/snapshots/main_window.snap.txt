@@ -2,6 +2,7 @@ mainWindow:
   title: srxy
   status: Ready
   progressPercent: 0%
+  language: en
   sections: Where to search, What to search, How to search, Search, Search Results, Search progress
   howStack: Options button + summary, Filters button + summary
   queryMode: simple
@@ -19,6 +20,8 @@ mainWindow:
   canSearch: False
   buttons: Browse…, Search, Options, Filters, Cancel
   menus: Open file, Copy path, Copy all matches, Copy line, Copy location
+  helpMenu: About srxy…, Check for updates…, Language (English / Español)
+  dialogs: About, Update, Help setting
   panels: Results, Matches in file, File preview
   resultColumns: #, Match, Path, Matched
   matchColumns: #, Match, Location, Text

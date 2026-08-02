@@ -89,7 +89,8 @@ def test_given_no_gpu_capabilities_when_clamping_then_disables_semantic(qapp: QC
 		)
 	)
 	assert controller.isFeatureEnabled("semantic") is False
-	assert "GPU" in controller.helpText("semantic")
+	assert "GPU" in controller.unavailableReason("semantic")
+	assert "Currently unavailable" not in controller.helpText("semantic")
 
 
 def test_given_uppercase_multi_term_joins_when_syncing_then_builds_valid_query(qapp: QCoreApplication, tmp_path: Path):
@@ -267,3 +268,42 @@ def test_given_invalid_advanced_query_when_checking_then_query_issue_set(qapp: Q
 	# then
 	assert controller.queryIssue
 	assert controller.canSearch is False
+
+
+def test_given_spanish_when_set_language_then_gui_labels_and_privacy_translate(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from srxy.i18n import set_language
+
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	set_language("en")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	english_privacy = str(controller.aboutPrivacyHtml)
+	assert "Privacy" in english_privacy or "privacy" in english_privacy
+	assert controller.i18nTr("gui.search") == "Search"
+
+	# when
+	controller.setLanguage("es")
+
+	# then
+	assert controller.language == "es"
+	assert controller.i18nTr("gui.search") == "Buscar"
+	assert controller.i18nTr("gui.section.where") == "Dónde buscar"
+	assert "Dónde:" in str(controller.optionsSummary)
+	assert "Nombres" in str(controller.optionsSummary)
+	assert "Todos los archivos" in str(controller.filtersSummary)
+	assert "necesita una GPU" in controller.i18nTr("unavailable.semantic_gpu")
+	spanish_privacy = str(controller.aboutPrivacyHtml)
+	assert "aviso de privacidad" in spanish_privacy.lower()
+	assert "terceros" in spanish_privacy.lower()
+	assert spanish_privacy != english_privacy
+	assert "instalador de escritorio" not in spanish_privacy.lower()
+
+	# cleanup
+	controller.setLanguage("en")
+	set_language("en")
+	assert controller.i18nTr("gui.search") == "Search"

@@ -2,15 +2,21 @@ installerWindow:
   title: srxy installer
   mode: install
   page: mode
+  language: en
   hasGpu: False
   privacyAck: False
   downloadTesseract: True
   downloadFfmpeg: True
   installSemantic: False
   prefetchModels: False
+  addToPath: True
   busy: False
   finished: False
   modes: Install srxy, Uninstall srxy
-  pages: mode, prefix, privacy, options, uninstall, progress
-  optionLabels: Text in images, Spoken words helper, AI search extras, Download AI models now
+  pages: mode, prefix, privacy, options, path, uninstall, progress
+  optionLabels: Text in images, Audio/video helper, Smarter search (needs a GPU), Download AI models now (nested under Smarter search)
+  optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files
+  pathCheckbox: Also let me run srxy from the Terminal
+  languageCombo: English, Español
   buttons: Back, Next, Install, Uninstall, Close, Info (i), GPU warning (!)
+  helpMenu: (installer uses language combo on mode page)

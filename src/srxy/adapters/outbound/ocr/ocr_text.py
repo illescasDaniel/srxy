@@ -34,15 +34,16 @@ _REGION_MIN_CELL = 32
 
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
-_OCR_UNAVAILABLE_MESSAGE = (
-	"Tesseract OCR is not available. Install the tesseract binary on PATH "
-	"(e.g. tesseract-ocr on Debian/Ubuntu, tesseract on Arch), "
-	"or use the srxy desktop installer which can download it into SRXY_HOME."
-)
-
 _ocr_engine: OcrEngine | None = None
 _lexical_langs_cache: tuple[str, ...] | None = None
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
+
+
+def _ocr_unavailable_message() -> str:
+	from srxy.application.install_method import ocr_enable_hint
+	from srxy.i18n import tr
+
+	return tr("unavailable.ocr", hint=ocr_enable_hint())
 
 
 class OcrEngine(ABC):
@@ -136,12 +137,12 @@ def is_ocr_image_path(path: Path) -> bool:
 
 
 def ocr_unavailable_message() -> str:
-	return _OCR_UNAVAILABLE_MESSAGE
+	return _ocr_unavailable_message()
 
 
 def ensure_ocr_available():
 	if not tesseract_available():
-		raise RuntimeError(_OCR_UNAVAILABLE_MESSAGE)
+		raise RuntimeError(_ocr_unavailable_message())
 
 
 def get_ocr_engine() -> OcrEngine:

@@ -20,10 +20,12 @@ _query_embedding_cache: dict[str, object] = {}
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 
-_SEMANTIC_IMAGE_UNAVAILABLE_MESSAGE = (
-	"Image semantic search is disabled. Set SRXY_SEMANTIC_IMAGE=1 and install the optional "
-	"dependency: uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
-)
+
+def _semantic_image_unavailable_message() -> str:
+	from srxy.application.install_method import semantic_enable_hint
+	from srxy.i18n import tr
+
+	return tr("unavailable.semantic_image", hint=semantic_enable_hint())
 
 
 def semantic_image_env_enabled() -> bool:
@@ -50,12 +52,12 @@ def is_semantic_image_active(semantic_image: bool | None = None) -> bool:
 
 
 def semantic_image_unavailable_message() -> str:
-	return _SEMANTIC_IMAGE_UNAVAILABLE_MESSAGE
+	return _semantic_image_unavailable_message()
 
 
 def ensure_semantic_image_available():
 	if not is_semantic_image_available():
-		raise RuntimeError(_SEMANTIC_IMAGE_UNAVAILABLE_MESSAGE)
+		raise RuntimeError(_semantic_image_unavailable_message())
 
 
 def _model_source() -> str:

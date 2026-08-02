@@ -45,6 +45,11 @@ def uninstall_prefix(prefix: Path, *, status: StatusCallback | None = None) -> N
 			if status is not None:
 				status("Removed desktop entry.")
 	_remove_user_icons(status=status)
+	from srxy.adapters.inbound.installer.path_setup import remove_srxy_path_from_shell
+
+	if remove_srxy_path_from_shell():
+		if status is not None:
+			status("Removed terminal PATH shortcut.")
 	shutil.rmtree(resolved)
 	if status is not None:
 		status("Uninstall complete.")

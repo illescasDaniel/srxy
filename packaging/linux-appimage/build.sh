@@ -29,6 +29,15 @@ echo "Creating AppDir venv…"
 uv venv --python 3.12 "$APPDIR/usr/venv"
 uv pip install --python "$APPDIR/usr/venv/bin/python" "$ROOT"
 
+echo "Building wheel for prefix installs…"
+WHEEL_DIR="$APPDIR/usr/share/srxy"
+mkdir -p "$WHEEL_DIR"
+uv build --wheel --out-dir "$OUT_DIR/installer-wheels" "$ROOT"
+WHEEL="$(ls -1 "$OUT_DIR/installer-wheels"/srxy-*.whl | tail -n 1)"
+cp "$WHEEL" "$WHEEL_DIR/"
+cp "$WHEEL" "$WHEEL_DIR/srxy.whl"
+cp "$ROOT/packaging/installer_meta.toml" "$WHEEL_DIR/installer_meta.toml"
+
 VERSION="$(
 	"$APPDIR/usr/venv/bin/python" -c 'from importlib.metadata import version; print(version("srxy"))'
 )"

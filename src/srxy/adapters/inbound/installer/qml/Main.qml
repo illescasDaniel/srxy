@@ -7,10 +7,12 @@ ApplicationWindow {
 	width: 720
 	height: 580
 	visible: true
-	title: "srxy installer"
+	title: root.t("installer.window_title")
 	color: palette.window
 
 	property var c: controller
+	// Bump when language changes so every t() binding re-evaluates.
+	property int langRev: 0
 	readonly property color primaryText: palette.windowText
 	readonly property color secondaryText: palette.placeholderText.a > 0
 		? palette.placeholderText
@@ -18,6 +20,18 @@ ApplicationWindow {
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
 	readonly property color warningText: lightTheme ? "#9a6700" : "#e0a060"
 	readonly property color errorText: lightTheme ? "#c62828" : "#ff8a80"
+
+	function t(key) {
+		const _ = root.langRev
+		return c ? c.i18nTr(key) : key
+	}
+
+	Connections {
+		target: c
+		function onLanguageChanged() {
+			root.langRev++
+		}
+	}
 
 	function showHelp(key) {
 		helpTitle.text = key
@@ -33,7 +47,7 @@ ApplicationWindow {
 		implicitHeight: 28
 		font.bold: true
 		ToolTip.visible: hovered
-		ToolTip.text: "About this option"
+		ToolTip.text: root.t("installer.options.info_tooltip")
 		onClicked: showHelp(helpKey)
 	}
 
@@ -51,8 +65,8 @@ ApplicationWindow {
 		Label {
 			visible: c.page !== "mode"
 			text: c.mode === "uninstall"
-				? "Remove srxy on this computer"
-				: "Install srxy on this computer"
+				? root.t("installer.subtitle.uninstall")
+				: root.t("installer.subtitle.install")
 			color: root.secondaryText
 		}
 
@@ -64,32 +78,46 @@ ApplicationWindow {
 				if (c.page === "prefix") return 1
 				if (c.page === "privacy") return 2
 				if (c.page === "options") return 3
-				if (c.page === "uninstall") return 4
-				return 5
+				if (c.page === "path") return 4
+				if (c.page === "uninstall") return 5
+				return 6
 			}
 
 			// 0 mode
 			ColumnLayout {
 				spacing: 12
-				Label { text: "What do you want to do?"; color: root.primaryText; font.pixelSize: 18 }
+				Label { text: root.t("installer.mode.title"); color: root.primaryText; font.pixelSize: 18 }
 				RadioButton {
-					text: "Install srxy"
+					text: root.t("installer.mode.install")
 					checked: c.mode === "install"
 					onClicked: c.setMode("install")
 				}
 				RadioButton {
-					text: "Uninstall srxy"
+					text: root.t("installer.mode.uninstall")
 					checked: c.mode === "uninstall"
 					onClicked: c.setMode("uninstall")
+				}
+				Label {
+					text: root.t("installer.language")
+					color: root.secondaryText
+					Layout.topMargin: 8
+				}
+				ComboBox {
+					objectName: "languageCombo"
+					model: [root.t("menu.language.en"), root.t("menu.language.es")]
+					currentIndex: c.language === "es" ? 1 : 0
+					onActivated: function(index) {
+						c.setLanguage(index === 1 ? "es" : "en")
+					}
 				}
 			}
 
 			// 1 prefix
 			ColumnLayout {
 				spacing: 12
-				Label { text: "Where should srxy live?"; color: root.primaryText; font.pixelSize: 18 }
+				Label { text: root.t("installer.prefix.title"); color: root.primaryText; font.pixelSize: 18 }
 				Label {
-					text: "Default is your Applications folder. Tools, AI models, and cache stay in this folder."
+					text: root.t("installer.prefix.body")
 					wrapMode: Text.WordWrap
 					color: root.secondaryText
 					Layout.fillWidth: true
@@ -104,7 +132,7 @@ ApplicationWindow {
 			// 2 privacy
 			ColumnLayout {
 				spacing: 12
-				Label { text: "Privacy & downloads notice"; color: root.primaryText; font.pixelSize: 18 }
+				Label { text: root.t("installer.privacy.title"); color: root.primaryText; font.pixelSize: 18 }
 				ScrollView {
 					id: privacyScroll
 					Layout.fillWidth: true
@@ -118,13 +146,17 @@ ApplicationWindow {
 
 					TextEdit {
 						id: privacyEdit
-						width: privacyScroll.availableWidth
+						width: Math.max(0, privacyScroll.availableWidth)
 						readOnly: true
 						selectByMouse: true
 						wrapMode: TextEdit.Wrap
 						textFormat: TextEdit.RichText
 						text: c.privacyText
 						color: root.primaryText
+						leftPadding: 14
+						rightPadding: 14
+						topPadding: 12
+						bottomPadding: 12
 						onLinkActivated: function(link) { Qt.openUrlExternally(link) }
 
 						HoverHandler {
@@ -135,50 +167,82 @@ ApplicationWindow {
 					}
 				}
 				CheckBox {
-					text: "I understand and want to continue"
+					text: root.t("installer.privacy.ack")
 					checked: c.privacyAck
-					onToggled: c.setPrivacyAck(checked)
+					onToggled: function() { c.setPrivacyAck(checked) }
 				}
 			}
 
 			// 3 options
 			ColumnLayout {
 				spacing: 10
-				Label { text: "Optional extras"; color: root.primaryText; font.pixelSize: 18 }
+				Label { text: root.t("installer.options.title"); color: root.primaryText; font.pixelSize: 18 }
 				Label {
-					text: "Turn on what you need. Tap (i) for a plain-language explanation."
+					text: root.t("installer.options.body")
 					wrapMode: Text.WordWrap
 					color: root.secondaryText
 					Layout.fillWidth: true
 				}
 
-				RowLayout {
-					CheckBox {
+				component OptionRow: RowLayout {
+					id: optionRow
+					property string labelKey: ""
+					property string subtitleKey: ""
+					property string helpKey: ""
+					property bool optionChecked: false
+					property bool optionEnabled: true
+					signal toggled(bool checked)
+
+					Layout.fillWidth: true
+					spacing: 8
+
+					ColumnLayout {
 						Layout.fillWidth: true
-						text: "Text in images"
-						checked: c.downloadTesseract
-						onToggled: c.setDownloadTesseract(checked)
+						spacing: 2
+						CheckBox {
+							Layout.fillWidth: true
+							text: root.t(optionRow.labelKey)
+							checked: optionRow.optionChecked
+							enabled: optionRow.optionEnabled
+							onToggled: function() { optionRow.toggled(checked) }
+						}
+						Label {
+							text: root.t(optionRow.subtitleKey)
+							wrapMode: Text.WordWrap
+							color: root.secondaryText
+							font.pixelSize: 12
+							Layout.fillWidth: true
+							Layout.leftMargin: 28
+						}
 					}
-					InfoButton { helpKey: "tesseract" }
+					InfoButton {
+						helpKey: optionRow.helpKey
+						enabled: true
+						Layout.alignment: Qt.AlignTop
+					}
 				}
-				RowLayout {
-					CheckBox {
-						Layout.fillWidth: true
-						text: "Spoken words helper"
-						checked: c.downloadFfmpeg
-						onToggled: c.setDownloadFfmpeg(checked)
-					}
-					InfoButton { helpKey: "ffmpeg" }
+
+				OptionRow {
+					labelKey: "installer.options.tesseract"
+					subtitleKey: "installer.options.tesseract_sub"
+					helpKey: "tesseract"
+					optionChecked: c.downloadTesseract
+					onToggled: function(checked) { c.setDownloadTesseract(checked) }
 				}
-				RowLayout {
-					CheckBox {
-						Layout.fillWidth: true
-						text: "AI search extras"
-						enabled: c.hasGpu
-						checked: c.installSemantic
-						onToggled: c.setInstallSemantic(checked)
-					}
-					InfoButton { helpKey: "semantic"; enabled: true }
+				OptionRow {
+					labelKey: "installer.options.ffmpeg"
+					subtitleKey: "installer.options.ffmpeg_sub"
+					helpKey: "ffmpeg"
+					optionChecked: c.downloadFfmpeg
+					onToggled: function(checked) { c.setDownloadFfmpeg(checked) }
+				}
+				OptionRow {
+					labelKey: "installer.options.semantic"
+					subtitleKey: "installer.options.semantic_sub"
+					helpKey: "semantic"
+					optionChecked: c.installSemantic
+					optionEnabled: c.hasGpu
+					onToggled: function(checked) { c.setInstallSemantic(checked) }
 				}
 				RowLayout {
 					visible: !c.hasGpu
@@ -192,7 +256,7 @@ ApplicationWindow {
 						font.bold: true
 						palette.buttonText: root.warningText
 						ToolTip.visible: hovered
-						ToolTip.text: "Why AI extras are unavailable"
+						ToolTip.text: root.t("installer.options.gpu_tooltip")
 						onClicked: showHelp("no_gpu")
 					}
 					Label {
@@ -204,20 +268,39 @@ ApplicationWindow {
 				}
 				ColumnLayout {
 					Layout.fillWidth: true
-					spacing: 4
+					Layout.leftMargin: 28
+					spacing: 2
+					opacity: c.installSemantic ? 1.0 : 0.55
 					RowLayout {
 						Layout.fillWidth: true
-						CheckBox {
+						spacing: 8
+						ColumnLayout {
 							Layout.fillWidth: true
-							text: "Download AI models now"
-							enabled: c.installSemantic
-							checked: c.prefetchModels
-							onToggled: c.setPrefetchModels(checked)
+							spacing: 2
+							CheckBox {
+								Layout.fillWidth: true
+								text: root.t("installer.options.models")
+								enabled: c.installSemantic
+								checked: c.prefetchModels
+								onToggled: function() { c.setPrefetchModels(checked) }
+							}
+							Label {
+								text: root.t("installer.options.models_sub")
+								wrapMode: Text.WordWrap
+								color: root.secondaryText
+								font.pixelSize: 12
+								Layout.fillWidth: true
+								Layout.leftMargin: 28
+							}
 						}
-						InfoButton { helpKey: "models"; enabled: true }
+						InfoButton {
+							helpKey: "models"
+							enabled: true
+							Layout.alignment: Qt.AlignTop
+						}
 					}
 					Label {
-						text: "If you skip this, srxy can later install the models when needed."
+						text: root.t("installer.options.models_hint")
 						wrapMode: Text.WordWrap
 						color: root.secondaryText
 						Layout.fillWidth: true
@@ -226,12 +309,39 @@ ApplicationWindow {
 				}
 			}
 
-			// 4 uninstall
+			// 4 path
 			ColumnLayout {
 				spacing: 12
-				Label { text: "Remove srxy"; color: root.primaryText; font.pixelSize: 18 }
+				Label { text: root.t("installer.path.title"); color: root.primaryText; font.pixelSize: 18 }
 				Label {
-					text: "Leave blank to use the usual Applications folder when srxy is installed there."
+					text: root.t("installer.path.body")
+					wrapMode: Text.WordWrap
+					color: root.secondaryText
+					Layout.fillWidth: true
+				}
+				RowLayout {
+					CheckBox {
+						Layout.fillWidth: true
+						text: root.t("installer.path.checkbox")
+						checked: c.addToPath
+						onToggled: function() { c.setAddToPath(checked) }
+					}
+					InfoButton { helpKey: "path" }
+				}
+				Label {
+					text: root.t("installer.path.hint")
+					wrapMode: Text.WordWrap
+					color: root.secondaryText
+					Layout.fillWidth: true
+				}
+			}
+
+			// 5 uninstall
+			ColumnLayout {
+				spacing: 12
+				Label { text: root.t("installer.uninstall.title"); color: root.primaryText; font.pixelSize: 18 }
+				Label {
+					text: root.t("installer.uninstall.body")
 					wrapMode: Text.WordWrap
 					color: root.secondaryText
 					Layout.fillWidth: true
@@ -251,11 +361,13 @@ ApplicationWindow {
 				}
 			}
 
-			// 5 progress
+			// 6 progress
 			ColumnLayout {
 				spacing: 12
 				Label {
-					text: c.busy ? "Working…" : (c.finished ? "Finished" : "Ready")
+					text: c.busy
+						? root.t("installer.progress.working")
+						: (c.finished ? root.t("installer.progress.finished") : root.t("installer.progress.ready"))
 					color: root.primaryText
 					font.pixelSize: 18
 				}
@@ -289,37 +401,38 @@ ApplicationWindow {
 		RowLayout {
 			Layout.fillWidth: true
 			Button {
-				text: "Back"
-				enabled: !c.busy && c.page !== "mode"
+				text: root.t("common.back")
+				visible: c.page !== "mode"
+				enabled: !c.busy
 				onClicked: c.goBack()
 			}
 			Item { Layout.fillWidth: true }
 			Button {
-				text: "Next"
-				visible: c.mode === "install" && c.page !== "options" && c.page !== "progress"
+				text: root.t("common.next")
+				visible: c.mode === "install" && c.page !== "path" && c.page !== "progress"
 				enabled: !c.busy && (c.page !== "privacy" || c.privacyAck)
 				onClicked: c.goNext()
 			}
 			Button {
-				text: "Install"
-				visible: c.mode === "install" && c.page === "options"
+				text: root.t("installer.button.install")
+				visible: c.mode === "install" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startInstall()
 			}
 			Button {
-				text: "Next"
+				text: root.t("common.next")
 				visible: c.mode === "uninstall" && c.page === "mode"
 				enabled: !c.busy
 				onClicked: c.goNext()
 			}
 			Button {
-				text: "Uninstall"
+				text: root.t("installer.button.uninstall")
 				visible: c.mode === "uninstall" && c.page === "uninstall"
 				enabled: !c.busy
 				onClicked: c.startUninstall()
 			}
 			Button {
-				text: "Close"
+				text: root.t("common.close")
 				visible: c.page === "progress" && !c.busy
 				onClicked: Qt.quit()
 			}
@@ -328,7 +441,7 @@ ApplicationWindow {
 
 	Dialog {
 		id: helpDialog
-		title: "About this option"
+		title: root.t("help.option_title")
 		modal: true
 		standardButtons: Dialog.Ok
 		anchors.centerIn: parent

@@ -13,6 +13,55 @@ ApplicationWindow {
 
 	property bool syncingOptions: false
 	property bool syncingFilters: false
+	readonly property bool lightTheme: palette.window.hslLightness > 0.5
+	// Bump when language changes so every t() / privacy binding re-evaluates.
+	property int langRev: 0
+
+	function t(key) {
+		const _ = root.langRev
+		return controller ? controller.i18nTr(key) : key
+	}
+
+	Connections {
+		target: controller
+		function onLanguageChanged() {
+			root.langRev++
+		}
+	}
+
+	menuBar: MenuBar {
+		objectName: "helpMenuBar"
+		Menu {
+			title: root.t("menu.help")
+			objectName: "helpMenu"
+			Action {
+				objectName: "aboutAction"
+				text: root.t("menu.about")
+				onTriggered: if (controller) controller.openAbout()
+			}
+			Action {
+				objectName: "checkUpdatesAction"
+				text: root.t("menu.check_updates")
+				onTriggered: if (controller) controller.checkForUpdates()
+			}
+			Menu {
+				title: root.t("menu.language")
+				objectName: "languageMenu"
+				Action {
+					text: root.t("menu.language.en")
+					checkable: true
+					checked: controller && controller.language === "en"
+					onTriggered: if (controller) controller.setLanguage("en")
+				}
+				Action {
+					text: root.t("menu.language.es")
+					checkable: true
+					checked: controller && controller.language === "es"
+					onTriggered: if (controller) controller.setLanguage("es")
+				}
+			}
+		}
+	}
 
 	ListModel { id: termModel }
 
@@ -123,6 +172,14 @@ ApplicationWindow {
 	function showHelp(key) {
 		helpTitle.text = key
 		helpBody.text = controller ? controller.helpText(key) : ""
+		helpDialog.title = root.t("help.dialog_title")
+		helpDialog.open()
+	}
+
+	function showUnavailable(key) {
+		helpTitle.text = key
+		helpBody.text = controller ? controller.unavailableReason(key) : ""
+		helpDialog.title = root.t("options.unavailable_title")
 		helpDialog.open()
 	}
 
@@ -134,8 +191,22 @@ ApplicationWindow {
 		implicitHeight: 28
 		font.bold: true
 		ToolTip.visible: hovered
-		ToolTip.text: "About this setting"
+		ToolTip.text: root.t("gui.about_setting")
 		onClicked: showHelp(helpKey)
+	}
+
+	component WarningButton: ToolButton {
+		property string featureKey: ""
+		text: "!"
+		flat: true
+		implicitWidth: 28
+		implicitHeight: 28
+		font.bold: true
+		visible: controller && featureKey.length > 0 && !controller.isFeatureEnabled(featureKey)
+		palette.buttonText: root.lightTheme ? "#9a6700" : "#e0a060"
+		ToolTip.visible: hovered
+		ToolTip.text: root.t("options.unavailable_tooltip")
+		onClicked: showUnavailable(featureKey)
 	}
 
 	FolderDialog {
@@ -152,20 +223,20 @@ ApplicationWindow {
 		spacing: 8
 
 		GroupBox {
-			title: "Where to search"
+			title: root.t("gui.section.where")
 			Layout.fillWidth: true
 			RowLayout {
 				anchors.fill: parent
 				Button {
 					objectName: "browseButton"
-					text: "Browse…"
+					text: root.t("gui.browse")
 					onClicked: folderDialog.open()
 				}
 				TextField {
 					id: pathField
 					objectName: "pathField"
 					Layout.fillWidth: true
-					placeholderText: "Path"
+					placeholderText: root.t("gui.path_placeholder")
 					text: controller ? controller.path : "."
 					onTextChanged: if (controller) controller.path = text
 					Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
@@ -184,7 +255,7 @@ ApplicationWindow {
 		}
 
 		GroupBox {
-			title: "What to search"
+			title: root.t("gui.section.what")
 			Layout.fillWidth: true
 			ColumnLayout {
 				anchors.fill: parent
@@ -194,7 +265,7 @@ ApplicationWindow {
 						id: simpleQuery
 						objectName: "simpleQueryField"
 						Layout.fillWidth: true
-						placeholderText: "Search…"
+						placeholderText: root.t("gui.search_placeholder")
 						visible: modeBox.currentIndex === 0
 						text: controller ? controller.simpleQuery : ""
 						onTextChanged: if (controller) controller.simpleQuery = text
@@ -213,17 +284,23 @@ ApplicationWindow {
 								required property string join
 								ComboBox {
 									visible: index > 0
-									model: ["or", "and"]
+									model: 2
 									currentIndex: join === "and" ? 1 : 0
+									displayText: root.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
+									delegate: ItemDelegate {
+										required property int index
+										width: parent ? parent.width : 80
+										text: root.t(index === 1 ? "gui.join.and" : "gui.join.or")
+									}
 									onActivated: {
-										termModel.setProperty(index, "join", currentText)
+										termModel.setProperty(index, "join", currentIndex === 1 ? "and" : "or")
 										syncTermRows()
 									}
 								}
 								TextField {
 									Layout.fillWidth: true
 									text: term
-									placeholderText: "Term"
+									placeholderText: root.t("gui.term_placeholder")
 									onTextChanged: {
 										termModel.setProperty(index, "term", text)
 										syncTermRows()
@@ -241,7 +318,7 @@ ApplicationWindow {
 							}
 						}
 						Button {
-							text: "Add term"
+							text: root.t("gui.add_term")
 							onClicked: {
 								termModel.append({ term: "", join: "or" })
 								syncTermRows()
@@ -252,7 +329,7 @@ ApplicationWindow {
 						id: advancedQuery
 						objectName: "advancedQueryField"
 						Layout.fillWidth: true
-						placeholderText: "e.g. revenue | amphibian & person"
+						placeholderText: root.t("gui.advanced_placeholder")
 						visible: modeBox.currentIndex === 2
 						text: controller ? controller.advancedQuery : ""
 						onTextChanged: if (controller) controller.advancedQuery = text
@@ -261,9 +338,19 @@ ApplicationWindow {
 					ComboBox {
 						id: modeBox
 						objectName: "queryModeBox"
-						model: ["Simple", "Multi-term", "Advanced"]
+						model: 3
 						implicitWidth: 120
 						Layout.alignment: Qt.AlignTop
+						displayText: root.t(
+							["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
+						)
+						delegate: ItemDelegate {
+							required property int index
+							width: modeBox.width
+							text: root.t(
+								["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+							)
+						}
 						onCurrentIndexChanged: {
 							const modes = ["simple", "multi", "advanced"]
 							if (controller)
@@ -283,7 +370,7 @@ ApplicationWindow {
 		}
 
 		GroupBox {
-			title: "How to search"
+			title: root.t("gui.section.how")
 			Layout.fillWidth: true
 			ColumnLayout {
 				anchors.fill: parent
@@ -293,7 +380,7 @@ ApplicationWindow {
 					Button {
 						id: optionsButton
 						objectName: "optionsButton"
-						text: "Options"
+						text: root.t("gui.options")
 						onClicked: {
 							loadOptionsFromController()
 							optionsDialog.open()
@@ -310,7 +397,7 @@ ApplicationWindow {
 					Button {
 						id: filtersButton
 						objectName: "filtersButton"
-						text: "Filters"
+						text: root.t("gui.filters")
 						onClicked: {
 							loadFiltersFromController()
 							filtersDialog.open()
@@ -327,13 +414,13 @@ ApplicationWindow {
 		}
 
 		GroupBox {
-			title: "Search"
+			title: root.t("gui.section.search")
 			Layout.fillWidth: true
 			RowLayout {
 				Button {
 					id: searchButton
 					objectName: "searchButton"
-					text: "Search"
+					text: root.t("gui.search")
 					highlighted: controller ? controller.stale : true
 					implicitWidth: 160
 					enabled: controller !== null && controller !== undefined && controller.canSearch
@@ -353,7 +440,7 @@ ApplicationWindow {
 		}
 
 		GroupBox {
-			title: "Search Results"
+			title: root.t("gui.section.results")
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			enabled: controller ? controller.hasSearched : false
@@ -367,14 +454,14 @@ ApplicationWindow {
 					SplitView.minimumWidth: 240
 					ColumnLayout {
 						anchors.fill: parent
-						Label { text: "Results"; font.bold: true }
+						Label { text: root.t("gui.results"); font.bold: true }
 						RowLayout {
 							Layout.fillWidth: true
 							spacing: 0
-							Label { text: "#"; font.bold: true; Layout.preferredWidth: 36; padding: 6 }
-							Label { text: "Match"; font.bold: true; Layout.preferredWidth: 56; padding: 6 }
-							Label { text: "Path"; font.bold: true; Layout.fillWidth: true; padding: 6 }
-							Label { text: "Matched"; font.bold: true; Layout.preferredWidth: 88; padding: 6 }
+							Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
+							Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
+							Label { text: root.t("gui.col.path"); font.bold: true; Layout.fillWidth: true; padding: 6 }
+							Label { text: root.t("gui.col.matched"); font.bold: true; Layout.preferredWidth: 88; padding: 6 }
 						}
 						Item {
 							Layout.fillWidth: true
@@ -424,9 +511,9 @@ ApplicationWindow {
 									}
 									Menu {
 										id: resultMenu
-										MenuItem { text: "Open file"; onTriggered: controller.openResult(resultRow.index) }
-										MenuItem { text: "Copy path"; onTriggered: controller.copyResultPath(resultRow.index) }
-										MenuItem { text: "Copy all matches"; onTriggered: controller.copyAllMatches(resultRow.index) }
+										MenuItem { text: root.t("gui.menu.open_file"); onTriggered: controller.openResult(resultRow.index) }
+										MenuItem { text: root.t("gui.menu.copy_path"); onTriggered: controller.copyResultPath(resultRow.index) }
+										MenuItem { text: root.t("gui.menu.copy_all_matches"); onTriggered: controller.copyAllMatches(resultRow.index) }
 									}
 								}
 							}
@@ -454,14 +541,14 @@ ApplicationWindow {
 						SplitView.maximumHeight: visible ? 10000 : 0
 						ColumnLayout {
 							anchors.fill: parent
-							Label { text: "Matches in file"; font.bold: true }
+							Label { text: root.t("gui.matches_in_file"); font.bold: true }
 							RowLayout {
 								Layout.fillWidth: true
 								spacing: 0
-								Label { text: "#"; font.bold: true; Layout.preferredWidth: 36; padding: 6 }
-								Label { text: "Match"; font.bold: true; Layout.preferredWidth: 56; padding: 6 }
-								Label { text: "Location"; font.bold: true; Layout.preferredWidth: 120; padding: 6 }
-								Label { text: "Text"; font.bold: true; Layout.fillWidth: true; padding: 6 }
+								Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
+								Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
+								Label { text: root.t("gui.col.location"); font.bold: true; Layout.preferredWidth: 120; padding: 6 }
+								Label { text: root.t("gui.col.text"); font.bold: true; Layout.fillWidth: true; padding: 6 }
 							}
 							ListView {
 								id: matchesView
@@ -510,8 +597,8 @@ ApplicationWindow {
 									}
 									Menu {
 										id: matchMenu
-										MenuItem { text: "Copy line"; onTriggered: controller.copyMatchLine(matchRow.index) }
-										MenuItem { text: "Copy location"; onTriggered: controller.copyMatchLocation(matchRow.index) }
+										MenuItem { text: root.t("gui.menu.copy_line"); onTriggered: controller.copyMatchLine(matchRow.index) }
+										MenuItem { text: root.t("gui.menu.copy_location"); onTriggered: controller.copyMatchLocation(matchRow.index) }
 									}
 								}
 							}
@@ -546,7 +633,7 @@ ApplicationWindow {
 		}
 
 		GroupBox {
-			title: "Search progress"
+			title: root.t("gui.section.progress")
 			Layout.fillWidth: true
 			enabled: controller ? controller.hasSearched : false
 			opacity: enabled ? 1.0 : 0.45
@@ -573,7 +660,7 @@ ApplicationWindow {
 					elide: Text.ElideRight
 				}
 				Button {
-					text: "Cancel"
+					text: root.t("gui.cancel")
 					visible: controller && controller.searching
 					onClicked: controller.cancelSearch()
 				}
@@ -584,7 +671,7 @@ ApplicationWindow {
 	Dialog {
 		id: optionsDialog
 		objectName: "optionsDialog"
-		title: "Search options"
+		title: root.t("gui.options.title")
 		modal: true
 		anchors.centerIn: parent
 		width: 520
@@ -596,12 +683,12 @@ ApplicationWindow {
 		}
 		footer: DialogButtonBox {
 			Button {
-				text: qsTr("Cancel")
+				text: root.t("common.cancel")
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: optionsDialog.reject()
 			}
 			Button {
-				text: qsTr("OK")
+				text: root.t("common.ok")
 				highlighted: true
 				onClicked: {
 					const err = pushOptionsToController()
@@ -632,13 +719,13 @@ ApplicationWindow {
 				}
 
 				Label {
-					text: "Where to search"
+					text: root.t("gui.options.where")
 					font.bold: true
 				}
 				RowLayout {
 					CheckBox {
 						id: optNames
-						text: "File names"
+						text: root.t("gui.options.file_names")
 						checked: true
 						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 					}
@@ -647,7 +734,7 @@ ApplicationWindow {
 				RowLayout {
 					CheckBox {
 						id: optContents
-						text: "File contents"
+						text: root.t("gui.options.file_contents")
 						checked: true
 						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 					}
@@ -655,12 +742,12 @@ ApplicationWindow {
 				}
 
 				Label {
-					text: "How to match"
+					text: root.t("gui.options.how")
 					font.bold: true
 					Layout.topMargin: 8
 				}
 				Label {
-					text: "Fuzzy, phonetic, and substring matching (always on)"
+					text: root.t("gui.options.classic_hint")
 					opacity: 0.7
 					wrapMode: Text.WordWrap
 					Layout.fillWidth: true
@@ -668,7 +755,7 @@ ApplicationWindow {
 				RowLayout {
 					CheckBox {
 						id: optDocsTags
-						text: "Docs, tags & metadata (recommended ON)"
+						text: root.t("gui.options.docs_tags")
 						checked: true
 					}
 					InfoButton { helpKey: "search_docs_tags" }
@@ -676,51 +763,55 @@ ApplicationWindow {
 				RowLayout {
 					CheckBox {
 						id: optSemantic
-						text: "Similar meaning"
+						text: root.t("gui.options.semantic")
 						enabled: controller ? controller.isFeatureEnabled("semantic") : false
 					}
+					WarningButton { featureKey: "semantic" }
 					InfoButton { helpKey: "semantic"; enabled: true }
 				}
 				RowLayout {
 					CheckBox {
 						id: optOcr
-						text: "Text in images"
+						text: root.t("gui.options.ocr")
 						enabled: controller ? controller.isFeatureEnabled("ocr") : false
 					}
+					WarningButton { featureKey: "ocr" }
 					InfoButton { helpKey: "ocr"; enabled: true }
 				}
 				RowLayout {
 					CheckBox {
 						id: optTranscribe
-						text: "Spoken words"
+						text: root.t("gui.options.transcribe")
 						enabled: controller ? controller.isFeatureEnabled("transcribe") : false
 					}
+					WarningButton { featureKey: "transcribe" }
 					InfoButton { helpKey: "transcribe"; enabled: true }
 				}
 				RowLayout {
 					CheckBox {
 						id: optSemanticImage
-						text: "Visual description"
+						text: root.t("gui.options.semantic_image")
 						enabled: controller ? controller.isFeatureEnabled("semantic_image") : false
 					}
+					WarningButton { featureKey: "semantic_image" }
 					InfoButton { helpKey: "semantic_image"; enabled: true }
 				}
 
 				Label {
-					text: "Which files to scan"
+					text: root.t("gui.options.which_files")
 					font.bold: true
 					Layout.topMargin: 8
 				}
 				RowLayout {
-					CheckBox { id: optSubdirs; text: "Include subdirectories"; checked: true }
+					CheckBox { id: optSubdirs; text: root.t("gui.options.subdirs"); checked: true }
 					InfoButton { helpKey: "include_subdirectories" }
 				}
 				RowLayout {
-					CheckBox { id: optArchives; text: "Inside zip/tar files" }
+					CheckBox { id: optArchives; text: root.t("gui.options.archives") }
 					InfoButton { helpKey: "include_archives" }
 				}
 				Label {
-					text: "Noisy files"
+					text: root.t("gui.options.noisy")
 					font.bold: true
 					Layout.leftMargin: 12
 					Layout.topMargin: 4
@@ -728,26 +819,26 @@ ApplicationWindow {
 				}
 				RowLayout {
 					Layout.leftMargin: 12
-					CheckBox { id: optHidden; text: "Hidden files & folders" }
+					CheckBox { id: optHidden; text: root.t("gui.options.hidden") }
 					InfoButton { helpKey: "include_hidden" }
 				}
 				RowLayout {
 					Layout.leftMargin: 12
-					CheckBox { id: optNoise; text: "Cache & vendor folders" }
+					CheckBox { id: optNoise; text: root.t("gui.options.noise") }
 					InfoButton { helpKey: "include_noise" }
 				}
 				RowLayout {
 					Layout.leftMargin: 12
-					CheckBox { id: optNoiseFiles; text: "Junk & lock files" }
+					CheckBox { id: optNoiseFiles; text: root.t("gui.options.noise_files") }
 					InfoButton { helpKey: "include_noise_files" }
 				}
 				RowLayout {
 					Layout.leftMargin: 12
-					CheckBox { id: optMatchSkippedNames; text: "Skipped file names" }
+					CheckBox { id: optMatchSkippedNames; text: root.t("gui.options.match_skipped") }
 					InfoButton { helpKey: "match_skipped_names" }
 				}
 				Label {
-					text: "Binary-looking files (null byte in first 8 KiB) skip body text; names can still match"
+					text: root.t("gui.options.binary_hint")
 					wrapMode: Text.WordWrap
 					opacity: 0.7
 					Layout.fillWidth: true
@@ -760,7 +851,7 @@ ApplicationWindow {
 	Dialog {
 		id: filtersDialog
 		objectName: "filtersDialog"
-		title: "Filters"
+		title: root.t("gui.filters.title")
 		modal: true
 		standardButtons: Dialog.Ok | Dialog.Cancel
 		anchors.centerIn: parent
@@ -774,35 +865,35 @@ ApplicationWindow {
 			columnSpacing: 8
 			rowSpacing: 6
 
-			Label { text: "Max results" }
-			TextField { id: fltTopFiles; placeholderText: "all"; Layout.fillWidth: true }
+			Label { text: root.t("gui.filters.max_results") }
+			TextField { id: fltTopFiles; placeholderText: root.t("gui.filters.max_results_ph"); Layout.fillWidth: true }
 			InfoButton { helpKey: "top_files" }
 
-			Label { text: "Hits per file" }
+			Label { text: root.t("gui.filters.hits_per_file") }
 			TextField { id: fltMaxMatches; text: "50"; Layout.fillWidth: true }
 			InfoButton { helpKey: "max_matches" }
 
-			Label { text: "Minimum match %" }
+			Label { text: root.t("gui.filters.min_match") }
 			TextField { id: fltThreshold; text: "35"; Layout.fillWidth: true }
 			InfoButton { helpKey: "threshold" }
 
-			Label { text: "Visual min %" }
+			Label { text: root.t("gui.filters.visual_min") }
 			TextField { id: fltVisualMin; text: "18"; Layout.fillWidth: true }
 			InfoButton { helpKey: "semantic_image_threshold" }
 
-			Label { text: "Speech min %" }
+			Label { text: root.t("gui.filters.speech_min") }
 			TextField { id: fltSpeechMin; text: "25"; Layout.fillWidth: true }
 			InfoButton { helpKey: "transcribe_threshold" }
 
-			Label { text: "Document MiB" }
+			Label { text: root.t("gui.filters.doc_mib") }
 			TextField { id: fltDocSize; text: "100"; Layout.fillWidth: true }
 			InfoButton { helpKey: "text_mib" }
 
-			Label { text: "Image text MiB" }
+			Label { text: root.t("gui.filters.ocr_mib") }
 			TextField { id: fltOcrSize; text: "50"; Layout.fillWidth: true }
 			InfoButton { helpKey: "ocr_mib" }
 
-			Label { text: "Audio/video MiB" }
+			Label { text: root.t("gui.filters.media_mib") }
 			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
 			InfoButton { helpKey: "transcribe_mib" }
 		}
@@ -811,22 +902,149 @@ ApplicationWindow {
 	Dialog {
 		id: helpDialog
 		objectName: "helpDialog"
-		title: "About this setting"
+		title: root.t("help.dialog_title")
 		modal: true
 		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
-		width: 460
-		implicitWidth: 460
+		width: Math.min(520, parent.width - 40)
+		implicitWidth: 520
+		contentWidth: availableWidth
 		ColumnLayout {
-			Label { id: helpTitle; font.bold: true; wrapMode: Text.Wrap; Layout.fillWidth: true }
-			Label { id: helpBody; wrapMode: Text.Wrap; Layout.fillWidth: true }
+			width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
+			spacing: 8
+			Label {
+				id: helpTitle
+				font.bold: true
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+				Layout.maximumWidth: helpDialog.availableWidth - 24
+			}
+			Label {
+				id: helpBody
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+				Layout.maximumWidth: helpDialog.availableWidth - 24
+				textFormat: Text.PlainText
+			}
+		}
+	}
+
+	Dialog {
+		id: updateDialog
+		objectName: "updateDialog"
+		title: root.t("update.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(520, parent.width - 40)
+		visible: controller && controller.updateDialogOpen
+		closePolicy: controller && controller.updateBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
+		onClosed: if (controller) controller.closeUpdateDialog()
+		footer: DialogButtonBox {
+			Button {
+				text: root.t("update.no")
+				visible: controller && controller.updateDialogMode === "prompt"
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: updateDialog.reject()
+			}
+			Button {
+				text: root.t("update.yes")
+				visible: controller && controller.updateCanApply
+				highlighted: true
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: if (controller) controller.applyUpdate()
+			}
+			Button {
+				text: root.t("update.ok")
+				visible: controller && controller.updateDialogMode === "info"
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: updateDialog.accept()
+			}
+		}
+		Label {
+			wrapMode: Text.WordWrap
+			width: parent ? parent.width : 480
+			text: controller ? controller.updateMessage : ""
+		}
+	}
+
+	Dialog {
+		id: aboutDialog
+		objectName: "aboutDialog"
+		title: root.t("about.title")
+		modal: true
+		standardButtons: Dialog.Ok
+		anchors.centerIn: parent
+		width: Math.min(560, parent.width - 40)
+		height: Math.min(520, parent.height - 40)
+		visible: controller && controller.aboutOpen
+		onClosed: if (controller) controller.closeAbout()
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ColumnLayout {
+				width: aboutDialog.availableWidth - 24
+				spacing: 10
+				Label {
+					text: "srxy"
+					font.pixelSize: 22
+					font.bold: true
+				}
+				Label {
+					text: controller
+						? root.t("about.version").replace("{version}", controller.appVersion)
+						: ""
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.t("about.license")
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.t("about.links")
+					font.bold: true
+				}
+				Label {
+					textFormat: Text.RichText
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+					text: controller
+						? ("<a href=\"" + controller.pypiUrl + "\">" + root.t("about.pypi") + "</a> · "
+							+ "<a href=\"" + controller.githubUrl + "\">" + root.t("about.github") + "</a> · "
+							+ "<a href=\"" + controller.websiteUrl + "\">" + root.t("about.website") + "</a>")
+						: ""
+					onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+					HoverHandler {
+						cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.ArrowCursor
+					}
+				}
+				Label {
+					text: root.t("about.privacy_heading")
+					font.bold: true
+					Layout.topMargin: 8
+				}
+				TextEdit {
+					readOnly: true
+					selectByMouse: true
+					wrapMode: TextEdit.Wrap
+					textFormat: TextEdit.RichText
+					text: controller ? controller.aboutPrivacyHtml : ""
+					Layout.fillWidth: true
+					color: palette.windowText
+					onLinkActivated: function(link) { Qt.openUrlExternally(link) }
+					HoverHandler {
+						cursorShape: parent.hoveredLink !== "" ? Qt.PointingHandCursor : Qt.IBeamCursor
+					}
+				}
+			}
 		}
 	}
 
 	Dialog {
 		id: downloadConfirmDialog
 		objectName: "downloadConfirmDialog"
-		title: "Download model"
+		title: root.t("gui.download_model")
 		modal: true
 		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
@@ -844,7 +1062,7 @@ ApplicationWindow {
 	Dialog {
 		id: downloadProgressDialog
 		objectName: "downloadProgressDialog"
-		title: "Downloading…"
+		title: root.t("gui.downloading")
 		modal: true
 		anchors.centerIn: parent
 		width: 420
@@ -870,7 +1088,7 @@ ApplicationWindow {
 	Dialog {
 		id: errorDialog
 		objectName: "errorDialog"
-		title: "Error"
+		title: root.t("gui.error")
 		modal: true
 		standardButtons: Dialog.Ok
 		anchors.centerIn: parent

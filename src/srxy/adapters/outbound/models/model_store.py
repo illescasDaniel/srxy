@@ -105,10 +105,9 @@ def download_model(
 	on_progress: Callable[[int, int, str], None] | None = None,
 ):
 	if not huggingface_hub_installed():
-		raise RuntimeError(
-			"huggingface_hub is required to download models. "
-			"Install with: uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
-		)
+		from srxy.application.install_method import semantic_enable_hint
+
+		raise RuntimeError(f"huggingface_hub is required to download models. {semantic_enable_hint()}")
 
 	from huggingface_hub import snapshot_download  # type: ignore[import-untyped]
 

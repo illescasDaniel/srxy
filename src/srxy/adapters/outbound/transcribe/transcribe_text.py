@@ -27,16 +27,20 @@ DEFAULT_TRANSCRIBE_THRESHOLD = 0.25
 DEFAULT_TRANSCRIBE_MAX_FILE_SIZE = 500 * 1024 * 1024
 TRANSCRIBE_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
 
-_TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE = (
-	"Transcription requires the optional dependency: "
-	"uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
-)
 
-_FFMPEG_UNAVAILABLE_MESSAGE = (
-	"ffmpeg is not available. Install the ffmpeg binary on PATH "
-	"(e.g. ffmpeg on Debian/Ubuntu, ffmpeg on Arch, brew install ffmpeg on macOS), "
-	"or use the srxy desktop installer which can download it into SRXY_HOME."
-)
+def _transcribe_deps_unavailable_message() -> str:
+	from srxy.application.install_method import semantic_enable_hint
+	from srxy.i18n import tr
+
+	return tr("unavailable.transcribe_deps", hint=semantic_enable_hint())
+
+
+def _ffmpeg_unavailable_message() -> str:
+	from srxy.application.install_method import ffmpeg_enable_hint
+	from srxy.i18n import tr
+
+	return tr("unavailable.ffmpeg", hint=ffmpeg_enable_hint())
+
 
 _faster_whisper_model: object | None = None
 _transformers_pipeline: object | None = None
@@ -109,18 +113,18 @@ def is_transcribe_path(path: Path) -> bool:
 
 
 def transcribe_unavailable_message() -> str:
-	return _TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE
+	return _transcribe_deps_unavailable_message()
 
 
 def ffmpeg_unavailable_message() -> str:
-	return _FFMPEG_UNAVAILABLE_MESSAGE
+	return _ffmpeg_unavailable_message()
 
 
 def ensure_transcribe_available():
 	if not transcribe_deps_installed():
-		raise RuntimeError(_TRANSCRIBE_DEPS_UNAVAILABLE_MESSAGE)
+		raise RuntimeError(_transcribe_deps_unavailable_message())
 	if not ffmpeg_available():
-		raise RuntimeError(_FFMPEG_UNAVAILABLE_MESSAGE)
+		raise RuntimeError(_ffmpeg_unavailable_message())
 
 
 def reset_transcribe_models():

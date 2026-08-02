@@ -90,17 +90,46 @@ def test_given_help_keys_when_asking_controller_then_returns_plain_language(
 	from srxy.adapters.inbound.installer.controller import InstallerController
 
 	controller = InstallerController()
+	controller.setLanguage("en")
 
 	# when / then
 	assert "Text in images" in str(controller.helpText("tesseract"))
-	assert "Spoken words" in str(controller.helpText("ffmpeg"))
-	assert "Similar meaning" in str(controller.helpText("semantic"))
+	assert "Audio/video helper" in str(controller.helpText("ffmpeg"))
+	assert "Smarter search" in str(controller.helpText("semantic"))
 	assert "Hugging Face" in str(controller.helpText("models"))
 	assert "No usable GPU" in str(controller.helpText("no_gpu"))
 
 
+def test_given_spanish_when_set_on_installer_then_ui_strings_switch(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	controller = InstallerController()
+	controller.setLanguage("en")
+	assert "What do you want" in controller.i18nTr("installer.mode.title")
+
+	# when
+	controller.setLanguage("es")
+
+	# then
+	assert controller.language == "es"
+	assert "quieres hacer" in controller.i18nTr("installer.mode.title").lower()
+	assert "idioma" in controller.i18nTr("installer.language").lower()
+	assert "gpu" in controller.noGpuMessage.lower()
+	assert "Texto en imágenes" in str(controller.helpText("tesseract"))
+	assert "aviso de privacidad" in controller.privacyText.lower()
+	controller.setLanguage("en")
+	assert "third-party notice" in controller.privacyText.lower()
+
+
 def test_given_privacy_text_when_loading_then_mentions_third_parties():
-	# given / when
+	# given
+	from srxy.i18n import set_language
+
+	set_language("en")
+
+	# when
 	text = privacy_disclaimer_text()
 	html = privacy_disclaimer_html()
 
@@ -114,6 +143,29 @@ def test_given_privacy_text_when_loading_then_mentions_third_parties():
 	assert "https://github.com/tesseract-ocr/tesseract" in text
 	assert "<a href=" in html
 	assert "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in html
+
+
+def test_given_spanish_when_loading_privacy_then_translates_prose():
+	# given
+	from srxy.i18n import set_language
+
+	set_language("es")
+
+	# when
+	text = privacy_disclaimer_text()
+	html = privacy_disclaimer_html()
+	app_html = privacy_disclaimer_html(for_app=True)
+
+	# then
+	assert "aviso de privacidad" in text.lower()
+	assert "terceros" in text.lower()
+	assert "Sitio:" in text or "Sitio:" in html
+	assert "Privacidad:" in text or "Privacidad:" in html
+	assert "https://huggingface.co/privacy" in html
+	assert "instalador de escritorio" in html.lower()
+	assert "instalador de escritorio" not in app_html.lower()
+	assert "srxy — aviso" in app_html.lower()
+	set_language("en")
 
 
 def test_given_prefix_with_manifest_when_uninstalling_then_removes_tree(
