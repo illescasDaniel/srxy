@@ -16,6 +16,7 @@
 		install: document.getElementById("install"),
 		uninstall: document.getElementById("uninstall"),
 		finish: document.getElementById("finish"),
+		launch: document.getElementById("launch"),
 		closeHint: document.getElementById("close-hint"),
 	};
 
@@ -23,6 +24,7 @@
 	let busy = false;
 	let done = false;
 	let finished = false;
+	let canLaunch = false;
 	let pollTimer = null;
 
 	function apiUrl(path) {
@@ -55,6 +57,8 @@
 	function refreshActionEnabled() {
 		els.install.disabled = busy || done || finished || !els.ack.checked;
 		els.uninstall.disabled = busy || done || finished;
+		els.launch.hidden = !canLaunch;
+		els.launch.disabled = busy || finished || !canLaunch;
 	}
 
 	function applyStrings(s) {
@@ -67,6 +71,7 @@
 		els.install.textContent = strings.install || "Install";
 		els.uninstall.textContent = strings.uninstall || "Uninstall";
 		els.finish.textContent = strings.finish || "Finish";
+		els.launch.textContent = strings.launch || "Launch";
 		els.status.textContent = strings.ready || "";
 		els.closeHint.textContent = strings.close_tab || "";
 	}
@@ -84,12 +89,14 @@
 		setBar(els.task, snap.task);
 		if (snap.status === "running") {
 			busy = true;
+			canLaunch = false;
 			els.finish.disabled = true;
 			refreshActionEnabled();
 		}
 		if (snap.status === "done" || snap.status === "error") {
 			busy = false;
 			done = snap.status === "done";
+			canLaunch = Boolean(snap.can_launch);
 			els.finish.disabled = false;
 			refreshActionEnabled();
 		}
@@ -124,6 +131,7 @@
 		finished = true;
 		stopHeartbeat();
 		els.finish.disabled = true;
+		els.launch.disabled = true;
 		els.install.disabled = true;
 		els.uninstall.disabled = true;
 		const body = "{}";
@@ -157,6 +165,7 @@
 			return;
 		}
 		busy = true;
+		canLaunch = false;
 		refreshActionEnabled();
 		els.finish.disabled = true;
 		try {
@@ -185,6 +194,7 @@
 			return;
 		}
 		busy = true;
+		canLaunch = false;
 		refreshActionEnabled();
 		els.finish.disabled = true;
 		try {
@@ -205,6 +215,33 @@
 
 	els.finish.addEventListener("click", () => {
 		requestShutdown();
+	});
+
+	els.launch.addEventListener("click", async () => {
+		if (busy || finished || !canLaunch) {
+			return;
+		}
+		busy = true;
+		refreshActionEnabled();
+		try {
+			await api("/api/launch", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: "{}",
+			});
+			finished = true;
+			stopHeartbeat();
+			els.finish.disabled = true;
+			els.launch.disabled = true;
+			els.install.disabled = true;
+			els.uninstall.disabled = true;
+			els.closeHint.hidden = false;
+		} catch (err) {
+			busy = false;
+			refreshActionEnabled();
+			els.status.textContent = err.message || String(err);
+			els.status.classList.add("error");
+		}
 	});
 
 	window.addEventListener("pagehide", () => {

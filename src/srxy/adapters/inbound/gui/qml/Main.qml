@@ -1095,11 +1095,15 @@ ApplicationWindow {
 		modal: true
 		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
-		width: 480
+		width: Math.min(480, parent.width - 40)
 		implicitWidth: 480
+		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
 		Label {
-			wrapMode: Text.Wrap
+			wrapMode: Text.WrapAnywhere
+			width: downloadConfirmDialog.availableWidth > 0
+				? downloadConfirmDialog.availableWidth - 24
+				: 456
 			text: controller ? controller.downloadConfirmMessage : ""
 		}
 		onAccepted: if (controller) controller.acceptDownloadConfirm()
@@ -1112,15 +1116,20 @@ ApplicationWindow {
 		title: root.t("gui.downloading")
 		modal: true
 		anchors.centerIn: parent
-		width: 420
+		width: Math.min(420, parent.width - 40)
 		implicitWidth: 420
+		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
 		standardButtons: Dialog.Cancel
 		ColumnLayout {
+			width: downloadProgressDialog.availableWidth > 0
+				? downloadProgressDialog.availableWidth - 24
+				: 396
 			Label {
 				text: controller ? controller.downloadStatus : ""
-				wrapMode: Text.Wrap
+				wrapMode: Text.WrapAnywhere
 				Layout.fillWidth: true
+				Layout.maximumWidth: downloadProgressDialog.availableWidth - 24
 			}
 			ProgressBar {
 				from: 0

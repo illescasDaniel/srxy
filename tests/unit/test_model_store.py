@@ -207,11 +207,11 @@ def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_p
 	fake_hub = MagicMock()
 	fake_hub.snapshot_download = fake_snapshot_download
 
-	def fake_make_progress_tqdm(on_progress_cb: Callable[[int, int, str], None]):
+	def fake_make_progress_tqdm(on_progress_cb: Callable[[int, int, str], None], *, label: str = ""):
 		class FakeTqdm:
 			def __init__(self, *, total: int = 0, desc: str = ""):
 				self.total = total
-				self.desc = desc
+				self.desc = label or desc
 
 			def update(self, n: float | None = 1):
 				on_progress_cb(40, 100, self.desc)
@@ -229,6 +229,25 @@ def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_p
 	# then
 	assert captured.get("tqdm_class") is not None
 	assert progress
+
+
+def test_given_tqdm_disable_flag_when_progress_tqdm_updates_then_emits_label():
+	# given — TQDM_DISABLE / disable=True normally skips desc and makes update a no-op
+	from srxy.adapters.outbound.models import model_store
+
+	progress: list[tuple[int, int, str]] = []
+	factory = model_store._make_progress_tqdm(  # pyright: ignore[reportPrivateUsage]
+		lambda current, total, message: progress.append((current, total, message)),
+		label="Downloading Transcription model (faster-whisper)…",
+	)
+	bar = factory(total=100, desc="Downloading bytes", disable=True)
+
+	# when
+	bar.update(40)
+	bar.close()
+
+	# then — Hugging Face's generic desc is ignored in favor of our model label
+	assert progress == [(40, 100, "Downloading Transcription model (faster-whisper)…")]
 
 
 def test_given_cached_model_when_clearing_semantic_text_then_removes_directory(

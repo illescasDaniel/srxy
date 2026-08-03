@@ -527,6 +527,12 @@ ApplicationWindow {
 				onClicked: c.startUninstall()
 			}
 			Button {
+				text: root.t("installer.button.launch")
+				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
+				highlighted: true
+				onClicked: c.launchInstalled()
+			}
+			Button {
 				text: root.t("common.finish")
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
 				onClicked: Qt.quit()

@@ -154,6 +154,7 @@ gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)
 gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bare (no semantic extras; --recreate to rebuild)" }
 installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
 installer-online = { cmd = "uv run srxy-installer-online", help = "launch one-click online installer (localhost browser UI)" }
+installer-online-local = { cmd = "./scripts/installer-online-local.sh", help = "build local wheel + launch online installer (SRXY_INSTALL_WHEEL; --no-build to reuse)" }
 build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build offline Linux installer AppImage into dist/" }
 build-appimage-online = { cmd = "./packaging/linux-appimage/build-online.sh", help = "build online Linux installer AppImage into dist/" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate srxy-installer-*.png gears-badge icons from base app icons" }

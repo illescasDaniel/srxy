@@ -89,7 +89,8 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  buttons: {buttons}",
 		f"  menus: {menus}",
 		f"  helpMenu: {help_menu}",
-		"  dialogs: About, Update, Help setting",
+		f"  dialogs: {t('about.title')}, {t('update.title')}, {t('help.dialog_title')}, "
+		f"{t('gui.download_model')}, {t('gui.downloading')}, {t('gui.error')}",
 		f"  panels: {t('gui.results')}, {t('gui.matches_in_file')}, File preview",
 		f"  resultColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.path')}, {t('gui.col.matched')}",
 		f"  matchColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.location')}, {t('gui.col.text')}",

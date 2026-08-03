@@ -4,11 +4,12 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, Signal, Slot
 
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
+from srxy.adapters.inbound.installer.launch_app import installed_launcher_path, launch_installed_app
 from srxy.adapters.inbound.installer.manifest import (
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
@@ -763,6 +764,21 @@ class InstallerController(QObject):
 			self._status = translate("installer.status.install_complete")
 		self.statusChanged.emit()
 		self.shutdown()
+
+	@Slot()
+	def launchInstalled(self):  # noqa: N802
+		"""Start the installed app and close the wizard."""
+		if self._mode not in {"install", "reinstall"} or not self._finished:
+			return
+		prefix = Path(self._prefix)
+		launcher = installed_launcher_path(prefix)
+		try:
+			launch_installed_app(prefix)
+		except FileNotFoundError:
+			self._error = translate("installer.error.launch_missing", path=launcher)
+			self.errorChanged.emit()
+			return
+		QCoreApplication.quit()
 
 	def _on_failed(self, message: str):
 		self._set_busy(False)

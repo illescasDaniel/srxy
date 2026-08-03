@@ -21,7 +21,7 @@ mainWindow:
   buttons: Browse…, Search, Options, Filters, Cancel
   menus: Open file, Copy path, Copy all matches, Copy line, Copy location
   helpMenu: About srxy…, Check for updates…, Language (English / Español)
-  dialogs: About, Update, Help setting
+  dialogs: About srxy, Update srxy, About this setting, Download model, Downloading…, Error
   panels: Results, Matches in file, File preview
   resultColumns: #, Match, Path, Matched
   matchColumns: #, Match, Location, Text

@@ -1113,3 +1113,76 @@ def test_given_progress_line_when_parsing_then_extracts_done_total_label():
 	# then
 	assert parsed == (12, 100, "model.bin")
 	assert parse_progress_line("noise") is None
+
+
+def test_given_prefix_with_launcher_when_launching_installed_app_then_spawns_detached(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from srxy.adapters.inbound.installer import launch_app
+
+	prefix = tmp_path / "Applications" / "srxy"
+	bin_dir = prefix / "bin"
+	bin_dir.mkdir(parents=True)
+	launcher = bin_dir / "srxy"
+	launcher.write_text("#!/bin/sh\n", encoding="utf-8")
+	launcher.chmod(0o755)
+	seen: list[list[str]] = []
+
+	def fake_popen(cmd: list[str], **kwargs: object):
+		seen.append(list(cmd))
+		assert kwargs.get("start_new_session") is True
+		return object()
+
+	monkeypatch.setattr(launch_app.subprocess, "Popen", fake_popen)
+
+	# when
+	launch_app.launch_installed_app(prefix)
+
+	# then
+	assert seen == [[str(launcher.resolve())]]
+
+
+def test_given_finished_install_when_launch_installed_then_starts_app_and_quits(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	bin_dir = prefix / "bin"
+	bin_dir.mkdir(parents=True)
+	(bin_dir / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	launched: list[str] = []
+	quit_calls: list[int] = []
+
+	monkeypatch.setattr(
+		controller_mod,
+		"launch_installed_app",
+		lambda path: launched.append(str(path)),
+	)
+	monkeypatch.setattr(controller_mod.QCoreApplication, "quit", lambda: quit_calls.append(1))
+
+	controller = InstallerController()
+	controller.setPrefix(str(prefix))
+	controller._finished = True  # pyright: ignore[reportPrivateUsage]
+	controller._mode = "install"  # pyright: ignore[reportPrivateUsage]
+
+	# when
+	controller.launchInstalled()
+
+	# then
+	assert launched == [str(prefix)]
+	assert quit_calls == [1]

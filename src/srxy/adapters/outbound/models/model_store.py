@@ -4,7 +4,7 @@ import os
 import shutil
 import sys
 from pathlib import Path
-from typing import IO, Callable
+from typing import IO, Any, Callable
 
 from srxy.application.install_paths import models_root
 
@@ -98,11 +98,18 @@ def _prompt_yes(
 	return answer in {"y", "yes"}
 
 
+def _model_progress_label(model_label: str) -> str:
+	from srxy.i18n import tr
+
+	return tr("status.downloading", label=model_label)
+
+
 def download_model(
 	model_id: str,
 	target_dir: Path,
 	*,
 	on_progress: Callable[[int, int, str], None] | None = None,
+	progress_label: str = "",
 ):
 	if not huggingface_hub_installed():
 		from srxy.application.install_method import semantic_enable_hint
@@ -116,20 +123,44 @@ def download_model(
 		shutil.rmtree(target_dir)
 	kwargs: dict[str, object] = {"repo_id": model_id, "local_dir": str(target_dir)}
 	if on_progress is not None:
-		kwargs["tqdm_class"] = _make_progress_tqdm(on_progress)
+		kwargs["tqdm_class"] = _make_progress_tqdm(on_progress, label=progress_label)
 	snapshot_download(**kwargs)  # type: ignore[arg-type]
 
 
-def _make_progress_tqdm(on_progress: Callable[[int, int, str], None]):
+def _make_progress_tqdm(on_progress: Callable[[int, int, str], None], *, label: str = ""):
 	from tqdm import tqdm
 
+	ui_label = label.strip() or "Downloading…"
+
 	class ProgressTqdm(tqdm):  # type: ignore[misc, type-arg]
+		"""Forward hub download progress to GUI/TUI without relying on terminal bars.
+
+		Workers set ``TQDM_DISABLE=1``, which makes tqdm skip setting ``desc`` and turn
+		``update()`` into a no-op. Force a full init so counters/descriptions stay available
+		for callbacks, and silence terminal rendering (the app owns the progress UI).
+
+		Ignore Hugging Face's generic descs (``Downloading bytes``, ``Reconstructing…``)
+		and always report our model-oriented ``label``.
+		"""
+
+		def __init__(self, *args: Any, **kwargs: Any):
+			kwargs = dict(kwargs)
+			self._progress_desc = ui_label
+			kwargs["desc"] = ui_label
+			# Override TQDM_DISABLE / non-TTY defaults from envwrap.
+			kwargs["disable"] = False
+			super().__init__(*args, **kwargs)
+			if not hasattr(self, "desc"):
+				self.desc = self._progress_desc
+
+		def display(self, msg: str | None = None, pos: int | None = None) -> None:  # type: ignore[override]
+			return None
+
 		def update(self, n: float | None = 1) -> bool | None:  # type: ignore[override]
 			result = super().update(n)
 			current = int(self.n or 0)
 			total = int(self.total or 0)
-			desc = str(self.desc or "Downloading…")
-			on_progress(current, total, desc)
+			on_progress(current, total, self._progress_desc)
 			return result
 
 	return ProgressTqdm  # type: ignore[return-value]
@@ -140,9 +171,16 @@ def download_semantic_text_model(
 	target_dir: Path | None = None,
 	on_progress: Callable[[int, int, str], None] | None = None,
 ):
+	from srxy.i18n import tr
+
 	directory = target_dir or semantic_text_model_dir()
 	print(f"Downloading {SEMANTIC_TEXT_MODEL_ID} into {directory}", file=sys.stderr)
-	download_model(SEMANTIC_TEXT_MODEL_ID, directory, on_progress=on_progress)
+	download_model(
+		SEMANTIC_TEXT_MODEL_ID,
+		directory,
+		on_progress=on_progress,
+		progress_label=_model_progress_label(tr("model.label.semantic_text")),
+	)
 	os.environ["SRXY_SEMANTIC_MODEL_PATH"] = str(directory)
 	print(f"Semantic text model cached at {directory}", file=sys.stderr)
 
@@ -152,9 +190,16 @@ def download_semantic_image_model(
 	target_dir: Path | None = None,
 	on_progress: Callable[[int, int, str], None] | None = None,
 ):
+	from srxy.i18n import tr
+
 	directory = target_dir or semantic_image_model_dir()
 	print(f"Downloading {SEMANTIC_IMAGE_MODEL_ID} into {directory}", file=sys.stderr)
-	download_model(SEMANTIC_IMAGE_MODEL_ID, directory, on_progress=on_progress)
+	download_model(
+		SEMANTIC_IMAGE_MODEL_ID,
+		directory,
+		on_progress=on_progress,
+		progress_label=_model_progress_label(tr("model.label.semantic_image")),
+	)
 	os.environ["SRXY_SEMANTIC_IMAGE_MODEL_PATH"] = str(directory)
 	print(f"Semantic image model cached at {directory}", file=sys.stderr)
 
@@ -165,6 +210,7 @@ def download_transcribe_model(
 	on_progress: Callable[[int, int, str], None] | None = None,
 ):
 	from srxy.adapters.outbound.models.device import resolve_transcribe_device, transcribe_backend_for_device
+	from srxy.i18n import tr
 
 	device = resolve_transcribe_device()
 	backend = transcribe_backend_for_device(device)
@@ -172,12 +218,19 @@ def download_transcribe_model(
 		directory = target_dir or transcribe_transformers_model_dir()
 		model_id = transcribe_transformers_model_id()
 		env_var = "SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH"
+		model_label = tr("model.label.transcribe_transformers")
 	else:
 		directory = target_dir or transcribe_faster_whisper_model_dir()
 		model_id = transcribe_faster_whisper_repo_id()
 		env_var = "SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH"
+		model_label = tr("model.label.transcribe_faster_whisper")
 	print(f"Downloading {model_id} into {directory}", file=sys.stderr)
-	download_model(model_id, directory, on_progress=on_progress)
+	download_model(
+		model_id,
+		directory,
+		on_progress=on_progress,
+		progress_label=_model_progress_label(model_label),
+	)
 	os.environ[env_var] = str(directory)
 	print(f"Transcription model cached at {directory}", file=sys.stderr)
 

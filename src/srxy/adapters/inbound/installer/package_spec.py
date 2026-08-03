@@ -14,6 +14,8 @@ from srxy.adapters.inbound.installer.meta import load_installer_meta
 
 
 _VERSION_RE = re.compile(r"(\d+)\.(\d+)\.(\d+)")
+_WHEEL_ENV = "SRXY_INSTALL_WHEEL"
+_SPEC_ENV = "SRXY_INSTALL_SPEC"
 
 
 def _project_root_from_package() -> Path | None:
@@ -88,6 +90,31 @@ def local_source_version(root: Path) -> str | None:
 	return match.group(1)
 
 
+def resolve_install_wheel_env() -> str | None:
+	"""Return an absolute wheel path from ``SRXY_INSTALL_WHEEL``, or None if unset.
+
+	Raises ``ValueError`` when the env var is set but the path is missing or not a ``.whl``.
+	"""
+	raw = os.environ.get(_WHEEL_ENV, "").strip()
+	if not raw:
+		return None
+	path = Path(raw).expanduser().resolve()
+	if not path.is_file():
+		raise ValueError(f"{_WHEEL_ENV}={raw!r} does not exist or is not a file")
+	if path.suffix.lower() != ".whl":
+		raise ValueError(f"{_WHEEL_ENV}={raw!r} must be a .whl file")
+	return str(path)
+
+
+def _override_install_spec() -> str | None:
+	"""Prefer ``SRXY_INSTALL_WHEEL``, then ``SRXY_INSTALL_SPEC``."""
+	wheel = resolve_install_wheel_env()
+	if wheel is not None:
+		return wheel
+	override = os.environ.get(_SPEC_ENV, "").strip()
+	return override or None
+
+
 def fetch_pypi_srxy_info(*, timeout: float = 15.0) -> dict[str, object] | None:
 	url = "https://pypi.org/pypi/srxy/json"
 	request = urllib.request.Request(url, headers={"User-Agent": "srxy-installer"})
@@ -145,8 +172,8 @@ def resolve_bundled_or_local_spec() -> tuple[str, str | None]:
 
 def resolve_srxy_install_spec(*, fetch_pypi: bool = True) -> str:
 	"""Prefer newer compatible PyPI when safe; otherwise bundled/local/PyPI name."""
-	override = os.environ.get("SRXY_INSTALL_SPEC", "").strip()
-	if override:
+	override = _override_install_spec()
+	if override is not None:
 		return override
 
 	bundled_spec, bundled_version = resolve_bundled_or_local_spec()
@@ -178,11 +205,12 @@ def resolve_srxy_install_spec(*, fetch_pypi: bool = True) -> str:
 def resolve_pypi_install_spec(*, fetch_pypi: bool = True) -> str:
 	"""Always install from PyPI (online installer). Never uses a bundled wheel.
 
-	Honors ``SRXY_INSTALL_SPEC`` when set. Requires a PyPI release that meets
-	``min_srxy_version`` and lists PySide6 when ``fetch_pypi`` is true.
+	Honors ``SRXY_INSTALL_WHEEL`` then ``SRXY_INSTALL_SPEC`` when set. Requires a
+	PyPI release that meets ``min_srxy_version`` and lists PySide6 when ``fetch_pypi``
+	is true.
 	"""
-	override = os.environ.get("SRXY_INSTALL_SPEC", "").strip()
-	if override:
+	override = _override_install_spec()
+	if override is not None:
 		return override
 
 	meta = load_installer_meta()
@@ -202,15 +230,39 @@ def resolve_pypi_install_spec(*, fetch_pypi: bool = True) -> str:
 	return f"srxy=={latest}"
 
 
+def _is_local_path_spec(spec: str) -> bool:
+	"""True when ``spec`` looks like a filesystem path (wheel, sdist, or source tree)."""
+	text = spec.strip()
+	if not text or "://" in text or " @ " in text:
+		return False
+	if text.endswith(".whl") or text.endswith(".tar.gz") or text.endswith(".zip"):
+		return True
+	if text.startswith(("/", "./", "../", "~")):
+		return True
+	# Absolute Windows path (C:\...) — keep portable without importing platform helpers.
+	if len(text) >= 3 and text[1] == ":" and text[0].isalpha():
+		return True
+	candidate = Path(text).expanduser()
+	return candidate.exists()
+
+
 def with_semantic_extra(spec: str) -> str:
-	"""Insert ``[semantic]`` into a PEP 508 requirement (before any version pin)."""
-	if "[" in spec:
-		return spec
+	"""Insert ``[semantic]`` into a PEP 508 requirement (before any version pin).
+
+	Local wheel/path specs become ``srxy[semantic] @ file:///...`` so ``uv pip``
+	accepts extras with a local artifact.
+	"""
+	text = spec.strip()
+	if "[" in text:
+		return text
+	if _is_local_path_spec(text):
+		path = Path(text).expanduser().resolve()
+		return f"srxy[semantic] @ {path.as_uri()}"
 	# name==1.2.3 / name>=1.2 / name~=1.2.3 — extras must precede the version clause.
-	match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(\s*(?:[<>=!~]=?|===).+)$", spec)
+	match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(\s*(?:[<>=!~]=?|===).+)$", text)
 	if match is not None:
 		return f"{match.group(1)}[semantic]{match.group(2)}"
-	return f"{spec}[semantic]"
+	return f"{text}[semantic]"
 
 
 __all__ = [
@@ -220,6 +272,7 @@ __all__ = [
 	"pypi_latest_version",
 	"pypi_requires_pyside6",
 	"resolve_bundled_or_local_spec",
+	"resolve_install_wheel_env",
 	"resolve_pypi_install_spec",
 	"resolve_srxy_install_spec",
 	"version_at_least",

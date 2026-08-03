@@ -17,6 +17,7 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from srxy.adapters.inbound.installer.install import install_srxy
+from srxy.adapters.inbound.installer.launch_app import launch_installed_app
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_text
 from srxy.adapters.inbound.installer.uninstall import uninstall_prefix
 from srxy.adapters.inbound.installer_online.browser import open_installer_url
@@ -45,6 +46,8 @@ class InstallSession:
 		self.overall = 0.0
 		self.task = 0.0
 		self.error = ""
+		self.can_launch = False
+		self.install_prefix = ""
 		self._install_started = False
 		self.stop_event = threading.Event()
 		self.started_at = time.monotonic()
@@ -66,6 +69,7 @@ class InstallSession:
 				"overall": self.overall,
 				"task": self.task,
 				"error": self.error,
+				"can_launch": self.can_launch,
 			}
 
 	def begin_install(self) -> bool:
@@ -76,7 +80,8 @@ class InstallSession:
 
 	def _begin_work(self, starting_message: str) -> bool:
 		with self._lock:
-			if self._install_started or self.status == "running":
+			# Success is terminal; errors must be retryable (install after failed uninstall, etc.).
+			if self.status == "running" or self.status == "done":
 				return False
 			self._install_started = True
 			self.status = "running"
@@ -84,6 +89,8 @@ class InstallSession:
 			self.overall = 0.0
 			self.task = 0.0
 			self.error = ""
+			self.can_launch = False
+			self.install_prefix = ""
 			return True
 
 	def set_status(self, message: str):
@@ -98,18 +105,29 @@ class InstallSession:
 		with self._lock:
 			self.task = max(0.0, min(1.0, value))
 
-	def mark_done(self):
+	def mark_done(self, *, can_launch: bool = False, prefix: str = ""):
 		with self._lock:
 			self.status = "done"
 			self.message = tr("installer.status.done")
 			self.overall = 1.0
 			self.task = 1.0
+			self.can_launch = can_launch
+			self.install_prefix = prefix
 
 	def mark_error(self, detail: str):
 		with self._lock:
 			self.status = "error"
 			self.error = detail
 			self.message = tr("installer.status.failed")
+			self.can_launch = False
+			# Allow a later Install / Uninstall after a failed attempt.
+			self._install_started = False
+
+	def launch_target(self) -> str | None:
+		with self._lock:
+			if self.can_launch and self.install_prefix:
+				return self.install_prefix
+			return None
 
 
 def _static_path(rel: str) -> Path | None:
@@ -201,6 +219,7 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 							"install": tr("installer.button.install"),
 							"uninstall": tr("installer.button.uninstall"),
 							"finish": tr("installer_online.button.finish"),
+							"launch": tr("installer_online.button.launch"),
 							"ready": tr("installer.progress.ready"),
 							"privacy_required": tr("installer.error.privacy_required"),
 							"confirm_uninstall": tr("installer_online.confirm.uninstall"),
@@ -279,6 +298,24 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 				self._send_json(HTTPStatus.OK, {"ok": True})
 				return
 
+			if path == "/api/launch":
+				prefix = session.launch_target()
+				if not prefix:
+					self._send_json(
+						HTTPStatus.CONFLICT,
+						{"error": tr("installer.error.launch_missing", path="(unknown)")},
+					)
+					return
+				try:
+					launch_installed_app(prefix)
+				except FileNotFoundError as exc:
+					self._send_json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
+					return
+				print("Launching installed srxy; shutting down installer.", file=sys.stderr)
+				session.stop_event.set()
+				self._send_json(HTTPStatus.OK, {"ok": True})
+				return
+
 			self._send_json(HTTPStatus.NOT_FOUND, {"error": "not found"})
 
 	return Handler
@@ -331,7 +368,7 @@ def _run_install(session: InstallSession, prefix: Path | None):
 			session.set_task(min(1.0, max(0.0, done / total)))
 
 		install_srxy(options, status=on_status, progress=on_progress, task=on_task)
-		session.mark_done()
+		session.mark_done(can_launch=True, prefix=str(options.prefix))
 	except Exception as exc:
 		detail = str(exc).strip() or traceback.format_exc()
 		session.mark_error(detail)
@@ -348,7 +385,7 @@ def _run_uninstall(session: InstallSession, prefix: Path):
 		uninstall_prefix(prefix, status=on_status, confirm_unsafe=True)
 		session.set_overall(1.0)
 		session.set_task(1.0)
-		session.mark_done()
+		session.mark_done(can_launch=False)
 	except Exception as exc:
 		detail = str(exc).strip() or traceback.format_exc()
 		session.mark_error(detail)

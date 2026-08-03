@@ -272,6 +272,7 @@ def test_given_valid_token_when_bootstrapping_then_returns_privacy_text(online_s
 	assert payload.get("prefix")
 	assert payload["strings"]["install"]
 	assert payload["strings"]["uninstall"]
+	assert payload["strings"]["launch"]
 	assert payload["strings"]["confirm_uninstall"]
 
 
@@ -337,6 +338,67 @@ def test_given_mocked_install_when_posting_install_then_status_becomes_done(
 	# then
 	assert snap.get("status") == "done", snap
 	assert snap.get("overall") == 1.0
+	assert snap.get("can_launch") is True
+
+
+def test_given_successful_install_when_posting_launch_then_starts_app_and_stops(
+	online_server: _ServerHarness,
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer_online import server as server_mod
+
+	monkeypatch.setenv("SRXY_INSTALL_SPEC", "srxy==1.6.0")
+	launched: list[str] = []
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+	):
+		_ = status, progress, task
+		prefix = Path(options.prefix)
+		bin_dir = prefix / "bin"
+		bin_dir.mkdir(parents=True)
+		(bin_dir / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+
+	def fake_launch(prefix: Path | str):
+		launched.append(str(Path(prefix).resolve()))
+
+	monkeypatch.setattr(server_mod, "install_srxy", fake_install)
+	monkeypatch.setattr(server_mod, "launch_installed_app", fake_launch)
+
+	prefix = tmp_path / "prefix"
+	code, _ = online_server.api(
+		"/api/install",
+		data={"privacy_ack": True, "prefix": str(prefix)},
+	)
+	assert code == 200
+
+	deadline = time.monotonic() + 5
+	snap: dict[str, Any] = {}
+	while time.monotonic() < deadline:
+		status_code, snap = online_server.api("/api/status")
+		assert status_code == 200
+		assert isinstance(snap, dict)
+		if snap.get("status") in {"done", "error"}:
+			break
+		time.sleep(0.05)
+	assert snap.get("status") == "done"
+	assert snap.get("can_launch") is True
+
+	# when
+	launch_code, launch_payload = online_server.api("/api/launch", data={})
+
+	# then
+	assert launch_code == 200
+	assert launch_payload.get("ok") is True
+	assert launched == [str(prefix.resolve())]
+	assert online_server.session is not None
+	assert online_server.session.stop_event.is_set()
 
 
 def test_given_mocked_uninstall_when_posting_uninstall_then_status_becomes_done(
@@ -388,6 +450,79 @@ def test_given_mocked_uninstall_when_posting_uninstall_then_status_becomes_done(
 	# then
 	assert snap.get("status") == "done", snap
 	assert not prefix.exists()
+	assert snap.get("can_launch") is False
+
+
+def test_given_uninstall_error_when_posting_install_then_starts_successfully(
+	online_server: _ServerHarness,
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given — failed uninstall must not permanently lock the session
+	from srxy.adapters.inbound.installer_online import server as server_mod
+
+	monkeypatch.setenv("SRXY_INSTALL_SPEC", "srxy==1.6.0")
+	prefix = tmp_path / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+
+	def fake_uninstall(
+		target: Path,
+		*,
+		status: Callable[[str], None] | None = None,
+		confirm_unsafe: bool = False,
+	):
+		_ = target, status, confirm_unsafe
+		raise RuntimeError("uninstall boom")
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+	):
+		_ = options, progress, task
+		if status:
+			status("fake install after error")
+
+	monkeypatch.setattr(server_mod, "uninstall_prefix", fake_uninstall)
+	monkeypatch.setattr(server_mod, "install_srxy", fake_install)
+
+	code, _ = online_server.api(
+		"/api/uninstall",
+		data={"prefix": str(prefix)},
+	)
+	assert code == 200
+
+	deadline = time.monotonic() + 5
+	snap: dict[str, Any] = {}
+	while time.monotonic() < deadline:
+		status_code, snap = online_server.api("/api/status")
+		assert status_code == 200
+		assert isinstance(snap, dict)
+		if snap.get("status") in {"done", "error"}:
+			break
+		time.sleep(0.05)
+	assert snap.get("status") == "error", snap
+
+	# when — retry with Install
+	install_code, _ = online_server.api(
+		"/api/install",
+		data={"privacy_ack": True, "prefix": str(tmp_path / "fresh")},
+	)
+
+	# then
+	assert install_code == 200
+	deadline = time.monotonic() + 5
+	while time.monotonic() < deadline:
+		status_code, snap = online_server.api("/api/status")
+		assert status_code == 200
+		assert isinstance(snap, dict)
+		if snap.get("status") in {"done", "error"}:
+			break
+		time.sleep(0.05)
+	assert snap.get("status") == "done", snap
+	assert snap.get("can_launch") is True
 
 
 def test_given_no_client_when_grace_expires_then_server_stops(monkeypatch: pytest.MonkeyPatch):

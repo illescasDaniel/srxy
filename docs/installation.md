@@ -59,8 +59,11 @@ uv run python -m srxy.adapters.inbound.installer          # offline wizard
 uv run srxy-installer
 uv run python -m srxy.adapters.inbound.installer_online   # online one-click
 uv run srxy-installer-online
+uv run task installer-online-local                        # build local wheel + online UI (no PyPI package fetch)
+# or: SRXY_INSTALL_WHEEL=/path/to/srxy-….whl uv run srxy-installer-online
 ```
 
+`SRXY_INSTALL_WHEEL` (checked before `SRXY_INSTALL_SPEC`) points the installer at a local `.whl` and skips the PyPI package lookup. Vendor downloads (uv / tesseract / ffmpeg) still need the network.
 macOS and Windows installers are planned (see [installers.md](installers.md)).
 
 ## System dependencies
