@@ -33,9 +33,9 @@ After install, [`prune_pyside.sh`](prune_pyside.sh) deletes unused Qt modules (W
 
 ## Online one-click (Go bootstrap + localhost browser UI)
 
-The online AppImage embeds a small **Go** bootstrap binary and a **srxy wheel** (no CPython, no uv inside the AppImage). On first launch it opens your browser to a preparing page, downloads pinned `uv` + managed Python into `~/.cache/srxy/online-bootstrap/`, installs the bundled wheel into a cache venv, then hands off to the existing Python localhost installer (`installer_online`). Later launches reuse the cache. Install still comes from PyPI via `resolve_pypi_install_spec()`. Auto options: PATH, tesseract, ffmpeg; semantic packages only when GPU/MPS is present; `prefetch_models=False`. Checksums are written to `SHA256SUMS-online` so they do not overwrite the offline `SHA256SUMS`.
+The online AppImage embeds a small **Go** bootstrap binary (UPX-compressed at build time) and meta (no CPython, no uv, **no** bundled wheel). On first launch it opens your browser to a preparing page, downloads pinned `uv` + managed Python into `~/.cache/srxy/online-bootstrap/`, installs `srxy>=<build>,<next_major>` from PyPI (`--no-deps`) into a cache venv, then hands off to the Python localhost installer (`installer_online`). Later launches reuse the cache (uv upgrades within the major bound when a newer 1.x exists). The *prefix* install still uses `resolve_pypi_install_spec()`. Auto options: PATH, tesseract, ffmpeg; semantic packages only when GPU/MPS is present; `prefetch_models=False`. Checksums are written to `SHA256SUMS-online` so they do not overwrite the offline `SHA256SUMS`.
 
-Building requires **Go** on the host (`CGO_ENABLED=0`). Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
+Building requires **Go** and **xz** (to unpack pinned UPX). Set `SRXY_ONLINE_SKIP_UPX=1` to skip UPX. Override the bootstrap package with `SRXY_ONLINE_BOOTSTRAP_SPEC` for local testing. Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
 
 ## Vendor checksums
 
@@ -64,7 +64,7 @@ The AppImage embeds that icon as `.DirIcon` for file managers. Showing it in the
 
 Installer compatibility is declared in [`packaging/installer_meta.toml`](../installer_meta.toml) (`installer_version`, `min_srxy_version`). Edit that file when either AppImage needs a newer minimum srxy, then rebuild.
 
-The offline AppImage embeds Python + PySide6 for the wizard and a wheel for optional offline prefix installs. The online AppImage embeds a Go bootstrap + wheel only (downloads uv/Python on first run). Neither embeds NVIDIA/CUDA, Hugging Face models, Tesseract, or ffmpeg — those are downloaded into `~/Applications/srxy` (or a chosen prefix) after the user acknowledges [docs/privacy.md](../../docs/privacy.md).
+The offline AppImage embeds Python + PySide6 for the wizard and a wheel for optional offline prefix installs. The online AppImage embeds a Go bootstrap + meta only (downloads uv, Python, and srxy from PyPI on first run). Neither embeds NVIDIA/CUDA, Hugging Face models, Tesseract, or ffmpeg — those are downloaded into `~/Applications/srxy` (or a chosen prefix) after the user acknowledges [docs/privacy.md](../../docs/privacy.md).
 
 macOS / Windows installers are planned separately; shared install logic lives under `src/srxy/adapters/inbound/installer/` (online UI under `installer_online/`) and `SRXY_HOME` path resolution.
 

@@ -12,6 +12,7 @@ build/
 .testmondata-*
 .srxy-quality-gate.lock
 .coverage
+.coverage.*
 htmlcov/
 .ruff_cache/
 .mypy_cache/

@@ -9,6 +9,7 @@
 		"**/dist": true,
 		"**/*.egg-info": true,
 		"**/.coverage": true,
+		"**/.coverage.*": true,
 		"**/htmlcov": true,
 		"**/.testmondata": true,
 		"**/.testmondata-*": true

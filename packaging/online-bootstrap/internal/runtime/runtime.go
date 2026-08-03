@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -23,7 +24,6 @@ type Meta struct {
 	PythonVersion string `json:"python_version"`
 	InstallerVer  string `json:"installer_version"`
 	SrxyVersion   string `json:"srxy_version"`
-	WheelName     string `json:"wheel_name"`
 }
 
 type Paths struct {
@@ -31,7 +31,6 @@ type Paths struct {
 	UvBin      string
 	VenvDir    string
 	VenvPython string
-	WheelPath  string
 	URLFile    string
 	MetaPath   string
 }
@@ -60,25 +59,59 @@ func LoadMeta(path string) (Meta, error) {
 	if err := json.Unmarshal(raw, &m); err != nil {
 		return Meta{}, err
 	}
-	if m.UvURL == "" || m.PythonVersion == "" || m.WheelName == "" {
+	if m.UvURL == "" || m.PythonVersion == "" || m.SrxyVersion == "" {
 		return Meta{}, fmt.Errorf("incomplete bootstrap meta at %s", path)
 	}
 	return m, nil
 }
 
 func ResolvePaths(appDir, cacheDir string, meta Meta) Paths {
+	_ = meta
 	return Paths{
 		CacheDir:   cacheDir,
 		UvBin:      filepath.Join(cacheDir, "uv", "uv"),
 		VenvDir:    filepath.Join(cacheDir, "venv"),
 		VenvPython: filepath.Join(cacheDir, "venv", "bin", "python"),
-		WheelPath:  filepath.Join(appDir, "usr", "share", "srxy", meta.WheelName),
 		URLFile:    filepath.Join(cacheDir, "installer.url"),
 		MetaPath:   filepath.Join(appDir, "usr", "share", "srxy", "bootstrap-meta.json"),
 	}
 }
 
-// EnsureRuntime downloads uv, installs Python, creates venv, installs wheel.
+// SpecFromVersion builds srxy>=floor,<next_major from a semver-like version string.
+func SpecFromVersion(version string) (string, error) {
+	v := strings.TrimSpace(version)
+	v = strings.TrimPrefix(v, "v")
+	if v == "" {
+		return "", fmt.Errorf("empty srxy version")
+	}
+	floor := v
+	if i := strings.Index(floor, "+"); i >= 0 {
+		floor = floor[:i]
+	}
+	majorPart := floor
+	if i := strings.Index(majorPart, "-"); i >= 0 {
+		majorPart = majorPart[:i]
+	}
+	parts := strings.Split(majorPart, ".")
+	if len(parts) < 1 || parts[0] == "" {
+		return "", fmt.Errorf("invalid srxy version %q", version)
+	}
+	major, err := strconv.Atoi(parts[0])
+	if err != nil || major < 0 {
+		return "", fmt.Errorf("invalid major in srxy version %q", version)
+	}
+	return fmt.Sprintf("srxy>=%s,<%d", floor, major+1), nil
+}
+
+// BootstrapInstallSpec returns the uv pip requirement for the installer package.
+func BootstrapInstallSpec(meta Meta) (string, error) {
+	if override := strings.TrimSpace(os.Getenv("SRXY_ONLINE_BOOTSTRAP_SPEC")); override != "" {
+		return override, nil
+	}
+	return SpecFromVersion(meta.SrxyVersion)
+}
+
+// EnsureRuntime downloads uv, installs Python, creates venv, installs srxy from PyPI.
 func EnsureRuntime(state *bootserver.State, paths Paths, meta Meta) error {
 	state.SetStatus("uv", "Downloading uv…", 0.05)
 	if err := ensureUv(state, paths, meta); err != nil {
@@ -88,8 +121,12 @@ func EnsureRuntime(state *bootserver.State, paths Paths, meta Meta) error {
 	if err := ensurePython(state, paths, meta); err != nil {
 		return err
 	}
-	state.SetStatus("venv", "Preparing installer environment…", 0.65)
+	state.SetStatus("venv", "Preparing installer environment…", 0.55)
 	if err := ensureVenv(state, paths, meta); err != nil {
+		return err
+	}
+	state.SetStatus("srxy", "Downloading srxy installer…", 0.7)
+	if err := ensureSrxy(state, paths, meta); err != nil {
 		return err
 	}
 	state.SetStatus("ready", "Starting installer…", 0.9)
@@ -167,23 +204,19 @@ func extractUvTarGz(archive, destDir string) error {
 }
 
 func ensurePython(state *bootserver.State, paths Paths, meta Meta) error {
+	_ = state
 	cmd := exec.Command(paths.UvBin, "python", "install", meta.PythonVersion, "--install-dir", filepath.Join(paths.CacheDir, "python"))
 	cmd.Env = append(os.Environ(), "UV_PYTHON_PREFERENCE=only-managed")
 	out, err := cmd.CombinedOutput()
 	if err != nil {
 		return fmt.Errorf("uv python install: %w\n%s", err, out)
 	}
-	_ = state
 	return nil
 }
 
 func ensureVenv(state *bootserver.State, paths Paths, meta Meta) error {
 	_ = state
-	if _, err := os.Stat(paths.WheelPath); err != nil {
-		return fmt.Errorf("bundled wheel missing at %s: %w", paths.WheelPath, err)
-	}
 	pyDir := filepath.Join(paths.CacheDir, "python")
-	// Find a python binary under the install dir.
 	pythonBin, err := findManagedPython(pyDir, meta.PythonVersion)
 	if err != nil {
 		return err
@@ -195,10 +228,19 @@ func ensureVenv(state *bootserver.State, paths Paths, meta Meta) error {
 			return fmt.Errorf("uv venv: %w\n%s", err, out)
 		}
 	}
-	cmd := exec.Command(paths.UvBin, "pip", "install", "--python", paths.VenvPython, "--no-deps", paths.WheelPath)
+	return nil
+}
+
+func ensureSrxy(state *bootserver.State, paths Paths, meta Meta) error {
+	_ = state
+	spec, err := BootstrapInstallSpec(meta)
+	if err != nil {
+		return err
+	}
+	cmd := exec.Command(paths.UvBin, "pip", "install", "--python", paths.VenvPython, "--no-deps", spec)
 	out, err := cmd.CombinedOutput()
 	if err != nil {
-		return fmt.Errorf("uv pip install wheel: %w\n%s", err, out)
+		return fmt.Errorf("uv pip install %s: %w\n%s", spec, err, out)
 	}
 	return nil
 }
