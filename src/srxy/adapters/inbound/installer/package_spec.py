@@ -203,9 +203,13 @@ def resolve_pypi_install_spec(*, fetch_pypi: bool = True) -> str:
 
 
 def with_semantic_extra(spec: str) -> str:
-	"""Append ``[semantic]`` when installing from a path/wheel/name."""
+	"""Insert ``[semantic]`` into a PEP 508 requirement (before any version pin)."""
 	if "[" in spec:
 		return spec
+	# name==1.2.3 / name>=1.2 / name~=1.2.3 — extras must precede the version clause.
+	match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(\s*(?:[<>=!~]=?|===).+)$", spec)
+	if match is not None:
+		return f"{match.group(1)}[semantic]{match.group(2)}"
 	return f"{spec}[semantic]"
 
 
