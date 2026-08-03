@@ -29,14 +29,14 @@ uv run python scripts/bench_file_search.py
 
 ## Quality gate
 
-Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel**, then pytest runs **alone** with `-n` = `nproc`. With `--fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
+Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel**, then pytest runs **alone** (safe parallel pass, then serial heavy). With `--fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
 
 | Command | pytest |
 |---------|--------|
-| `checks.sh` | Integration + TUI/GUI; excludes `integration_full`, `transcribe_device_matrix`, and `(integration and gui)` from the main pytest pass. After that succeeds, runs `integration and gui` serially (`QT_QPA_PLATFORM=offscreen`, `-n 0`). Main pass uses `-n` = `nproc` `--dist=loadgroup`, `--testmon-forceselect --ff`, no coverage |
-| `checks.sh --full` | Full local suite; light steps parallel then pytest; no testmon, with coverage |
-| `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` |
-| `CI=true checks.sh` | `unit` plus offscreen `gui` snapshot tests (excludes `integration`, `semantic`, and `transcribe`). Linux CI sets `QT_QPA_PLATFORM=offscreen`. Light steps parallel then pytest `-n` = `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
+| `checks.sh` | Safe parallel: `unit and not semantic and not transcribe and not gui and not tui and not integration` (`-n` = `min(4, nproc)`, `--testmon-forceselect --ff`). Then serial heavy: `(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix` (`-n 0`, `QT_QPA_PLATFORM=offscreen`). No coverage |
+| `checks.sh --full` | Same two-pass split; heavy marker also includes `integration_full` / `transcribe_device_matrix`; no testmon; coverage on both passes (`--cov-append` on serial) |
+| `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` on the serial heavy pass |
+| `CI=true checks.sh` | Single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe`. Linux CI sets `QT_QPA_PLATFORM=offscreen`. Light steps parallel then pytest; no testmon, no coverage, no serial follow-up. `--fix`, `--full`, `--full+cpu` ignored |
 
 `--fix` = Ruff + shell autofix, then remaining steps sequentially; ignored in CI.
 
@@ -53,7 +53,12 @@ Dev-only under `tests/fixtures/` (not in wheel). See [`tests/fixtures/README.md`
 
 Requires the `[semantic]` extra (`uv sync --extra semantic`); `SRXY_SEMANTIC=1` set in `tests/integration/conftest.py`.
 
-Default local gate pytest uses **pytest-xdist** (`-n auto --dist=loadgroup`): unit/cli fan out across workers; TUI, GUI, and integration each share one worker via `xdist_group`. GUI integration tests (`integration and gui`) are excluded from the parallel pass and run in a second serial pass (`QT_QPA_PLATFORM=offscreen`, `-n 0`) to avoid xdist/Qt flakiness; skipped when `CI=true` or on `--full` / `--full+cpu`. **pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day gate only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu`. The `.testmondata` DB is local and gitignored; the first run builds it.
+Default local gate pytest uses two passes so torch/whisper/Qt do not share xdist workers:
+
+1. **Safe parallel** — `unit and not semantic and not transcribe and not gui and not tui and not integration` with `-n` = `min(4, nproc)` (override via `LIB_PYTEST_WORKERS`) and `--dist=loadgroup`.
+2. **Serial heavy** — `semantic` / `transcribe` / `gui` / `tui` / `integration` (plus `integration_full` / `transcribe_device_matrix` on `--full`) with `-n 0` and `QT_QPA_PLATFORM=offscreen`.
+
+**pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day **safe** pass only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu` (serial pass appends). The `.testmondata` DB is local and gitignored; the first run builds it.
 
 **Anti-hang:** pytest output is always streamed live (never buffered until EOF). `pytest-timeout` defaults to 60s per test (`timeout_method=signal`). [`scripts/quality/pytest.sh`](../scripts/quality/pytest.sh) wraps runs with a wall-clock and no-output stall watchdog (override via `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS`); stalls exit 124 with a process tree dump.
 
@@ -64,7 +69,7 @@ uv run pytest -m integration_full
 uv run pytest --integration-test-cpu
 ```
 
-Gate mapping: default `checks.sh` ≈ parallel `pytest -m "not integration_full and not transcribe_device_matrix and not (integration and gui)" -n auto --dist=loadgroup --testmon-forceselect --ff`, then serial `QT_QPA_PLATFORM=offscreen pytest -m "integration and gui" -n 0`; `--full` ≈ `pytest tests/ -n auto --dist=loadgroup --cov=src`.
+Gate mapping: default `checks.sh` ≈ parallel safe unit subset then serial `QT_QPA_PLATFORM=offscreen pytest -m "(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix" -n 0`; `--full` ≈ same split with full heavy markers + coverage.
 
 Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`srxy[windows]`).
 

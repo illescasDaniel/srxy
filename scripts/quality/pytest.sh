@@ -34,8 +34,8 @@ if [[ -n "${SRXY_PYTEST_PYTHONPATH:-}" ]]; then
 	export PYTHONPATH="${SRXY_PYTEST_PYTHONPATH}${PYTHONPATH:+:${PYTHONPATH}}"
 fi
 
-workers_label="${LIB_PYTEST_WORKERS:-auto}"
-echo "pytest: starting (workers=${workers_label} wall=${LIB_PYTEST_WALL_SECONDS}s stall=${LIB_PYTEST_STALL_SECONDS}s)"
+workers_label="$(_lib_pytest_worker_count)"
+echo "pytest: safe parallel pass (workers=${workers_label} wall=${LIB_PYTEST_WALL_SECONDS}s stall=${LIB_PYTEST_STALL_SECONDS}s)"
 echo "pytest: args: ${LIB_PYTEST_ARGS[*]} ${LIB_PYTEST_COV[*]:-}"
 
 cd "${LIB_REPO_ROOT}" || exit 1
@@ -51,14 +51,15 @@ if [[ "${pytest_exit}" -ne 0 ]]; then
 	exit "${pytest_exit}"
 fi
 
-lib_pytest_gui_integration_args
-if [[ ${#LIB_PYTEST_GUI_INTEGRATION_ARGS[@]} -gt 0 ]]; then
+lib_pytest_heavy_args
+if [[ ${#LIB_PYTEST_HEAVY_ARGS[@]} -gt 0 ]]; then
 	echo ""
-	echo "Serial GUI integration pass (QT_QPA_PLATFORM=offscreen, -n 0)"
+	echo "Serial heavy pass (semantic/transcribe/gui/tui/integration, QT_QPA_PLATFORM=offscreen, -n 0)"
 	echo "pytest: starting (workers=0 wall=${LIB_PYTEST_WALL_SECONDS}s stall=${LIB_PYTEST_STALL_SECONDS}s)"
+	echo "pytest: args: ${LIB_PYTEST_HEAVY_ARGS[*]} ${LIB_PYTEST_HEAVY_COV[*]:-}"
 	set +e
 	lib_run_with_watch "${LIB_PYTEST_WALL_SECONDS}" "${LIB_PYTEST_STALL_SECONDS}" -- \
-		env QT_QPA_PLATFORM=offscreen "${pytest_bin[@]}" "${LIB_PYTEST_GUI_INTEGRATION_ARGS[@]}"
+		env QT_QPA_PLATFORM=offscreen "${pytest_bin[@]}" "${LIB_PYTEST_HEAVY_ARGS[@]}" ${LIB_PYTEST_HEAVY_COV[@]+"${LIB_PYTEST_HEAVY_COV[@]}"}
 	pytest_exit=$?
 	set -e
 fi

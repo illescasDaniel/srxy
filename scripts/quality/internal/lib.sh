@@ -108,6 +108,43 @@ lib_require_shell_tools() {
 	fi
 }
 
+# Parallelize only suites that stay safe under xdist. Torch/whisper/Qt-heavy
+# markers run serially via lib_pytest_heavy_args (see pytest.sh).
+_lib_pytest_safe_marker() {
+	if [[ "${CI:-}" == "true" ]]; then
+		# CI keeps unit+gui snapshots parallel; excludes torch-heavy markers.
+		echo "(unit or gui) and not integration and not semantic and not transcribe"
+	else
+		echo "unit and not semantic and not transcribe and not gui and not tui and not integration"
+	fi
+}
+
+_lib_pytest_heavy_marker() {
+	if [[ "${LIB_PYTEST_FULL:-}" == "true" ]]; then
+		echo "semantic or transcribe or gui or tui or integration or integration_full or transcribe_device_matrix"
+	else
+		echo "(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix"
+	fi
+}
+
+_lib_pytest_worker_count() {
+	local n
+	if [[ -n "${LIB_PYTEST_WORKERS:-}" ]]; then
+		echo "${LIB_PYTEST_WORKERS}"
+		return
+	fi
+	n="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+	if [[ "${n}" -lt 1 ]]; then
+		n=1
+	fi
+	# Cap fan-out everywhere (incl. local CI=true mimics). GitHub runners are
+	# typically ≤4 cores; higher local counts crash Qt/torch workers.
+	if [[ "${n}" -gt 4 ]]; then
+		n=4
+	fi
+	echo "${n}"
+}
+
 lib_pytest_args() {
 	# shellcheck disable=SC2034  # LIB_PYTEST_* consumed by pytest.sh after sourcing
 	LIB_PYTEST_ARGS=()
@@ -116,22 +153,10 @@ lib_pytest_args() {
 	elif [[ -d "${LIB_REPO_ROOT}/test" ]]; then
 		LIB_PYTEST_ARGS+=(test)
 	fi
-	# Local checks.sh runs integration tests; integration_full requires --full.
-	if [[ "${CI:-}" == "true" ]]; then
-		LIB_PYTEST_ARGS+=(-m "(unit or gui) and not integration and not semantic and not transcribe")
-	elif [[ "${LIB_PYTEST_FULL:-}" != "true" ]]; then
-		LIB_PYTEST_ARGS+=(-m "not integration_full and not transcribe_device_matrix and not (integration and gui)")
-	fi
-	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
-		LIB_PYTEST_ARGS+=(--integration-test-cpu)
-	fi
+	LIB_PYTEST_ARGS+=(-m "$(_lib_pytest_safe_marker)")
 	# max-worker-restart=0: fail fast on crashed workers (Qt/native) instead of
 	# hanging while xdist replaces the node ("Not properly terminated").
-	if [[ -n "${LIB_PYTEST_WORKERS:-}" ]]; then
-		LIB_PYTEST_ARGS+=(-n "${LIB_PYTEST_WORKERS}" --dist=loadgroup --max-worker-restart=0)
-	else
-		LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup --max-worker-restart=0)
-	fi
+	LIB_PYTEST_ARGS+=(-n "$(_lib_pytest_worker_count)" --dist=loadgroup --max-worker-restart=0)
 	# Change-aware selection for local day-to-day gate only (not CI, not --full).
 	if [[ "${CI:-}" != "true" && "${LIB_PYTEST_FULL:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--testmon-forceselect --ff)
@@ -145,16 +170,26 @@ lib_pytest_args() {
 	fi
 }
 
-lib_pytest_gui_integration_args() {
+lib_pytest_heavy_args() {
 	# shellcheck disable=SC2034  # consumed by pytest.sh after sourcing
-	LIB_PYTEST_GUI_INTEGRATION_ARGS=()
-	if [[ "${CI:-}" == "true" || "${LIB_PYTEST_FULL:-}" == "true" ]]; then
+	LIB_PYTEST_HEAVY_ARGS=()
+	# CI already excludes heavy markers from the parallel pass; no serial follow-up.
+	if [[ "${CI:-}" == "true" ]]; then
 		return 0
 	fi
 	if [[ -d "${LIB_REPO_ROOT}/tests" ]]; then
-		LIB_PYTEST_GUI_INTEGRATION_ARGS+=(tests)
+		LIB_PYTEST_HEAVY_ARGS+=(tests)
 	elif [[ -d "${LIB_REPO_ROOT}/test" ]]; then
-		LIB_PYTEST_GUI_INTEGRATION_ARGS+=(test)
+		LIB_PYTEST_HEAVY_ARGS+=(test)
 	fi
-	LIB_PYTEST_GUI_INTEGRATION_ARGS+=(-m "integration and gui" -n 0)
+	LIB_PYTEST_HEAVY_ARGS+=(-m "$(_lib_pytest_heavy_marker)" -n 0)
+	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" ]]; then
+		LIB_PYTEST_HEAVY_ARGS+=(--integration-test-cpu)
+	fi
+	LIB_PYTEST_HEAVY_COV=()
+	if [[ "${LIB_PYTEST_FULL:-}" == "true" && -d "${LIB_REPO_ROOT}/src" ]]; then
+		# Append so coverage from the safe parallel pass is not wiped.
+		# shellcheck disable=SC2034
+		LIB_PYTEST_HEAVY_COV=(--cov=src --cov-append --cov-report=term-missing:skip-covered -ra --tb=short)
+	fi
 }

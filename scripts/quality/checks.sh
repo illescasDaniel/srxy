@@ -4,8 +4,9 @@ set -u
 
 # Quality gate — ruff, shell, basedpyright, pip-audit, build, and optionally pytest.
 # --fix: ruff autofix+format and shfmt write; sequential (writers first).
-# Without --fix: light verify steps run in parallel, then pytest alone (avoids
-# overlapping xdist + basedpyright/torch contention). Only one gate at a time (flock).
+# Without --fix: light verify steps run in parallel, then pytest alone (safe
+# parallel unit subset, then serial heavy semantic/transcribe/gui/tui/integration).
+# Only one gate at a time (flock).
 
 quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 internal_dir="${quality_dir}/internal"
@@ -255,14 +256,20 @@ if [[ "${FIX}" == true ]]; then
 	fi
 else
 	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
-	workers="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-	# Full nproc for pytest — it no longer shares the machine with basedpyright/build.
-	if [[ "${workers}" -lt 1 ]]; then
-		workers=1
+	# Cap xdist fan-out (torch/Qt-heavy work runs serially in pytest.sh).
+	# Respect an explicit LIB_PYTEST_WORKERS override from the environment.
+	if [[ -z "${LIB_PYTEST_WORKERS:-}" ]]; then
+		workers="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
+		if [[ "${workers}" -lt 1 ]]; then
+			workers=1
+		fi
+		if [[ "${workers}" -gt 4 ]]; then
+			workers=4
+		fi
+		export LIB_PYTEST_WORKERS="${workers}"
 	fi
-	export LIB_PYTEST_WORKERS="${workers}"
 
-	echo "Parallel verify (light steps; then pytest -n ${LIB_PYTEST_WORKERS})"
+	echo "Parallel verify (light steps; then pytest -n ${LIB_PYTEST_WORKERS}, heavy serial)"
 
 	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
 	gate_run_step_logged "shell" gate_step_shell "${parallel_dir}"

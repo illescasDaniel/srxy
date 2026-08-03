@@ -107,8 +107,10 @@ def test_given_office_docs_when_searching_tokens_then_finds_each_format(file_sea
 @pytest.mark.transcribe
 def test_given_minimal_mp3_when_transcribe_then_finds_audio_metadata(file_search_root: Path):
 	# when — minimal.mp3 has ID3 tags but no usable speech for Whisper
+	audio = file_search_root / "minimal.mp3"
+	assert audio.is_file(), f"missing QA audio fixture: {audio}"
 	results = magic_file_search(
-		file_search_root,
+		audio,
 		"Beatles",
 		search_names=False,
 		transcribe=True,
