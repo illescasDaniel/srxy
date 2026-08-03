@@ -27,11 +27,22 @@ srxy "registry" ./src         # pre-filled; auto-starts
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
-**Desktop installers:**
+**Desktop installers (Linux):**
 
-Linux AppImages are supported now — a full offline PySide wizard and a slim online one-click installer (Go bootstrap + localhost browser UI). Windows and macOS installers are in progress. PyPI / `uv tool install` remain the primary paths on every platform. Short guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (make executable and run; no host `libfuse2`):
 
-![srxy desktop installer](docs/images/installer.png)
+| Artifact | What you get |
+|----------|----------------|
+| `srxy-*-installer-*.AppImage` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
+| `srxy-*-installer-online-*.AppImage` | **Online one-click** — slim Go bootstrap; opens your browser to a localhost page and installs from PyPI |
+
+Default prefix: `~/Applications/srxy`. The online AppImage needs a network connection on first launch (downloads `uv`, managed Python, and srxy into `~/.cache/srxy/online-bootstrap/`); later runs reuse the cache. It vendors PATH / tesseract / ffmpeg automatically and enables smarter-search packages only when a GPU is detected — model weights download later when you use those features. No reinstall/uninstall UI on the online path (use the offline wizard or remove the prefix).
+
+Windows and macOS installers are in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+
+![srxy offline desktop installer](docs/images/installer.png)
+
+![srxy online web installer](docs/images/installer-online.png)
 
 **TUI:**
 

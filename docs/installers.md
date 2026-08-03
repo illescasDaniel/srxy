@@ -28,6 +28,10 @@ Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases)
 - Always vendors uv / tesseract / ffmpeg and adds PATH; smarter-search packages only when a GPU/MPS is detected. Model weights are **not** prefetched.
 - No reinstall/uninstall UI — use the offline wizard or remove the prefix manually. Closing the browser tab stops the process.
 
+![srxy online web installer](images/installer-online.png)
+
+Regenerate README / docs screenshots: `./scripts/docs/export_installer_screenshot.sh` (offline wizard) and `./scripts/docs/export_installer_online_screenshot.sh` (online UI).
+
 Step-by-step install notes: [installation.md § Linux AppImage installers](installation.md#linux-appimage-installers-optional).
 
 ## Windows and macOS (coming soon)

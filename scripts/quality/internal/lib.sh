@@ -125,10 +125,12 @@ lib_pytest_args() {
 	if [[ "${LIB_PYTEST_FULL_CPU:-}" == "true" && "${CI:-}" != "true" ]]; then
 		LIB_PYTEST_ARGS+=(--integration-test-cpu)
 	fi
+	# max-worker-restart=0: fail fast on crashed workers (Qt/native) instead of
+	# hanging while xdist replaces the node ("Not properly terminated").
 	if [[ -n "${LIB_PYTEST_WORKERS:-}" ]]; then
-		LIB_PYTEST_ARGS+=(-n "${LIB_PYTEST_WORKERS}" --dist=loadgroup)
+		LIB_PYTEST_ARGS+=(-n "${LIB_PYTEST_WORKERS}" --dist=loadgroup --max-worker-restart=0)
 	else
-		LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup)
+		LIB_PYTEST_ARGS+=(-n auto --dist=loadgroup --max-worker-restart=0)
 	fi
 	# Change-aware selection for local day-to-day gate only (not CI, not --full).
 	if [[ "${CI:-}" != "true" && "${LIB_PYTEST_FULL:-}" != "true" ]]; then

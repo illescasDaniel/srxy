@@ -195,6 +195,7 @@ class _ServerHarness:
 			self.session.stop_event.set()
 		if self.server is not None:
 			self.server.shutdown()
+			self.server.server_close()
 		if self._serve_thread is not None:
 			self._serve_thread.join(timeout=5)
 
@@ -240,6 +241,14 @@ def online_server(monkeypatch: pytest.MonkeyPatch):
 		yield harness
 	finally:
 		harness.stop()
+
+
+def test_given_created_server_when_started_then_uses_daemon_request_threads(
+	online_server: _ServerHarness,
+):
+	# then — required so xdist workers can exit after HTTP tests
+	assert online_server.server is not None
+	assert online_server.server.daemon_threads is True
 
 
 def test_given_missing_token_when_calling_api_then_rejects(online_server: _ServerHarness):

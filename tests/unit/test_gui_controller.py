@@ -163,6 +163,7 @@ def test_given_fresh_controller_when_search_starts_then_has_searched_becomes_tru
 		qapp.processEvents()
 		time.sleep(0.01)
 	assert not controller.searching
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_search_finished_when_worker_exits_then_clears_thread_refs(qapp: QCoreApplication, tmp_path: Path):
@@ -185,6 +186,7 @@ def test_given_search_finished_when_worker_exits_then_clears_thread_refs(qapp: Q
 		qapp.processEvents()
 		time.sleep(0.01)
 	assert controller.search_thread_for_tests() is None
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_back_to_back_searches_when_completed_then_both_succeed(qapp: QCoreApplication, tmp_path: Path):
@@ -267,6 +269,7 @@ def test_given_start_search_when_called_then_does_not_refresh_capabilities(
 
 	# then
 	assert calls == []
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_capabilities_when_refresh_capabilities_then_does_not_import_torch(
@@ -389,6 +392,7 @@ def test_given_controller_when_results_empty_then_hint_follows_search_state(qapp
 	result = FileSearchResult(path=tmp_path / "note.txt", score=0.9, breakdown={"name": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
 	assert controller.resultsEmptyHint == ""
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_ampersand_simple_query_when_syncing_then_treats_term_as_literal(qapp: QCoreApplication, tmp_path: Path):

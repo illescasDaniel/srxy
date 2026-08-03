@@ -340,6 +340,9 @@ def create_online_installer_server() -> tuple[str, InstallSession, ThreadingHTTP
 	session = InstallSession(token=token)
 	handler = make_handler(session)
 	server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+	# Non-daemon request threads keep pytest-xdist workers alive after
+	# serve_forever returns → "node down: Not properly terminated" (esp. Windows).
+	server.daemon_threads = True
 	host, port = server.server_address[:2]
 	url = f"http://{host}:{port}/?t={token}"
 	return url, session, server
