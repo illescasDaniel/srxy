@@ -4,7 +4,8 @@
 # Usage:
 #   ./packaging/linux-appimage/smoke-appimage.sh [path-to-AppImage]
 #
-# When no path is given, picks the newest dist/srxy-*-installer-*-x86_64.AppImage.
+# When no path is given, picks the newest *offline* installer AppImage
+# (excludes srxy-*-installer-online-*-x86_64.AppImage).
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -13,15 +14,15 @@ OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 if [[ $# -ge 1 ]]; then
 	APPIMAGE="$1"
 else
-	shopt -s nullglob
-	candidates=("$OUT_DIR"/srxy-*-installer-*-x86_64.AppImage)
-	shopt -u nullglob
-	if [[ ${#candidates[@]} -eq 0 ]]; then
-		echo "error: no AppImage found under $OUT_DIR; build first or pass a path" >&2
+	# Prefer newest mtime without relying on ls (SC2012); exclude online artifact.
+	APPIMAGE="$(find "$OUT_DIR" -maxdepth 1 \
+		-name 'srxy-*-installer-*-x86_64.AppImage' \
+		! -name '*-installer-online-*' \
+		-printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
+	if [[ -z "${APPIMAGE:-}" ]]; then
+		echo "error: no offline AppImage found under $OUT_DIR; build first or pass a path" >&2
 		exit 1
 	fi
-	# Prefer newest mtime without relying on ls (SC2012).
-	APPIMAGE="$(find "$OUT_DIR" -maxdepth 1 -name 'srxy-*-installer-*-x86_64.AppImage' -printf '%T@ %p\n' | sort -nr | head -n 1 | cut -d' ' -f2-)"
 fi
 
 if [[ -z "${APPIMAGE:-}" || ! -f "$APPIMAGE" ]]; then

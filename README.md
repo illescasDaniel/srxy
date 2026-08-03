@@ -27,9 +27,9 @@ srxy "registry" ./src         # pre-filled; auto-starts
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
-**Linux desktop installer (AppImage):**
+**Linux desktop installers (AppImage):**
 
-On Linux you can also use a thin install/uninstall wizard (optional; PyPI / `uv tool install` remain the primary paths). Download links will be published with releases — details in [docs/installation.md](docs/installation.md#linux-appimage-installer-optional). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+On Linux you can also use an optional install wizard (full offline PySide AppImage) or a slim one-click online installer (Go bootstrap + localhost browser page; PyPI only). PyPI / `uv tool install` remain the primary paths — details in [docs/installation.md](docs/installation.md#linux-appimage-installers-optional). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 ![srxy desktop installer](docs/images/installer.png)
 

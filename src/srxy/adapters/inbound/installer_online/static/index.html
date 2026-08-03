@@ -1,0 +1,43 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+	<meta charset="utf-8" />
+	<meta name="viewport" content="width=device-width, initial-scale=1" />
+	<title>srxy online installer</title>
+	<link rel="stylesheet" href="/static/app.css" />
+</head>
+<body>
+	<main class="panel">
+		<h1>srxy</h1>
+		<p id="subtitle" class="subtitle"></p>
+
+		<label class="row prefix-row">
+			<span id="prefix-label"></span>
+			<input id="prefix" type="text" autocomplete="off" spellcheck="false" />
+		</label>
+
+		<h2 id="privacy-title"></h2>
+		<pre id="privacy" class="privacy" tabindex="0"></pre>
+
+		<label class="ack">
+			<input id="ack" type="checkbox" />
+			<span id="privacy-ack"></span>
+		</label>
+
+		<p id="status" class="status" role="status"></p>
+		<div class="progress" aria-hidden="true">
+			<div id="overall-bar" class="bar"></div>
+		</div>
+		<div class="progress" aria-hidden="true">
+			<div id="task-bar" class="bar"></div>
+		</div>
+
+		<div class="actions">
+			<button id="finish" type="button" disabled></button>
+			<button id="install" type="button" disabled></button>
+		</div>
+		<p id="close-hint" class="close-hint" hidden></p>
+	</main>
+	<script src="/static/app.js"></script>
+</body>
+</html>

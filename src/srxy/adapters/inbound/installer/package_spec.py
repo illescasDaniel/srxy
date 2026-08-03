@@ -175,6 +175,33 @@ def resolve_srxy_install_spec(*, fetch_pypi: bool = True) -> str:
 	return bundled_spec
 
 
+def resolve_pypi_install_spec(*, fetch_pypi: bool = True) -> str:
+	"""Always install from PyPI (online installer). Never uses a bundled wheel.
+
+	Honors ``SRXY_INSTALL_SPEC`` when set. Requires a PyPI release that meets
+	``min_srxy_version`` and lists PySide6 when ``fetch_pypi`` is true.
+	"""
+	override = os.environ.get("SRXY_INSTALL_SPEC", "").strip()
+	if override:
+		return override
+
+	meta = load_installer_meta()
+	if not fetch_pypi:
+		return "srxy"
+
+	info = fetch_pypi_srxy_info()
+	if info is None:
+		raise RuntimeError("Could not reach PyPI to resolve the srxy package version.")
+	latest = pypi_latest_version(info)
+	if latest is None:
+		raise RuntimeError("PyPI did not report a latest srxy version.")
+	if not version_at_least(latest, meta.min_srxy_version):
+		raise RuntimeError(f"PyPI srxy {latest} is older than this installer requires ({meta.min_srxy_version}).")
+	if not pypi_requires_pyside6(info, latest):
+		raise RuntimeError(f"PyPI srxy {latest} does not list PySide6; refusing to install.")
+	return f"srxy=={latest}"
+
+
 def with_semantic_extra(spec: str) -> str:
 	"""Append ``[semantic]`` when installing from a path/wheel/name."""
 	if "[" in spec:
@@ -189,6 +216,7 @@ __all__ = [
 	"pypi_latest_version",
 	"pypi_requires_pyside6",
 	"resolve_bundled_or_local_spec",
+	"resolve_pypi_install_spec",
 	"resolve_srxy_install_spec",
 	"version_at_least",
 	"version_newer",

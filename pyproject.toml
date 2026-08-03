@@ -60,6 +60,7 @@ build-backend = "uv_build"
 [project.scripts]
 srxy = "srxy.__main__:main"
 srxy-installer = "srxy.adapters.inbound.installer.__main__:main"
+srxy-installer-online = "srxy.adapters.inbound.installer_online.__main__:main"
 
 # tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
 
@@ -152,7 +153,9 @@ tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/f
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
 gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bare (no semantic extras; --recreate to rebuild)" }
 installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
-build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build Linux installer AppImage into dist/" }
+installer-online = { cmd = "uv run srxy-installer-online", help = "launch one-click online installer (localhost browser UI)" }
+build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build offline Linux installer AppImage into dist/" }
+build-appimage-online = { cmd = "./packaging/linux-appimage/build-online.sh", help = "build online Linux installer AppImage into dist/" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate srxy-installer-*.png gears-badge icons from base app icons" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }

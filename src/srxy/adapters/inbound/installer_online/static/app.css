@@ -1,0 +1,180 @@
+:root {
+	color-scheme: light dark;
+	--bg: #f4f4f5;
+	--panel: #ffffff;
+	--text: #18181b;
+	--muted: #52525b;
+	--border: #d4d4d8;
+	--accent: #2563eb;
+	--accent-text: #ffffff;
+	--danger: #b91c1c;
+	--bar-track: #e4e4e7;
+	--bar-fill: #2563eb;
+	--radius: 10px;
+	font-family: system-ui, sans-serif;
+}
+
+@media (prefers-color-scheme: dark) {
+	:root {
+		--bg: #09090b;
+		--panel: #18181b;
+		--text: #fafafa;
+		--muted: #a1a1aa;
+		--border: #3f3f46;
+		--accent: #3b82f6;
+		--bar-track: #27272a;
+		--bar-fill: #3b82f6;
+	}
+}
+
+* {
+	box-sizing: border-box;
+}
+
+body {
+	margin: 0;
+	min-height: 100vh;
+	background: linear-gradient(160deg, var(--bg), color-mix(in srgb, var(--bg) 70%, var(--accent) 12%));
+	color: var(--text);
+	display: flex;
+	align-items: flex-start;
+	justify-content: center;
+	padding: 2rem 1rem;
+}
+
+.panel {
+	width: min(44rem, 100%);
+	background: var(--panel);
+	border: 1px solid var(--border);
+	border-radius: var(--radius);
+	padding: 1.5rem 1.5rem 1.25rem;
+	box-shadow: 0 12px 40px color-mix(in srgb, #000 12%, transparent);
+}
+
+h1 {
+	margin: 0;
+	font-size: 2rem;
+	letter-spacing: -0.03em;
+}
+
+h2 {
+	margin: 1rem 0 0.5rem;
+	font-size: 1rem;
+}
+
+.subtitle {
+	margin: 0.4rem 0 1rem;
+	color: var(--muted);
+	line-height: 1.45;
+}
+
+.prefix-row {
+	display: flex;
+	gap: 0.75rem;
+	align-items: center;
+	margin-bottom: 0.75rem;
+}
+
+.prefix-row span {
+	white-space: nowrap;
+}
+
+.prefix-row input {
+	flex: 1;
+	min-width: 0;
+	padding: 0.55rem 0.7rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: transparent;
+	color: inherit;
+	font: inherit;
+}
+
+.privacy {
+	margin: 0;
+	max-height: 14rem;
+	overflow: auto;
+	padding: 0.75rem;
+	border: 1px solid var(--border);
+	border-radius: 8px;
+	background: color-mix(in srgb, var(--bg) 80%, transparent);
+	white-space: pre-wrap;
+	word-break: break-word;
+	font: inherit;
+	font-size: 0.9rem;
+	line-height: 1.4;
+	color: var(--muted);
+}
+
+.ack {
+	display: flex;
+	gap: 0.6rem;
+	align-items: flex-start;
+	margin: 0.9rem 0 0.75rem;
+	cursor: pointer;
+}
+
+.ack input {
+	margin-top: 0.2rem;
+}
+
+.status {
+	min-height: 1.4em;
+	margin: 0 0 0.5rem;
+	color: var(--muted);
+	font-size: 0.95rem;
+}
+
+.status.error {
+	color: var(--danger);
+}
+
+.progress {
+	height: 0.55rem;
+	background: var(--bar-track);
+	border-radius: 999px;
+	overflow: hidden;
+	margin-bottom: 0.45rem;
+}
+
+.bar {
+	height: 100%;
+	width: 0%;
+	background: var(--bar-fill);
+	transition: width 0.2s ease;
+}
+
+.actions {
+	display: flex;
+	justify-content: flex-end;
+	gap: 0.6rem;
+	margin-top: 0.85rem;
+}
+
+button {
+	font: inherit;
+	font-weight: 600;
+	padding: 0.55rem 1rem;
+	border-radius: 8px;
+	border: 1px solid var(--border);
+	background: transparent;
+	color: inherit;
+	cursor: pointer;
+}
+
+button:disabled {
+	opacity: 0.45;
+	cursor: not-allowed;
+}
+
+#install {
+	background: var(--accent);
+	border-color: var(--accent);
+	color: var(--accent-text);
+}
+
+.close-hint {
+	margin: 0.85rem 0 0;
+	color: var(--muted);
+	font-size: 0.95rem;
+}

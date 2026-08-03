@@ -25,11 +25,13 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 `[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch first if you have an NVIDIA GPU ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
-## Linux AppImage installer (optional)
+## Linux AppImage installers (optional)
 
-PyPI / `uv tool install` remain the primary install paths. On Linux you can also use the **desktop installer AppImage** (install + uninstall wizard):
+PyPI / `uv tool install` remain the primary install paths. On Linux you can also use a **desktop installer AppImage**:
 
-1. Download `srxy-*-installer-*-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)).
+### Offline wizard (full)
+
+1. Download `srxy-*-installer-<installer_version>-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)). Do **not** confuse this with the `*-installer-online-*` artifact.
 2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
 3. Choose **Install or update**, **Reinstall**, or **Uninstall**. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
    - **Install or update** installs into the chosen folder, or updates an existing srxy install there in place (venv is recreated; models/cache may remain).
@@ -38,17 +40,23 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 4. Acknowledge the [privacy / third-party notice](privacy.md), then optionally download Tesseract, ffmpeg, semantic extras, and AI models.
 5. Optionally enable **Also let me run srxy from the Terminal** (default on). This prepends `$prefix/bin` to your shell startup file (`~/.bashrc`, `~/.zshrc`, or fish `config.fish`) with `# >>> srxy PATH >>>` markers. Open a **new** terminal after install. Uninstall removes that block.
 
-Language defaults to the system locale (English or Spanish). Override with the installer language combo, GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.
+### Online one-click (slim)
+
+1. Download `srxy-*-installer-online-<installer_version>-x86_64.AppImage` (or build with [`packaging/linux-appimage/build-online.sh`](../packaging/linux-appimage/build-online.sh)).
+2. Run it — it opens your default browser. First launch may download `uv` and Python into a cache under `~/.cache/srxy/online-bootstrap/` (needs network), then shows the install page on localhost only. Acknowledge privacy, click **Install**. Installs **from PyPI** into your chosen prefix. Always vendors uv/tesseract/ffmpeg and adds PATH; enables smarter-search packages only when a GPU/MPS is detected. AI model weights are **not** prefetched (downloaded on first smarter search).
+3. No reinstall/uninstall UI in this artifact — use the offline wizard or remove the prefix manually. Closing the browser tab stops the installer process.
+
+Language defaults to the system locale (English or Spanish). Override with the installer language combo (offline wizard), GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.
 
 The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip). After an update completes, restart srxy to load the new version.
 
-Linux CI builds the AppImage via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md) for relocatable build notes, checksum refresh, and smoke tests).
-
-Run the wizard from a checked-out tree with:
+Linux CI builds both AppImages via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md)).
 
 ```bash
-uv run python -m srxy.adapters.inbound.installer
-# or: uv run srxy-installer
+uv run python -m srxy.adapters.inbound.installer          # offline wizard
+uv run srxy-installer
+uv run python -m srxy.adapters.inbound.installer_online   # online one-click
+uv run srxy-installer-online
 ```
 
 macOS and Windows installers are planned later.
