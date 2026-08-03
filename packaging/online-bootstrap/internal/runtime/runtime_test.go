@@ -1,6 +1,9 @@
 package runtime
 
-import "testing"
+import (
+	"os"
+	"testing"
+)
 
 func TestSpecFromVersion(t *testing.T) {
 	cases := []struct {
@@ -38,5 +41,64 @@ func TestBootstrapInstallSpec_Override(t *testing.T) {
 	}
 	if got != "srxy @ /tmp/foo.whl" {
 		t.Fatalf("got %q", got)
+	}
+}
+
+func TestLoadMeta_Valid(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/bootstrap-meta.json"
+	raw := `{
+  "uv_url": "https://example.com/uv.tar.gz",
+  "uv_sha256": "abc",
+  "python_version": "3.12",
+  "installer_version": "3",
+  "srxy_version": "1.6.0"
+}
+`
+	if err := os.WriteFile(path, []byte(raw), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	meta, err := LoadMeta(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if meta.PythonVersion != "3.12" || meta.SrxyVersion != "1.6.0" {
+		t.Fatalf("unexpected meta: %+v", meta)
+	}
+}
+
+func TestLoadMeta_Incomplete(t *testing.T) {
+	dir := t.TempDir()
+	path := dir + "/bootstrap-meta.json"
+	if err := os.WriteFile(path, []byte(`{"uv_url":"https://x"}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadMeta(path); err == nil {
+		t.Fatal("expected incomplete meta error")
+	}
+}
+
+func TestDefaultCacheDir_Override(t *testing.T) {
+	want := t.TempDir()
+	t.Setenv("SRXY_ONLINE_BOOTSTRAP_CACHE", want)
+	got, err := DefaultCacheDir()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != want {
+		t.Fatalf("got %q want %q", got, want)
+	}
+}
+
+func TestResolvePaths_Layout(t *testing.T) {
+	paths := ResolvePaths("/app", "/cache", Meta{})
+	if paths.UvBin != "/cache/uv/uv" {
+		t.Fatalf("UvBin=%q", paths.UvBin)
+	}
+	if paths.VenvPython != "/cache/venv/bin/python" {
+		t.Fatalf("VenvPython=%q", paths.VenvPython)
+	}
+	if paths.MetaPath != "/app/usr/share/srxy/bootstrap-meta.json" {
+		t.Fatalf("MetaPath=%q", paths.MetaPath)
 	}
 }

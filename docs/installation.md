@@ -27,6 +27,8 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 ## Linux AppImage installers (optional)
 
+**Linux AppImages are available now.** Windows and macOS desktop installers are in progress — until then use the paths above on those platforms. Short reference: [installers.md](installers.md).
+
 PyPI / `uv tool install` remain the primary install paths. On Linux you can also use a **desktop installer AppImage**:
 
 ### Offline wizard (full)
@@ -59,7 +61,7 @@ uv run python -m srxy.adapters.inbound.installer_online   # online one-click
 uv run srxy-installer-online
 ```
 
-macOS and Windows installers are planned later.
+macOS and Windows installers are planned (see [installers.md](installers.md)).
 
 ## System dependencies
 

@@ -27,9 +27,9 @@ srxy "registry" ./src         # pre-filled; auto-starts
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
-**Linux desktop installers (AppImage):**
+**Desktop installers:**
 
-On Linux you can also use an optional install wizard (full offline PySide AppImage) or a slim one-click online installer (Go bootstrap + localhost browser page; PyPI only). PyPI / `uv tool install` remain the primary paths — details in [docs/installation.md](docs/installation.md#linux-appimage-installers-optional). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+Linux AppImages are supported now — a full offline PySide wizard and a slim online one-click installer (Go bootstrap + localhost browser UI). Windows and macOS installers are in progress. PyPI / `uv tool install` remain the primary paths on every platform. Short guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 ![srxy desktop installer](docs/images/installer.png)
 
@@ -73,6 +73,7 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 | Guide | Contents |
 |-------|----------|
 | [Installation](docs/installation.md) | uv tool / pipx, macOS/Linux/Windows, ffmpeg, tesseract |
+| [Desktop installers](docs/installers.md) | Linux AppImages (offline + online); Windows/macOS coming soon |
 | [TUI](docs/tui.md) | Layout, keybindings, clipboard, release checklist |
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |

@@ -2,7 +2,7 @@
 
 srxy itself is **MIT**-licensed. You can install it from PyPI and use the GUI, TUI, CLI, or library without any desktop installer.
 
-The optional **desktop installer** (Linux AppImage first; macOS/Windows later) does **not** ship NVIDIA/CUDA binaries, Hugging Face model weights, Tesseract, or ffmpeg inside the AppImage. When you opt in, it downloads components from third parties. Review their sites and privacy policies before continuing.
+The optional **desktop installer** (Linux AppImages available now; Windows and macOS installers in progress) does **not** ship NVIDIA/CUDA binaries, Hugging Face model weights, Tesseract, or ffmpeg inside the AppImage. When you opt in, it downloads components from third parties. Review their sites and privacy policies before continuing. See [installers.md](installers.md).
 
 ## What the installer may download
 
