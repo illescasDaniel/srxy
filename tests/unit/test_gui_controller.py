@@ -187,6 +187,28 @@ def test_given_search_finished_when_worker_exits_then_clears_thread_refs(qapp: Q
 	assert controller.search_thread_for_tests() is None
 
 
+def test_given_back_to_back_searches_when_completed_then_both_succeed(qapp: QCoreApplication, tmp_path: Path):
+	# given — overlapping teardown used to SIGBUS via worker.deleteLater on the QThread
+	(tmp_path / "readme.txt").write_text("readme content\n", encoding="utf-8")
+	(tmp_path / "other.txt").write_text("other\n", encoding="utf-8")
+	args = build_parser().parse_args(["readme", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# when — run several searches as soon as each reports idle
+	for _ in range(5):
+		controller.startSearch()
+		deadline = time.monotonic() + 30
+		while controller.searching and time.monotonic() < deadline:
+			qapp.processEvents()
+			time.sleep(0.01)
+		assert not controller.searching
+		assert controller.resultsModel.rowCount() >= 1
+
+	# then
+	assert controller.exit_code() == 0
+	controller.shutdown(thread_wait_ms=1000)
+
+
 def test_given_running_threads_when_shutdown_then_cancels_and_waits(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")

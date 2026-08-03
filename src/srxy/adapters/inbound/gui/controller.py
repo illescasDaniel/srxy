@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QThread, Signal, Slot
 
 from srxy.adapters.inbound.cli.cli import apply_args_to_env
 from srxy.adapters.inbound.gui.capabilities import (
@@ -828,7 +828,29 @@ class SearchController(QObject):
 		self._args = args
 		self._start_search_worker(args)
 
+	@staticmethod
+	def _release_worker_on_main_thread(worker: QObject | None):
+		"""Drop a finished QThread worker without ``deleteLater`` on a dead thread.
+
+		``thread.finished → worker.deleteLater`` SIGBUS'd under Wayland + PySide6
+		(Shiboken UAF while DeferredDelete ran on the finishing QThread). After the
+		thread stops, ``moveToThread(gui)`` also fails from the GUI thread, so we
+		only clear Python ownership and let Shiboken destroy the C++ object.
+		"""
+		if worker is None:
+			return
+		try:
+			from shiboken6 import isValid
+
+			if not isValid(worker):
+				return
+			worker.setParent(None)
+		except RuntimeError:
+			return
+
 	def _start_search_worker(self, args: argparse.Namespace):
+		# A prior search may still be tearing down even though UI is idle.
+		self._dispose_search_worker(wait_ms=3000)
 		thread = QThread(self)
 		worker = _SearchWorker(
 			args,
@@ -840,14 +862,16 @@ class SearchController(QObject):
 		worker.event_ready.connect(self._on_search_event)
 		worker.finished.connect(self._on_worker_finished)
 		worker.finished.connect(thread.quit)
-		thread.finished.connect(worker.deleteLater)
 		# Parent owns the QThread — do not deleteLater it (Shiboken UAF risk).
-		thread.finished.connect(self._on_search_thread_finished)
+		# Queue finished onto the GUI thread so worker teardown is not on the
+		# dying QThread (deleteLater there SIGBUS'd under Wayland + PySide6).
+		thread.finished.connect(self._on_search_thread_finished, Qt.ConnectionType.QueuedConnection)
 		self._thread = thread
 		self._worker = worker
 		thread.start()
 
 	def _start_download_worker(self, kind: str):
+		self._dispose_download_worker(wait_ms=3000)
 		thread = QThread(self)
 		worker = _DownloadWorker(kind)
 		worker.moveToThread(thread)
@@ -855,8 +879,7 @@ class SearchController(QObject):
 		worker.progress.connect(self._on_download_progress)
 		worker.finished.connect(self._on_download_finished)
 		worker.finished.connect(thread.quit)
-		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(self._on_download_thread_finished)
+		thread.finished.connect(self._on_download_thread_finished, Qt.ConnectionType.QueuedConnection)
 		self._download_thread = thread
 		self._download_worker = worker
 		thread.start()
@@ -874,26 +897,59 @@ class SearchController(QObject):
 		except ProcessLookupError:
 			return
 
+	def _dispose_search_worker(self, *, wait_ms: int):
+		thread = self._thread
+		worker = self._worker
+		self._thread = None
+		self._worker = None
+		self._kill_search_subprocess_sync()
+		if worker is not None:
+			worker.request_cancel()
+		self._stop_qthread(thread, wait_ms=wait_ms)
+		self._release_worker_on_main_thread(worker)
+
+	def _dispose_download_worker(self, *, wait_ms: int):
+		thread = self._download_thread
+		worker = self._download_worker
+		self._download_thread = None
+		self._download_worker = None
+		if worker is not None:
+			worker.request_cancel()
+		self._stop_qthread(thread, wait_ms=wait_ms)
+		self._release_worker_on_main_thread(worker)
+
+	def _dispose_update_worker(self, *, wait_ms: int):
+		thread = self._update_thread
+		worker = self._update_worker
+		self._update_thread = None
+		self._update_worker = None
+		self._stop_qthread(thread, wait_ms=wait_ms)
+		self._release_worker_on_main_thread(worker)
+
+	@Slot()
 	def _on_search_thread_finished(self):
+		finished = self.sender()
+		if self._thread is not None and finished is not self._thread:
+			# Stale finished from a previous search thread — ignore.
+			return
 		self._search_subprocess = None
-		# Defer dropping Shiboken wrappers until after worker.deleteLater runs —
-		# clearing in this same finished turn SIGSEGVs under pytest-qt + QML.
-		from PySide6.QtCore import QTimer
-
-		QTimer.singleShot(0, self._clear_search_thread_refs)
-
-	def _clear_search_thread_refs(self):
+		worker = self._worker
 		self._worker = None
 		self._thread = None
+		self._release_worker_on_main_thread(worker)
+		self._set_searching(False)
+		self._last_snapshot = self._snapshot()
+		self._refresh_stale()
 
+	@Slot()
 	def _on_download_thread_finished(self):
-		from PySide6.QtCore import QTimer
-
-		QTimer.singleShot(0, self._clear_download_thread_refs)
-
-	def _clear_download_thread_refs(self):
+		finished = self.sender()
+		if self._download_thread is not None and finished is not self._download_thread:
+			return
+		worker = self._download_worker
 		self._download_worker = None
 		self._download_thread = None
+		self._release_worker_on_main_thread(worker)
 
 	@Slot()
 	def cancelSearch(self):  # noqa: N802
@@ -944,9 +1000,8 @@ class SearchController(QObject):
 				self.selectResult(0)
 
 	def _on_worker_finished(self):
-		self._set_searching(False)
-		self._last_snapshot = self._snapshot()
-		self._refresh_stale()
+		# Keep searching=True until the QThread fully stops (_on_search_thread_finished)
+		# so a new search cannot overwrite workers mid-teardown.
 		self._kill_search_subprocess_sync()
 
 	@Slot(int)
@@ -1187,6 +1242,7 @@ class SearchController(QObject):
 		self.updateUiChanged.emit()
 
 	def _start_update_worker(self, action: str):
+		self._dispose_update_worker(wait_ms=3000)
 		thread = QThread(self)
 		worker = _UpdateWorker(action)
 		worker.moveToThread(thread)
@@ -1199,20 +1255,20 @@ class SearchController(QObject):
 		worker.status.connect(self._on_update_status)
 		worker.finished.connect(thread.quit)
 		worker.failed.connect(thread.quit)
-		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(self._on_update_thread_finished)
+		thread.finished.connect(self._on_update_thread_finished, Qt.ConnectionType.QueuedConnection)
 		self._update_thread = thread
 		self._update_worker = worker
 		thread.start()
 
+	@Slot()
 	def _on_update_thread_finished(self):
-		from PySide6.QtCore import QTimer
-
-		QTimer.singleShot(0, self._clear_update_thread_refs)
-
-	def _clear_update_thread_refs(self):
+		finished = self.sender()
+		if self._update_thread is not None and finished is not self._update_thread:
+			return
+		worker = self._update_worker
 		self._update_worker = None
 		self._update_thread = None
+		self._release_worker_on_main_thread(worker)
 
 	@Slot(object)
 	def _on_update_check_finished(self, info: object):
@@ -1338,23 +1394,9 @@ class SearchController(QObject):
 			return
 
 	def shutdown(self, *, thread_wait_ms: int = 3000):
-		if self._worker is not None:
-			self._worker.request_cancel()
-		self._kill_search_subprocess_sync()
-		if self._download_worker is not None:
-			self._download_worker.request_cancel()
-		for thread in (
-			self._thread,
-			self._download_thread,
-			self._update_thread,
-		):
-			self._stop_qthread(thread, wait_ms=thread_wait_ms)
-		self._thread = None
-		self._download_thread = None
-		self._update_thread = None
-		self._worker = None
-		self._download_worker = None
-		self._update_worker = None
+		self._dispose_search_worker(wait_ms=thread_wait_ms)
+		self._dispose_download_worker(wait_ms=thread_wait_ms)
+		self._dispose_update_worker(wait_ms=thread_wait_ms)
 
 
 def _load_preview_text(result: FileSearchResult) -> str:
