@@ -375,11 +375,17 @@ def test_given_unsafe_confirm_accepted_when_installing_then_passes_confirm_unsaf
 		*,
 		status: Callable[[str], None] | None = None,
 		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+		task_offset: int = 0,
+		task_total: int | None = None,
 	) -> InstallManifest:
+		del progress, task_offset, task_total
 		captured["confirm_unsafe"] = options.confirm_unsafe
 		captured["prefix"] = options.prefix
 		if status is not None:
 			status("ok")
+		if task is not None:
+			task(1, 1, "ok")
 		done.set()
 		return InstallManifest(
 			version="0.0.0",
@@ -674,8 +680,11 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 		*,
 		status: Callable[[str], None] | None = None,
 		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+		task_offset: int = 0,
+		task_total: int | None = None,
 	):
-		del progress
+		del progress, task, task_offset, task_total
 		calls.append(f"install:{options.prefix}")
 		if status is not None:
 			status("Install complete.")
@@ -752,8 +761,11 @@ def test_given_install_mode_when_starting_then_does_not_call_uninstall(tmp_path:
 		*,
 		status: Callable[[str], None] | None = None,
 		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+		task_offset: int = 0,
+		task_total: int | None = None,
 	):
-		del progress
+		del progress, task, task_offset, task_total
 		calls.append("install")
 		if status is not None:
 			status("Install complete.")
@@ -849,3 +861,216 @@ def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_befor
 	assert tty_index < redirect_index
 	tty_branch = text.split("else", 1)[0]
 	assert '>>"$LOG_FILE" 2>&1' not in tty_branch
+
+
+def test_given_default_options_when_planning_phases_then_includes_vendor_and_path(tmp_path: Path):
+	# given
+	from srxy.adapters.inbound.installer.install import InstallOptions, plan_install_phases
+
+	options = InstallOptions(
+		prefix=tmp_path / "srxy",
+		download_tesseract=True,
+		download_ffmpeg=True,
+		install_semantic=False,
+		prefetch_models=False,
+		add_to_path=True,
+	)
+
+	# when
+	keys = [phase.key for phase in plan_install_phases(options)]
+
+	# then
+	assert keys == ["uv", "venv", "package", "tesseract", "ffmpeg", "launcher", "path"]
+
+
+def test_given_minimal_options_when_planning_phases_then_skips_optional_steps(tmp_path: Path):
+	# given
+	from srxy.adapters.inbound.installer.install import InstallOptions, plan_install_phases
+
+	options = InstallOptions(
+		prefix=tmp_path / "srxy",
+		download_tesseract=False,
+		download_ffmpeg=False,
+		install_semantic=False,
+		prefetch_models=False,
+		add_to_path=False,
+	)
+
+	# when
+	keys = [phase.key for phase in plan_install_phases(options)]
+
+	# then
+	assert keys == ["uv", "venv", "package", "launcher"]
+
+
+def test_given_task_and_download_progress_when_installing_then_exposes_dual_bars(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	import os
+	import time
+	from collections.abc import Callable
+	from typing import cast
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+	from srxy.adapters.inbound.installer.install import InstallOptions
+	from srxy.adapters.inbound.installer.manifest import InstallManifest
+
+	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int, int, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+		task_offset: int = 0,
+		task_total: int | None = None,
+	) -> InstallManifest:
+		del task_offset, task_total
+		if task is not None:
+			task(2, 4, "Downloading ffmpeg…")
+		if progress is not None:
+			# Multi-GB byte counts used to overflow Signal(int, int, str).
+			progress(1_925_000_000, 3_850_000_000, "ffmpeg 7.0")
+		if status is not None:
+			status("Downloading ffmpeg…")
+		return InstallManifest(
+			version="1.6.0",
+			prefix=str(options.prefix),
+			installed_at="2026-08-03T12:00:00+00:00",
+		)
+
+	monkeypatch.setattr(controller_mod, "install_srxy", fake_install)
+	controller = InstallerController()
+	controller.setPrivacyAck(True)
+	controller.setPrefix(str(prefix))
+
+	# when
+	controller.startInstall()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+	controller.shutdown()
+
+	# then
+	assert bool(controller.finished) is True
+	assert bool(controller.canGoBack) is False
+	assert "Install complete" in str(controller.status)
+	assert str(controller.progressLabel) == ""
+	assert cast(float, controller.overallProgressValue) == 1.0
+	assert "4 / 4" in str(controller.overallProgressText) or "100%" in str(controller.overallProgressText)
+	controller.goBack()
+	assert str(controller.page) == "progress"
+
+
+def test_given_multi_gb_bytes_when_updating_progress_then_shows_human_sizes(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	import os
+	import time
+	from collections.abc import Callable
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+	from srxy.adapters.inbound.installer.install import InstallOptions
+	from srxy.adapters.inbound.installer.manifest import InstallManifest
+
+	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+
+	mid: dict[str, object] = {}
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int | float, int | float, str], None] | None = None,
+		task: Callable[[int, int, str], None] | None = None,
+		task_offset: int = 0,
+		task_total: int | None = None,
+	) -> InstallManifest:
+		del task_offset, task_total
+		if task is not None:
+			task(2, 4, "Downloading ffmpeg…")
+		if progress is not None:
+			progress(1_925_000_000, 3_850_000_000, "ffmpeg 7.0")
+		# Hold the worker so the UI thread can sample mid-download state.
+		deadline = time.monotonic() + 2.0
+		while time.monotonic() < deadline and not mid.get("sampled"):
+			time.sleep(0.01)
+		if status is not None:
+			status("Downloading ffmpeg…")
+		return InstallManifest(
+			version="1.6.0",
+			prefix=str(options.prefix),
+			installed_at="2026-08-03T12:00:00+00:00",
+		)
+
+	monkeypatch.setattr(controller_mod, "install_srxy", fake_install)
+	controller = InstallerController()
+	controller.setPrivacyAck(True)
+	controller.setPrefix(str(prefix))
+
+	# when
+	controller.startInstall()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		task_text = str(controller.taskProgressText)
+		if "GB" in task_text and not mid.get("sampled"):
+			mid["sampled"] = True
+			mid["status"] = str(controller.status)
+			mid["progress_label"] = str(controller.progressLabel)
+			mid["task_text"] = task_text
+			mid["progress_value"] = float(controller.progressValue)  # pyright: ignore[reportArgumentType]
+		time.sleep(0.01)
+	controller.shutdown()
+
+	# then — phase stays human; task bar shows GB, not raw byte counts / vendor names
+	assert mid.get("sampled") is True
+	assert "Downloading ffmpeg" in str(mid["status"])
+	assert mid["progress_label"] == ""
+	assert "GB" in str(mid["task_text"])
+	assert "ffmpeg" not in str(mid["task_text"])
+	progress_value = mid["progress_value"]
+	assert isinstance(progress_value, float)
+	assert progress_value == pytest.approx(0.5, abs=0.01)
+	assert bool(controller.finished) is True
+
+
+def test_given_progress_line_when_parsing_then_extracts_done_total_label():
+	# given
+	from srxy.adapters.outbound.models.model_store import format_progress_line, parse_progress_line
+
+	# when
+	line = format_progress_line(12, 100, "model.bin")
+	parsed = parse_progress_line(line)
+
+	# then
+	assert parsed == (12, 100, "model.bin")
+	assert parse_progress_line("noise") is None

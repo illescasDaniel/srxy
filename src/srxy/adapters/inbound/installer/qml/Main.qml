@@ -420,7 +420,41 @@ ApplicationWindow {
 					font.pixelSize: 18
 				}
 				Label { text: c.status; color: root.primaryText; wrapMode: Text.WordWrap; Layout.fillWidth: true }
-				Label { text: c.progressLabel; color: root.secondaryText; visible: c.progressLabel.length > 0 }
+
+				Label {
+					visible: c.mode === "install" || c.mode === "reinstall"
+					text: root.t("installer.progress.overall")
+					color: root.secondaryText
+					font.pixelSize: 12
+				}
+				ProgressBar {
+					visible: c.mode === "install" || c.mode === "reinstall"
+					Layout.fillWidth: true
+					value: c.overallProgressValue
+					from: 0
+					to: 1
+					indeterminate: false
+				}
+				Label {
+					visible: (c.mode === "install" || c.mode === "reinstall") && c.overallProgressText.length > 0
+					text: c.overallProgressText
+					color: root.secondaryText
+					font.pixelSize: 12
+				}
+
+				Label {
+					visible: (c.mode === "install" || c.mode === "reinstall") && c.busy
+					text: root.t("installer.progress.task")
+					color: root.secondaryText
+					font.pixelSize: 12
+				}
+				Label {
+					visible: c.progressLabel.length > 0 && c.busy
+					text: c.progressLabel
+					color: root.secondaryText
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
 				ProgressBar {
 					Layout.fillWidth: true
 					value: c.progressValue
@@ -428,6 +462,13 @@ ApplicationWindow {
 					to: 1
 					indeterminate: c.busy && !c.progressDeterminate
 				}
+				Label {
+					visible: c.busy && c.taskProgressText.length > 0
+					text: c.taskProgressText
+					color: root.secondaryText
+					font.pixelSize: 12
+				}
+
 				Label {
 					visible: c.error.length > 0
 					text: c.error
@@ -451,7 +492,7 @@ ApplicationWindow {
 			Button {
 				text: root.t("common.back")
 				visible: c.page !== "mode"
-				enabled: !c.busy
+				enabled: c.canGoBack
 				onClicked: c.goBack()
 			}
 			Item { Layout.fillWidth: true }
@@ -486,8 +527,13 @@ ApplicationWindow {
 				onClicked: c.startUninstall()
 			}
 			Button {
+				text: root.t("common.finish")
+				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
+				onClicked: Qt.quit()
+			}
+			Button {
 				text: root.t("common.close")
-				visible: c.page === "progress" && !c.busy
+				visible: c.page === "progress" && !c.busy && !(c.finished && (c.mode === "install" || c.mode === "reinstall"))
 				onClicked: Qt.quit()
 			}
 		}

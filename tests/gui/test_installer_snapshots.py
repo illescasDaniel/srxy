@@ -39,7 +39,7 @@ def _chrome_tree(controller: InstallerController) -> str:
 		"  optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files",
 		"  pathCheckbox: Also let me run srxy from the Terminal",
 		"  languageCombo: English, Español",
-		"  buttons: Back, Next, Install, Reinstall, Uninstall, Close, Browse…, Info (i), GPU warning (!)",
+		"  buttons: Back, Next, Install, Reinstall, Uninstall, Finish, Close, Browse…, Info (i), GPU warning (!)",
 		"  helpMenu: (installer uses language combo on mode page)",
 	]
 	return "\n".join(lines) + "\n"

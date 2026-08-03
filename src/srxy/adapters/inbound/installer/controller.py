@@ -20,9 +20,32 @@ from srxy.application.install_paths import default_install_prefix
 from srxy.i18n import tr as translate
 
 
+def _format_byte_size(num: float) -> str:
+	"""Format a byte count for progress UI (KB / MB / GB)."""
+	value = max(0.0, float(num))
+	units = ("B", "KB", "MB", "GB", "TB")
+	size = value
+	unit_index = 0
+	while size >= 1024.0 and unit_index < len(units) - 1:
+		size /= 1024.0
+		unit_index += 1
+	if unit_index == 0:
+		return f"{int(size)} {units[unit_index]}"
+	return f"{size:.1f} {units[unit_index]}"
+
+
+def _emit_progress_safe(signal: object, done: int | float, total: int | float, label: str):
+	"""Emit download progress as floats so multi-GB sizes fit Qt's signal types."""
+	emit = getattr(signal, "emit", None)
+	if callable(emit):
+		emit(float(done), float(total), label)
+
+
 class _Worker(QThread):
 	status = Signal(str)
-	progress = Signal(int, int, str)
+	# Floats: byte totals often exceed signed 32-bit int (Shiboken OverflowError).
+	progress = Signal(float, float, str)
+	task = Signal(int, int, str)
 	finished_ok = Signal()
 	failed = Signal(str)
 
@@ -48,20 +71,33 @@ class _Worker(QThread):
 				install_srxy(
 					self._options,
 					status=lambda message: self.status.emit(message),
-					progress=lambda done, total, label: self.progress.emit(done, total, label),
+					progress=lambda done, total, label: _emit_progress_safe(self.progress, done, total, label),
+					task=lambda index, total, label: self.task.emit(index, total, label),
 				)
 			elif self._action == "reinstall":
 				if self._options is None or self._prefix is None:
 					raise RuntimeError("reinstall requires options and prefix")
+				from srxy.adapters.inbound.installer.install import plan_install_phases
+
+				install_phases = plan_install_phases(self._options)
+				overall_total = 1 + len(install_phases)
+				remove_label = translate("installer.status.removing_app")
+				self.status.emit(remove_label)
+				self.task.emit(1, overall_total, remove_label)
+				_emit_progress_safe(self.progress, 0, 0, remove_label)
 				uninstall_prefix(
 					self._prefix,
 					status=lambda message: self.status.emit(message),
 					confirm_unsafe=self._confirm_unsafe,
 				)
+				_emit_progress_safe(self.progress, 1, 1, remove_label)
 				install_srxy(
 					self._options,
 					status=lambda message: self.status.emit(message),
-					progress=lambda done, total, label: self.progress.emit(done, total, label),
+					progress=lambda done, total, label: _emit_progress_safe(self.progress, done, total, label),
+					task=lambda index, total, label: self.task.emit(index, total, label),
+					task_offset=1,
+					task_total=overall_total,
 				)
 			elif self._action == "uninstall":
 				if self._prefix is None:
@@ -94,8 +130,11 @@ class InstallerController(QObject):
 	progressLabelChanged = Signal()
 	progressValueChanged = Signal()
 	progressDeterminateChanged = Signal()
+	overallProgressChanged = Signal()
+	taskProgressChanged = Signal()
 	pageChanged = Signal()
 	finishedChanged = Signal()
+	canGoBackChanged = Signal()
 	unsafeConfirmChanged = Signal()
 
 	def __init__(self):
@@ -120,6 +159,11 @@ class InstallerController(QObject):
 		self._progress_label = ""
 		self._progress_value = 0.0
 		self._progress_determinate = False
+		self._overall_index = 0
+		self._overall_total = 0
+		self._overall_progress_value = 0.0
+		self._task_done = 0.0
+		self._task_total = 0.0
 		self._page = "mode"
 		self._finished = False
 		self._worker: _Worker | None = None
@@ -137,6 +181,7 @@ class InstallerController(QObject):
 		if self._busy != value:
 			self._busy = value
 			self.busyChanged.emit()
+			self.canGoBackChanged.emit()
 
 	@Property(str, notify=modeChanged)
 	def mode(self) -> str:
@@ -149,6 +194,7 @@ class InstallerController(QObject):
 		if self._mode != value:
 			self._mode = value
 			self.modeChanged.emit()
+			self.canGoBackChanged.emit()
 			if value == "reinstall":
 				discovered = discover_default_prefix()
 				if discovered is not None:
@@ -296,6 +342,45 @@ class InstallerController(QObject):
 	def progressDeterminate(self) -> bool:
 		return self._progress_determinate
 
+	@Property(float, notify=overallProgressChanged)
+	def overallProgressValue(self) -> float:
+		return self._overall_progress_value
+
+	@Property(str, notify=overallProgressChanged)
+	def overallProgressText(self) -> str:
+		if self._overall_total <= 0:
+			return ""
+		percent = int(round(self._overall_progress_value * 100))
+		return translate(
+			"installer.progress.overall_text",
+			current=self._overall_index,
+			total=self._overall_total,
+			percent=percent,
+		)
+
+	@Property(str, notify=taskProgressChanged)
+	def taskProgressText(self) -> str:
+		if not self._progress_determinate:
+			return ""
+		percent = int(round(self._progress_value * 100))
+		# Download callbacks report bytes; phase completion uses tiny totals like 1/1.
+		if self._task_total >= 1024.0:
+			return translate(
+				"installer.progress.task_bytes",
+				percent=percent,
+				done=_format_byte_size(self._task_done),
+				total=_format_byte_size(self._task_total),
+			)
+		return translate("installer.progress.percent", percent=percent)
+
+	@Property(bool, notify=canGoBackChanged)
+	def canGoBack(self) -> bool:
+		if self._busy:
+			return False
+		if self._finished and self._mode in {"install", "reinstall"}:
+			return False
+		return True
+
 	@Property(str, notify=pageChanged)
 	def page(self) -> str:
 		return self._page
@@ -352,11 +437,11 @@ class InstallerController(QObject):
 
 	@Slot()
 	def goBack(self):
+		if not self.canGoBack:
+			return
 		self._error = ""
 		self.errorChanged.emit()
 		if self._mode == "uninstall":
-			if self._busy:
-				return
 			if self._page == "progress":
 				self._page = "uninstall"
 				self.pageChanged.emit()
@@ -395,6 +480,13 @@ class InstallerController(QObject):
 		self.progressValueChanged.emit()
 		self._progress_determinate = False
 		self.progressDeterminateChanged.emit()
+		self._overall_index = 0
+		self._overall_total = 0
+		self._overall_progress_value = 0.0
+		self._task_done = 0.0
+		self._task_total = 0.0
+		self.overallProgressChanged.emit()
+		self.taskProgressChanged.emit()
 
 	def _dispose_worker(self, *, wait_ms: int):
 		"""Wait for the install/uninstall QThread and drop the Python ref.
@@ -437,6 +529,7 @@ class InstallerController(QObject):
 		self.pageChanged.emit()
 		self._finished = False
 		self.finishedChanged.emit()
+		self.canGoBackChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
 		self._reset_progress_ui()
@@ -447,6 +540,7 @@ class InstallerController(QObject):
 		self._worker = _Worker("install", options, None, confirm_unsafe=confirm_unsafe)
 		self._worker.status.connect(self._on_status)
 		self._worker.progress.connect(self._on_progress)
+		self._worker.task.connect(self._on_task)
 		self._worker.finished_ok.connect(self._on_finished_ok)
 		self._worker.failed.connect(self._on_failed)
 		self._worker.start()
@@ -457,6 +551,7 @@ class InstallerController(QObject):
 		self.pageChanged.emit()
 		self._finished = False
 		self.finishedChanged.emit()
+		self.canGoBackChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
 		self._reset_progress_ui()
@@ -467,6 +562,7 @@ class InstallerController(QObject):
 		self._worker = _Worker("reinstall", options, prefix, confirm_unsafe=confirm_unsafe)
 		self._worker.status.connect(self._on_status)
 		self._worker.progress.connect(self._on_progress)
+		self._worker.task.connect(self._on_task)
 		self._worker.finished_ok.connect(self._on_finished_ok)
 		self._worker.failed.connect(self._on_failed)
 		self._worker.start()
@@ -477,6 +573,7 @@ class InstallerController(QObject):
 		self.pageChanged.emit()
 		self._finished = False
 		self.finishedChanged.emit()
+		self.canGoBackChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
 		self._reset_progress_ui()
@@ -599,27 +696,70 @@ class InstallerController(QObject):
 		self._status = message
 		self.statusChanged.emit()
 
-	def _on_progress(self, done: int, total: int, label: str):
-		self._progress_label = label
+	def _on_task(self, index: int, total: int, label: str):
+		self._overall_index = max(0, index)
+		self._overall_total = max(0, total)
+		# Show completed fraction for prior phases; current phase fills via task bar.
+		completed = max(0, index - 1)
+		self._overall_progress_value = (completed / total) if total > 0 else 0.0
+		self.overallProgressChanged.emit()
+		self._status = label
+		self.statusChanged.emit()
+		# Phase text lives in status; task bar shows % / human sizes only.
+		self._progress_label = ""
 		self.progressLabelChanged.emit()
-		if total > 0:
-			self._progress_value = min(1.0, done / total)
+		self._progress_value = 0.0
+		self._progress_determinate = False
+		self._task_done = 0.0
+		self._task_total = 0.0
+		self.progressValueChanged.emit()
+		self.progressDeterminateChanged.emit()
+		self.taskProgressChanged.emit()
+
+	def _on_progress(self, done: float, total: float, label: str):
+		del label  # Ignore technical download names; show human sizes in taskProgressText.
+		self._task_done = max(0.0, float(done))
+		self._task_total = max(0.0, float(total))
+		if self._task_total > 0:
+			fraction = min(1.0, self._task_done / self._task_total)
+			self._progress_value = fraction
 			self._progress_determinate = True
+			# Smooth overall: prior phases + current task fraction.
+			if self._overall_total > 0:
+				completed = max(0, self._overall_index - 1)
+				self._overall_progress_value = min(1.0, (completed + fraction) / self._overall_total)
+				self.overallProgressChanged.emit()
 		else:
 			self._progress_value = 0.0
 			self._progress_determinate = False
 		self.progressValueChanged.emit()
 		self.progressDeterminateChanged.emit()
+		self.taskProgressChanged.emit()
 
 	def _on_finished_ok(self):
 		self._set_busy(False)
 		self._finished = True
 		self.finishedChanged.emit()
+		self.canGoBackChanged.emit()
+		self._progress_label = ""
+		self.progressLabelChanged.emit()
 		self._progress_value = 1.0
 		self._progress_determinate = True
+		self._task_done = 0.0
+		self._task_total = 0.0
 		self.progressValueChanged.emit()
 		self.progressDeterminateChanged.emit()
-		self._status = translate("installer.status.done")
+		if self._overall_total > 0:
+			self._overall_index = self._overall_total
+		self._overall_progress_value = 1.0
+		self.overallProgressChanged.emit()
+		self.taskProgressChanged.emit()
+		if self._mode == "reinstall":
+			self._status = translate("installer.status.reinstall_complete")
+		elif self._mode == "uninstall":
+			self._status = translate("installer.status.uninstall_complete")
+		else:
+			self._status = translate("installer.status.install_complete")
 		self.statusChanged.emit()
 		self.shutdown()
 

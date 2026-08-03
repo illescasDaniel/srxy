@@ -298,3 +298,47 @@ def test_given_module_argv_when_clearing_without_explicit_argv_then_removes_mode
 	# then
 	assert exit_code == 0
 	assert not model_dir.exists()
+
+
+def test_given_progress_flag_when_running_download_then_passes_on_progress(monkeypatch: pytest.MonkeyPatch):
+	# given
+
+	from srxy.adapters.outbound.models import model_store as store
+
+	seen: list[Callable[[int, int, str], None] | None] = []
+
+	def fake_text(
+		*,
+		target_dir: Path | None = None,
+		on_progress: Callable[[int, int, str], None] | None = None,
+	):
+		del target_dir
+		seen.append(on_progress)
+
+	def fake_image(
+		*,
+		target_dir: Path | None = None,
+		on_progress: Callable[[int, int, str], None] | None = None,
+	):
+		del target_dir
+		seen.append(on_progress)
+
+	def fake_transcribe(
+		*,
+		target_dir: Path | None = None,
+		on_progress: Callable[[int, int, str], None] | None = None,
+	):
+		del target_dir
+		seen.append(on_progress)
+
+	monkeypatch.setattr(store, "download_semantic_text_model", fake_text)
+	monkeypatch.setattr(store, "download_semantic_image_model", fake_image)
+	monkeypatch.setattr(store, "download_transcribe_model", fake_transcribe)
+
+	# when
+	code = store.main(["all", "--progress"])
+
+	# then
+	assert code == 0
+	assert len(seen) == 3
+	assert all(callback is not None for callback in seen)

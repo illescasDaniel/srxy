@@ -350,6 +350,29 @@ def clear_all_models():
 _MODEL_TARGETS = ("semantic-text", "semantic-image", "transcribe", "all")
 
 
+PROGRESS_LINE_PREFIX = "__SRXY_PROGRESS__"
+
+
+def format_progress_line(done: int, total: int, label: str) -> str:
+	safe_label = label.replace("\t", " ").replace("\n", " ")
+	return f"{PROGRESS_LINE_PREFIX}\t{done}\t{total}\t{safe_label}"
+
+
+def parse_progress_line(line: str) -> tuple[int, int, str] | None:
+	text = line.strip()
+	if not text.startswith(PROGRESS_LINE_PREFIX):
+		return None
+	parts = text.split("\t", 3)
+	if len(parts) != 4:
+		return None
+	try:
+		done = int(parts[1])
+		total = int(parts[2])
+	except ValueError:
+		return None
+	return done, total, parts[3]
+
+
 def _build_download_parser():
 	import argparse
 
@@ -358,6 +381,11 @@ def _build_download_parser():
 		"target",
 		choices=_MODEL_TARGETS,
 		help="Which model bundle to download into ~/.cache/srxy/",
+	)
+	parser.add_argument(
+		"--progress",
+		action="store_true",
+		help="Emit machine-readable progress lines on stdout for the installer UI.",
 	)
 	return parser
 
@@ -376,14 +404,19 @@ def _build_clear_parser():
 	return parser
 
 
-def _run_download(target: str) -> int:
+def _stdout_progress_callback(done: int, total: int, label: str):
+	print(format_progress_line(done, total, label), flush=True)
+
+
+def _run_download(target: str, *, progress: bool = False) -> int:
+	on_progress = _stdout_progress_callback if progress else None
 	try:
 		if target in {"semantic-text", "all"}:
-			download_semantic_text_model()
+			download_semantic_text_model(on_progress=on_progress)
 		if target in {"semantic-image", "all"}:
-			download_semantic_image_model()
+			download_semantic_image_model(on_progress=on_progress)
 		if target in {"transcribe", "all"}:
-			download_transcribe_model()
+			download_transcribe_model(on_progress=on_progress)
 	except RuntimeError as error:
 		print(error, file=sys.stderr)
 		return 2
@@ -410,7 +443,7 @@ def main(argv: list[str] | None = None) -> int:
 
 	parser = _build_download_parser()
 	args = parser.parse_args(argv)
-	return _run_download(args.target)
+	return _run_download(args.target, progress=bool(args.progress))
 
 
 if __name__ == "__main__":

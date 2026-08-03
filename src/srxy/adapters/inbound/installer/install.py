@@ -25,12 +25,15 @@ from srxy.adapters.inbound.installer.meta import load_installer_meta
 from srxy.adapters.inbound.installer.package_spec import resolve_srxy_install_spec, with_semantic_extra
 from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION
 from srxy.adapters.inbound.installer.vendor import install_ffmpeg, install_tesseract, install_uv
+from srxy.adapters.outbound.models.model_store import parse_progress_line
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.i18n import tr
 from srxy.resources.icons import app_icon_path, available_icon_sizes
 
 
 StatusCallback = Callable[[str], None]
+# index (1-based current phase), total phases, phase label
+TaskCallback = Callable[[int, int, str], None]
 
 
 @dataclass(slots=True)
@@ -45,9 +48,45 @@ class InstallOptions:
 	confirm_unsafe: bool = False
 
 
+@dataclass(frozen=True, slots=True)
+class InstallPhase:
+	key: str
+	label: str
+
+
+def plan_install_phases(options: InstallOptions) -> list[InstallPhase]:
+	"""Major install phases for overall progress (optional steps omitted when disabled)."""
+	phases = [
+		InstallPhase("uv", tr("installer.status.installing_uv")),
+		InstallPhase("venv", tr("installer.status.creating_venv")),
+		InstallPhase("package", tr("installer.status.installing_package", spec="srxy")),
+	]
+	if options.download_tesseract:
+		phases.append(InstallPhase("tesseract", tr("installer.status.downloading_tesseract")))
+	if options.download_ffmpeg:
+		phases.append(InstallPhase("ffmpeg", tr("installer.status.downloading_ffmpeg")))
+	if options.install_semantic and options.prefetch_models:
+		phases.append(InstallPhase("models", tr("installer.status.prefetching_models")))
+	phases.append(InstallPhase("launcher", tr("installer.status.writing_launcher")))
+	if options.add_to_path:
+		phases.append(InstallPhase("path", tr("installer.status.adding_path")))
+	return phases
+
+
 def _status(callback: StatusCallback | None, message: str):
 	if callback is not None:
 		callback(message)
+
+
+def _task(
+	callback: TaskCallback | None,
+	*,
+	index: int,
+	total: int,
+	label: str,
+):
+	if callback is not None:
+		callback(index, total, label)
 
 
 def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
@@ -61,6 +100,43 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
 	if result.returncode != 0:
 		detail = (result.stderr or result.stdout or "").strip()
 		raise RuntimeError(f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
+
+
+def _run_with_progress(
+	cmd: list[str],
+	*,
+	env: dict[str, str] | None = None,
+	progress: ProgressCallback | None = None,
+) -> None:
+	"""Run a command and forward ``__SRXY_PROGRESS__`` stdout lines to ``progress``."""
+	proc = subprocess.Popen(  # noqa: S603
+		cmd,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		text=True,
+		env=env,
+	)
+	stdout = proc.stdout
+	stderr = proc.stderr
+	if stdout is None or stderr is None:
+		raise RuntimeError("command failed: missing stdout/stderr pipes")
+	stderr_chunks: list[str] = []
+	for line in stdout:
+		parsed = parse_progress_line(line)
+		if parsed is not None:
+			done, total, label = parsed
+			if progress is not None:
+				progress(done, total, label)
+			continue
+		# Non-progress stdout is ignored for UI; keep for failure detail.
+		stderr_chunks.append(line)
+	err = stderr.read()
+	if err:
+		stderr_chunks.append(err)
+	code = proc.wait()
+	if code != 0:
+		detail = "".join(stderr_chunks).strip()
+		raise RuntimeError(f"command failed ({code}): {' '.join(cmd)}\n{detail}")
 
 
 def _validate_install_prefix(prefix: Path, *, confirm_unsafe: bool):
@@ -200,12 +276,25 @@ def _package_version(venv: Path | None = None) -> str:
 		return "unknown"
 
 
+def _complete_phase(*, progress: ProgressCallback | None, label: str):
+	if progress is not None:
+		progress(1, 1, label)
+
+
 def install_srxy(
 	options: InstallOptions,
 	*,
 	status: StatusCallback | None = None,
 	progress: ProgressCallback | None = None,
+	task: TaskCallback | None = None,
+	task_offset: int = 0,
+	task_total: int | None = None,
 ) -> InstallManifest:
+	"""Install srxy into ``options.prefix``.
+
+	``task_offset`` / ``task_total`` let reinstall prepend an uninstall phase while
+	keeping a single overall k/n counter.
+	"""
 	prefix = options.prefix.expanduser().resolve()
 	_validate_install_prefix(prefix, confirm_unsafe=options.confirm_unsafe)
 	if is_srxy_prefix(prefix):
@@ -213,13 +302,27 @@ def install_srxy(
 	prefix.mkdir(parents=True, exist_ok=True)
 	(prefix / "logs").mkdir(parents=True, exist_ok=True)
 
-	_status(status, tr("installer.status.installing_uv"))
+	phases = plan_install_phases(options)
+	overall_total = task_total if task_total is not None else len(phases)
+
+	def emit_task(local_index: int, label: str):
+		overall_index = task_offset + local_index
+		_status(status, label)
+		_task(task, index=overall_index, total=overall_total, label=label)
+		if progress is not None:
+			progress(0, 0, label)
+
+	# --- 1. uv ---
+	emit_task(1, phases[0].label)
 	install_uv(prefix, progress=progress)
+	_complete_phase(progress=progress, label=phases[0].label)
 	uv = _resolve_uv(prefix)
 
-	_status(status, tr("installer.status.creating_venv"))
+	# --- 2. venv ---
+	emit_task(2, phases[1].label)
 	venv = prefix / ".venv"
 	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)])
+	_complete_phase(progress=progress, label=phases[1].label)
 
 	env = os.environ.copy()
 	env["VIRTUAL_ENV"] = str(venv)
@@ -229,8 +332,11 @@ def install_srxy(
 	if options.install_semantic:
 		spec = with_semantic_extra(spec)
 
-	_status(status, tr("installer.status.installing_package", spec=spec))
+	# --- 3. package ---
+	package_label = tr("installer.status.installing_package", spec=spec)
+	emit_task(3, package_label)
 	_run([str(uv), "pip", "install", spec], env=env)
+	_complete_phase(progress=progress, label=package_label)
 
 	probe = subprocess.run(  # noqa: S603
 		[str(venv / "bin" / "python"), "-c", "import PySide6"],
@@ -246,38 +352,60 @@ def install_srxy(
 			f"{(probe.stderr or probe.stdout).strip()}"
 		)
 
+	phase_by_key = {phase.key: (i + 1, phase) for i, phase in enumerate(phases)}
+
 	vendor_tesseract = False
 	vendor_ffmpeg = False
 	if options.download_tesseract:
-		_status(status, tr("installer.status.downloading_tesseract"))
+		local_index, phase = phase_by_key["tesseract"]
+		emit_task(local_index, phase.label)
 		install_tesseract(prefix, progress=progress)
+		_complete_phase(progress=progress, label=phase.label)
 		vendor_tesseract = True
 	if options.download_ffmpeg:
-		_status(status, tr("installer.status.downloading_ffmpeg"))
+		local_index, phase = phase_by_key["ffmpeg"]
+		emit_task(local_index, phase.label)
 		install_ffmpeg(prefix, progress=progress)
+		_complete_phase(progress=progress, label=phase.label)
 		vendor_ffmpeg = True
 
 	models_prefetched = False
 	if options.install_semantic and options.prefetch_models:
-		_status(status, tr("installer.status.prefetching_models"))
+		local_index, phase = phase_by_key["models"]
+		emit_task(local_index, phase.label)
 		env["SRXY_HOME"] = str(prefix)
 		env["SRXY_AUTO_DOWNLOAD"] = "1"
-		_run([str(venv / "bin" / "python"), "-m", "srxy.adapters.outbound.models.model_store", "all"], env=env)
+		_run_with_progress(
+			[
+				str(venv / "bin" / "python"),
+				"-m",
+				"srxy.adapters.outbound.models.model_store",
+				"all",
+				"--progress",
+			],
+			env=env,
+			progress=progress,
+		)
+		_complete_phase(progress=progress, label=phase.label)
 		models_prefetched = True
 
-	_status(status, tr("installer.status.writing_launcher"))
+	local_index, phase = phase_by_key["launcher"]
+	emit_task(local_index, phase.label)
 	write_launcher(prefix)
 	_, user_icon_paths = _install_icons(prefix)
 	_write_desktop_entry(prefix)
+	_complete_phase(progress=progress, label=phase.label)
 
 	path_rc = ""
 	if options.add_to_path:
 		from srxy.adapters.inbound.installer.path_setup import ensure_path_block
 
-		_status(status, tr("installer.status.adding_path"))
+		local_index, phase = phase_by_key["path"]
+		emit_task(local_index, phase.label)
 		rc = ensure_path_block(prefix / "bin")
 		path_rc = str(rc)
 		_status(status, tr("installer.status.path_updated", rc=str(rc)))
+		_complete_phase(progress=progress, label=phase.label)
 
 	meta = load_installer_meta()
 	manifest = InstallManifest(
@@ -305,6 +433,9 @@ def install_srxy(
 
 __all__ = [
 	"InstallOptions",
+	"InstallPhase",
+	"TaskCallback",
 	"install_srxy",
+	"plan_install_phases",
 	"write_launcher",
 ]
