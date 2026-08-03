@@ -103,7 +103,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 		_ = timeout
 		return {
 			"info": {
-				"version": "1.6.0",
+				"version": "1.6.1",
 				"requires_dist": ["PySide6>=6.6", "cryptography>=44"],
 			}
 		}
@@ -114,7 +114,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 	spec = package_spec.resolve_pypi_install_spec()
 
 	# then
-	assert spec == "srxy==1.6.0"
+	assert spec == "srxy==1.6.1"
 
 
 def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
@@ -127,7 +127,7 @@ def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
 
 	def fake_fetch(*, timeout: float = 15.0) -> dict[str, Any]:
 		_ = timeout
-		return {"info": {"version": "1.6.0", "requires_dist": ["cryptography>=44"]}}
+		return {"info": {"version": "1.6.1", "requires_dist": ["cryptography>=44"]}}
 
 	monkeypatch.setattr(package_spec, "fetch_pypi_srxy_info", fake_fetch)
 

@@ -71,6 +71,8 @@ def test_given_offline_build_script_when_reading_then_names_offline_artifact():
 	assert "installer-online" not in output_line
 	assert "prune_pyside.sh" in text
 	assert "UV_PYTHON_PREFERENCE=only-managed" in text
+	assert "realpath --relative-to" in text
+	assert "AppDir python symlink must be relative" in text
 
 
 def test_given_online_build_script_when_reading_then_names_online_artifact_and_caps_icons():

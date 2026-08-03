@@ -23,7 +23,7 @@ Uses pinned [appimagetool 1.9.1](https://github.com/AppImage/appimagetool/releas
 
 ## Relocatable Python
 
-Each AppDir installs a uv-managed CPython under `AppDir/usr/python` (`UV_PYTHON_PREFERENCE=only-managed`, `--install-dir`), then creates a **relocatable** venv with `--link-mode copy`. After the venv is created, the build asserts that `usr/venv/bin/python` resolves inside the AppDir — never into `~/.local/share/uv/python` on the build host. Smoke scripts re-check `--help` / `--version` with an isolated `HOME` and a minimal `PATH` so a host uv Python cannot mask a broken AppImage.
+Each AppDir installs a uv-managed CPython under `AppDir/usr/python` (`UV_PYTHON_PREFERENCE=only-managed`, `--install-dir`), then creates a **relocatable** venv with `--link-mode copy`. After the venv is created, the build **rewrites** `usr/venv/bin/python*` to relative symlinks (and a relative `pyvenv.cfg` `home`) and asserts the symlink target is relative — never an absolute build-host path. (`readlink -f` alone is not enough: absolute links still resolve on CI while the build tree exists, then break for users.) Smoke scripts re-check `--help` / `--version` with an isolated `HOME` and a minimal `PATH` so a host uv Python cannot mask a broken AppImage.
 
 ## Offline wizard (PySide)
 

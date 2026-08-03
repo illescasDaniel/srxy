@@ -45,6 +45,35 @@ fi
 echo "Creating relocatable AppDir venv from $APP_PYTHON…"
 uv venv --python "$APP_PYTHON" --relocatable --link-mode copy "$APPDIR/usr/venv"
 VENV_PY="$APPDIR/usr/venv/bin/python"
+# uv --relocatable still leaves absolute symlinks to the build-tree interpreter on
+# some versions. Those resolve on the CI host (smoke passes) but break on users'
+# machines. Rewrite to paths relative to usr/venv/bin/.
+VENV_BIN="$APPDIR/usr/venv/bin"
+REL_PY="$(realpath --relative-to="$VENV_BIN" "$APP_PYTHON")"
+for name in python "python${PYTHON_VERSION}" python3; do
+	link="$VENV_BIN/$name"
+	if [[ -e "$link" || -L "$link" ]]; then
+		ln -sfn "$REL_PY" "$link"
+	fi
+done
+# Keep pyvenv.cfg home relative to the venv so relocation does not depend on
+# the build machine path either.
+if [[ -f "$APPDIR/usr/venv/pyvenv.cfg" ]]; then
+	REL_HOME="$(realpath --relative-to="$APPDIR/usr/venv" "$(dirname "$APP_PYTHON")")"
+	python3 - "$APPDIR/usr/venv/pyvenv.cfg" "$REL_HOME" <<'PY'
+from pathlib import Path
+import sys
+cfg = Path(sys.argv[1])
+home = sys.argv[2]
+lines = []
+for line in cfg.read_text(encoding="utf-8").splitlines():
+	if line.startswith("home "):
+		lines.append(f"home = {home}")
+	else:
+		lines.append(line)
+cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+fi
 # Wizard-only venv: PySide6 + srxy without pulling the full search-stack dependency tree.
 # Prefix installs still use the bundled wheel (built below) which has full requires.
 echo "Installing wizard runtime (PySide6 + srxy --no-deps)…"
@@ -52,6 +81,13 @@ uv pip install --python "$VENV_PY" "PySide6>=6.6"
 uv pip install --python "$VENV_PY" --no-deps "$ROOT"
 
 # Fail closed if the venv python still points at the build host uv cache / home.
+RAW_LINK="$(readlink "$VENV_PY" 2>/dev/null || true)"
+case "$RAW_LINK" in
+"" | /*)
+	echo "error: AppDir python symlink must be relative for relocation: $VENV_PY -> ${RAW_LINK:-<missing>}" >&2
+	exit 1
+	;;
+esac
 RESOLVED_PY="$(readlink -f "$VENV_PY" 2>/dev/null || realpath "$VENV_PY")"
 case "$RESOLVED_PY" in
 "$APPDIR"/*) ;;
@@ -67,7 +103,7 @@ case "$RESOLVED_PY" in
 	exit 1
 	;;
 esac
-echo "AppDir python OK: $RESOLVED_PY"
+echo "AppDir python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
 
 echo "Pruning unused PySide6 / Qt payload…"
 "$ROOT/packaging/linux-appimage/prune_pyside.sh" "$APPDIR/usr/venv"
