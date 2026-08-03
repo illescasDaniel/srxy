@@ -13,7 +13,7 @@ Two separate AppImages (do not mix them up):
 | `srxy-*-installer-<installer_version>-x86_64.AppImage` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
 | `srxy-*-installer-online-<installer_version>-x86_64.AppImage` | **Online one-click** — slim Go bootstrap + localhost browser page; install from PyPI |
 
-Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases), make executable, and run (type2 static runtime — no host `libfuse2`). Default prefix: `~/Applications/srxy`.
+Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), make executable, and run (type2 static runtime — no host `libfuse2`). Default prefix: `~/Applications/srxy`.
 
 ### Offline wizard
 

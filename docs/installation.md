@@ -33,7 +33,7 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 
 ### Offline wizard (full)
 
-1. Download `srxy-*-installer-<installer_version>-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)). Do **not** confuse this with the `*-installer-online-*` artifact.
+1. Download `srxy-*-installer-<installer_version>-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)). Do **not** confuse this with the `*-installer-online-*` artifact.
 2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
 3. Choose **Install or update**, **Reinstall**, or **Uninstall**. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
    - **Install or update** installs into the chosen folder, or updates an existing srxy install there in place (venv is recreated; models/cache may remain).
