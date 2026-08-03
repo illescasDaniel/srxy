@@ -409,7 +409,11 @@ class SrxyApp(App[int]):
 		)
 
 	def _update_search_button_state(self):
-		button = self.query_one("#search-button", Button)
+		try:
+			button = self.query_one("#search-button", Button)
+		except NoMatches:
+			# QueryBuilder.Changed can arrive during mount/teardown (seen on Windows CI).
+			return
 		snapshot = self._current_snapshot()
 		is_stale = self._last_search_snapshot is None or snapshot != self._last_search_snapshot
 		button.set_class(is_stale, "-stale")

@@ -326,7 +326,8 @@ def test_given_invalid_advanced_query_when_typing_then_app_does_not_crash_and_bu
 			await pilot.pause()
 			app.query_one("#query-raw-input", Input).value = "boo|bar&"
 
-			# when / then
+			# when / then — extra pause so Input.Changed / QueryBuilder.Changed flush before exit
+			await pilot.pause()
 			await pilot.pause()
 			assert button.has_class("-stale")
 			assert app.query_one("#query-builder", QueryBuilder).to_snapshot_query_string() == "boo|bar&"
