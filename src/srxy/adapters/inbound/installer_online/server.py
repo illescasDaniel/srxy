@@ -18,6 +18,7 @@ from urllib.parse import parse_qs, urlparse
 
 from srxy.adapters.inbound.installer.install import install_srxy
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_text
+from srxy.adapters.inbound.installer.uninstall import uninstall_prefix
 from srxy.adapters.inbound.installer_online.browser import open_installer_url
 from srxy.adapters.inbound.installer_online.options import build_online_install_options
 from srxy.application.install_paths import default_install_prefix
@@ -68,12 +69,18 @@ class InstallSession:
 			}
 
 	def begin_install(self) -> bool:
+		return self._begin_work(tr("installer.status.starting_install"))
+
+	def begin_uninstall(self) -> bool:
+		return self._begin_work(tr("installer.status.starting_uninstall"))
+
+	def _begin_work(self, starting_message: str) -> bool:
 		with self._lock:
 			if self._install_started or self.status == "running":
 				return False
 			self._install_started = True
 			self.status = "running"
-			self.message = tr("installer.status.starting_install")
+			self.message = starting_message
 			self.overall = 0.0
 			self.task = 0.0
 			self.error = ""
@@ -192,9 +199,11 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 							"privacy_title": tr("installer.privacy.title"),
 							"privacy_ack": tr("installer.privacy.ack"),
 							"install": tr("installer.button.install"),
+							"uninstall": tr("installer.button.uninstall"),
 							"finish": tr("installer_online.button.finish"),
 							"ready": tr("installer.progress.ready"),
 							"privacy_required": tr("installer.error.privacy_required"),
+							"confirm_uninstall": tr("installer_online.confirm.uninstall"),
 							"close_tab": tr("installer_online.close_tab"),
 						},
 					},
@@ -242,6 +251,21 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 				prefix = Path(prefix_raw) if prefix_raw else None
 				thread = threading.Thread(
 					target=_run_install,
+					args=(session, prefix),
+					daemon=True,
+				)
+				thread.start()
+				self._send_json(HTTPStatus.OK, {"ok": True})
+				return
+
+			if path == "/api/uninstall":
+				if not session.begin_uninstall():
+					self._send_json(HTTPStatus.CONFLICT, {"error": "operation already started"})
+					return
+				prefix_raw = str(payload.get("prefix") or "").strip()
+				prefix = Path(prefix_raw) if prefix_raw else default_install_prefix()
+				thread = threading.Thread(
+					target=_run_uninstall,
 					args=(session, prefix),
 					daemon=True,
 				)
@@ -307,6 +331,23 @@ def _run_install(session: InstallSession, prefix: Path | None):
 			session.set_task(min(1.0, max(0.0, done / total)))
 
 		install_srxy(options, status=on_status, progress=on_progress, task=on_task)
+		session.mark_done()
+	except Exception as exc:
+		detail = str(exc).strip() or traceback.format_exc()
+		session.mark_error(detail)
+
+
+def _run_uninstall(session: InstallSession, prefix: Path):
+	try:
+
+		def on_status(message: str):
+			session.set_status(message)
+
+		session.set_overall(0.0)
+		session.set_task(0.0)
+		uninstall_prefix(prefix, status=on_status, confirm_unsafe=True)
+		session.set_overall(1.0)
+		session.set_task(1.0)
 		session.mark_done()
 	except Exception as exc:
 		detail = str(exc).strip() or traceback.format_exc()

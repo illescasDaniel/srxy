@@ -14,6 +14,7 @@
 		overall: document.getElementById("overall-bar"),
 		task: document.getElementById("task-bar"),
 		install: document.getElementById("install"),
+		uninstall: document.getElementById("uninstall"),
 		finish: document.getElementById("finish"),
 		closeHint: document.getElementById("close-hint"),
 	};
@@ -51,8 +52,9 @@
 		el.style.width = `${pct}%`;
 	}
 
-	function refreshInstallEnabled() {
+	function refreshActionEnabled() {
 		els.install.disabled = busy || done || finished || !els.ack.checked;
+		els.uninstall.disabled = busy || done || finished;
 	}
 
 	function applyStrings(s) {
@@ -63,6 +65,7 @@
 		els.privacyTitle.textContent = strings.privacy_title || "";
 		els.privacyAck.textContent = strings.privacy_ack || "";
 		els.install.textContent = strings.install || "Install";
+		els.uninstall.textContent = strings.uninstall || "Uninstall";
 		els.finish.textContent = strings.finish || "Finish";
 		els.status.textContent = strings.ready || "";
 		els.closeHint.textContent = strings.close_tab || "";
@@ -82,13 +85,13 @@
 		if (snap.status === "running") {
 			busy = true;
 			els.finish.disabled = true;
-			refreshInstallEnabled();
+			refreshActionEnabled();
 		}
 		if (snap.status === "done" || snap.status === "error") {
 			busy = false;
 			done = snap.status === "done";
 			els.finish.disabled = false;
-			refreshInstallEnabled();
+			refreshActionEnabled();
 		}
 	}
 
@@ -122,6 +125,7 @@
 		stopHeartbeat();
 		els.finish.disabled = true;
 		els.install.disabled = true;
+		els.uninstall.disabled = true;
 		const body = "{}";
 		const url = apiUrl("/api/shutdown");
 		try {
@@ -145,7 +149,7 @@
 		els.closeHint.hidden = false;
 	}
 
-	els.ack.addEventListener("change", refreshInstallEnabled);
+	els.ack.addEventListener("change", refreshActionEnabled);
 
 	els.install.addEventListener("click", async () => {
 		if (busy || done || finished || !els.ack.checked) {
@@ -153,7 +157,7 @@
 			return;
 		}
 		busy = true;
-		refreshInstallEnabled();
+		refreshActionEnabled();
 		els.finish.disabled = true;
 		try {
 			await api("/api/install", {
@@ -166,7 +170,34 @@
 			});
 		} catch (err) {
 			busy = false;
-			refreshInstallEnabled();
+			refreshActionEnabled();
+			els.status.textContent = err.message || String(err);
+			els.status.classList.add("error");
+		}
+	});
+
+	els.uninstall.addEventListener("click", async () => {
+		if (busy || done || finished) {
+			return;
+		}
+		const message = strings.confirm_uninstall || "Remove srxy from this folder?";
+		if (!window.confirm(message)) {
+			return;
+		}
+		busy = true;
+		refreshActionEnabled();
+		els.finish.disabled = true;
+		try {
+			await api("/api/uninstall", {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					prefix: els.prefix.value.trim(),
+				}),
+			});
+		} catch (err) {
+			busy = false;
+			refreshActionEnabled();
 			els.status.textContent = err.message || String(err);
 			els.status.classList.add("error");
 		}
@@ -193,7 +224,7 @@
 		applyStrings(boot.strings);
 		els.prefix.value = boot.prefix || "";
 		els.privacy.textContent = boot.privacy_text || "";
-		refreshInstallEnabled();
+		refreshActionEnabled();
 		startHeartbeat();
 	}
 

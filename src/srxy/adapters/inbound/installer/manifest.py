@@ -134,6 +134,26 @@ def is_non_empty_foreign_prefix(prefix: Path) -> bool:
 		return True
 
 
+def looks_like_partial_srxy_prefix(prefix: Path) -> bool:
+	"""True when the folder looks like a broken / incomplete srxy install.
+
+	Valid installs (``is_srxy_prefix``) are not partial. Markers include a
+	venv, vendor uv, launcher, or any install manifest (including invalid).
+	"""
+	if not prefix.is_dir():
+		return False
+	if is_srxy_prefix(prefix):
+		return False
+	resolved = _resolve_path(prefix)
+	markers = (
+		resolved / ".venv",
+		resolved / "vendor" / "uv",
+		resolved / "bin" / "srxy",
+		manifest_path(resolved),
+	)
+	return any(path.exists() for path in markers)
+
+
 def require_matching_manifest(prefix: Path) -> InstallManifest:
 	resolved = _resolve_path(prefix)
 	manifest = read_manifest(resolved)
@@ -175,6 +195,7 @@ __all__ = [
 	"MANIFEST_NAME",
 	"is_non_empty_foreign_prefix",
 	"is_srxy_prefix",
+	"looks_like_partial_srxy_prefix",
 	"prefix_needs_confirmation",
 	"read_manifest",
 	"require_matching_manifest",

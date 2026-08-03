@@ -17,6 +17,7 @@ from srxy.adapters.inbound.installer.manifest import (
 	InstallManifest,
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
+	looks_like_partial_srxy_prefix,
 	prefix_needs_confirmation,
 	utc_now_iso,
 	write_manifest,
@@ -142,7 +143,7 @@ def _run_with_progress(
 def _validate_install_prefix(prefix: Path, *, confirm_unsafe: bool):
 	if prefix_needs_confirmation(prefix) and not confirm_unsafe:
 		raise RuntimeError(tr("installer.error.unsafe_prefix"))
-	if is_non_empty_foreign_prefix(prefix):
+	if is_non_empty_foreign_prefix(prefix) and not looks_like_partial_srxy_prefix(prefix):
 		raise RuntimeError(tr("installer.error.non_empty_prefix", path=str(prefix)))
 
 
@@ -297,7 +298,10 @@ def install_srxy(
 	"""
 	prefix = options.prefix.expanduser().resolve()
 	_validate_install_prefix(prefix, confirm_unsafe=options.confirm_unsafe)
-	if is_srxy_prefix(prefix):
+	if looks_like_partial_srxy_prefix(prefix):
+		_status(status, tr("installer.status.reclaiming_partial"))
+		shutil.rmtree(prefix)
+	elif is_srxy_prefix(prefix):
 		_status(status, tr("installer.status.reinstalling"))
 	prefix.mkdir(parents=True, exist_ok=True)
 	(prefix / "logs").mkdir(parents=True, exist_ok=True)
