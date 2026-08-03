@@ -11,6 +11,7 @@ from srxy.adapters.inbound.installer.manifest import (
 	InstallManifest,
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
+	looks_like_partial_srxy_prefix,
 	prefix_needs_confirmation,
 	read_manifest,
 	require_matching_manifest,
@@ -237,6 +238,20 @@ def test_given_default_prefix_missing_when_discovering_then_returns_none(
 	assert MANIFEST_NAME in uninstall_search_hint()
 
 
+def test_given_partial_default_prefix_when_discovering_then_returns_path(
+	monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+	# given
+	set_fake_home(monkeypatch, tmp_path)
+	prefix = tmp_path / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / "vendor" / "uv").mkdir(parents=True)
+	(prefix / "vendor" / "uv" / "uv").write_text("x", encoding="utf-8")
+
+	# when / then
+	assert discover_default_prefix() == prefix.resolve()
+
+
 def test_given_bin_srxy_only_when_checking_prefix_then_rejects(tmp_path: Path):
 	# given
 	(tmp_path / "bin").mkdir()
@@ -244,9 +259,10 @@ def test_given_bin_srxy_only_when_checking_prefix_then_rejects(tmp_path: Path):
 
 	# when / then
 	assert is_srxy_prefix(tmp_path) is False
+	assert looks_like_partial_srxy_prefix(tmp_path) is True
 
 
-def test_given_bin_srxy_only_when_uninstalling_then_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_given_bin_srxy_only_when_uninstalling_then_removes_orphan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	# given
 	home = tmp_path / "home"
 	home.mkdir()
@@ -256,12 +272,14 @@ def test_given_bin_srxy_only_when_uninstalling_then_raises(tmp_path: Path, monke
 	(prefix / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
 	set_fake_home(monkeypatch, home)
 
-	# when / then
-	with pytest.raises(RuntimeError, match=MANIFEST_NAME):
-		uninstall_prefix(prefix)
+	# when
+	uninstall_prefix(prefix)
+
+	# then
+	assert not prefix.exists()
 
 
-def test_given_prefix_mismatch_when_uninstalling_then_raises(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+def test_given_prefix_mismatch_when_uninstalling_then_removes_orphan(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	# given
 	prefix = tmp_path / "Applications" / "srxy"
 	prefix.mkdir(parents=True)
@@ -271,9 +289,30 @@ def test_given_prefix_mismatch_when_uninstalling_then_raises(tmp_path: Path, mon
 	)
 	set_fake_home(monkeypatch, tmp_path)
 
+	# when
+	uninstall_prefix(prefix)
+
+	# then
+	assert not prefix.exists()
+
+
+def test_given_partial_venv_when_checking_then_flags_partial(tmp_path: Path):
+	# given
+	(tmp_path / ".venv").mkdir()
+
 	# when / then
-	with pytest.raises(RuntimeError, match="does not match"):
-		uninstall_prefix(prefix)
+	assert looks_like_partial_srxy_prefix(tmp_path) is True
+	assert is_non_empty_foreign_prefix(tmp_path) is True
+	assert is_srxy_prefix(tmp_path) is False
+
+
+def test_given_foreign_notes_only_when_checking_then_not_partial(tmp_path: Path):
+	# given
+	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
+
+	# when / then
+	assert looks_like_partial_srxy_prefix(tmp_path) is False
+	assert is_non_empty_foreign_prefix(tmp_path) is True
 
 
 def test_given_home_directory_when_checking_confirmation_then_requires_confirm(

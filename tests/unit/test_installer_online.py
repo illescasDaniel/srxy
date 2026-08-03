@@ -103,7 +103,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 		_ = timeout
 		return {
 			"info": {
-				"version": "1.6.1",
+				"version": "1.6.2",
 				"requires_dist": ["PySide6>=6.6", "cryptography>=44"],
 			}
 		}
@@ -114,7 +114,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 	spec = package_spec.resolve_pypi_install_spec()
 
 	# then
-	assert spec == "srxy==1.6.1"
+	assert spec == "srxy==1.6.2"
 
 
 def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
@@ -127,7 +127,7 @@ def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
 
 	def fake_fetch(*, timeout: float = 15.0) -> dict[str, Any]:
 		_ = timeout
-		return {"info": {"version": "1.6.1", "requires_dist": ["cryptography>=44"]}}
+		return {"info": {"version": "1.6.2", "requires_dist": ["cryptography>=44"]}}
 
 	monkeypatch.setattr(package_spec, "fetch_pypi_srxy_info", fake_fetch)
 
@@ -271,6 +271,8 @@ def test_given_valid_token_when_bootstrapping_then_returns_privacy_text(online_s
 	assert payload.get("privacy_text")
 	assert payload.get("prefix")
 	assert payload["strings"]["install"]
+	assert payload["strings"]["uninstall"]
+	assert payload["strings"]["confirm_uninstall"]
 
 
 def test_given_install_without_ack_when_posting_then_returns_400(
@@ -335,6 +337,57 @@ def test_given_mocked_install_when_posting_install_then_status_becomes_done(
 	# then
 	assert snap.get("status") == "done", snap
 	assert snap.get("overall") == 1.0
+
+
+def test_given_mocked_uninstall_when_posting_uninstall_then_status_becomes_done(
+	online_server: _ServerHarness,
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer_online import server as server_mod
+
+	prefix = tmp_path / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv").mkdir()
+
+	def fake_uninstall(
+		target: Path,
+		*,
+		status: Callable[[str], None] | None = None,
+		confirm_unsafe: bool = False,
+	):
+		_ = confirm_unsafe
+		assert target == prefix.resolve()
+		if status:
+			status("fake uninstall")
+		# Simulate shared uninstall removing the tree.
+		import shutil
+
+		shutil.rmtree(target)
+
+	monkeypatch.setattr(server_mod, "uninstall_prefix", fake_uninstall)
+
+	# when
+	code, _ = online_server.api(
+		"/api/uninstall",
+		data={"prefix": str(prefix)},
+	)
+	assert code == 200
+
+	deadline = time.monotonic() + 5
+	snap: dict[str, Any] = {}
+	while time.monotonic() < deadline:
+		status_code, snap = online_server.api("/api/status")
+		assert status_code == 200
+		assert isinstance(snap, dict)
+		if snap.get("status") in {"done", "error"}:
+			break
+		time.sleep(0.05)
+
+	# then
+	assert snap.get("status") == "done", snap
+	assert not prefix.exists()
 
 
 def test_given_no_client_when_grace_expires_then_server_stops(monkeypatch: pytest.MonkeyPatch):

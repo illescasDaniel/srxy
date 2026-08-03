@@ -12,6 +12,7 @@ from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
 from srxy.adapters.inbound.installer.manifest import (
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
+	looks_like_partial_srxy_prefix,
 	prefix_needs_confirmation,
 )
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html, privacy_disclaimer_text
@@ -469,7 +470,7 @@ class InstallerController(QObject):
 
 	def _validate_prefix_for_action(self, prefix: Path, *, for_install: bool) -> str | None:
 		"""Return an inline error message, or None if the prefix may proceed (or needs confirm)."""
-		if for_install and is_non_empty_foreign_prefix(prefix):
+		if for_install and is_non_empty_foreign_prefix(prefix) and not looks_like_partial_srxy_prefix(prefix):
 			return translate("installer.error.non_empty_prefix", path=str(prefix))
 		return None
 

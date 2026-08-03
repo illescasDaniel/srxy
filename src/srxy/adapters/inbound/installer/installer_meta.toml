@@ -1,4 +1,4 @@
 # Easy to bump when the AppImage installer gains new capabilities.
 # Prefer PyPI only when latest srxy >= min_srxy_version (and includes PySide6).
-installer_version = "4"
-min_srxy_version = "1.6.1"
+installer_version = "5"
+min_srxy_version = "1.6.2"
