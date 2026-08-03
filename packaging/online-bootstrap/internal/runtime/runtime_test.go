@@ -2,6 +2,7 @@ package runtime
 
 import (
 	"os"
+	"path/filepath"
 	"testing"
 )
 
@@ -91,14 +92,16 @@ func TestDefaultCacheDir_Override(t *testing.T) {
 }
 
 func TestResolvePaths_Layout(t *testing.T) {
-	paths := ResolvePaths("/app", "/cache", Meta{})
-	if paths.UvBin != "/cache/uv/uv" {
+	app := t.TempDir()
+	cache := t.TempDir()
+	paths := ResolvePaths(app, cache, Meta{})
+	if paths.UvBin != filepath.Join(cache, "uv", "uv") {
 		t.Fatalf("UvBin=%q", paths.UvBin)
 	}
-	if paths.VenvPython != "/cache/venv/bin/python" {
+	if paths.VenvPython != filepath.Join(cache, "venv", "bin", "python") {
 		t.Fatalf("VenvPython=%q", paths.VenvPython)
 	}
-	if paths.MetaPath != "/app/usr/share/srxy/bootstrap-meta.json" {
+	if paths.MetaPath != filepath.Join(app, "usr", "share", "srxy", "bootstrap-meta.json") {
 		t.Fatalf("MetaPath=%q", paths.MetaPath)
 	}
 }

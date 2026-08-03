@@ -37,8 +37,11 @@ if [[ ! -d "$PSIDE" ]]; then
 	exit 1
 fi
 
-BEFORE_BYTES="$(du -sb "$PSIDE" 2>/dev/null | awk '{print $1}')"
-echo "Pruning PySide6 under $PSIDE (before: $(du -sh "$PSIDE" | cut -f1))…"
+BEFORE_BYTES=""
+if du_out="$(du -sk "$PSIDE" 2>/dev/null)"; then
+	BEFORE_BYTES="$(awk '{print $1 * 1024}' <<<"$du_out")"
+fi
+echo "Pruning PySide6 under $PSIDE (before: $(du -sh "$PSIDE" 2>/dev/null | cut -f1 || echo unknown))…"
 
 rm_rf() {
 	local path
@@ -135,8 +138,7 @@ if [[ -d "$QT_LIB" ]]; then
 			libQt6XcbQpa.so* | libQt6EglFSDeviceIntegration.so* | libQt6EglFsKmsSupport.so* | \
 			libQt6WaylandClient.so* | libQt6WlShellIntegration.so* | \
 			libQt6WaylandEglClientHwIntegration.so* | \
-			libicudata.so* | libicui18n.so* | libicuuc.so*)
-			;;
+			libicudata.so* | libicui18n.so* | libicuuc.so*) ;;
 		*)
 			rm_rf "$lib"
 			;;
@@ -231,8 +233,11 @@ if command -v strip >/dev/null 2>&1; then
 	shopt -u nullglob
 fi
 
-AFTER_BYTES="$(du -sb "$PSIDE" 2>/dev/null | awk '{print $1}')"
-AFTER_HUMAN="$(du -sh "$PSIDE" | cut -f1)"
+AFTER_BYTES=""
+if du_out="$(du -sk "$PSIDE" 2>/dev/null)"; then
+	AFTER_BYTES="$(awk '{print $1 * 1024}' <<<"$du_out")"
+fi
+AFTER_HUMAN="$(du -sh "$PSIDE" 2>/dev/null | cut -f1 || echo unknown)"
 if [[ -n "${BEFORE_BYTES:-}" && -n "${AFTER_BYTES:-}" && "$BEFORE_BYTES" =~ ^[0-9]+$ && "$AFTER_BYTES" =~ ^[0-9]+$ ]]; then
 	SAVED=$((BEFORE_BYTES - AFTER_BYTES))
 	echo "Pruned PySide6 to $AFTER_HUMAN (saved $((SAVED / 1024 / 1024)) MiB)."

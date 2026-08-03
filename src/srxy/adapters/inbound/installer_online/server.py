@@ -313,6 +313,38 @@ def _run_install(session: InstallSession, prefix: Path | None):
 		session.mark_error(detail)
 
 
+def start_client_watchdog(
+	session: InstallSession,
+	*,
+	idle_seconds: float = DEFAULT_CLIENT_IDLE_SECONDS,
+	grace_seconds: float = DEFAULT_CLIENT_GRACE_SECONDS,
+) -> threading.Thread:
+	"""Start the browser-idle shutdown watchdog; returns the daemon thread."""
+	watchdog = threading.Thread(
+		target=_client_watchdog,
+		args=(session,),
+		kwargs={
+			"idle_seconds": idle_seconds,
+			"grace_seconds": grace_seconds,
+		},
+		daemon=True,
+	)
+	watchdog.start()
+	return watchdog
+
+
+def create_online_installer_server() -> tuple[str, InstallSession, ThreadingHTTPServer]:
+	"""Bind a localhost installer server (caller starts ``serve_forever``)."""
+	set_language(resolve_language())
+	token = secrets.token_urlsafe(24)
+	session = InstallSession(token=token)
+	handler = make_handler(session)
+	server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
+	host, port = server.server_address[:2]
+	url = f"http://{host}:{port}/?t={token}"
+	return url, session, server
+
+
 def run_online_installer(
 	*,
 	open_browser: bool = True,
@@ -324,28 +356,17 @@ def run_online_installer(
 	url_file: Path | None = None,
 ) -> int:
 	"""Serve the installer UI on 127.0.0.1 and optionally open a browser."""
-	set_language(resolve_language())
-	token = secrets.token_urlsafe(24)
-	session = InstallSession(token=token)
-	handler = make_handler(session)
-	server = ThreadingHTTPServer(("127.0.0.1", 0), handler)
-	host, port = server.server_address[:2]
-	url = f"http://{host}:{port}/?t={token}"
+	url, session, server = create_online_installer_server()
 
 	thread = threading.Thread(target=server.serve_forever, daemon=True)
 	thread.start()
 
 	if client_watchdog:
-		watchdog = threading.Thread(
-			target=_client_watchdog,
-			args=(session,),
-			kwargs={
-				"idle_seconds": client_idle_seconds,
-				"grace_seconds": client_grace_seconds,
-			},
-			daemon=True,
+		start_client_watchdog(
+			session,
+			idle_seconds=client_idle_seconds,
+			grace_seconds=client_grace_seconds,
 		)
-		watchdog.start()
 
 	if url_file is not None:
 		url_file.parent.mkdir(parents=True, exist_ok=True)
@@ -377,6 +398,8 @@ __all__ = [
 	"DEFAULT_CLIENT_IDLE_SECONDS",
 	"InstallSession",
 	"TOKEN_HEADER",
+	"create_online_installer_server",
 	"make_handler",
 	"run_online_installer",
+	"start_client_watchdog",
 ]

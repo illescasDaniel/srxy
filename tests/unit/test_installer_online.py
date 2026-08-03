@@ -18,10 +18,15 @@ import pytest
 from srxy.adapters.inbound.installer.install import InstallOptions
 from srxy.adapters.inbound.installer_online.__main__ import main
 from srxy.adapters.inbound.installer_online.options import build_online_install_options
-from srxy.adapters.inbound.installer_online.server import TOKEN_HEADER, InstallSession, run_online_installer
+from srxy.adapters.inbound.installer_online.server import (
+	TOKEN_HEADER,
+	InstallSession,
+	create_online_installer_server,
+	start_client_watchdog,
+)
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("installer_online")]
 
 
 def test_given_help_flag_when_running_online_main_then_exits_zero_without_server(
@@ -158,13 +163,40 @@ class _ServerHarness:
 		self.url = ""
 		self.session: InstallSession | None = None
 		self.server: ThreadingHTTPServer | None = None
-		self.ready = threading.Event()
+		self._serve_thread: threading.Thread | None = None
 
-	def on_ready(self, url: str, session: InstallSession, server: ThreadingHTTPServer):
+	def start(
+		self,
+		*,
+		client_watchdog: bool = False,
+		client_idle_seconds: float = 3.0,
+		client_grace_seconds: float = 20.0,
+		url_file: Path | None = None,
+	):
+		# Bind on the test thread — macOS/xdist was flaky when bind ran inside a daemon.
+		url, session, server = create_online_installer_server()
 		self.url = url
 		self.session = session
 		self.server = server
-		self.ready.set()
+		self._serve_thread = threading.Thread(target=server.serve_forever, daemon=True)
+		self._serve_thread.start()
+		if client_watchdog:
+			start_client_watchdog(
+				session,
+				idle_seconds=client_idle_seconds,
+				grace_seconds=client_grace_seconds,
+			)
+		if url_file is not None:
+			url_file.parent.mkdir(parents=True, exist_ok=True)
+			url_file.write_text(url + "\n", encoding="utf-8")
+
+	def stop(self):
+		if self.session is not None:
+			self.session.stop_event.set()
+		if self.server is not None:
+			self.server.shutdown()
+		if self._serve_thread is not None:
+			self._serve_thread.join(timeout=5)
 
 	@property
 	def token(self) -> str:
@@ -203,27 +235,11 @@ def online_server(monkeypatch: pytest.MonkeyPatch):
 	# given
 	monkeypatch.setenv("SRXY_LANGUAGE", "en")
 	harness = _ServerHarness()
-	thread = threading.Thread(
-		target=run_online_installer,
-		kwargs={
-			"open_browser": False,
-			"serve_forever": True,
-			"on_ready": harness.on_ready,
-			# Tests drive the API manually; disable browser-idle auto-exit.
-			"client_watchdog": False,
-		},
-		daemon=True,
-	)
-	thread.start()
-	assert harness.ready.wait(timeout=5)
+	harness.start(client_watchdog=False)
 	try:
 		yield harness
 	finally:
-		assert harness.session is not None
-		assert harness.server is not None
-		harness.session.stop_event.set()
-		harness.server.shutdown()
-		thread.join(timeout=5)
+		harness.stop()
 
 
 def test_given_missing_token_when_calling_api_then_rejects(online_server: _ServerHarness):
@@ -316,20 +332,7 @@ def test_given_no_client_when_grace_expires_then_server_stops(monkeypatch: pytes
 	# given
 	monkeypatch.setenv("SRXY_LANGUAGE", "en")
 	harness = _ServerHarness()
-	thread = threading.Thread(
-		target=run_online_installer,
-		kwargs={
-			"open_browser": False,
-			"serve_forever": True,
-			"on_ready": harness.on_ready,
-			"client_watchdog": True,
-			"client_grace_seconds": 0.3,
-			"client_idle_seconds": 0.3,
-		},
-		daemon=True,
-	)
-	thread.start()
-	assert harness.ready.wait(timeout=5)
+	harness.start(client_watchdog=True, client_grace_seconds=0.3, client_idle_seconds=0.3)
 	assert harness.session is not None
 
 	# when — no authenticated client requests
@@ -337,7 +340,7 @@ def test_given_no_client_when_grace_expires_then_server_stops(monkeypatch: pytes
 
 	# then
 	assert stopped
-	thread.join(timeout=5)
+	harness.stop()
 
 
 def test_given_client_heartbeat_stops_when_idle_expires_then_server_stops(
@@ -346,20 +349,7 @@ def test_given_client_heartbeat_stops_when_idle_expires_then_server_stops(
 	# given
 	monkeypatch.setenv("SRXY_LANGUAGE", "en")
 	harness = _ServerHarness()
-	thread = threading.Thread(
-		target=run_online_installer,
-		kwargs={
-			"open_browser": False,
-			"serve_forever": True,
-			"on_ready": harness.on_ready,
-			"client_watchdog": True,
-			"client_grace_seconds": 5.0,
-			"client_idle_seconds": 0.4,
-		},
-		daemon=True,
-	)
-	thread.start()
-	assert harness.ready.wait(timeout=5)
+	harness.start(client_watchdog=True, client_grace_seconds=5.0, client_idle_seconds=0.4)
 
 	# when — one heartbeat, then silence
 	code, _ = harness.api("/api/status")
@@ -369,7 +359,7 @@ def test_given_client_heartbeat_stops_when_idle_expires_then_server_stops(
 
 	# then
 	assert stopped
-	thread.join(timeout=5)
+	harness.stop()
 
 
 def test_given_url_file_when_starting_with_no_browser_then_writes_url(
@@ -380,35 +370,14 @@ def test_given_url_file_when_starting_with_no_browser_then_writes_url(
 	monkeypatch.setenv("SRXY_LANGUAGE", "en")
 	url_path = tmp_path / "installer.url"
 	harness = _ServerHarness()
-
-	def on_ready(url: str, session: InstallSession, server: ThreadingHTTPServer):
-		harness.on_ready(url, session, server)
-
-	thread = threading.Thread(
-		target=run_online_installer,
-		kwargs={
-			"open_browser": False,
-			"serve_forever": True,
-			"on_ready": on_ready,
-			"url_file": url_path,
-			"client_watchdog": False,
-		},
-		daemon=True,
-	)
-	thread.start()
-	assert harness.ready.wait(timeout=5)
+	harness.start(client_watchdog=False, url_file=url_path)
 
 	# when / then
 	assert url_path.is_file()
 	written = url_path.read_text(encoding="utf-8").strip()
 	assert written == harness.url
 	assert written.startswith("http://127.0.0.1:")
-
-	assert harness.session is not None
-	assert harness.server is not None
-	harness.session.stop_event.set()
-	harness.server.shutdown()
-	thread.join(timeout=5)
+	harness.stop()
 
 
 def test_given_shutdown_post_when_empty_body_then_accepts(online_server: _ServerHarness):

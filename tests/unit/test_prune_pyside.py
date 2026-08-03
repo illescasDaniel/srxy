@@ -3,8 +3,10 @@
 from __future__ import annotations
 
 import os
+import shutil
 import stat
 import subprocess
+import sys
 from pathlib import Path
 
 import pytest
@@ -14,6 +16,13 @@ pytestmark = pytest.mark.unit
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 PRUNE_SCRIPT = REPO_ROOT / "packaging" / "linux-appimage" / "prune_pyside.sh"
+
+
+def _require_bash_script():
+	if sys.platform == "win32":
+		pytest.skip("Linux AppImage prune script is not run on Windows")
+	if shutil.which("bash") is None:
+		pytest.skip("bash not available")
 
 
 def _touch(path: Path):
@@ -53,6 +62,7 @@ def _make_fake_pyside(site: Path) -> Path:
 
 def test_given_fake_pyside_tree_when_pruning_then_removes_unused_keeps_wizard_stack(tmp_path: Path):
 	# given
+	_require_bash_script()
 	site = tmp_path / "lib" / "python3.12" / "site-packages"
 	pside = _make_fake_pyside(site)
 	venv = tmp_path
@@ -93,6 +103,7 @@ def test_given_fake_pyside_tree_when_pruning_then_removes_unused_keeps_wizard_st
 
 def test_given_site_packages_path_when_pruning_then_accepts_direct_site_packages(tmp_path: Path):
 	# given
+	_require_bash_script()
 	site = tmp_path / "site-packages"
 	pside = _make_fake_pyside(site)
 
@@ -112,6 +123,7 @@ def test_given_site_packages_path_when_pruning_then_accepts_direct_site_packages
 
 def test_given_missing_pyside_when_pruning_then_exits_nonzero(tmp_path: Path):
 	# given
+	_require_bash_script()
 	empty = tmp_path / "venv"
 	(empty / "lib" / "python3.12" / "site-packages").mkdir(parents=True)
 

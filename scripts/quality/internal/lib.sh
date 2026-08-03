@@ -137,8 +137,9 @@ lib_pytest_args() {
 	LIB_PYTEST_COV=()
 	# Coverage only on --full / --full+cpu (avoids clash with testmon collection).
 	if [[ "${LIB_PYTEST_FULL:-}" == "true" && -d "${LIB_REPO_ROOT}/src" ]]; then
+		# skip-covered keeps the report short so FAILURES / -ra stay on screen.
 		# shellcheck disable=SC2034
-		LIB_PYTEST_COV=(--cov=src --cov-report=term-missing)
+		LIB_PYTEST_COV=(--cov=src --cov-report=term-missing:skip-covered -ra --tb=short)
 	fi
 }
 
