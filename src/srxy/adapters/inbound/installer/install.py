@@ -78,18 +78,18 @@ def write_launcher(prefix: Path):
 	venv_srxy = prefix / ".venv" / "bin" / "srxy"
 	launcher = bin_dir / "srxy"
 	vendor_bin_parts = [
-		shlex.quote(str(prefix / "vendor" / "tesseract" / "bin")),
-		shlex.quote(str(prefix / "vendor" / "ffmpeg" / "bin")),
-		shlex.quote(str(prefix / "vendor" / "uv")),
+		shlex.quote((prefix / "vendor" / "tesseract" / "bin").as_posix()),
+		shlex.quote((prefix / "vendor" / "ffmpeg" / "bin").as_posix()),
+		shlex.quote((prefix / "vendor" / "uv").as_posix()),
 	]
 	path_prefix = ":".join(vendor_bin_parts)
 	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
 	log_file = log_dir / "srxy.log"
-	q_prefix = shlex.quote(str(prefix))
-	q_venv = shlex.quote(str(venv_srxy))
-	q_log_dir = shlex.quote(str(log_dir))
-	q_log_file = shlex.quote(str(log_file))
-	q_tessdata = shlex.quote(str(tessdata))
+	q_prefix = shlex.quote(prefix.as_posix())
+	q_venv = shlex.quote(venv_srxy.as_posix())
+	q_log_dir = shlex.quote(log_dir.as_posix())
+	q_log_file = shlex.quote(log_file.as_posix())
+	q_tessdata = shlex.quote(tessdata.as_posix())
 	content = f"""#!/bin/sh
 set -eu
 SRXY_HOME={q_prefix}

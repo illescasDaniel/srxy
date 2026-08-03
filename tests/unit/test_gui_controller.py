@@ -8,6 +8,7 @@ from unittest.mock import MagicMock
 
 import pytest
 from PySide6.QtCore import QCoreApplication
+from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
@@ -15,7 +16,7 @@ from srxy.application.search_session import SearchFinishedEvent, SearchResultEve
 from srxy.domain.models import FileSearchResult
 
 
-pytestmark = [pytest.mark.unit]
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
 
 
 @pytest.fixture(scope="module")
@@ -45,7 +46,7 @@ def test_given_default_cli_path_when_opening_gui_then_uses_home(
 	# given
 	home = tmp_path / "home"
 	home.mkdir()
-	monkeypatch.setenv("HOME", str(home))
+	set_fake_home(monkeypatch, home)
 	args = build_parser().parse_args(["", ".", "--cli"])
 
 	# when

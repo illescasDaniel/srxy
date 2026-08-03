@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from srxy import SearchResult
 
 
@@ -65,6 +67,16 @@ def integration_test_cpu_requested(config: object) -> bool:
 		return True
 	value = os.environ.get("SRXY_INTEGRATION_TEST_CPU", "").strip().lower()
 	return value in {"1", "true", "yes", "on"}
+
+
+def set_fake_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> Path:
+	"""Point Path.home() at ``home`` on both Unix (HOME) and Windows (USERPROFILE)."""
+	text = str(home)
+	monkeypatch.setenv("HOME", text)
+	monkeypatch.setenv("USERPROFILE", text)
+	monkeypatch.delenv("HOMEDRIVE", raising=False)
+	monkeypatch.delenv("HOMEPATH", raising=False)
+	return home
 
 
 def transcribe_device_matrix_devices(config: object) -> list[str]:

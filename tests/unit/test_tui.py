@@ -20,7 +20,7 @@ from srxy.adapters.inbound.tui.theme import detect_app_theme
 from srxy.domain.models import FileSearchResult, LineMatch
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("tui")]
 
 
 def _build_args(argv: list[str]) -> argparse.Namespace:

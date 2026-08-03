@@ -3,11 +3,17 @@
 from __future__ import annotations
 
 import os
+from collections.abc import Callable
 from pathlib import Path
 
 from PySide6.QtGui import QGuiApplication, QIcon
 
-from srxy.resources.icons import app_icon_path, available_icon_sizes
+from srxy.resources.icons import (
+	app_icon_path,
+	available_icon_sizes,
+	available_installer_icon_sizes,
+	installer_icon_path,
+)
 
 
 def _xdg_data_dirs() -> list[Path]:
@@ -42,15 +48,17 @@ def apply_desktop_file_name(app: QGuiApplication, name: str):
 		app.setDesktopFileName(name)
 
 
-def apply_app_icon(app: QGuiApplication):
+def _apply_icon(
+	app: QGuiApplication,
+	*,
+	path_for_size: Callable[..., Path],
+	sizes: list[int],
+):
 	icon = QIcon()
-	sizes = available_icon_sizes() or [256]
-	for size in sizes:
-		path = app_icon_path(size=size)
-		icon.addFile(str(path))
-	# Also add the master asset when present.
+	for size in sizes or [256]:
+		icon.addFile(str(path_for_size(size=size)))
 	try:
-		icon.addFile(str(app_icon_path()))
+		icon.addFile(str(path_for_size()))
 	except FileNotFoundError:
 		pass
 	if icon.isNull():
@@ -58,8 +66,21 @@ def apply_app_icon(app: QGuiApplication):
 	app.setWindowIcon(icon)
 
 
+def apply_app_icon(app: QGuiApplication):
+	_apply_icon(app, path_for_size=app_icon_path, sizes=available_icon_sizes())
+
+
+def apply_installer_icon(app: QGuiApplication):
+	_apply_icon(
+		app,
+		path_for_size=installer_icon_path,
+		sizes=available_installer_icon_sizes(),
+	)
+
+
 __all__ = [
 	"apply_app_icon",
 	"apply_desktop_file_name",
+	"apply_installer_icon",
 	"desktop_file_available",
 ]

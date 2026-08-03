@@ -12,7 +12,7 @@ from srxy.adapters.inbound.tui.query_builder import QueryBuilder
 from srxy.domain.file_query import FileQ, build_file_query_from_rows
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("tui")]
 
 
 class _QueryBuilderApp(App[None]):

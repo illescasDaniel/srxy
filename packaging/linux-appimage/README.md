@@ -30,7 +30,14 @@ Installer downloads (uv, tesseract, tessdata, ffmpeg) are HTTPS-only and require
 
 ## Icons and meta
 
-App icon assets live in [`src/srxy/resources/icons/`](../../src/srxy/resources/icons/) and are used for the AppImage, window chrome, and the installed `.desktop` entry.
+App icons live in [`src/srxy/resources/icons/`](../../src/srxy/resources/icons/). The installed app uses `srxy-*.png`; the AppImage / installer wizard uses `srxy-installer-*.png` (same artwork with a gears badge). Regenerate installer icons after changing the base set:
+
+```bash
+task generate-installer-icons
+# or: uv run python scripts/generate_installer_icons.py
+```
+
+The AppImage embeds that icon as `.DirIcon` / `srxy-installer.png` for file managers. Showing it in the browser still needs a working AppImage thumbnailer on the host (e.g. KDE `appimagethumbnail` via `kio-extras` + `libappimage`). Without that, desktops fall back to the generic AppImage MIME icon — packaging cannot override that.
 
 Installer compatibility is declared in [`packaging/installer_meta.toml`](../installer_meta.toml) (`installer_version`, `min_srxy_version`). Edit that file when the AppImage needs a newer minimum srxy, then rebuild. The installer prefers PyPI only when the latest release is newer than the bundled wheel/source, meets `min_srxy_version`, and lists PySide6 in `requires_dist`.
 

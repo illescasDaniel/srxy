@@ -153,6 +153,7 @@ gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)
 gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bare (no semantic extras; --recreate to rebuild)" }
 installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
 build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build Linux installer AppImage into dist/" }
+generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate srxy-installer-*.png gears-badge icons from base app icons" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
 checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }

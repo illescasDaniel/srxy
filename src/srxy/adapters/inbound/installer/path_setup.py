@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import os
-import pwd
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -23,10 +22,12 @@ def detect_login_shell() -> str:
 	if env_shell:
 		return Path(env_shell).name
 	try:
+		import pwd
+
 		entry = pwd.getpwuid(os.getuid())
 		if entry.pw_shell:
 			return Path(entry.pw_shell).name
-	except KeyError:
+	except (ImportError, KeyError, AttributeError):
 		pass
 	return "bash"
 

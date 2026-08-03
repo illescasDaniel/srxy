@@ -28,6 +28,10 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y shellcheck shfmt
 
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0
+
       - name: Quality gate
         env:
           CI: true
@@ -51,7 +55,7 @@ jobs:
       - name: Unit tests
         env:
           CI: true
-        run: uv run pytest tests -n auto -m "unit and not semantic and not transcribe"
+        run: uv run pytest tests -n auto --dist=loadgroup -m "unit and not semantic and not transcribe"
 
   test-windows:
     runs-on: windows-latest
@@ -69,4 +73,4 @@ jobs:
       - name: Unit tests
         env:
           CI: true
-        run: uv run pytest tests -n auto -m "unit and not semantic and not transcribe"
+        run: uv run pytest tests -n auto --dist=loadgroup -m "unit and not semantic and not transcribe"

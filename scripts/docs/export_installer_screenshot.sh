@@ -27,7 +27,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 
-from srxy.adapters.inbound.gui.app_icon import apply_app_icon
+from srxy.adapters.inbound.gui.app_icon import apply_installer_icon
 from srxy.adapters.inbound.installer.app import qml_dir
 from srxy.adapters.inbound.installer.controller import InstallerController
 from srxy.i18n import set_language
@@ -41,7 +41,7 @@ set_language("en")
 
 app = QGuiApplication(sys.argv)
 app.setApplicationName("srxy-installer")
-apply_app_icon(app)
+apply_installer_icon(app)
 install_qt_translator(app, "en")
 
 engine = QQmlApplicationEngine()

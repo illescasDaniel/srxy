@@ -8,12 +8,18 @@ from PySide6.QtGui import QGuiApplication, QIcon
 from srxy.adapters.inbound.gui.app_icon import (
 	apply_app_icon,
 	apply_desktop_file_name,
+	apply_installer_icon,
 	desktop_file_available,
 )
-from srxy.resources.icons import app_icon_path, available_icon_sizes
+from srxy.resources.icons import (
+	app_icon_path,
+	available_icon_sizes,
+	available_installer_icon_sizes,
+	installer_icon_path,
+)
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui_icon")]
 
 
 def test_given_packaged_icons_when_resolving_then_files_exist():
@@ -27,12 +33,40 @@ def test_given_packaged_icons_when_resolving_then_files_exist():
 	assert app_icon_path(size=256).is_file()
 
 
+def test_given_packaged_installer_icons_when_resolving_then_files_exist():
+	# given / when
+	sizes = available_installer_icon_sizes()
+	primary = installer_icon_path()
+
+	# then
+	assert primary.is_file()
+	assert 256 in sizes
+	assert installer_icon_path(size=256).is_file()
+	# App sizes must not pick up installer-* stems.
+	assert all(isinstance(size, int) for size in available_icon_sizes())
+
+
 def test_given_qt_app_when_applying_icon_then_window_icon_is_set(qapp: QGuiApplication):
 	# given
 	assert isinstance(qapp, QGuiApplication)
 
 	# when
 	apply_app_icon(qapp)
+
+	# then
+	icon = qapp.windowIcon()
+	assert isinstance(icon, QIcon)
+	assert not icon.isNull()
+
+
+def test_given_qt_app_when_applying_installer_icon_then_window_icon_is_set(
+	qapp: QGuiApplication,
+):
+	# given
+	assert isinstance(qapp, QGuiApplication)
+
+	# when
+	apply_installer_icon(qapp)
 
 	# then
 	icon = qapp.windowIcon()

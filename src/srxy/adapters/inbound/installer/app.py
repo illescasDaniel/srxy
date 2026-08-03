@@ -9,7 +9,7 @@ from PySide6.QtCore import Qt, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
-from srxy.adapters.inbound.gui.app_icon import apply_app_icon, apply_desktop_file_name
+from srxy.adapters.inbound.gui.app_icon import apply_desktop_file_name, apply_installer_icon
 from srxy.adapters.inbound.installer.controller import InstallerController
 
 
@@ -36,7 +36,7 @@ def run_installer() -> int:
 	app.setApplicationName("srxy-installer")
 	apply_desktop_file_name(app, "srxy-installer")
 	_follow_system_color_scheme(app)
-	apply_app_icon(app)
+	apply_installer_icon(app)
 	from srxy.i18n import get_language, resolve_language, set_language
 	from srxy.i18n.qt import install_qt_translator
 

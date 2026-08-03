@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 
 import pytest
+from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.installer.install import write_launcher
 from srxy.adapters.inbound.installer.manifest import (
@@ -20,7 +21,7 @@ from srxy.adapters.inbound.installer.uninstall import discover_default_prefix, u
 from srxy.application.install_paths import MANIFEST_NAME
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
 
 
 def test_given_manifest_when_writing_and_reading_then_round_trips(tmp_path: Path):
@@ -214,7 +215,7 @@ def test_given_prefix_with_manifest_when_uninstalling_then_removes_tree(
 	apps.mkdir(parents=True)
 	desktop = apps / "srxy.desktop"
 	desktop.write_text(f"[Desktop Entry]\nExec={prefix}/bin/srxy\n", encoding="utf-8")
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 
 	# when
 	uninstall_prefix(prefix)
@@ -229,7 +230,7 @@ def test_given_default_prefix_missing_when_discovering_then_returns_none(
 	monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 
 	# when / then
 	assert discover_default_prefix() is None
@@ -253,7 +254,7 @@ def test_given_bin_srxy_only_when_uninstalling_then_raises(tmp_path: Path, monke
 	prefix.mkdir(parents=True)
 	(prefix / "bin").mkdir()
 	(prefix / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
-	monkeypatch.setenv("HOME", str(home))
+	set_fake_home(monkeypatch, home)
 
 	# when / then
 	with pytest.raises(RuntimeError, match=MANIFEST_NAME):
@@ -268,7 +269,7 @@ def test_given_prefix_mismatch_when_uninstalling_then_raises(tmp_path: Path, mon
 		prefix,
 		InstallManifest(version="1.5.0", prefix=str(tmp_path / "other"), installed_at="2026-08-02T12:00:00+00:00"),
 	)
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 
 	# when / then
 	with pytest.raises(RuntimeError, match="does not match"):
@@ -279,7 +280,7 @@ def test_given_home_directory_when_checking_confirmation_then_requires_confirm(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 
 	# when / then
 	assert prefix_needs_confirmation(tmp_path) is True
@@ -289,7 +290,7 @@ def test_given_hidden_home_child_when_checking_confirmation_then_requires_confir
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 	dot_dir = tmp_path / ".hidden"
 
 	# when / then
@@ -300,7 +301,7 @@ def test_given_outside_home_when_checking_confirmation_then_requires_confirm(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path / "home"))
+	set_fake_home(monkeypatch, tmp_path / "home")
 	outside = tmp_path / "opt" / "srxy"
 
 	# when / then
@@ -311,7 +312,7 @@ def test_given_unsafe_prefix_when_uninstalling_without_confirm_then_raises(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 	write_manifest(
 		tmp_path,
 		InstallManifest(version="1.5.0", prefix=str(tmp_path), installed_at="2026-08-02T12:00:00+00:00"),
@@ -326,7 +327,7 @@ def test_given_unsafe_prefix_when_starting_install_then_opens_confirm_without_pr
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	from srxy.adapters.inbound.installer.controller import InstallerController
 
@@ -356,7 +357,7 @@ def test_given_unsafe_confirm_accepted_when_installing_then_passes_confirm_unsaf
 	from srxy.adapters.inbound.installer.install import InstallOptions
 	from srxy.adapters.inbound.installer.manifest import InstallManifest
 
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	captured: dict[str, object] = {}
 	done = threading.Event()
@@ -398,7 +399,7 @@ def test_given_unsafe_confirm_rejected_when_installing_then_stays_and_shows_erro
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	monkeypatch.setenv("HOME", str(tmp_path))
+	set_fake_home(monkeypatch, tmp_path)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	from srxy.adapters.inbound.installer.controller import InstallerController
 
@@ -423,7 +424,7 @@ def test_given_foreign_non_empty_prefix_when_starting_install_then_inline_error(
 	# given
 	home = tmp_path / "home"
 	home.mkdir()
-	monkeypatch.setenv("HOME", str(home))
+	set_fake_home(monkeypatch, home)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	foreign = home / "Applications" / "other"
 	foreign.mkdir(parents=True)
@@ -464,7 +465,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 
 	home = tmp_path / "home"
 	home.mkdir()
-	monkeypatch.setenv("HOME", str(home))
+	set_fake_home(monkeypatch, home)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	prefix = home / "Applications" / "srxy"
 	prefix.mkdir(parents=True)
@@ -532,7 +533,7 @@ def test_given_uninstall_failed_missing_install_when_going_back_then_returns_to_
 
 	home = tmp_path / "home"
 	home.mkdir()
-	monkeypatch.setenv("HOME", str(home))
+	set_fake_home(monkeypatch, home)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	prefix = home / "Applications" / "srxy"
 	prefix.mkdir(parents=True)

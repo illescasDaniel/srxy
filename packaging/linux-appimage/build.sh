@@ -12,7 +12,7 @@ APPIMAGETOOL_VERSION="${APPIMAGETOOL_VERSION:-1.9.1}"
 APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/releases/download/${APPIMAGETOOL_VERSION}/appimagetool-${ARCH}.AppImage}"
 # SHA-256 of appimagetool-x86_64.AppImage @ 1.9.1 (override when bumping the pin).
 APPIMAGETOOL_SHA256="${APPIMAGETOOL_SHA256:-ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0}"
-ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-256.png}"
+ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-installer-256.png}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 
 cd "$ROOT"
@@ -120,9 +120,11 @@ EOF
 cp "$APPDIR/srxy-installer.desktop" "$APPDIR/usr/share/applications/"
 
 cp "$ICON_SRC" "$APPDIR/srxy-installer.png"
+# Thumbnailers read .DirIcon; ship a real file (not only the symlink appimagetool may add).
+cp "$ICON_SRC" "$APPDIR/.DirIcon"
 cp "$ICON_SRC" "$APPDIR/usr/share/icons/hicolor/256x256/apps/srxy-installer.png"
 for size in 16 32 48 64 128 512; do
-	src="$ROOT/src/srxy/resources/icons/srxy-${size}.png"
+	src="$ROOT/src/srxy/resources/icons/srxy-installer-${size}.png"
 	if [[ -f "$src" ]]; then
 		mkdir -p "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps"
 		cp "$src" "$APPDIR/usr/share/icons/hicolor/${size}x${size}/apps/srxy-installer.png"
