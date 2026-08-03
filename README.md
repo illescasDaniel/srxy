@@ -29,7 +29,7 @@ Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](do
 
 **Desktop installers (Linux):**
 
-Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (make executable and run; no host `libfuse2`):
+Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (make executable and run; no host `libfuse2`):
 
 | Artifact | What you get |
 |----------|----------------|
