@@ -67,9 +67,13 @@ ApplicationWindow {
 		}
 		Label {
 			visible: c.page !== "mode"
-			text: c.mode === "uninstall"
-				? root.t("installer.subtitle.uninstall")
-				: root.t("installer.subtitle.install")
+			text: {
+				if (c.mode === "uninstall")
+					return root.t("installer.subtitle.uninstall")
+				if (c.mode === "reinstall")
+					return root.t("installer.subtitle.reinstall")
+				return root.t("installer.subtitle.install")
+			}
 			color: root.secondaryText
 		}
 
@@ -96,6 +100,11 @@ ApplicationWindow {
 					onClicked: c.setMode("install")
 				}
 				RadioButton {
+					text: root.t("installer.mode.reinstall")
+					checked: c.mode === "reinstall"
+					onClicked: c.setMode("reinstall")
+				}
+				RadioButton {
 					text: root.t("installer.mode.uninstall")
 					checked: c.mode === "uninstall"
 					onClicked: c.setMode("uninstall")
@@ -118,9 +127,17 @@ ApplicationWindow {
 			// 1 prefix
 			ColumnLayout {
 				spacing: 12
-				Label { text: root.t("installer.prefix.title"); color: root.primaryText; font.pixelSize: 18 }
 				Label {
-					text: root.t("installer.prefix.body")
+					text: c.mode === "reinstall"
+						? root.t("installer.prefix.reinstall_title")
+						: root.t("installer.prefix.title")
+					color: root.primaryText
+					font.pixelSize: 18
+				}
+				Label {
+					text: c.mode === "reinstall"
+						? root.t("installer.prefix.reinstall_body")
+						: root.t("installer.prefix.body")
 					wrapMode: Text.WordWrap
 					color: root.secondaryText
 					Layout.fillWidth: true
@@ -440,7 +457,7 @@ ApplicationWindow {
 			Item { Layout.fillWidth: true }
 			Button {
 				text: root.t("common.next")
-				visible: c.mode === "install" && c.page !== "path" && c.page !== "progress"
+				visible: (c.mode === "install" || c.mode === "reinstall") && c.page !== "path" && c.page !== "progress"
 				enabled: !c.busy && (c.page !== "privacy" || c.privacyAck)
 				onClicked: c.goNext()
 			}
@@ -449,6 +466,12 @@ ApplicationWindow {
 				visible: c.mode === "install" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startInstall()
+			}
+			Button {
+				text: root.t("installer.button.reinstall")
+				visible: c.mode === "reinstall" && c.page === "path"
+				enabled: !c.busy && c.privacyAck
+				onClicked: c.startReinstall()
 			}
 			Button {
 				text: root.t("common.next")

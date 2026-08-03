@@ -9,7 +9,11 @@ from PySide6.QtCore import Property, QObject, QThread, Signal, Slot
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
-from srxy.adapters.inbound.installer.manifest import is_non_empty_foreign_prefix, prefix_needs_confirmation
+from srxy.adapters.inbound.installer.manifest import (
+	is_non_empty_foreign_prefix,
+	is_srxy_prefix,
+	prefix_needs_confirmation,
+)
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html, privacy_disclaimer_text
 from srxy.adapters.inbound.installer.uninstall import discover_default_prefix, uninstall_prefix, uninstall_search_hint
 from srxy.application.install_paths import default_install_prefix
@@ -41,6 +45,19 @@ class _Worker(QThread):
 			if self._action == "install":
 				if self._options is None:
 					raise RuntimeError("install requires options")
+				install_srxy(
+					self._options,
+					status=lambda message: self.status.emit(message),
+					progress=lambda done, total, label: self.progress.emit(done, total, label),
+				)
+			elif self._action == "reinstall":
+				if self._options is None or self._prefix is None:
+					raise RuntimeError("reinstall requires options and prefix")
+				uninstall_prefix(
+					self._prefix,
+					status=lambda message: self.status.emit(message),
+					confirm_unsafe=self._confirm_unsafe,
+				)
 				install_srxy(
 					self._options,
 					status=lambda message: self.status.emit(message),
@@ -127,11 +144,15 @@ class InstallerController(QObject):
 
 	@Slot(str)
 	def setMode(self, value: str):
-		if value not in {"install", "uninstall"}:
+		if value not in {"install", "reinstall", "uninstall"}:
 			return
 		if self._mode != value:
 			self._mode = value
 			self.modeChanged.emit()
+			if value == "reinstall":
+				discovered = discover_default_prefix()
+				if discovered is not None:
+					self.setPrefix(str(discovered))
 
 	@Property(str, notify=prefixChanged)
 	def prefix(self) -> str:
@@ -399,6 +420,17 @@ class InstallerController(QObject):
 	def shutdown(self, *, thread_wait_ms: int = 3000):
 		self._dispose_worker(wait_ms=thread_wait_ms)
 
+	def _install_options(self, prefix: Path, *, confirm_unsafe: bool) -> InstallOptions:
+		return InstallOptions(
+			prefix=prefix,
+			download_tesseract=self._download_tesseract,
+			download_ffmpeg=self._download_ffmpeg,
+			install_semantic=self._install_semantic and self._has_gpu,
+			prefetch_models=self._prefetch_models and self._install_semantic,
+			add_to_path=self._add_to_path,
+			confirm_unsafe=confirm_unsafe,
+		)
+
 	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):
 		self._dispose_worker(wait_ms=3000)
 		self._page = "progress"
@@ -411,16 +443,28 @@ class InstallerController(QObject):
 		self._status = translate("installer.status.starting_install")
 		self.statusChanged.emit()
 		self._set_busy(True)
-		options = InstallOptions(
-			prefix=prefix,
-			download_tesseract=self._download_tesseract,
-			download_ffmpeg=self._download_ffmpeg,
-			install_semantic=self._install_semantic and self._has_gpu,
-			prefetch_models=self._prefetch_models and self._install_semantic,
-			add_to_path=self._add_to_path,
-			confirm_unsafe=confirm_unsafe,
-		)
+		options = self._install_options(prefix, confirm_unsafe=confirm_unsafe)
 		self._worker = _Worker("install", options, None, confirm_unsafe=confirm_unsafe)
+		self._worker.status.connect(self._on_status)
+		self._worker.progress.connect(self._on_progress)
+		self._worker.finished_ok.connect(self._on_finished_ok)
+		self._worker.failed.connect(self._on_failed)
+		self._worker.start()
+
+	def _begin_reinstall(self, prefix: Path, *, confirm_unsafe: bool):
+		self._dispose_worker(wait_ms=3000)
+		self._page = "progress"
+		self.pageChanged.emit()
+		self._finished = False
+		self.finishedChanged.emit()
+		self._error = ""
+		self.errorChanged.emit()
+		self._reset_progress_ui()
+		self._status = translate("installer.status.starting_reinstall")
+		self.statusChanged.emit()
+		self._set_busy(True)
+		options = self._install_options(prefix, confirm_unsafe=confirm_unsafe)
+		self._worker = _Worker("reinstall", options, prefix, confirm_unsafe=confirm_unsafe)
 		self._worker.status.connect(self._on_status)
 		self._worker.progress.connect(self._on_progress)
 		self._worker.finished_ok.connect(self._on_finished_ok)
@@ -476,6 +520,34 @@ class InstallerController(QObject):
 		self._begin_install(prefix, confirm_unsafe=self._confirm_unsafe)
 
 	@Slot()
+	def startReinstall(self):
+		if self._busy or self._unsafe_confirm_open:
+			return
+		if not self._privacy_ack:
+			self._error = translate("installer.error.privacy_required")
+			self.errorChanged.emit()
+			return
+		if not self._prefix.strip():
+			self._error = translate("installer.error.choose_prefix")
+			self.errorChanged.emit()
+			return
+		prefix = Path(self._prefix).expanduser().resolve()
+		if not is_srxy_prefix(prefix):
+			self._error = translate("installer.error.reinstall_not_srxy")
+			self.errorChanged.emit()
+			return
+		if prefix_needs_confirmation(prefix) and not self._confirm_unsafe:
+			self._error = ""
+			self.errorChanged.emit()
+			self._set_unsafe_confirm(
+				True,
+				translate("installer.confirm.unsafe_prefix_body", path=str(prefix)),
+				action="reinstall",
+			)
+			return
+		self._begin_reinstall(prefix, confirm_unsafe=self._confirm_unsafe)
+
+	@Slot()
 	def startUninstall(self):
 		if self._busy or self._unsafe_confirm_open:
 			return
@@ -509,6 +581,9 @@ class InstallerController(QObject):
 		if action == "install":
 			prefix = Path(self._prefix).expanduser().resolve()
 			self._begin_install(prefix, confirm_unsafe=True)
+		elif action == "reinstall":
+			prefix = Path(self._prefix).expanduser().resolve()
+			self._begin_reinstall(prefix, confirm_unsafe=True)
 		elif action == "uninstall":
 			raw = self._uninstall_prefix.strip() or self._prefix.strip()
 			self._begin_uninstall(Path(raw).expanduser().resolve(), confirm_unsafe=True)
@@ -555,6 +630,15 @@ class InstallerController(QObject):
 		self._status = translate("installer.status.failed")
 		self.statusChanged.emit()
 		self.shutdown()
+
+	def wait_for_worker_for_tests(self, *, wait_ms: int = 5000) -> bool:
+		"""Test helper — block until the background install worker has stopped."""
+		worker = self._worker
+		if worker is None:
+			return True
+		if not worker.isRunning():
+			return True
+		return bool(worker.wait(wait_ms))
 
 
 __all__ = ["InstallerController"]

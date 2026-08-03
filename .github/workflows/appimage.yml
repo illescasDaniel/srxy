@@ -40,7 +40,7 @@ jobs:
         with:
           name: srxy-installer-appimage-${{ github.sha }}
           path: |
-            dist/srxy-installer-*-x86_64.AppImage
+            dist/srxy-*-installer-*-x86_64.AppImage
             dist/SHA256SUMS
             dist/*.sha256
           if-no-files-found: error
@@ -64,7 +64,7 @@ jobs:
         uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
         with:
           files: |
-            dist/srxy-installer-*-x86_64.AppImage
+            dist/srxy-*-installer-*-x86_64.AppImage
             dist/SHA256SUMS
             dist/*.sha256
           fail_on_unmatched_files: true

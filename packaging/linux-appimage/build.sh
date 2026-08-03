@@ -151,7 +151,7 @@ if [[ -n "$APPIMAGETOOL_SHA256" ]]; then
 	echo "$APPIMAGETOOL_SHA256  $TOOL" | sha256sum -c -
 fi
 
-OUTPUT="$OUT_DIR/srxy-installer-${VERSION}-${INSTALLER_VERSION}-${ARCH}.AppImage"
+OUTPUT="$OUT_DIR/srxy-${VERSION}-installer-${INSTALLER_VERSION}-${ARCH}.AppImage"
 echo "Packing $OUTPUT…"
 ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"

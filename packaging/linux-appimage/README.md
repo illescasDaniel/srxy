@@ -1,6 +1,6 @@
 # Linux AppImage installer
 
-Builds `dist/srxy-installer-<srxy-version>-<installer-version>-x86_64.AppImage` — an install/uninstall wizard only (not the runtime app). The middle segment is `installer_version` from [`packaging/installer_meta.toml`](../installer_meta.toml).
+Builds `dist/srxy-<srxy-version>-installer-<installer-version>-x86_64.AppImage` — an install/uninstall wizard only (not the runtime app). The installer segment is `installer_version` from [`packaging/installer_meta.toml`](../installer_meta.toml).
 
 ```bash
 ./packaging/linux-appimage/build.sh

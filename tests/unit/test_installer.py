@@ -576,6 +576,214 @@ def test_given_uninstall_failed_missing_install_when_going_back_then_returns_to_
 	assert bool(controller.finished) is False
 
 
+def test_given_reinstall_mode_when_going_next_then_follows_install_page_order(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	controller = InstallerController()
+	controller.setMode("reinstall")
+	assert str(controller.mode) == "reinstall"
+
+	# when / then — same wizard pages as install
+	controller.goNext()
+	assert str(controller.page) == "prefix"
+	controller.goNext()
+	assert str(controller.page) == "privacy"
+	controller.setPrivacyAck(True)
+	controller.goNext()
+	assert str(controller.page) == "options"
+	controller.goNext()
+	assert str(controller.page) == "path"
+
+
+def test_given_non_srxy_prefix_when_starting_reinstall_then_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	controller = InstallerController()
+	controller.setMode("reinstall")
+	controller.setPrivacyAck(True)
+	controller.setPrefix(str(prefix))
+
+	# when
+	controller.startReinstall()
+
+	# then
+	assert str(controller.page) != "progress"
+	assert bool(controller.busy) is False
+	assert "not an srxy install" in str(controller.error).lower()
+
+
+def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	import threading
+	import time
+	from collections.abc import Callable
+	from typing import cast
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+	from srxy.adapters.inbound.installer.install import InstallOptions
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	write_manifest(
+		prefix,
+		InstallManifest(version="1.5.0", prefix=str(prefix), installed_at="2026-08-02T12:00:00+00:00"),
+	)
+	calls: list[str] = []
+	release = threading.Event()
+
+	def fake_uninstall(
+		path: Path,
+		*,
+		status: Callable[[str], None] | None = None,
+		confirm_unsafe: bool = False,
+	):
+		del confirm_unsafe
+		calls.append(f"uninstall:{path}")
+		if status is not None:
+			status("Removing srxy app…")
+		assert release.wait(5.0)
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int, int, str], None] | None = None,
+	):
+		del progress
+		calls.append(f"install:{options.prefix}")
+		if status is not None:
+			status("Install complete.")
+		return InstallManifest(
+			version="1.6.0",
+			prefix=str(options.prefix),
+			installed_at="2026-08-03T12:00:00+00:00",
+		)
+
+	monkeypatch.setattr(controller_mod, "uninstall_prefix", fake_uninstall)
+	monkeypatch.setattr(controller_mod, "install_srxy", fake_install)
+	controller = InstallerController()
+	controller.setMode("reinstall")
+	controller.setPrivacyAck(True)
+	controller.setPrefix(str(prefix))
+
+	# when
+	controller.startReinstall()
+	deadline = time.monotonic() + 2.0
+	while time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		if bool(controller.busy) and "uninstall:" in "".join(calls):
+			break
+		time.sleep(0.01)
+	assert bool(controller.busy) is True
+	assert str(controller.page) == "progress"
+	release.set()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+
+	# then
+	assert calls == [f"uninstall:{prefix.resolve()}", f"install:{prefix.resolve()}"]
+	assert bool(controller.finished) is True
+	assert bool(controller.busy) is False
+	assert cast(float, controller.progressValue) == 1.0
+	assert controller.wait_for_worker_for_tests()
+	QCoreApplication.processEvents()
+
+
+def test_given_install_mode_when_starting_then_does_not_call_uninstall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	# given — install-or-update must not wipe via uninstall_prefix
+	import time
+	from collections.abc import Callable
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+	from srxy.adapters.inbound.installer.install import InstallOptions
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	write_manifest(
+		prefix,
+		InstallManifest(version="1.5.0", prefix=str(prefix), installed_at="2026-08-02T12:00:00+00:00"),
+	)
+	calls: list[str] = []
+
+	def boom_uninstall(*_args: object, **_kwargs: object):
+		calls.append("uninstall")
+		raise AssertionError("install-or-update must not uninstall")
+
+	def fake_install(
+		options: InstallOptions,
+		*,
+		status: Callable[[str], None] | None = None,
+		progress: Callable[[int, int, str], None] | None = None,
+	):
+		del progress
+		calls.append("install")
+		if status is not None:
+			status("Install complete.")
+		return InstallManifest(
+			version="1.6.0",
+			prefix=str(options.prefix),
+			installed_at="2026-08-03T12:00:00+00:00",
+		)
+
+	monkeypatch.setattr(controller_mod, "uninstall_prefix", boom_uninstall)
+	monkeypatch.setattr(controller_mod, "install_srxy", fake_install)
+	controller = InstallerController()
+	controller.setMode("install")
+	controller.setPrivacyAck(True)
+	controller.setPrefix(str(prefix))
+
+	# when
+	controller.startInstall()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+
+	# then
+	assert calls == ["install"]
+	assert bool(controller.finished) is True
+	assert controller.wait_for_worker_for_tests()
+	QCoreApplication.processEvents()
+
+
 def test_given_non_empty_foreign_dir_when_checking_then_flags_foreign(tmp_path: Path):
 	# given
 	foreign = tmp_path / "foreign"

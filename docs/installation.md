@@ -29,9 +29,12 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 PyPI / `uv tool install` remain the primary install paths. On Linux you can also use the **desktop installer AppImage** (install + uninstall wizard):
 
-1. Download `srxy-installer-*-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)).
+1. Download `srxy-*-installer-*-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)).
 2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
-3. Choose install or uninstall. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
+3. Choose **Install or update**, **Reinstall**, or **Uninstall**. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
+   - **Install or update** installs into the chosen folder, or updates an existing srxy install there in place (venv is recreated; models/cache may remain).
+   - **Reinstall** removes that install completely (including models/cache in the prefix), then installs fresh — you enter the path only once.
+   - **Uninstall** removes the app, desktop entry, icons, and PATH block.
 4. Acknowledge the [privacy / third-party notice](privacy.md), then optionally download Tesseract, ffmpeg, semantic extras, and AI models.
 5. Optionally enable **Also let me run srxy from the Terminal** (default on). This prepends `$prefix/bin` to your shell startup file (`~/.bashrc`, `~/.zshrc`, or fish `config.fish`) with `# >>> srxy PATH >>>` markers. Open a **new** terminal after install. Uninstall removes that block.
 
