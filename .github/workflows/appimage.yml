@@ -29,10 +29,19 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      - name: Install Qt runtime libraries
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libegl1 libgl1 libxkbcommon0 libdbus-1-3 libxcb-cursor0
+
       - name: Build offline installer AppImage
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: ./packaging/linux-appimage/build.sh
 
       - name: Smoke test offline AppImage
+        env:
+          QT_QPA_PLATFORM: offscreen
         run: ./packaging/linux-appimage/smoke-appimage.sh
 
       - name: Upload offline AppImage artifact
