@@ -44,10 +44,14 @@ if [[ -z "$APP_PYTHON" || ! -x "$APP_PYTHON" ]]; then
 fi
 echo "Creating relocatable AppDir venv from $APP_PYTHON…"
 uv venv --python "$APP_PYTHON" --relocatable --link-mode copy "$APPDIR/usr/venv"
-uv pip install --python "$APPDIR/usr/venv/bin/python" "$ROOT"
+VENV_PY="$APPDIR/usr/venv/bin/python"
+# Wizard-only venv: PySide6 + srxy without pulling the full search-stack dependency tree.
+# Prefix installs still use the bundled wheel (built below) which has full requires.
+echo "Installing wizard runtime (PySide6 + srxy --no-deps)…"
+uv pip install --python "$VENV_PY" "PySide6>=6.6"
+uv pip install --python "$VENV_PY" --no-deps "$ROOT"
 
 # Fail closed if the venv python still points at the build host uv cache / home.
-VENV_PY="$APPDIR/usr/venv/bin/python"
 RESOLVED_PY="$(readlink -f "$VENV_PY" 2>/dev/null || realpath "$VENV_PY")"
 case "$RESOLVED_PY" in
 "$APPDIR"/*) ;;
@@ -64,6 +68,42 @@ case "$RESOLVED_PY" in
 	;;
 esac
 echo "AppDir python OK: $RESOLVED_PY"
+
+echo "Pruning unused PySide6 / Qt payload…"
+"$ROOT/packaging/linux-appimage/prune_pyside.sh" "$APPDIR/usr/venv"
+
+echo "Smoke-testing pruned wizard imports / QML…"
+export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+"$VENV_PY" -c 'import srxy.adapters.inbound.installer'
+"$VENV_PY" -m srxy.adapters.inbound.installer --help >/dev/null
+"$VENV_PY" <<'PY'
+from __future__ import annotations
+
+import sys
+
+from PySide6.QtCore import QByteArray, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+app = QGuiApplication(sys.argv)
+engine = QQmlApplicationEngine()
+qml = b"""
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
+import QtQuick.Layouts
+ApplicationWindow {
+	visible: false
+	width: 100
+	height: 100
+	FolderDialog {}
+}
+"""
+engine.loadData(QByteArray(qml), QUrl())
+if not engine.rootObjects():
+	raise SystemExit("pruned QML smoke failed: no root objects")
+print("qml smoke OK")
+PY
 
 echo "Building wheel for prefix installs…"
 WHEEL_DIR="$APPDIR/usr/share/srxy"
@@ -152,10 +192,14 @@ if [[ -n "$APPIMAGETOOL_SHA256" ]]; then
 fi
 
 OUTPUT="$OUT_DIR/srxy-${VERSION}-installer-${INSTALLER_VERSION}-${ARCH}.AppImage"
-echo "Packing $OUTPUT…"
-ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUTPUT"
+echo "AppDir size before pack: $(du -sh "$APPDIR" | cut -f1)"
+echo "Packing $OUTPUT (squashfs zstd compression-level 19)…"
+ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" \
+	--mksquashfs-opt -Xcompression-level \
+	--mksquashfs-opt 19 \
+	"$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"
-echo "Built $OUTPUT"
+echo "Built $OUTPUT ($(du -sh "$OUTPUT" | cut -f1))"
 
 # Write checksums alongside the artifact for release uploads.
 (

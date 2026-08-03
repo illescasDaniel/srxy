@@ -51,6 +51,35 @@ def test_given_package_init_when_reading_all_then_matches_frozen_public_api():
 		assert hasattr(srxy, name)
 
 
+def test_given_lazy_search_exports_when_accessing_then_resolves_callables():
+	# given / when / then — search symbols stay in __all__ but load on first access
+	assert callable(srxy.magic_search)
+	assert callable(srxy.search)
+	assert callable(srxy.magic_file_search)
+
+
+def test_given_fresh_interpreter_when_importing_srxy_then_does_not_load_search_use_cases():
+	# given / when
+	import subprocess
+	import sys
+
+	probe = (
+		"import srxy, sys; "
+		"assert 'srxy.application.use_cases.search_files' not in sys.modules; "
+		"assert 'srxy.application.use_cases.search_objects' not in sys.modules; "
+		"assert 'srxy.adapters.outbound.cache.cache' not in sys.modules"
+	)
+	result = subprocess.run(  # noqa: S603
+		[sys.executable, "-c", probe],
+		check=False,
+		capture_output=True,
+		text=True,
+	)
+
+	# then
+	assert result.returncode == 0, result.stderr
+
+
 def test_given_public_api_when_rendering_reference_then_matches_committed_docs():
 	# given
 	export = _load_export_module()

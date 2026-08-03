@@ -14,6 +14,12 @@ Uses pinned [appimagetool 1.9.1](https://github.com/AppImage/appimagetool/releas
 
 The AppDir installs a uv-managed CPython under `AppDir/usr/python` (`UV_PYTHON_PREFERENCE=only-managed`, `--install-dir`), then creates a **relocatable** venv with `--link-mode copy`. After the venv is created, the build asserts that `usr/venv/bin/python` resolves inside the AppDir — never into `~/.local/share/uv/python` on the build host. `smoke-appimage.sh` re-checks `--help` / `--version` with an isolated `HOME` and a minimal `PATH` so a host uv Python cannot mask a broken AppImage.
 
+## Slim wizard venv
+
+The AppImage venv is **wizard-only**: `PySide6` plus `uv pip install --no-deps` of srxy. It does **not** pull the full search-stack dependency tree (wordfreq, pillow-heif, textual, …). Prefix installs still use the bundled wheel under `usr/share/srxy/` (full package + PyPI prefer-newer via `resolve_srxy_install_spec()`).
+
+After install, [`prune_pyside.sh`](prune_pyside.sh) deletes unused Qt modules (WebEngine, 3D, Charts, Multimedia, designer/qmlls, …) while keeping the Quick / Controls / Dialogs / FolderDialog stack the wizard needs. The build then smoke-tests installer imports and a tiny offscreen QML load. Packing uses squashfs **zstd** at compression level **19** (`--mksquashfs-opt`). Build logs print AppDir and AppImage sizes (`du -sh`).
+
 ## Vendor checksums
 
 Installer downloads (uv, tesseract, tessdata, ffmpeg) are HTTPS-only and require a pinned SHA-256 unless `SRXY_INSTALLER_ALLOW_UNVERIFIED=1` (dev only). Refresh digests after changing catalog URLs:
