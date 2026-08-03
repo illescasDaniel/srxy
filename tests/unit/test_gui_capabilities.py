@@ -100,6 +100,33 @@ def test_given_default_capabilities_when_called_then_skips_gpu_probe(monkeypatch
 	assert caps.semantic_enabled is False
 
 
+def test_given_gui_probe_when_checking_gpu_then_does_not_import_torch(monkeypatch: pytest.MonkeyPatch):
+	# given — importing torch during GUI lifetime can SIGSEGV with Qt
+	import builtins
+	from typing import Any
+
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.gui.capabilities.has_accelerated_gpu_nofork",
+		lambda: True,
+	)
+	real_import = builtins.__import__
+
+	def _guarded_import(name: str, *args: Any, **kwargs: Any):
+		if name == "torch" or name.startswith("torch."):
+			raise AssertionError("torch must not be imported for GUI GPU probe")
+		return real_import(name, *args, **kwargs)
+
+	monkeypatch.setattr(builtins, "__import__", _guarded_import)
+	probe_capabilities.cache_clear()
+
+	# when
+	caps = probe_capabilities()
+
+	# then
+	assert caps.has_gpu is True
+	assert caps.semantic_enabled is caps.semantic_deps
+
+
 def test_given_path_when_format_download_prompt_then_includes_target(tmp_path: Path):
 	model_dir = tmp_path / "model"
 	prompt = format_download_prompt("Semantic text model", model_dir, size_hint="~80 MB")

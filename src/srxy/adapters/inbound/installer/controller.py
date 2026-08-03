@@ -76,6 +76,7 @@ class InstallerController(QObject):
 	errorChanged = Signal()
 	progressLabelChanged = Signal()
 	progressValueChanged = Signal()
+	progressDeterminateChanged = Signal()
 	pageChanged = Signal()
 	finishedChanged = Signal()
 	unsafeConfirmChanged = Signal()
@@ -101,6 +102,7 @@ class InstallerController(QObject):
 		self._error = ""
 		self._progress_label = ""
 		self._progress_value = 0.0
+		self._progress_determinate = False
 		self._page = "mode"
 		self._finished = False
 		self._worker: _Worker | None = None
@@ -269,6 +271,10 @@ class InstallerController(QObject):
 	def progressValue(self) -> float:
 		return self._progress_value
 
+	@Property(bool, notify=progressDeterminateChanged)
+	def progressDeterminate(self) -> bool:
+		return self._progress_determinate
+
 	@Property(str, notify=pageChanged)
 	def page(self) -> str:
 		return self._page
@@ -328,6 +334,14 @@ class InstallerController(QObject):
 		self._error = ""
 		self.errorChanged.emit()
 		if self._mode == "uninstall":
+			if self._busy:
+				return
+			if self._page == "progress":
+				self._page = "uninstall"
+				self.pageChanged.emit()
+				self._finished = False
+				self.finishedChanged.emit()
+				return
 			if self._page == "uninstall":
 				self._page = "mode"
 				self.pageChanged.emit()
@@ -353,6 +367,14 @@ class InstallerController(QObject):
 			return translate("installer.error.non_empty_prefix", path=str(prefix))
 		return None
 
+	def _reset_progress_ui(self):
+		self._progress_label = ""
+		self.progressLabelChanged.emit()
+		self._progress_value = 0.0
+		self.progressValueChanged.emit()
+		self._progress_determinate = False
+		self.progressDeterminateChanged.emit()
+
 	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):
 		self._page = "progress"
 		self.pageChanged.emit()
@@ -360,6 +382,7 @@ class InstallerController(QObject):
 		self.finishedChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
+		self._reset_progress_ui()
 		self._status = translate("installer.status.starting_install")
 		self.statusChanged.emit()
 		self._set_busy(True)
@@ -386,7 +409,9 @@ class InstallerController(QObject):
 		self.finishedChanged.emit()
 		self._error = ""
 		self.errorChanged.emit()
-		self._status = translate("installer.status.starting_uninstall")
+		self._reset_progress_ui()
+		# Indeterminate spinner only — folder delete has no useful file progress.
+		self._status = translate("installer.status.removing_app")
 		self.statusChanged.emit()
 		self._set_busy(True)
 		self._worker = _Worker("uninstall", None, prefix, confirm_unsafe=confirm_unsafe)
@@ -478,14 +503,21 @@ class InstallerController(QObject):
 		self.progressLabelChanged.emit()
 		if total > 0:
 			self._progress_value = min(1.0, done / total)
+			self._progress_determinate = True
 		else:
 			self._progress_value = 0.0
+			self._progress_determinate = False
 		self.progressValueChanged.emit()
+		self.progressDeterminateChanged.emit()
 
 	def _on_finished_ok(self):
 		self._set_busy(False)
 		self._finished = True
 		self.finishedChanged.emit()
+		self._progress_value = 1.0
+		self._progress_determinate = True
+		self.progressValueChanged.emit()
+		self.progressDeterminateChanged.emit()
 		self._status = translate("installer.status.done")
 		self.statusChanged.emit()
 

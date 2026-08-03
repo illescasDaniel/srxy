@@ -39,6 +39,32 @@ def test_given_query_when_controller_syncs_then_builds_file_query(qapp: QCoreApp
 	assert Path(synced.path) == tmp_path
 
 
+def test_given_default_cli_path_when_opening_gui_then_uses_home(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	monkeypatch.setenv("HOME", str(home))
+	args = build_parser().parse_args(["", ".", "--cli"])
+
+	# when
+	controller = SearchController(args)
+
+	# then
+	assert Path(str(controller.path)) == home
+	assert Path(controller.sync_args_for_tests().path) == home
+
+
+def test_given_explicit_path_when_opening_gui_then_keeps_path(qapp: QCoreApplication, tmp_path: Path):
+	# given / when
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# then
+	assert Path(str(controller.path)) == tmp_path
+
+
 def test_given_search_finished_when_handling_event_then_updates_results_model(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
@@ -179,6 +205,21 @@ def test_given_running_threads_when_shutdown_then_cancels_and_waits(qapp: QCoreA
 	assert controller.search_subprocess_for_tests() is None
 
 
+def test_given_deleted_update_thread_when_shutdown_then_does_not_raise(qapp: QCoreApplication, tmp_path: Path):
+	# given — update worker deleteLater'd the C++ QThread but left a Python wrapper
+	from PySide6.QtCore import QThread
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	thread = QThread()
+	controller.set_update_thread_for_tests(thread)
+	thread.deleteLater()
+	qapp.processEvents()
+
+	# when / then
+	controller.shutdown(thread_wait_ms=100)
+
+
 def test_given_start_search_when_called_then_does_not_refresh_capabilities(
 	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -203,6 +244,35 @@ def test_given_start_search_when_called_then_does_not_refresh_capabilities(
 
 	# then
 	assert calls == []
+
+
+def test_given_capabilities_when_refresh_capabilities_then_does_not_import_torch(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given — Options used to import torch / fork nvidia-smi on a QThread and SIGSEGV.
+	import builtins
+	from typing import Any
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	real_import = builtins.__import__
+
+	def _guarded_import(name: str, *args_: Any, **kwargs: Any):
+		if name == "torch" or name.startswith("torch."):
+			raise AssertionError("torch must not be imported during capabilities refresh")
+		return real_import(name, *args_, **kwargs)
+
+	monkeypatch.setattr(builtins, "__import__", _guarded_import)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.gui.capabilities.has_accelerated_gpu_nofork",
+		lambda: False,
+	)
+
+	# when
+	controller.refreshCapabilities()
+
+	# then
+	assert controller.isFeatureEnabled("semantic") is False
 
 
 def test_given_invalid_filters_when_apply_filters_json_then_keeps_previous_state(

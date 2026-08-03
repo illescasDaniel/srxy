@@ -4,7 +4,8 @@ set -u
 
 # Quality gate — ruff, shell, basedpyright, pip-audit, build, and optionally pytest.
 # --fix: ruff autofix+format and shfmt write; sequential (writers first).
-# Without --fix: verify steps run in parallel; pytest workers capped to half nproc.
+# Without --fix: light verify steps run in parallel, then pytest alone (avoids
+# overlapping xdist + basedpyright/torch contention). Only one gate at a time (flock).
 
 quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 internal_dir="${quality_dir}/internal"
@@ -14,6 +15,16 @@ source "${internal_dir}/gate.sh"
 
 # shellcheck source=internal/lib.sh
 source "${internal_dir}/lib.sh"
+
+# Exclusive lock so overlapping agent/manual gates cannot spawn multiple -n N pytest trees.
+# Keep the lock outside .venv — that tree is often cursorignored / RO in agent sandboxes.
+GATE_LOCK_FILE="${LIB_REPO_ROOT}/.srxy-quality-gate.lock"
+exec 200>"${GATE_LOCK_FILE}"
+if ! flock -n 200; then
+	echo "error: another quality gate is already running (lock: ${GATE_LOCK_FILE})." >&2
+	echo "Stop leftover checks.sh / pytest processes for this repo, then retry." >&2
+	exit 1
+fi
 
 FIX=false
 FULL=false
@@ -186,14 +197,9 @@ gate_step_build() {
 }
 
 gate_step_pytest() {
-	if [[ "${CI:-}" == "true" ]]; then
-		pytest_output="$("${quality_dir}/pytest.sh" 2>&1)"
-		pytest_exit=$?
-		printf '%s\n' "${pytest_output}"
-	else
-		"${quality_dir}/pytest.sh"
-		pytest_exit=$?
-	fi
+	# Always stream live — never buffer until EOF (looks hung under CI=true / agents).
+	"${quality_dir}/pytest.sh"
+	pytest_exit=$?
 	if [[ "${pytest_exit}" -eq 0 ]]; then
 		gate_record_pass
 	else
@@ -250,22 +256,19 @@ if [[ "${FIX}" == true ]]; then
 else
 	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
 	workers="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-	workers=$((workers / 2))
+	# Full nproc for pytest — it no longer shares the machine with basedpyright/build.
 	if [[ "${workers}" -lt 1 ]]; then
 		workers=1
 	fi
 	export LIB_PYTEST_WORKERS="${workers}"
 
-	echo "Parallel verify (${GATE_PLANNED_STEPS} steps; pytest -n ${LIB_PYTEST_WORKERS})"
+	echo "Parallel verify (light steps; then pytest -n ${LIB_PYTEST_WORKERS})"
 
 	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
 	gate_run_step_logged "shell" gate_step_shell "${parallel_dir}"
 	gate_run_step_logged "basedpyright" gate_step_pyright "${parallel_dir}"
 	gate_run_step_logged "pip-audit" gate_step_pip_audit "${parallel_dir}"
 	gate_run_step_logged "build" gate_step_build "${parallel_dir}"
-	if [[ "${HAS_PYTEST}" == true ]]; then
-		gate_run_step_logged "pytest" gate_step_pytest "${parallel_dir}"
-	fi
 	wait
 
 	gate_finish_step "ruff" "${parallel_dir}"
@@ -273,8 +276,11 @@ else
 	gate_finish_step "basedpyright" "${parallel_dir}"
 	gate_finish_step "pip-audit" "${parallel_dir}"
 	gate_finish_step "build" "${parallel_dir}"
+
+	# Pytest after the light steps so xdist workers are not fighting torch/pyright.
 	if [[ "${HAS_PYTEST}" == true ]]; then
-		gate_finish_step "pytest" "${parallel_dir}"
+		gate_step_start "pytest"
+		gate_step_pytest
 	fi
 	rm -rf "${parallel_dir}"
 fi

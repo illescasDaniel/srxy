@@ -7,7 +7,7 @@ mainWindow:
   howStack: Options button + summary, Filters button + summary
   queryMode: simple
   simpleQuery: 
-  path: .
+  path: ~
   pathIssue: 
   queryPreview: 
   queryIssue: 

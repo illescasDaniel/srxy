@@ -14,7 +14,6 @@ from srxy.adapters.inbound.cli.cli import apply_args_to_env
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
 	capabilities_to_dict,
-	default_capabilities,
 	probe_capabilities,
 	unavailable_reason,
 )
@@ -72,6 +71,14 @@ from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
 
+def resolve_gui_search_path(raw: str | None) -> str:
+	"""Default GUI search root is the user's home (CLI default ``.`` maps here)."""
+	text = (raw or "").strip()
+	if not text or text == ".":
+		return str(Path.home())
+	return text
+
+
 class _SearchWorker(QObject):
 	event_ready = Signal(object)
 	finished = Signal()
@@ -99,7 +106,8 @@ class _SearchWorker(QObject):
 				self._args,
 				on_event=self.event_ready.emit,
 				cancel_check=lambda: self._cancel,
-				allow_process_pool=True,
+				# Never fork from a QThread — ProcessPoolExecutor + Qt SIGSEGVs.
+				allow_process_pool=False,
 			)
 		self.finished.emit()
 
@@ -148,14 +156,6 @@ class _DownloadWorker(QObject):
 			self.finished.emit(True, "")
 		except Exception as error:  # noqa: BLE001 — surface any download failure to UI
 			self.finished.emit(False, str(error))
-
-
-class _CapabilitiesProbeWorker(QObject):
-	finished = Signal(object)
-
-	@Slot()
-	def run(self):
-		self.finished.emit(probe_capabilities())
 
 
 class _UpdateWorker(QObject):
@@ -231,7 +231,7 @@ class SearchController(QObject):
 		self._term_rows_json = "[]"
 		if self._simple_query:
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
-		self._path = str(getattr(args, "path", ".") or ".")
+		self._path = resolve_gui_search_path(getattr(args, "path", None))
 		self._status = ""
 		self._progress = 0.0
 		self._stale = True
@@ -243,8 +243,8 @@ class SearchController(QObject):
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
-		self._capabilities = default_capabilities()
-		self._capabilities_probing = True
+		self._capabilities = probe_capabilities()
+		self._capabilities_probing = False
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		apply_search_filters_to_args(self._args, self._filters)
@@ -278,8 +278,6 @@ class SearchController(QObject):
 		self._about_open = False
 		self._update_thread: QThread | None = None
 		self._update_worker: _UpdateWorker | None = None
-		self._capabilities_thread: QThread | None = None
-		self._capabilities_worker: _CapabilitiesProbeWorker | None = None
 		from srxy.i18n import get_language, resolve_language
 
 		lang = getattr(args, "language", None)
@@ -298,11 +296,6 @@ class SearchController(QObject):
 		self.canSearchChanged.emit()
 		import os
 
-		if os.environ.get("PYTEST_CURRENT_TEST"):
-			self._capabilities = probe_capabilities()
-			self._capabilities_probing = False
-		else:
-			self._start_capabilities_probe()
 		if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("SRXY_SKIP_UPDATE_CHECK"):
 			return
 		from PySide6.QtCore import QTimer
@@ -641,7 +634,7 @@ class SearchController(QObject):
 			expr = FileQ.leaf(text)
 			args.query = format_file_query(expr)
 			args.query_expr = file_q_to_dict(expr)
-		args.path = self._path or "."
+		args.path = resolve_gui_search_path(self._path)
 		apply_search_filters_to_args(args, self._filters)
 		apply_search_options_to_args(args, self._options)
 		return args
@@ -678,6 +671,8 @@ class SearchController(QObject):
 
 	@Slot()
 	def refreshCapabilities(self):  # noqa: N802
+		# Safe on the GUI thread: probe uses filesystem checks only (no torch/fork).
+		probe_capabilities.cache_clear()
 		self._capabilities = probe_capabilities()
 		self._capabilities_probing = False
 		self._clamp_options_to_capabilities()
@@ -685,35 +680,6 @@ class SearchController(QObject):
 		self.capabilitiesChanged.emit()
 		self.optionsSummaryChanged.emit()
 		self._refresh_stale()
-
-	def _start_capabilities_probe(self):
-		thread = QThread(self)
-		worker = _CapabilitiesProbeWorker()
-		worker.moveToThread(thread)
-		thread.started.connect(worker.run)
-		worker.finished.connect(self._on_capabilities_probed)
-		worker.finished.connect(thread.quit)
-		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(thread.deleteLater)
-		thread.finished.connect(self._on_capabilities_thread_finished)
-		self._capabilities_thread = thread
-		self._capabilities_worker = worker
-		thread.start()
-
-	@Slot(object)
-	def _on_capabilities_probed(self, caps: object):
-		if isinstance(caps, Capabilities):
-			self._capabilities = caps
-			self._capabilities_probing = False
-			self._clamp_options_to_capabilities()
-			apply_search_options_to_args(self._args, self._options)
-			self.capabilitiesChanged.emit()
-			self.optionsSummaryChanged.emit()
-			self._refresh_stale()
-
-	def _on_capabilities_thread_finished(self):
-		self._capabilities_worker = None
-		self._capabilities_thread = None
 
 	@Slot(str, result=str)
 	def helpText(self, key: str) -> str:  # noqa: N802
@@ -875,7 +841,7 @@ class SearchController(QObject):
 		worker.finished.connect(self._on_worker_finished)
 		worker.finished.connect(thread.quit)
 		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(thread.deleteLater)
+		# Parent owns the QThread — do not deleteLater it (Shiboken UAF risk).
 		thread.finished.connect(self._on_search_thread_finished)
 		self._thread = thread
 		self._worker = worker
@@ -890,7 +856,6 @@ class SearchController(QObject):
 		worker.finished.connect(self._on_download_finished)
 		worker.finished.connect(thread.quit)
 		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(thread.deleteLater)
 		thread.finished.connect(self._on_download_thread_finished)
 		self._download_thread = thread
 		self._download_worker = worker
@@ -910,11 +875,23 @@ class SearchController(QObject):
 			return
 
 	def _on_search_thread_finished(self):
+		self._search_subprocess = None
+		# Defer dropping Shiboken wrappers until after worker.deleteLater runs —
+		# clearing in this same finished turn SIGSEGVs under pytest-qt + QML.
+		from PySide6.QtCore import QTimer
+
+		QTimer.singleShot(0, self._clear_search_thread_refs)
+
+	def _clear_search_thread_refs(self):
 		self._worker = None
 		self._thread = None
-		self._search_subprocess = None
 
 	def _on_download_thread_finished(self):
+		from PySide6.QtCore import QTimer
+
+		QTimer.singleShot(0, self._clear_download_thread_refs)
+
+	def _clear_download_thread_refs(self):
 		self._download_worker = None
 		self._download_thread = None
 
@@ -1223,10 +1200,19 @@ class SearchController(QObject):
 		worker.finished.connect(thread.quit)
 		worker.failed.connect(thread.quit)
 		thread.finished.connect(worker.deleteLater)
-		thread.finished.connect(thread.deleteLater)
+		thread.finished.connect(self._on_update_thread_finished)
 		self._update_thread = thread
 		self._update_worker = worker
 		thread.start()
+
+	def _on_update_thread_finished(self):
+		from PySide6.QtCore import QTimer
+
+		QTimer.singleShot(0, self._clear_update_thread_refs)
+
+	def _clear_update_thread_refs(self):
+		self._update_worker = None
+		self._update_thread = None
 
 	@Slot(object)
 	def _on_update_check_finished(self, info: object):
@@ -1332,6 +1318,25 @@ class SearchController(QObject):
 	def search_subprocess_for_tests(self) -> object | None:
 		return self._search_subprocess
 
+	def set_update_thread_for_tests(self, thread: QThread | None):
+		self._update_thread = thread
+
+	@staticmethod
+	def _stop_qthread(thread: QThread | None, *, wait_ms: int):
+		if thread is None:
+			return
+		try:
+			from shiboken6 import isValid
+
+			if not isValid(thread):
+				return
+			if thread.isRunning():
+				thread.quit()
+				thread.wait(wait_ms)
+		except RuntimeError:
+			# C++ QThread already destroyed (deleteLater race on quit).
+			return
+
 	def shutdown(self, *, thread_wait_ms: int = 3000):
 		if self._worker is not None:
 			self._worker.request_cancel()
@@ -1342,11 +1347,14 @@ class SearchController(QObject):
 			self._thread,
 			self._download_thread,
 			self._update_thread,
-			self._capabilities_thread,
 		):
-			if thread is not None and thread.isRunning():
-				thread.quit()
-				thread.wait(thread_wait_ms)
+			self._stop_qthread(thread, wait_ms=thread_wait_ms)
+		self._thread = None
+		self._download_thread = None
+		self._update_thread = None
+		self._worker = None
+		self._download_worker = None
+		self._update_worker = None
 
 
 def _load_preview_text(result: FileSearchResult) -> str:

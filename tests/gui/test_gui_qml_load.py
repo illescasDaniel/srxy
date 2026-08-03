@@ -72,6 +72,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	# then
 	qInstallMessageHandler(previous)
 	assert not warnings, "Qt binding loops:\n" + "\n".join(warnings)
+	controller.shutdown(thread_wait_ms=500)
 	for root in list(roots):
 		root.deleteLater()
 	engine.deleteLater()

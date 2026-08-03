@@ -22,6 +22,13 @@ _SNAPSHOTS = Path(__file__).resolve().parent / "snapshots"
 _UPDATE = os.environ.get("UPDATE_GUI_SNAPSHOTS", "").strip() in {"1", "true", "yes"}
 
 
+def _display_path(path: str) -> str:
+	home = str(Path.home())
+	if path == home or path.rstrip("/") == home.rstrip("/"):
+		return "~"
+	return path
+
+
 def _chrome_tree(controller: SearchController) -> str:
 	progress = float(controller.progress)  # pyright: ignore[reportArgumentType]
 	capability_keys = ", ".join(sorted(json.loads(str(controller.capabilitiesJson))))
@@ -68,7 +75,7 @@ def _chrome_tree(controller: SearchController) -> str:
 		"  howStack: Options button + summary, Filters button + summary",
 		f"  queryMode: {controller.queryMode}",
 		f"  simpleQuery: {controller.simpleQuery}",
-		f"  path: {controller.path}",
+		f"  path: {_display_path(str(controller.path))}",
 		f"  pathIssue: {controller.pathIssue}",
 		f"  queryPreview: {controller.queryPreview}",
 		f"  queryIssue: {controller.queryIssue}",

@@ -3,7 +3,7 @@
 # Requires: curl, uv. Downloads pinned appimagetool (type2 static runtime) if missing.
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)/.."
+ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
 APPDIR="${APPDIR:-$OUT_DIR/srxy-installer.AppDir}"
 ARCH="${ARCH:-x86_64}"
@@ -70,14 +70,11 @@ WHEEL_DIR="$APPDIR/usr/share/srxy"
 mkdir -p "$WHEEL_DIR"
 rm -rf "$OUT_DIR/installer-wheels"
 mkdir -p "$OUT_DIR/installer-wheels"
-# Capture the wheel path uv build prints (avoid lexical ls|tail traps).
-mapfile -t BUILT_WHEELS < <(uv build --wheel --out-dir "$OUT_DIR/installer-wheels" "$ROOT" 2>&1 | tee /dev/stderr | rg -o '/[^ ]+/srxy-[^ ]+\.whl' || true)
-if [[ ${#BUILT_WHEELS[@]} -eq 0 ]]; then
-	# Fallback: exactly one wheel in the clean output dir.
-	shopt -s nullglob
-	BUILT_WHEELS=("$OUT_DIR/installer-wheels"/srxy-*.whl)
-	shopt -u nullglob
-fi
+# Fresh out-dir: pick the single wheel by glob (uv prints a relative path).
+uv build --wheel --out-dir "$OUT_DIR/installer-wheels" "$ROOT"
+shopt -s nullglob
+BUILT_WHEELS=("$OUT_DIR/installer-wheels"/srxy-*.whl)
+shopt -u nullglob
 if [[ ${#BUILT_WHEELS[@]} -ne 1 || ! -f "${BUILT_WHEELS[0]}" ]]; then
 	echo "error: expected exactly one wheel in $OUT_DIR/installer-wheels" >&2
 	ls -la "$OUT_DIR/installer-wheels" >&2 || true
@@ -91,6 +88,14 @@ cp "$ROOT/packaging/installer_meta.toml" "$WHEEL_DIR/installer_meta.toml"
 VERSION="$(
 	"$APPDIR/usr/venv/bin/python" -c 'from importlib.metadata import version; print(version("srxy"))'
 )"
+INSTALLER_VERSION="$(
+	"$APPDIR/usr/venv/bin/python" -c 'import tomllib, sys; from pathlib import Path; print(tomllib.loads(Path(sys.argv[1]).read_text())["installer_version"])' \
+		"$ROOT/packaging/installer_meta.toml"
+)"
+if [[ -z "$INSTALLER_VERSION" ]]; then
+	echo "error: installer_version missing from packaging/installer_meta.toml" >&2
+	exit 1
+fi
 
 cat >"$APPDIR/AppRun" <<'EOF'
 #!/bin/sh
@@ -144,7 +149,7 @@ if [[ -n "$APPIMAGETOOL_SHA256" ]]; then
 	echo "$APPIMAGETOOL_SHA256  $TOOL" | sha256sum -c -
 fi
 
-OUTPUT="$OUT_DIR/srxy-installer-${VERSION}-${ARCH}.AppImage"
+OUTPUT="$OUT_DIR/srxy-installer-${VERSION}-${INSTALLER_VERSION}-${ARCH}.AppImage"
 echo "Packing $OUTPUT…"
 ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" "$APPDIR" "$OUTPUT"
 chmod +x "$OUTPUT"

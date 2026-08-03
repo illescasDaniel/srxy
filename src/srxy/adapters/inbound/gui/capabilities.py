@@ -3,10 +3,8 @@
 from __future__ import annotations
 
 import functools
-import importlib.util
 from dataclasses import asdict, dataclass
 
-from srxy.adapters.outbound.models.device import resolve_torch_device
 from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
 from srxy.adapters.outbound.transcribe.transcribe_text import (
 	ffmpeg_available,
@@ -14,6 +12,7 @@ from srxy.adapters.outbound.transcribe.transcribe_text import (
 	transcribe_deps_installed,
 	transcribe_unavailable_message,
 )
+from srxy.application.gpu_availability import has_accelerated_gpu_nofork
 from srxy.application.matching.semantic import (
 	semantic_deps_unavailable_message,
 	sentence_transformers_installed,
@@ -34,13 +33,13 @@ class Capabilities:
 
 
 def _probe_has_gpu() -> bool:
-	if importlib.util.find_spec("torch") is None:
-		return False
-	return resolve_torch_device() in {"cuda", "mps"}
+	# No torch import and no subprocess: both are unsafe alongside Qt QThreads
+	# (CUDA/Qt races; fork-while-multithreaded).
+	return has_accelerated_gpu_nofork()
 
 
 def default_capabilities() -> Capabilities:
-	"""Fast capability snapshot without a GPU/torch probe."""
+	"""Fast capability snapshot without a GPU probe."""
 	semantic_deps = sentence_transformers_installed()
 	ocr = is_ocr_available()
 	ffmpeg = ffmpeg_available()

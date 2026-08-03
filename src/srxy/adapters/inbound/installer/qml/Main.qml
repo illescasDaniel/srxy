@@ -409,7 +409,7 @@ ApplicationWindow {
 					value: c.progressValue
 					from: 0
 					to: 1
-					indeterminate: c.busy && c.progressValue <= 0
+					indeterminate: c.busy && !c.progressDeterminate
 				}
 				Label {
 					visible: c.error.length > 0

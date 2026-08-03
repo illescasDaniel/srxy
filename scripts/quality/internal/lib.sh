@@ -79,6 +79,7 @@ _lib_find_shell_scripts() {
 		-not -path "*/.venv/*" \
 		-not -path "*/node_modules/*" \
 		-not -path "*/templates/*" \
+		-not -path "*/dist/*" \
 		| sort
 }
 

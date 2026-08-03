@@ -873,9 +873,9 @@ def _execute_file_search(
 	#   every worker would be prohibitively slow and memory-heavy.
 	#
 	#   SAFETY: only enable the process pool when ``allow_process_pool`` is set.
-	#   TUI searches run on a background thread and must keep this off so fork()
-	#   does not inherit Textual's terminal raw-mode handles. GUI worker threads
-	#   and CLI callers set the flag explicitly.
+	#   TUI and GUI searches run on a background thread and must keep this off so
+	#   fork() does not race Qt (or inherit Textual raw-mode handles in the TUI).
+	#   CLI callers set the flag explicitly.
 	#
 	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
 	_heavy = (

@@ -51,8 +51,6 @@ def uninstall_prefix(
 	except RuntimeError as exc:
 		hint = uninstall_search_hint()
 		raise RuntimeError(f"{exc}\n\n{hint}") from exc
-	if status is not None:
-		status(tr("installer.status.removing_prefix", path=str(resolved)))
 	desktop = Path.home() / ".local" / "share" / "applications" / "srxy.desktop"
 	if desktop.is_file():
 		text = desktop.read_text(encoding="utf-8")
@@ -69,6 +67,8 @@ def uninstall_prefix(
 		status(tr("installer.status.path_incomplete_block"))
 	elif result.changed and status is not None:
 		status(tr("installer.status.removed_path"))
+	if status is not None:
+		status(tr("installer.status.removing_app"))
 	shutil.rmtree(resolved)
 	if status is not None:
 		status(tr("installer.status.uninstall_complete"))

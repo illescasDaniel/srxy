@@ -10,6 +10,7 @@ build/
 .pytest_cache/
 .testmondata
 .testmondata-*
+.srxy-quality-gate.lock
 .coverage
 htmlcov/
 .ruff_cache/

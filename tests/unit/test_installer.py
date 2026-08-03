@@ -444,6 +444,121 @@ def test_given_foreign_non_empty_prefix_when_starting_install_then_inline_error(
 	assert len(str(controller.error)) > 0
 
 
+def test_given_uninstall_when_started_then_shows_removing_status_and_indeterminate_bar(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given — uninstall uses a spinner, not file progress
+	import threading
+	import time
+	from collections.abc import Callable
+	from typing import cast
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer import controller as controller_mod
+	from srxy.adapters.inbound.installer.controller import InstallerController
+	from srxy.adapters.inbound.installer.manifest import InstallManifest, write_manifest
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	monkeypatch.setenv("HOME", str(home))
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	write_manifest(
+		prefix,
+		InstallManifest(version="1.5.0", prefix=str(prefix), installed_at="2026-08-02T12:00:00+00:00"),
+	)
+	started = threading.Event()
+	release = threading.Event()
+
+	def fake_uninstall(
+		path: Path,
+		*,
+		status: Callable[[str], None] | None = None,
+		confirm_unsafe: bool = False,
+	):
+		del path, confirm_unsafe
+		if status is not None:
+			status("Removing srxy app…")
+		started.set()
+		assert release.wait(5.0)
+
+	monkeypatch.setattr(controller_mod, "uninstall_prefix", fake_uninstall)
+	controller = InstallerController()
+	controller.setUninstallPrefix(str(prefix))
+
+	# when
+	controller.startUninstall()
+	assert started.wait(5.0)
+	deadline = time.monotonic() + 2.0
+	while time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		if "Removing srxy app" in str(controller.status):
+			break
+		time.sleep(0.01)
+
+	# then — busy with indeterminate bar while deleting
+	assert bool(controller.busy) is True
+	assert bool(controller.progressDeterminate) is False
+	assert "Removing srxy app" in str(controller.status)
+
+	release.set()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+
+	assert bool(controller.finished) is True
+	assert cast(float, controller.progressValue) == 1.0
+	assert bool(controller.busy) is False
+
+
+def test_given_uninstall_failed_missing_install_when_going_back_then_returns_to_uninstall_page(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given — uninstall of a folder without an srxy manifest fails on the progress page
+	import time
+
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+
+	home = tmp_path / "home"
+	home.mkdir()
+	monkeypatch.setenv("HOME", str(home))
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	prefix = home / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	controller = InstallerController()
+	controller.setMode("uninstall")
+	controller.setUninstallPrefix(str(prefix))
+	controller.goNext()
+	assert str(controller.page) == "uninstall"
+	controller.startUninstall()
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+	assert str(controller.page) == "progress"
+	assert bool(controller.busy) is False
+	assert MANIFEST_NAME in str(controller.error)
+
+	# when
+	controller.goBack()
+
+	# then — back must leave the failed progress page so the user can pick another path
+	assert str(controller.page) == "uninstall"
+	assert str(controller.error) == ""
+	assert bool(controller.finished) is False
+
+
 def test_given_non_empty_foreign_dir_when_checking_then_flags_foreign(tmp_path: Path):
 	# given
 	foreign = tmp_path / "foreign"

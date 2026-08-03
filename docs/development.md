@@ -29,14 +29,14 @@ uv run python scripts/bench_file_search.py
 
 ## Quality gate
 
-Without `--fix`, verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build, pytest) run **in parallel**; pytest xdist workers are capped to half of `nproc` to leave CPU for the other steps. With `--fix`, steps stay **sequential** so autofix writers finish before later checks.
+Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel**, then pytest runs **alone** with `-n` = `nproc`. With `--fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
 
 | Command | pytest |
 |---------|--------|
-| `checks.sh` | Integration + TUI/GUI; excludes `integration_full`, `transcribe_device_matrix`, and `(integration and gui)` from the parallel pass. After parallel pytest succeeds, runs `integration and gui` serially (`QT_QPA_PLATFORM=offscreen`, `-n 0`). Parallel pass uses `-n auto --dist=loadgroup` (half `nproc` when parallel verify), `--testmon-forceselect --ff`, no coverage |
-| `checks.sh --full` | Full local suite; parallel verify; no testmon, with coverage |
+| `checks.sh` | Integration + TUI/GUI; excludes `integration_full`, `transcribe_device_matrix`, and `(integration and gui)` from the main pytest pass. After that succeeds, runs `integration and gui` serially (`QT_QPA_PLATFORM=offscreen`, `-n 0`). Main pass uses `-n` = `nproc` `--dist=loadgroup`, `--testmon-forceselect --ff`, no coverage |
+| `checks.sh --full` | Full local suite; light steps parallel then pytest; no testmon, with coverage |
 | `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` |
-| `CI=true checks.sh` | `unit` plus offscreen `gui` snapshot tests (excludes `integration`, `semantic`, and `transcribe`). Linux CI sets `QT_QPA_PLATFORM=offscreen`. Parallel verify + `-n` half `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
+| `CI=true checks.sh` | `unit` plus offscreen `gui` snapshot tests (excludes `integration`, `semantic`, and `transcribe`). Linux CI sets `QT_QPA_PLATFORM=offscreen`. Light steps parallel then pytest `-n` = `nproc`; no testmon, no coverage. `--fix`, `--full`, `--full+cpu` ignored |
 
 `--fix` = Ruff + shell autofix, then remaining steps sequentially; ignored in CI.
 
@@ -54,6 +54,8 @@ Dev-only under `tests/fixtures/` (not in wheel). See [`tests/fixtures/README.md`
 Requires the `[semantic]` extra (`uv sync --extra semantic`); `SRXY_SEMANTIC=1` set in `tests/integration/conftest.py`.
 
 Default local gate pytest uses **pytest-xdist** (`-n auto --dist=loadgroup`): unit/cli fan out across workers; TUI, GUI, and integration each share one worker via `xdist_group`. GUI integration tests (`integration and gui`) are excluded from the parallel pass and run in a second serial pass (`QT_QPA_PLATFORM=offscreen`, `-n 0`) to avoid xdist/Qt flakiness; skipped when `CI=true` or on `--full` / `--full+cpu`. **pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day gate only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu`. The `.testmondata` DB is local and gitignored; the first run builds it.
+
+**Anti-hang:** pytest output is always streamed live (never buffered until EOF). `pytest-timeout` defaults to 60s per test (`timeout_method=signal`). [`scripts/quality/pytest.sh`](../scripts/quality/pytest.sh) wraps runs with a wall-clock and no-output stall watchdog (override via `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS`); stalls exit 124 with a process tree dump.
 
 ```bash
 uv run pytest -m unit -n auto

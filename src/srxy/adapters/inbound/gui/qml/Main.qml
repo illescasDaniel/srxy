@@ -110,9 +110,7 @@ ApplicationWindow {
 	function syncContentDependentOptions() {
 		const contentOn = optContents.checked
 		optDocsTags.enabled = contentOn
-		optOcr.enabled = contentOn && (controller ? controller.isFeatureEnabled("ocr") : false)
-		optTranscribe.enabled = contentOn && (controller ? controller.isFeatureEnabled("transcribe") : false)
-		optSemanticImage.enabled = contentOn && (controller ? controller.isFeatureEnabled("semantic_image") : false)
+		// OCR / transcribe / semantic_image enabled bindings also watch capabilitiesJson.
 		optMatchSkippedNames.enabled = optNames.checked
 	}
 
@@ -202,7 +200,9 @@ ApplicationWindow {
 		implicitWidth: 28
 		implicitHeight: 28
 		font.bold: true
-		visible: controller && featureKey.length > 0 && !controller.isFeatureEnabled(featureKey)
+		// Depend on capabilitiesJson so visibility refreshes after async probe.
+		visible: controller && featureKey.length > 0 && controller.capabilitiesJson.length > 0
+			&& !controller.isFeatureEnabled(featureKey)
 		palette.buttonText: root.lightTheme ? "#9a6700" : "#e0a060"
 		ToolTip.visible: hovered
 		ToolTip.text: root.t("options.unavailable_tooltip")
@@ -237,7 +237,7 @@ ApplicationWindow {
 					objectName: "pathField"
 					Layout.fillWidth: true
 					placeholderText: root.t("gui.path_placeholder")
-					text: controller ? controller.path : "."
+					text: controller ? controller.path : ""
 					onTextChanged: if (controller) controller.path = text
 					Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 				}
@@ -766,7 +766,8 @@ ApplicationWindow {
 					CheckBox {
 						id: optSemantic
 						text: root.t("gui.options.semantic")
-						enabled: controller ? controller.isFeatureEnabled("semantic") : false
+						enabled: !!(controller && controller.capabilitiesJson)
+							&& controller.isFeatureEnabled("semantic")
 					}
 					WarningButton { featureKey: "semantic" }
 					InfoButton { helpKey: "semantic"; enabled: true }
@@ -775,7 +776,9 @@ ApplicationWindow {
 					CheckBox {
 						id: optOcr
 						text: root.t("gui.options.ocr")
-						enabled: controller ? controller.isFeatureEnabled("ocr") : false
+						enabled: optContents.checked
+							&& !!(controller && controller.capabilitiesJson)
+							&& controller.isFeatureEnabled("ocr")
 					}
 					WarningButton { featureKey: "ocr" }
 					InfoButton { helpKey: "ocr"; enabled: true }
@@ -784,7 +787,9 @@ ApplicationWindow {
 					CheckBox {
 						id: optTranscribe
 						text: root.t("gui.options.transcribe")
-						enabled: controller ? controller.isFeatureEnabled("transcribe") : false
+						enabled: optContents.checked
+							&& !!(controller && controller.capabilitiesJson)
+							&& controller.isFeatureEnabled("transcribe")
 					}
 					WarningButton { featureKey: "transcribe" }
 					InfoButton { helpKey: "transcribe"; enabled: true }
@@ -793,7 +798,9 @@ ApplicationWindow {
 					CheckBox {
 						id: optSemanticImage
 						text: root.t("gui.options.semantic_image")
-						enabled: controller ? controller.isFeatureEnabled("semantic_image") : false
+						enabled: optContents.checked
+							&& !!(controller && controller.capabilitiesJson)
+							&& controller.isFeatureEnabled("semantic_image")
 					}
 					WarningButton { featureKey: "semantic_image" }
 					InfoButton { helpKey: "semantic_image"; enabled: true }

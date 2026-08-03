@@ -44,6 +44,7 @@ dev = [
 	"pytest-cov>=7.1",
 	"pytest-qt>=4.4",
 	"pytest-testmon>=2.2",
+	"pytest-timeout>=2.4",
 	"pytest-xdist>=3.6",
 	"ruff>=0.15",
 	"taskipy>=1.14",
@@ -70,6 +71,10 @@ testpaths = ["tests"]
 addopts = "-v --tb=short -rs"
 pythonpath = ["."]
 qt_api = "pyside6"
+# Fail hung tests instead of blocking the gate forever.
+# Use thread method: signal alarms crash xdist/Qt workers ("node down").
+timeout = 60
+timeout_method = "thread"
 filterwarnings = [
 	"ignore:.*BPE.__init__ will not create from files anymore:DeprecationWarning",
 ]

@@ -82,7 +82,7 @@
   "installer.status.adding_path": "Adding terminal PATH shortcut…",
   "installer.status.path_updated": "PATH updated in {rc} (open a new terminal to use `srxy`).",
   "installer.status.install_complete": "Install complete.",
-  "installer.status.removing_prefix": "Removing {path}…",
+  "installer.status.removing_app": "Removing srxy app…",
   "installer.status.removed_desktop_entry": "Removed desktop entry.",
   "installer.status.removed_icons": "Removed application icons.",
   "installer.status.removed_path": "Removed terminal PATH shortcut.",
