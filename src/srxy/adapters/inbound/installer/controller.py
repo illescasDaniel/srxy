@@ -375,7 +375,32 @@ class InstallerController(QObject):
 		self._progress_determinate = False
 		self.progressDeterminateChanged.emit()
 
+	def _dispose_worker(self, *, wait_ms: int):
+		"""Wait for the install/uninstall QThread and drop the Python ref.
+
+		``_Worker`` is the QThread itself. Leaving it running (or GC'ing it while
+		still finishing) SIGBUS/SIGSEGVs under pytest-xdist + PySide6.
+		"""
+		worker = self._worker
+		self._worker = None
+		if worker is None:
+			return
+		try:
+			from shiboken6 import isValid
+
+			if not isValid(worker):
+				return
+			if worker.isRunning():
+				worker.requestInterruption()
+				worker.wait(wait_ms)
+		except RuntimeError:
+			return
+
+	def shutdown(self, *, thread_wait_ms: int = 3000):
+		self._dispose_worker(wait_ms=thread_wait_ms)
+
 	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):
+		self._dispose_worker(wait_ms=3000)
 		self._page = "progress"
 		self.pageChanged.emit()
 		self._finished = False
@@ -403,6 +428,7 @@ class InstallerController(QObject):
 		self._worker.start()
 
 	def _begin_uninstall(self, prefix: Path, *, confirm_unsafe: bool):
+		self._dispose_worker(wait_ms=3000)
 		self._page = "progress"
 		self.pageChanged.emit()
 		self._finished = False
@@ -520,6 +546,7 @@ class InstallerController(QObject):
 		self.progressDeterminateChanged.emit()
 		self._status = translate("installer.status.done")
 		self.statusChanged.emit()
+		self.shutdown()
 
 	def _on_failed(self, message: str):
 		self._set_busy(False)
@@ -527,6 +554,7 @@ class InstallerController(QObject):
 		self.errorChanged.emit()
 		self._status = translate("installer.status.failed")
 		self.statusChanged.emit()
+		self.shutdown()
 
 
 __all__ = ["InstallerController"]

@@ -349,13 +349,21 @@ def test_given_unsafe_confirm_accepted_when_installing_then_passes_confirm_unsaf
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
+	import os
 	import threading
+	import time
 	from collections.abc import Callable
+
+	from PySide6.QtCore import QCoreApplication
 
 	from srxy.adapters.inbound.installer import controller as controller_mod
 	from srxy.adapters.inbound.installer.controller import InstallerController
 	from srxy.adapters.inbound.installer.install import InstallOptions
 	from srxy.adapters.inbound.installer.manifest import InstallManifest
+
+	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
 
 	set_fake_home(monkeypatch, tmp_path)
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
@@ -389,10 +397,16 @@ def test_given_unsafe_confirm_accepted_when_installing_then_passes_confirm_unsaf
 	# when
 	controller.acceptUnsafeConfirm()
 	assert done.wait(5.0)
+	deadline = time.monotonic() + 5.0
+	while bool(controller.busy) and time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		time.sleep(0.01)
+	controller.shutdown()
 
 	# then
 	assert captured.get("confirm_unsafe") is True
 	assert bool(controller.unsafeConfirmOpen) is False
+	assert bool(controller.busy) is False
 
 
 def test_given_unsafe_confirm_rejected_when_installing_then_stays_and_shows_error(
@@ -512,6 +526,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 	while bool(controller.busy) and time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		time.sleep(0.01)
+	controller.shutdown()
 
 	assert bool(controller.finished) is True
 	assert cast(float, controller.progressValue) == 1.0
@@ -547,6 +562,7 @@ def test_given_uninstall_failed_missing_install_when_going_back_then_returns_to_
 	while bool(controller.busy) and time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		time.sleep(0.01)
+	controller.shutdown()
 	assert str(controller.page) == "progress"
 	assert bool(controller.busy) is False
 	assert MANIFEST_NAME in str(controller.error)

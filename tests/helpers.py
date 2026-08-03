@@ -71,12 +71,19 @@ def integration_test_cpu_requested(config: object) -> bool:
 
 def set_fake_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> Path:
 	"""Point Path.home() at ``home`` on both Unix (HOME) and Windows (USERPROFILE)."""
-	text = str(home)
+	resolved = home.resolve()
+	text = str(resolved)
 	monkeypatch.setenv("HOME", text)
 	monkeypatch.setenv("USERPROFILE", text)
 	monkeypatch.delenv("HOMEDRIVE", raising=False)
 	monkeypatch.delenv("HOMEPATH", raising=False)
-	return home
+
+	# Belt-and-suspenders: expanduser("~") can still ignore env on some runners.
+	def _fake_home(_cls: type[Path]) -> Path:
+		return Path(resolved)
+
+	monkeypatch.setattr(Path, "home", classmethod(_fake_home))
+	return resolved
 
 
 def transcribe_device_matrix_devices(config: object) -> list[str]:

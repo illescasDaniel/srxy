@@ -55,6 +55,7 @@ jobs:
       - name: Unit tests
         env:
           CI: true
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest tests -n auto --dist=loadgroup -m "unit and not semantic and not transcribe"
 
   test-windows:
@@ -73,4 +74,5 @@ jobs:
       - name: Unit tests
         env:
           CI: true
+          QT_QPA_PLATFORM: offscreen
         run: uv run pytest tests -n auto --dist=loadgroup -m "unit and not semantic and not transcribe"
