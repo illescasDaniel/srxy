@@ -231,9 +231,39 @@ def test_given_progress_callback_when_downloading_model_then_emits_updates(tmp_p
 	assert progress
 
 
-def test_given_tqdm_disable_flag_when_progress_tqdm_updates_then_emits_label():
-	# given — TQDM_DISABLE / disable=True normally skips desc and makes update a no-op
+def test_given_tqdm_disable_flag_when_progress_tqdm_updates_then_emits_label(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — CI installs no [semantic], so tqdm may be absent; stub the same disable=True
+	# behavior (skip desc, no-op update) that ProgressTqdm must override.
+	import types
+
 	from srxy.adapters.outbound.models import model_store
+
+	class FakeTqdm:
+		def __init__(self, *args: Any, **kwargs: Any):
+			_ = args
+			self.disable = bool(kwargs.get("disable", False))
+			self.total = int(kwargs.get("total") or 0)
+			self.n = 0
+			if not self.disable:
+				self.desc = str(kwargs.get("desc") or "")
+
+		def update(self, n: float | None = 1) -> bool | None:
+			if self.disable:
+				return None
+			self.n += int(n or 0)
+			return True
+
+		def display(self, msg: str | None = None, pos: int | None = None) -> None:
+			_ = (msg, pos)
+
+		def close(self) -> None:
+			return None
+
+	fake_tqdm_mod = types.ModuleType("tqdm")
+	fake_tqdm_mod.tqdm = FakeTqdm  # type: ignore[attr-defined]
+	monkeypatch.setitem(sys.modules, "tqdm", fake_tqdm_mod)
 
 	progress: list[tuple[int, int, str]] = []
 	factory = model_store._make_progress_tqdm(  # pyright: ignore[reportPrivateUsage]
