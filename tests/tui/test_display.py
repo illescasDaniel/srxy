@@ -8,11 +8,11 @@ import pytest
 from tests.tui.helpers import assert_labels_visible, export_app_screenshot
 from textual.widgets import DataTable
 
-from srxy.cli import build_parser
-from srxy.models import FileSearchResult, LineMatch
-from srxy.tui.app import SrxyApp
-from srxy.tui.search_filters import format_search_filters_summary
-from srxy.tui.search_options import format_search_options_summary
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.inbound.tui.app import SrxyApp
+from srxy.application.search_filters import format_search_filters_summary
+from srxy.application.search_options import format_search_options_summary
+from srxy.domain.models import FileSearchResult, LineMatch
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]
@@ -86,6 +86,7 @@ def test_given_options_summary_when_composed_then_shows_enabled_modes():
 			summary = format_search_options_summary(app.search_options)
 			assert "Names" in summary
 			assert "Content" in summary
+			assert "Docs & tags" in summary
 
 	# when / then
 	asyncio.run(run())
@@ -147,8 +148,8 @@ def test_given_result_selected_when_preview_rendered_then_match_table_headers_ar
 
 	async def run():
 		with (
-			patch("srxy.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
-			patch("srxy.tui.app.execute_search", return_value=([result], [])),
+			patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)),
+			patch("srxy.application.search_runner.execute_search", return_value=([result], [])),
 		):
 			async with app.run_test(size=(100, 30)) as pilot:
 				for _ in range(30):

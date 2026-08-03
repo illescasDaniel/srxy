@@ -7,7 +7,6 @@ quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "${quality_dir}/internal/lib.sh"
 
 lib_require_venv
-lib_activate_venv
 
 build_dir="$(mktemp -d)"
 cleanup() {
@@ -15,7 +14,8 @@ cleanup() {
 }
 trap cleanup EXIT
 
-pip wheel --no-deps -w "${build_dir}" .
+cd "${LIB_REPO_ROOT}" || exit
+uv build --wheel --out-dir "${build_dir}"
 
 wheel_count=0
 while IFS= read -r _; do

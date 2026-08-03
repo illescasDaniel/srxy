@@ -7,9 +7,9 @@ from tests.tui.helpers import assert_svg_snapshot
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Input
 
-from srxy.cli import build_parser
-from srxy.tui.app import SrxyApp
-from srxy.tui.query_builder import QueryBuilder
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.inbound.tui.app import SrxyApp
+from srxy.adapters.inbound.tui.query_builder import QueryBuilder
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]

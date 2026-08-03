@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from srxy.utils import format_match_preview
+from srxy.application.utils import format_match_preview
 
 
 pytestmark = pytest.mark.unit
@@ -58,6 +58,31 @@ def test_given_short_text_when_formatting_preview_with_none_then_omits_highlight
 
 	# then
 	assert preview == "quarterly revenue projections"
+
+
+def test_given_short_text_when_formatting_preview_with_html_then_uses_bold_tags():
+	# given
+	text = "quarterly revenue projections"
+	query = "revenue"
+
+	# when
+	preview = format_match_preview(text, query, highlight="html")
+
+	# then
+	assert preview == "quarterly <b>revenue</b> projections"
+
+
+def test_given_html_special_chars_when_formatting_preview_with_html_then_escapes_entities():
+	# given
+	text = "a <b> tag and revenue here"
+	query = "revenue"
+
+	# when
+	preview = format_match_preview(text, query, highlight="html")
+
+	# then
+	assert "&lt;b&gt;" in preview
+	assert "<b>revenue</b>" in preview
 
 
 def test_given_related_word_when_formatting_preview_then_highlights_best_word_match():

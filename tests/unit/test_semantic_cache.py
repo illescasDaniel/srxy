@@ -5,16 +5,16 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.cache import (
+from srxy.adapters.outbound.cache.cache import (
 	CACHE_KIND_DOCUMENT_TEXT,
 	CACHE_KIND_SEMANTIC_EMBED,
 	cache_get,
 	hash_bytes,
 	reset_cache_connection,
 )
-from srxy.document_text import iter_document_lines
-from srxy.matchers.semantic import SemanticMatcher, reset_semantic_model
-from srxy.progress import ActivityCallback
+from srxy.adapters.outbound.documents.document_text import iter_document_lines
+from srxy.application.matching.semantic import SemanticMatcher, reset_semantic_model
+from srxy.domain.progress import ActivityCallback
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
@@ -30,7 +30,7 @@ def teardown_function():
 	reset_cache_connection()
 
 
-@patch("srxy.matchers.semantic._get_model")
+@patch("srxy.application.matching.semantic._get_model")
 def test_given_cached_embedding_when_scoring_twice_then_encodes_once(mock_get_model: MagicMock):
 	# given
 	np = pytest.importorskip("numpy")
@@ -50,7 +50,7 @@ def test_given_cached_embedding_when_scoring_twice_then_encodes_once(mock_get_mo
 	assert mock_model.encode.call_count == 2
 
 
-@patch("srxy.matchers.semantic._get_model")
+@patch("srxy.application.matching.semantic._get_model")
 def test_given_cached_embedding_when_new_process_scores_again_then_skips_encode(
 	mock_get_model: MagicMock,
 	monkeypatch: pytest.MonkeyPatch,
@@ -78,7 +78,7 @@ def test_given_cached_embedding_when_new_process_scores_again_then_skips_encode(
 
 def test_given_pdf_lines_when_iterating_twice_then_extracts_once(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	# given
-	from srxy.cache import get_file_content_hash
+	from srxy.adapters.outbound.cache.cache import get_file_content_hash
 
 	pdf_path = tmp_path / "sample.pdf"
 	pdf_path.write_bytes(b"%PDF-1.4 cached")
@@ -88,8 +88,8 @@ def test_given_pdf_lines_when_iterating_twice_then_extracts_once(tmp_path: Path,
 		assert path == pdf_path
 		yield from lines
 
-	monkeypatch.setattr("srxy.document_text._iter_pdf_lines", fake_pdf_lines)
-	monkeypatch.setattr("srxy.ocr_text.is_ocr_active", lambda _ocr=None: True)
+	monkeypatch.setattr("srxy.adapters.outbound.documents.document_text._iter_pdf_lines", fake_pdf_lines)
+	monkeypatch.setattr("srxy.adapters.outbound.ocr.ocr_text.is_ocr_active", lambda _ocr=None: True)
 
 	# when
 	first = list(iter_document_lines(pdf_path, ocr=True))
@@ -108,8 +108,8 @@ def test_given_empty_transcript_cache_when_iterating_then_skips_transcription(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
-	from srxy.cache import CACHE_KIND_TRANSCRIPT, cache_put
-	from srxy.transcribe_text import iter_transcript_lines, reset_transcribe_models
+	from srxy.adapters.outbound.cache.cache import CACHE_KIND_TRANSCRIPT, cache_put
+	from srxy.adapters.outbound.transcribe.transcribe_text import iter_transcript_lines, reset_transcribe_models
 
 	audio = tmp_path / "silent.mp3"
 	audio.write_bytes(b"silent-audio")
@@ -123,10 +123,13 @@ def test_given_empty_transcript_cache_when_iterating_then_skips_transcription(
 		yield from []
 
 	with (
-		patch("srxy.cache.get_file_content_hash", return_value=content_hash),
-		patch("srxy.transcribe_text.resolve_transcribe_device", return_value="cuda"),
-		patch("srxy.transcribe_text.transcribe_backend_for_device", return_value="faster-whisper"),
-		patch("srxy.transcribe_text._with_normalized_audio", side_effect=boom),
+		patch("srxy.adapters.outbound.cache.cache.get_file_content_hash", return_value=content_hash),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.resolve_transcribe_device", return_value="cuda"),
+		patch(
+			"srxy.adapters.outbound.transcribe.transcribe_text.transcribe_backend_for_device",
+			return_value="faster-whisper",
+		),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text._with_normalized_audio", side_effect=boom),
 	):
 		# when
 		result = list(iter_transcript_lines(audio))

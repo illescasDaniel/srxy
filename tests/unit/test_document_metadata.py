@@ -6,7 +6,7 @@ from zipfile import ZipFile
 
 import pytest
 
-from srxy.document_text import iter_document_metadata_lines
+from srxy.adapters.outbound.documents.document_text import iter_document_metadata_lines
 
 
 pytestmark = pytest.mark.unit
@@ -43,7 +43,7 @@ def test_given_office_package_metadata_when_iterating_lines_then_yields_labeled_
 
 	# when
 	with (
-		patch("srxy.windows_metadata.windows_metadata_supported", return_value=False),
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_metadata_supported", return_value=False),
 	):
 		lines = list(iter_document_metadata_lines(file_path))
 

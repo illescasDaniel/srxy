@@ -1,16 +1,16 @@
 # Interactive TUI
 
-On an interactive terminal (no `--json`, `--format flat`, or `-o`), srxy opens a **Textual** full-screen TUI by default.
+Launch with **`--tui`**. On an interactive terminal when the GUI cannot start (no display / no PySide6), srxy falls through to this Textual TUI.
 
 ![srxy TUI](images/tui.svg)
 
 The screenshot above uses this compound OR query against the repo fixtures — one branch per power-up:
 
 ```bash
-srxy "revenue|amphibian|person|thank you" ./tests/fixtures/file_search --semantic-all --content-only
+srxy --tui "revenue|amphibian|person|thank you" ./tests/fixtures/file_search --semantic-all --content-only
 ```
 
-Plain CLI (same flags, no TUI): add `--no-tui`.
+Plain CLI (same flags, no interactive UI): add `--cli`.
 
 | OR term | Typical match | Source |
 |---------|---------------|--------|
@@ -28,7 +28,7 @@ Regenerate the screenshot: `./scripts/docs/export_tui_screenshot.sh`
 | Area | What it shows |
 |------|----------------|
 | **Query / Path** | Search string and root directory; **Search** runs the scan |
-| **Search options** | Dialog with three sections: **Where to search**, **How to match** (similar meaning, text in images, spoken words, visual description), **Which files to scan** |
+| **Search options** | Dialog with three sections: **Where to search** (file names, file contents), **How to match** (docs/tags/metadata recommended ON, similar meaning, text in images, spoken words, visual — content how-options disabled when File contents is off), **Which files to scan** |
 | **Filters** | Dialog for top files, per-file match cap, and size limits (MiB) |
 | **Results** | Sortable table: match %, path, sources (`name`, `content`, `ocr`, `transcript`, `tag`, …) |
 | **Preview** | Selected file path, score, sources, hit table (location + **bold** query highlights) |
@@ -43,7 +43,7 @@ Heavy modes run in a background worker so the UI stays responsive.
 3. **j** / **k** (or arrows) through results — preview updates.
 4. **o** opens the selected file in the OS default app.
 
-Changing query, path, options, or filters after a search marks **Search** **orange** (stale results).
+Changing query, path, options, or filters after a search marks **Search** with the theme warning tint (stale results).
 
 ## Query builder
 
@@ -86,7 +86,7 @@ Uses OSC 52; most modern terminals support it.
 
 ## When the TUI is skipped
 
-Plain CLI when: **`--no-tui`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`).
+Plain CLI when: **`--cli`**, **`--json`**, **`--format flat`**, **`-o`**, stdout is **not a TTY**, **stderr is not a TTY**, or **`CI=true`** (and other truthy values such as `1`, `yes`, `on`). Prefer **`--tui`** to force the TUI; the GUI is the default when a display is available (see [gui.md](gui.md)).
 
 ## Manual release checklist
 

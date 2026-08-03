@@ -7,8 +7,8 @@ from tests.tui.helpers import assert_svg_snapshot, normalized_svg_text
 from textual.app import App, ComposeResult
 from textual.widgets import Static
 
-from srxy.matchers.semantic import semantic_deps_unavailable_message
-from srxy.tui.modals import ErrorModal
+from srxy.adapters.inbound.tui.modals import ErrorModal
+from srxy.application.matching.semantic import semantic_deps_unavailable_message
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.tui]

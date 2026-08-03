@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from srxy.cache import (
+from srxy.adapters.outbound.cache.cache import (
 	CACHE_KIND_OCR_IMAGE,
 	cache_db_path,
 	cache_get,

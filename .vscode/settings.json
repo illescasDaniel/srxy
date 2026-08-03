@@ -1,0 +1,17 @@
+{
+	"files.exclude": {
+		"**/__pycache__": true,
+		"**/.pytest_cache": true,
+		"**/.ruff_cache": true,
+		"**/.mypy_cache": true,
+		"**/.basedpyright": true,
+		"**/build": true,
+		"**/dist": true,
+		"**/*.egg-info": true,
+		"**/.coverage": true,
+		"**/.coverage.*": true,
+		"**/htmlcov": true,
+		"**/.testmondata": true,
+		"**/.testmondata-*": true
+	}
+}

@@ -2,17 +2,17 @@ from __future__ import annotations
 
 import pytest
 
-from srxy.cli import build_parser
-from srxy.file_search import DEFAULT_MAX_FILE_SIZE
-from srxy.ocr_text import DEFAULT_OCR_MAX_FILE_SIZE
-from srxy.transcribe_text import DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
-from srxy.tui.size_limits import (
+from srxy.adapters.inbound.cli.cli import build_parser
+from srxy.adapters.outbound.ocr.ocr_text import DEFAULT_OCR_MAX_FILE_SIZE
+from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
+from srxy.application.size_limits import (
 	SizeLimits,
 	bytes_to_mib_text,
 	parse_size_limits,
 	size_limits_from_args,
 	validate_size_limits,
 )
+from srxy.application.use_cases.search_files import DEFAULT_MAX_FILE_SIZE
 
 
 pytestmark = pytest.mark.unit
@@ -84,7 +84,7 @@ def test_given_size_limits_when_applying_to_args_then_sets_byte_fields():
 	limits = SizeLimits(text_mib="10", ocr_mib="20", transcribe_mib="30")
 
 	# when
-	from srxy.tui.size_limits import apply_size_limits_to_args
+	from srxy.application.size_limits import apply_size_limits_to_args
 
 	apply_size_limits_to_args(args, limits)
 

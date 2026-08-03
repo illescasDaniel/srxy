@@ -4,7 +4,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from srxy.matchers.semantic import SemanticMatcher, reset_semantic_model
+from srxy.application.matching.semantic import SemanticMatcher, reset_semantic_model
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
@@ -31,8 +31,8 @@ def test_given_empty_query_when_semantic_matching_then_returns_zero():
 	assert score == 0.0
 
 
-@patch("srxy.matchers.semantic._cosine_similarity", return_value=0.85)
-@patch("srxy.matchers.semantic._get_model")
+@patch("srxy.application.matching.semantic._cosine_similarity", return_value=0.85)
+@patch("srxy.application.matching.semantic._get_model")
 def test_given_mocked_embeddings_when_semantic_matching_then_uses_cosine_similarity(
 	mock_get_model: MagicMock,
 	_mock_cosine: MagicMock,
@@ -51,8 +51,8 @@ def test_given_mocked_embeddings_when_semantic_matching_then_uses_cosine_similar
 	assert mock_model.encode.call_count == 2
 
 
-@patch("srxy.matchers.semantic._cosine_similarity")
-@patch("srxy.matchers.semantic._get_model")
+@patch("srxy.application.matching.semantic._cosine_similarity")
+@patch("srxy.application.matching.semantic._get_model")
 def test_given_out_of_range_cosine_values_when_semantic_matching_then_clamps_to_unit_interval(
 	mock_get_model: MagicMock,
 	mock_cosine: MagicMock,

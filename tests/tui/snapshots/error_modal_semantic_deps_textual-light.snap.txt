@@ -5,10 +5,13 @@ host
 █
 █
 █
-Semantic matching requires the optional dependency: pip install
+Semantic matching requires optional AI extras. Install with: pip
 █
 █
-'srxy[semantic]'. Semantic search needs a GPU to run.
+install 'srxy[semantic]'  (or: uv pip install 'srxy[semantic]')
+█
+█
+Semantic search needs a GPU to run.
 █
 █
 █

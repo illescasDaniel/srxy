@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
 import pytest
 from tests.helpers import Product
@@ -13,6 +14,17 @@ def pytest_addoption(parser: pytest.Parser):
 		default=False,
 		help="Also run forced-CPU transcribe device matrix when CUDA is available",
 	)
+
+
+@pytest.fixture(autouse=True)
+def isolate_gui_and_language(monkeypatch: pytest.MonkeyPatch, tmp_path: Path):
+	"""Keep pytest from opening the desktop GUI; pin English for catalog assertions."""
+	monkeypatch.setattr("srxy.application.launch.gui_importable", lambda: False)
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "srxy-settings.json"))
+	monkeypatch.setenv("SRXY_LANGUAGE", "en")
+	from srxy.i18n import set_language
+
+	set_language("en")
 
 
 def pytest_generate_tests(metafunc: pytest.Metafunc):

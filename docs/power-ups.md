@@ -1,19 +1,20 @@
 # Power-ups
 
-Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI, power-ups live under **Match with** in the **Search options** dialog.
+Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI and GUI, power-ups live under **How to match** in the **Search options** dialog. They require **File contents** (Where) to be on; **Docs, tags & metadata** is a separate recommended-ON how option.
 
 ## OCR
 
-Text in photos and embedded document images (PDF pages, Office media).
+Text in photos and embedded document images (PDF pages, Office media). Needs File contents on; can skip docs/tags with `--no-docs-tags`.
 
 ```bash
+srxy "invoice" ./photos --ocr --content-only --no-docs-tags
 srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```
 
 Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` adds Tesseract on embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`) — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number.
 
-Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs.
+Cache: encrypted `~/.cache/srxy/cache.db` (`SRXY_CACHE_DIR`). Key file: `~/.cache/srxy/.cache_key` (mode `600`). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
 
 Default OCR file cap: **50 MiB** (`--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE`).
 
@@ -72,10 +73,10 @@ srxy "quarterly revenue" ~/Documents --semantic-all --content-only
 ## Model prefetch
 
 ```bash
-python -m srxy.model_store semantic-text
-python -m srxy.model_store semantic-image
-python -m srxy.model_store transcribe
-python -m srxy.model_store all
+python -m srxy.adapters.outbound.models.model_store semantic-text
+python -m srxy.adapters.outbound.models.model_store semantic-image
+python -m srxy.adapters.outbound.models.model_store transcribe
+python -m srxy.adapters.outbound.models.model_store all
 ```
 
 `SRXY_AUTO_DOWNLOAD=1` for non-interactive download.
@@ -110,8 +111,8 @@ Removes model weights only. Models re-download on next use (or run [Model prefet
 Or without the script:
 
 ```bash
-python -m srxy.model_store clear all
-python -m srxy.model_store clear semantic-text
+python -m srxy.adapters.outbound.models.model_store clear all
+python -m srxy.adapters.outbound.models.model_store clear semantic-text
 ```
 
 ### Clear results cache
@@ -125,7 +126,7 @@ Removes `cache.db` and `.cache_key`. Scan results rebuild on the next run.
 Or:
 
 ```bash
-python -c "from srxy.cache import clear_results_cache; clear_results_cache()"
+python -c "from srxy.adapters.outbound.cache.cache import clear_results_cache; clear_results_cache()"
 ```
 
 Device order: CUDA → MPS → CPU (stderr warning on CPU fallback). Override per model family via `SRXY_*_DEVICE` (including `SRXY_SEMANTIC_IMAGE_DEVICE`).

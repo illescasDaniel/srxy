@@ -1,0 +1,86 @@
+"""Apply the packaged srxy icon to a Qt GUI application."""
+
+from __future__ import annotations
+
+import os
+from collections.abc import Callable
+from pathlib import Path
+
+from PySide6.QtGui import QGuiApplication, QIcon
+
+from srxy.resources.icons import (
+	app_icon_path,
+	available_icon_sizes,
+	available_installer_icon_sizes,
+	installer_icon_path,
+)
+
+
+def _xdg_data_dirs() -> list[Path]:
+	dirs: list[Path] = []
+	home = os.environ.get("XDG_DATA_HOME", "").strip()
+	dirs.append(Path(home).expanduser() if home else Path.home() / ".local" / "share")
+	raw = os.environ.get("XDG_DATA_DIRS", "").strip()
+	parts = raw.split(":") if raw else ["/usr/local/share", "/usr/share"]
+	for part in parts:
+		text = part.strip()
+		if text:
+			dirs.append(Path(text))
+	return dirs
+
+
+def desktop_file_available(name: str) -> bool:
+	"""True when ``{name}.desktop`` exists in an XDG applications dir."""
+	filename = f"{name}.desktop"
+	for root in _xdg_data_dirs():
+		if (root / "applications" / filename).is_file():
+			return True
+	return False
+
+
+def apply_desktop_file_name(app: QGuiApplication, name: str):
+	"""Set the portal/Wayland app id only when a matching .desktop file exists.
+
+	Avoids: Failed to register with host portal … App info not found for '…'
+	when running via ``uv run`` / PyPI without a desktop entry installed.
+	"""
+	if desktop_file_available(name):
+		app.setDesktopFileName(name)
+
+
+def _apply_icon(
+	app: QGuiApplication,
+	*,
+	path_for_size: Callable[..., Path],
+	sizes: list[int],
+):
+	icon = QIcon()
+	for size in sizes or [256]:
+		icon.addFile(str(path_for_size(size=size)))
+	try:
+		icon.addFile(str(path_for_size()))
+	except FileNotFoundError:
+		pass
+	if icon.isNull():
+		return
+	app.setWindowIcon(icon)
+
+
+def apply_app_icon(app: QGuiApplication):
+	_apply_icon(app, path_for_size=app_icon_path, sizes=available_icon_sizes())
+
+
+def apply_installer_icon(app: QGuiApplication):
+	_apply_icon(
+		app,
+		path_for_size=installer_icon_path,
+		sizes=available_installer_icon_sizes(),
+	)
+
+
+__all__ = [
+	"apply_app_icon",
+	"apply_desktop_file_name",
+	"apply_installer_icon",
+	"desktop_file_available",
+]

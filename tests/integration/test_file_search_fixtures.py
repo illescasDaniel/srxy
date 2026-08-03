@@ -10,11 +10,11 @@ from pathlib import Path
 
 import pytest
 
-from srxy.cache import reset_cache_connection, reset_run_file_hashes
-from srxy.file_search import magic_file_search
-from srxy.matchers.semantic import reset_semantic_model
-from srxy.ocr_text import tesseract_available
-from srxy.semantic_image import reset_semantic_image_model
+from srxy.adapters.outbound.cache.cache import reset_cache_connection, reset_run_file_hashes
+from srxy.adapters.outbound.ocr.ocr_text import tesseract_available
+from srxy.adapters.outbound.semantic.semantic_image import reset_semantic_image_model
+from srxy.application.matching.semantic import reset_semantic_model
+from srxy.application.use_cases.search_files import magic_file_search
 
 
 pytestmark = pytest.mark.integration
@@ -26,7 +26,7 @@ def _srxy(*args: str, env: dict[str, str] | None = None) -> subprocess.Completed
 	if env:
 		merged.update(env)
 	return subprocess.run(
-		[sys.executable, "-m", "srxy.cli", *args, "--no-tui", "--no-progress"],
+		[sys.executable, "-m", "srxy.adapters.inbound.cli.cli", *args, "--cli", "--no-progress"],
 		capture_output=True,
 		text=True,
 		env=merged,
@@ -107,8 +107,10 @@ def test_given_office_docs_when_searching_tokens_then_finds_each_format(file_sea
 @pytest.mark.transcribe
 def test_given_minimal_mp3_when_transcribe_then_finds_audio_metadata(file_search_root: Path):
 	# when — minimal.mp3 has ID3 tags but no usable speech for Whisper
+	audio = file_search_root / "minimal.mp3"
+	assert audio.is_file(), f"missing QA audio fixture: {audio}"
 	results = magic_file_search(
-		file_search_root,
+		audio,
 		"Beatles",
 		search_names=False,
 		transcribe=True,
@@ -210,7 +212,8 @@ def test_given_portrait_when_semantic_image_person_then_finds_image(file_search_
 		photo,
 		"person",
 		search_names=False,
-		search_contents=False,
+		search_contents=True,
+		search_docs_tags=False,
 		semantic_image=True,
 		limit=10,
 	)

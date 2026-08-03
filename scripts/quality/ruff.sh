@@ -20,17 +20,16 @@ for arg in "$@"; do
 done
 
 lib_require_venv
-lib_activate_venv
 lib_ruff_targets
 
 if [[ "${CHECK_ONLY}" == true ]]; then
 	if [[ "${GITHUB_OUTPUT}" == true ]]; then
-		ruff check "${LIB_RUFF_TARGETS[@]}" --output-format=github
+		lib_uv_run ruff check "${LIB_RUFF_TARGETS[@]}" --output-format=github
 	else
-		ruff check "${LIB_RUFF_TARGETS[@]}"
+		lib_uv_run ruff check "${LIB_RUFF_TARGETS[@]}"
 	fi
-	ruff format --check "${LIB_RUFF_TARGETS[@]}"
+	lib_uv_run ruff format --check "${LIB_RUFF_TARGETS[@]}"
 else
-	ruff check "${LIB_RUFF_TARGETS[@]}" --fix
-	ruff format "${LIB_RUFF_TARGETS[@]}"
+	lib_uv_run ruff check "${LIB_RUFF_TARGETS[@]}" --fix
+	lib_uv_run ruff format "${LIB_RUFF_TARGETS[@]}"
 fi

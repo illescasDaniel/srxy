@@ -6,7 +6,7 @@ import pytest
 from tests.helpers import Product
 
 from srxy import magic_search
-from srxy.utils import discover_fields
+from srxy.application.utils import discover_fields
 
 
 pytestmark = pytest.mark.unit

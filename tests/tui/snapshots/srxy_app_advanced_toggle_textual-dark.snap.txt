@@ -26,7 +26,7 @@ Advanced
 └
 ┘
 Search options
-Where: Names, Content
+Where: Names, Content · How: Docs & tags
 Filters
 All files · 50/file · text 100 MiB · match≥35% · image≥18% · transcript≥25%
 ┌
@@ -68,6 +68,7 @@ Text
 │
 │
 │
+Run a search to see matching files
 │
 │
 │

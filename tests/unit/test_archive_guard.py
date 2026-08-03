@@ -6,7 +6,7 @@ from pathlib import Path
 
 import pytest
 
-from srxy.archive_guard import ArchiveGuardError, validate_zip_archive
+from srxy.adapters.outbound.archive.archive_guard import ArchiveGuardError, validate_zip_archive
 
 
 pytestmark = pytest.mark.unit

@@ -1,6 +1,6 @@
 [project]
 name = "srxy"
-version = "1.5.0"
+version = "1.6.0"
 description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -16,6 +16,7 @@ dependencies = [
 	"pillow-heif>=1.4",
 	"pypdf>=6.14",
 	"pytesseract>=0.3",
+	"PySide6>=6.6",
 	"python-docx>=1.2",
 	"python-pptx>=1.0",
 	"rapidfuzz>=3.14",
@@ -34,35 +35,47 @@ semantic = [
 windows = [
 	"pywin32>=312",
 ]
+
+[dependency-groups]
 dev = [
 	"basedpyright>=1.39",
 	"pip-audit>=2.10",
-	"setuptools>=83.0",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
+	"pytest-qt>=4.4",
+	"pytest-testmon>=2.2",
+	"pytest-timeout>=2.4",
+	"pytest-xdist>=3.6",
 	"ruff>=0.15",
+	"taskipy>=1.14",
 ]
 uploader = [
-	"build>=1.5",
 	"twine>=6.2",
 ]
 
 [build-system]
-requires = ["setuptools>=83.0"]
-build-backend = "setuptools.build_meta"
+requires = ["uv_build>=0.12.1,<0.13"]
+build-backend = "uv_build"
 
 [project.scripts]
-srxy = "srxy.cli:main"
-
-[tool.setuptools.packages.find]
-where = ["src"]
+srxy = "srxy.__main__:main"
+srxy-installer = "srxy.adapters.inbound.installer.__main__:main"
+srxy-installer-online = "srxy.adapters.inbound.installer_online.__main__:main"
 
 # tests/ (including tests/fixtures/file_search/) are dev-only and not packaged in the wheel.
+
+[tool.uv]
+default-groups = ["dev"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-v --tb=short -rs"
 pythonpath = ["."]
+qt_api = "pyside6"
+# Fail hung tests instead of blocking the gate forever.
+# Use thread method: signal alarms crash xdist/Qt workers ("node down").
+timeout = 60
+timeout_method = "thread"
 filterwarnings = [
 	"ignore:.*BPE.__init__ will not create from files anymore:DeprecationWarning",
 ]
@@ -70,12 +83,13 @@ markers = [
 	"unit: fast isolated tests",
 	"integration: tests using real models and fixture datasets",
 	"tui: Textual TUI display and interaction tests",
+	"gui: PySide6 GUI display and interaction tests",
 	"ocr: tests requiring a real OCR backend",
 	"linux_xattr: tests that require Linux extended attribute support",
 	"macos_finder: tests that require writable macOS Finder tag extended attributes",
 	"windows_tags: tests that require Windows Explorer tag support via pywin32",
 	"transcribe: tests requiring faster-whisper, transformers, and ffmpeg",
-	"semantic: tests requiring pip install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
+	"semantic: tests requiring uv tool install 'srxy[semantic]' (torch, sentence-transformers, etc.)",
 	"integration_full: extended integration tests using committed binary fixtures from tests/fixtures/file_search/",
 	"transcribe_device_matrix: parametrized transcribe device matrix (CUDA only when available; use --integration-test-cpu to force CPU too)",
 ]
@@ -119,10 +133,10 @@ reportUnknownArgumentType = false
 reportUnknownParameterType = false
 reportAttributeAccessIssue = false
 executionEnvironments = [
-	{ root = "src/srxy/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
-	{ root = "src/srxy/device.py", reportMissingImports = "none" },
-	{ root = "src/srxy/semantic_image.py", reportMissingImports = "none" },
-	{ root = "src/srxy/matchers/semantic.py", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/metadata/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/models/device.py", reportMissingImports = "none" },
+	{ root = "src/srxy/adapters/outbound/semantic/semantic_image.py", reportMissingImports = "none" },
+	{ root = "src/srxy/application/matching/semantic.py", reportMissingImports = "none" },
 	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
 	{ root = "tests/unit/test_windows_metadata.py", reportPrivateUsage = "none" },
 	{ root = "src" },
@@ -132,3 +146,29 @@ executionEnvironments = [
 [tool.coverage.run]
 source = ["srxy"]
 omit = ["tests/*"]
+
+[tool.taskipy.tasks]
+cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
+tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
+gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
+gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bare (no semantic extras; --recreate to rebuild)" }
+installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
+installer-online = { cmd = "uv run srxy-installer-online", help = "launch one-click online installer (localhost browser UI)" }
+build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build offline Linux installer AppImage into dist/" }
+build-appimage-online = { cmd = "./packaging/linux-appimage/build-online.sh", help = "build online Linux installer AppImage into dist/" }
+generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate srxy-installer-*.png gears-badge icons from base app icons" }
+checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
+checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
+checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }
+checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix" }
+clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
+clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
+bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
+export-api = { cmd = "uv run python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
+export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
+export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
+export-installer-screenshot = { cmd = "./scripts/docs/export_installer_screenshot.sh", help = "regenerate offline installer docs screenshot" }
+export-installer-online-screenshot = { cmd = "./scripts/docs/export_installer_online_screenshot.sh", help = "regenerate online web installer docs screenshot" }
+upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
+test-package = { cmd = "./scripts/test-package.sh", help = "install from PyPI into a fresh venv and smoke-test" }
+format = { cmd = "uv run ruff check --fix src tests && uv run ruff format src tests", help = "format code" }

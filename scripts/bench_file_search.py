@@ -29,9 +29,9 @@ _REPO = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(_REPO / "src"))
 sys.path.insert(0, str(_REPO))
 
-from srxy.cache import reset_cache_connection, reset_run_file_hashes
-from srxy.file_search import magic_file_search
-from srxy.ocr_text import tesseract_available
+from srxy.adapters.outbound.cache.cache import reset_cache_connection, reset_run_file_hashes
+from srxy.application.use_cases.search_files import magic_file_search
+from srxy.adapters.outbound.ocr.ocr_text import tesseract_available
 
 
 FIXTURES_ROOT = _REPO / "tests" / "fixtures" / "file_search"
@@ -93,7 +93,7 @@ def _reset_state(cold: bool):
 		# Drop all SQLite cache entries so OCR/document parsing actually re-runs.
 		# We intentionally do NOT reset the semantic model — that load would dominate
 		# the timing and is not what we are measuring here.
-		from srxy.cache import cache_db_path
+		from srxy.adapters.outbound.cache.cache import cache_db_path
 
 		db = cache_db_path()
 		if db.is_file():

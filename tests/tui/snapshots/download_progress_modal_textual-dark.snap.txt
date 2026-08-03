@@ -5,7 +5,7 @@ host
 █
 █
 █
-Downloading semantic text model…
+Downloading Semantic text model…
 █
 █
 █

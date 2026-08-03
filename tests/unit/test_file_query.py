@@ -3,7 +3,7 @@ from __future__ import annotations
 import pytest
 
 from srxy import FileQ
-from srxy.file_query import (
+from srxy.domain.file_query import (
 	FileQueryParseError,
 	build_file_query_from_rows,
 	file_q_from_dict,
@@ -11,6 +11,7 @@ from srxy.file_query import (
 	format_file_query,
 	parse_file_query,
 	query_highlight_terms,
+	sanitize_literal_term,
 	score_file_query,
 )
 
@@ -27,6 +28,12 @@ def test_given_plain_term_when_parsing_query_then_returns_single_leaf():
 
 	# then
 	assert expr == FileQ.leaf("registry")
+
+
+def test_given_path_separators_when_sanitizing_literal_term_then_replaces_with_spaces():
+	# given / when / then
+	assert sanitize_literal_term("foo/bar\\baz") == "foo bar baz"
+	assert sanitize_literal_term("  a//b  ") == "a b"
 
 
 def test_given_or_expression_when_parsing_query_then_builds_or_tree():

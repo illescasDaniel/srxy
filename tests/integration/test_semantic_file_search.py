@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from srxy.file_search import magic_file_search
+from srxy.application.use_cases.search_files import magic_file_search
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.semantic]

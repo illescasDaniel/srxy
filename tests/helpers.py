@@ -6,6 +6,8 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
+import pytest
+
 from srxy import SearchResult
 
 
@@ -65,6 +67,23 @@ def integration_test_cpu_requested(config: object) -> bool:
 		return True
 	value = os.environ.get("SRXY_INTEGRATION_TEST_CPU", "").strip().lower()
 	return value in {"1", "true", "yes", "on"}
+
+
+def set_fake_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> Path:
+	"""Point Path.home() at ``home`` on both Unix (HOME) and Windows (USERPROFILE)."""
+	resolved = home.resolve()
+	text = str(resolved)
+	monkeypatch.setenv("HOME", text)
+	monkeypatch.setenv("USERPROFILE", text)
+	monkeypatch.delenv("HOMEDRIVE", raising=False)
+	monkeypatch.delenv("HOMEPATH", raising=False)
+
+	# Belt-and-suspenders: expanduser("~") can still ignore env on some runners.
+	def _fake_home(_cls: type[Path]) -> Path:
+		return Path(resolved)
+
+	monkeypatch.setattr(Path, "home", classmethod(_fake_home))
+	return resolved
 
 
 def transcribe_device_matrix_devices(config: object) -> list[str]:
@@ -182,7 +201,7 @@ def _large_embed_image_bytes(image_path: Path) -> bytes:
 
 	from PIL import Image
 
-	from srxy.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
+	from srxy.adapters.outbound.ocr.ocr_text import MIN_PDF_IMAGE_OCR_BYTES
 
 	source = image_path.read_bytes()
 	if len(source) >= MIN_PDF_IMAGE_OCR_BYTES:
@@ -270,6 +289,6 @@ def write_mp4_with_tags(path: Path, *, title: str | None = None, min_size: int =
 
 
 def set_windows_tags(path: Path, tags: list[str]) -> None:
-	from srxy.windows_metadata import write_windows_keywords
+	from srxy.adapters.outbound.metadata.windows_metadata import write_windows_keywords
 
 	write_windows_keywords(path, tags)

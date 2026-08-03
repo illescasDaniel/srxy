@@ -43,6 +43,10 @@ gate_record_step() {
 }
 
 gate_add_detail() {
+	if [[ -n "${GATE_STATUS_FILE:-}" ]]; then
+		printf '%s\n' "$1" >>"${GATE_STATUS_FILE}.details"
+		return 0
+	fi
 	GATE_DETAIL_LINES+=("$1")
 }
 
@@ -68,6 +72,73 @@ gate_gha_error() {
 	fi
 }
 
+gate_emit_result() {
+	# Record step outcome immediately, or defer to GATE_STATUS_FILE (parallel verify).
+	local status="$1"
+	local errors="$2"
+	local warnings="$3"
+	shift 3
+
+	if [[ -n "${GATE_STATUS_FILE:-}" ]]; then
+		{
+			printf 'status=%s\n' "${status}"
+			printf 'errors=%s\n' "${errors}"
+			printf 'warnings=%s\n' "${warnings}"
+			local detail
+			for detail in "$@"; do
+				printf 'detail=%s\n' "${detail}"
+			done
+			if [[ -f "${GATE_STATUS_FILE}.details" ]]; then
+				while IFS= read -r detail || [[ -n "${detail}" ]]; do
+					printf 'detail=%s\n' "${detail}"
+				done <"${GATE_STATUS_FILE}.details"
+				rm -f "${GATE_STATUS_FILE}.details"
+			fi
+		} >"${GATE_STATUS_FILE}"
+		return 0
+	fi
+
+	gate_record_step "${status}" "${errors}" "${warnings}"
+	local detail
+	for detail in "$@"; do
+		gate_add_detail "${detail}"
+	done
+}
+
+gate_load_result() {
+	local file="$1"
+	local status="FAIL"
+	local errors=1
+	local warnings=0
+	local details=()
+	local line key value
+
+	if [[ ! -f "${file}" ]]; then
+		gate_record_fail 1 0
+		gate_add_detail "[gate] missing status file: ${file}"
+		return 0
+	fi
+
+	while IFS= read -r line || [[ -n "${line}" ]]; do
+		key="${line%%=*}"
+		value="${line#*=}"
+		case "${key}" in
+		status) status="${value}" ;;
+		errors) errors="${value}" ;;
+		warnings) warnings="${value}" ;;
+		detail) details+=("${value}") ;;
+		esac
+	done <"${file}"
+
+	gate_record_step "${status}" "${errors}" "${warnings}"
+	if [[ ${#details[@]} -gt 0 ]]; then
+		local detail
+		for detail in "${details[@]}"; do
+			gate_add_detail "${detail}"
+		done
+	fi
+}
+
 gate_apply_emit_summary() {
 	local summary_line="$1"
 	local step_errors step_warnings
@@ -78,22 +149,22 @@ gate_apply_emit_summary() {
 	step_warnings="${step_warnings:-0}"
 
 	if [[ "${step_errors}" -gt 0 ]]; then
-		gate_record_step "FAIL" "${step_errors}" "${step_warnings}"
+		gate_emit_result "FAIL" "${step_errors}" "${step_warnings}"
 	elif [[ "${step_warnings}" -gt 0 ]]; then
-		gate_record_step "warn" 0 "${step_warnings}"
+		gate_emit_result "warn" 0 "${step_warnings}"
 	else
-		gate_record_step "pass" 0 0
+		gate_emit_result "pass" 0 0
 	fi
 }
 
 gate_record_pass() {
-	gate_record_step "pass" 0 0
+	gate_emit_result "pass" 0 0
 }
 
 gate_record_fail() {
 	local errors="${1:-1}"
 	local warnings="${2:-0}"
-	gate_record_step "FAIL" "${errors}" "${warnings}"
+	gate_emit_result "FAIL" "${errors}" "${warnings}"
 }
 
 gate_print_report() {

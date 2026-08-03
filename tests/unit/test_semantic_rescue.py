@@ -5,13 +5,13 @@ from unittest.mock import patch
 
 import pytest
 
-from srxy.file_search import (
+from srxy.application.matching.composite import CompositeMatcher
+from srxy.application.use_cases.search_files import (
 	_score_line,  # pyright: ignore[reportPrivateUsage]
 	_semantic_rescue_score,  # pyright: ignore[reportPrivateUsage]
 	magic_file_search,
 )
-from srxy.matchers.composite import CompositeMatcher
-from srxy.models import MatchType
+from srxy.domain.models import MatchType
 
 
 pytestmark = pytest.mark.unit
@@ -19,7 +19,7 @@ pytestmark = pytest.mark.unit
 
 def test_given_semantic_disabled_when_rescuing_then_returns_composite_score():
 	# given
-	with patch("srxy.matchers.registry.is_matcher_available", return_value=False):
+	with patch("srxy.application.matching.registry.is_matcher_available", return_value=False):
 		# when
 		rescued = _semantic_rescue_score(0.25, {"semantic": 0.56}, line_threshold=0.35)
 
@@ -29,7 +29,7 @@ def test_given_semantic_disabled_when_rescuing_then_returns_composite_score():
 
 def test_given_strong_semantic_and_weak_composite_when_rescuing_then_uses_semantic():
 	# given
-	with patch("srxy.matchers.registry.is_matcher_available", return_value=True):
+	with patch("srxy.application.matching.registry.is_matcher_available", return_value=True):
 		# when
 		rescued = _semantic_rescue_score(0.25, {"semantic": 0.56, "fuzzy": 0.38}, line_threshold=0.35)
 
@@ -39,7 +39,7 @@ def test_given_strong_semantic_and_weak_composite_when_rescuing_then_uses_semant
 
 def test_given_composite_above_threshold_when_rescuing_then_keeps_composite():
 	# given
-	with patch("srxy.matchers.registry.is_matcher_available", return_value=True):
+	with patch("srxy.application.matching.registry.is_matcher_available", return_value=True):
 		# when
 		rescued = _semantic_rescue_score(0.40, {"semantic": 0.56, "fuzzy": 0.40}, line_threshold=0.35)
 
@@ -49,7 +49,7 @@ def test_given_composite_above_threshold_when_rescuing_then_keeps_composite():
 
 def test_given_semantic_below_gate_when_rescuing_then_keeps_composite():
 	# given
-	with patch("srxy.matchers.registry.is_matcher_available", return_value=True):
+	with patch("srxy.application.matching.registry.is_matcher_available", return_value=True):
 		# when
 		rescued = _semantic_rescue_score(0.25, {"semantic": 0.45, "fuzzy": 0.38}, line_threshold=0.35)
 
@@ -63,7 +63,7 @@ def test_given_related_query_when_scoring_content_line_then_rescues_semantic_sco
 
 	with (
 		patch.object(matcher, "score_with_breakdown", return_value=(0.245, {"semantic": 0.56, "fuzzy": 0.38})),
-		patch("srxy.matchers.registry.is_matcher_available", return_value=True),
+		patch("srxy.application.matching.registry.is_matcher_available", return_value=True),
 	):
 		# when
 		score = _score_line(matcher, "new", "recents", "line", line_threshold=0.35)
@@ -78,7 +78,7 @@ def test_given_unrelated_query_when_scoring_content_line_then_keeps_composite_sc
 
 	with (
 		patch.object(matcher, "score_with_breakdown", return_value=(0.12, {"semantic": 0.18, "fuzzy": 0.12})),
-		patch("srxy.matchers.registry.is_matcher_available", return_value=True),
+		patch("srxy.application.matching.registry.is_matcher_available", return_value=True),
 	):
 		# when
 		score = _score_line(matcher, "zzzz", "recents", "line", line_threshold=0.35)
@@ -93,8 +93,8 @@ def test_given_related_query_when_searching_things_txt_then_finds_recents(tmp_pa
 	text_path.write_text("recents\n", encoding="utf-8")
 
 	with (
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
-		patch("srxy.matchers.registry.is_matcher_available", return_value=True),
+		patch("srxy.application.use_cases.search_files.CompositeMatcher") as composite_matcher,
+		patch("srxy.application.matching.registry.is_matcher_available", return_value=True),
 	):
 		composite_matcher.return_value.score_with_breakdown.side_effect = lambda q, value: (
 			(0.245, {"semantic": 0.56, "fuzzy": 0.38}) if value == "recents" else (0.0, {})
@@ -123,12 +123,12 @@ def test_given_transcript_token_with_weak_semantic_when_scoring_then_does_not_re
 
 	with (
 		patch(
-			"srxy.file_search._iter_searchable_lines",
+			"srxy.adapters.outbound.content.line_sources.iter_searchable_lines",
 			return_value=[(40, "A little pace that they're focusing", "transcript")],
 		),
-		patch("srxy.file_search.CompositeMatcher") as composite_matcher,
+		patch("srxy.application.use_cases.search_files.CompositeMatcher") as composite_matcher,
 		patch(
-			"srxy.matchers.registry.is_matcher_available",
+			"srxy.application.matching.registry.is_matcher_available",
 			lambda match_type: match_type == MatchType.SEMANTIC,
 		),
 	):

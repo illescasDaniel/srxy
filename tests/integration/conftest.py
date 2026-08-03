@@ -6,13 +6,26 @@ from pathlib import Path
 import pytest
 from tests.helpers import LabeledQuery, load_labeled_queries, load_search_corpus, require_file_search_fixtures
 
-from srxy.matchers.registry import get_atomic_matcher
-from srxy.matchers.semantic import is_semantic_available, warmup_semantic_model
-from srxy.model_store import ensure_semantic_image_model, ensure_semantic_text_model
-from srxy.semantic_image import is_semantic_image_available, warmup_semantic_image_model
+from srxy.adapters.outbound.models.model_store import ensure_semantic_image_model, ensure_semantic_text_model
+from srxy.adapters.outbound.semantic.semantic_image import is_semantic_image_available, warmup_semantic_image_model
+from srxy.application.matching.registry import get_atomic_matcher
+from srxy.application.matching.semantic import is_semantic_available, warmup_semantic_model
 
 
 pytestmark = pytest.mark.integration
+
+
+_INTEGRATION_ROOT = Path(__file__).resolve().parent
+
+
+def pytest_collection_modifyitems(items: list[pytest.Item]):
+	mark = pytest.mark.xdist_group("integration")
+	for item in items:
+		try:
+			item.path.resolve().relative_to(_INTEGRATION_ROOT)
+		except ValueError:
+			continue
+		item.add_marker(mark)
 
 
 @pytest.fixture(scope="session")
@@ -53,7 +66,10 @@ def semantic_search_enabled():  # pyright: ignore[reportUnusedFunction]
 @pytest.fixture(scope="session", autouse=True)
 def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[reportUnusedParameter]
 	if not is_semantic_available():
-		pytest.skip("Integration tests require SRXY_SEMANTIC=1 and pip install 'srxy[semantic]'")
+		pytest.skip(
+			"Integration tests require SRXY_SEMANTIC=1 and "
+			"uv tool install 'srxy[semantic]' (or: pipx install 'srxy[semantic]')"
+		)
 	if not ensure_semantic_text_model(interactive=False, auto_download=True):
 		pytest.skip("Integration tests require the semantic text model (download failed or unavailable)")
 	warmup_semantic_model()
