@@ -23,7 +23,7 @@ srxy                          # empty query/path
 srxy "registry" ./src         # pre-filled; auto-starts
 ```
 
-![srxy GUI](docs/images/gui.png)
+<img src="docs/images/gui.png" alt="srxy GUI" width="550" />
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
@@ -40,9 +40,9 @@ Default prefix: `~/Applications/srxy`. The online AppImage needs a network conne
 
 Windows and macOS installers are in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
-![srxy offline desktop installer](docs/images/installer.png)
+<img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
 
-![srxy online web installer](docs/images/installer-online.png)
+<img src="docs/images/installer-online.png" alt="srxy online web installer" width="400" />
 
 **TUI:**
 
@@ -52,7 +52,7 @@ srxy --tui "registry" ./src
 srxy --tui "transform" ./docs --ocr
 ```
 
-![srxy TUI](docs/images/tui.svg)
+<img src="docs/images/tui.svg" alt="srxy TUI" width="400" />
 
 Live scan progress, sortable results, preview pane, option chips, clipboard copy. Full walkthrough: [docs/tui.md](docs/tui.md).
 
