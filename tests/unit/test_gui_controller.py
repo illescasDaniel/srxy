@@ -362,11 +362,11 @@ def test_given_large_file_when_selecting_result_then_preview_is_capped_with_foot
 
 
 def test_given_controller_when_results_empty_then_hint_follows_search_state(qapp: QCoreApplication, tmp_path: Path):
-	# given
+	# given — query must not match, otherwise a fast worker can fill results before cancel
 	from srxy.i18n import tr
 
 	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")
-	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	args = build_parser().parse_args(["zzzz-no-match-token", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 
 	# then — before any search
