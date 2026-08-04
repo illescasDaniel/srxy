@@ -38,7 +38,14 @@ Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srx
 
 Default prefix: `~/Applications/srxy`. The online AppImage needs a network connection on first launch (downloads `uv`, managed Python, and srxy into `~/.cache/srxy/online-bootstrap/`); later runs reuse the cache. It vendors PATH / tesseract / ffmpeg automatically and enables smarter-search packages only when a GPU is detected — model weights download later when you use those features. No reinstall/uninstall UI on the online path (use the offline wizard or remove the prefix).
 
-macOS installers (`.dmg`, offline + online) are also published in releases and install to `~/Applications/srxy` by default. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+Two macOS `.dmg` installers from the same [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) page (open the DMG and double-click the app; default prefix `~/Applications/srxy`):
+
+| Artifact | What you get |
+|----------|----------------|
+| `srxy-*-installer-*.dmg` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
+| `srxy-*-installer-online-*.dmg` | **Online one-click** — slim Go bootstrap; localhost browser UI; installs from PyPI |
+
+These macOS DMGs are currently **unsigned** (Gatekeeper may warn or block on first open); a signed and notarized release is coming soon. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 <img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
 
@@ -84,7 +91,7 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 | Guide | Contents |
 |-------|----------|
 | [Installation](docs/installation.md) | uv tool / pipx, macOS/Linux/Windows, ffmpeg, tesseract |
-| [Desktop installers](docs/installers.md) | Linux AppImages + macOS wrappers (offline + online) |
+| [Desktop installers](docs/installers.md) | Linux AppImages + macOS DMGs (offline + online) |
 | [TUI](docs/tui.md) | Layout, keybindings, clipboard, release checklist |
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |

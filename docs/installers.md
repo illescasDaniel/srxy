@@ -47,6 +47,8 @@ Two macOS DMG installers (same naming shape as Linux AppImages):
 2. Open the DMG and double-click the installer (the volume background reminds you).
 3. Both installers target `~/Applications/srxy` by default.
 
+These DMGs are currently **unsigned** (Gatekeeper may warn or block on first open). A signed and notarized release is coming soon.
+
 Notes:
 
 - The online macOS wrapper installs srxy from PyPI and adds PATH in your shell rc.
