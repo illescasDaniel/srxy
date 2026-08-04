@@ -49,7 +49,7 @@ if [[ -z "$APP_PYTHON" || ! -x "$APP_PYTHON" ]]; then
 	find "$APPDIR/usr/python" -maxdepth 4 -type f -name 'python*' >&2 || true
 	exit 1
 fi
-echo "Creating relocatable AppDir venv from $APP_PYTHON…"
+echo "Creating relocatable AppDir venv from ${APP_PYTHON}…"
 uv venv --python "$APP_PYTHON" --relocatable --link-mode copy "$APPDIR/usr/venv"
 VENV_PY="$APPDIR/usr/venv/bin/python"
 # uv --relocatable still leaves absolute symlinks to the build-tree interpreter on

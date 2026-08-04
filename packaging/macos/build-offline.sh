@@ -85,6 +85,34 @@ echo "Installing managed Python ${PYTHON_VERSION}..."
 export UV_PYTHON_PREFERENCE=only-managed
 export UV_LINK_MODE=copy
 uv python install "$PYTHON_VERSION" --install-dir "$RES_DIR/python" --no-bin
+
+# `uv python install` leaves a "minor version alias" symlink (e.g.
+# cpython-3.12-macos-aarch64-none -> cpython-3.12.13-macos-aarch64-none) as an
+# absolute path into the build tree. That breaks relocation like the venv
+# symlinks below, and codesign also rejects it ("invalid destination for
+# symbolic link in bundle") since it points outside the bundle's own sealed
+# resource tree once resolved against the build-host path. Rewrite every
+# symlink under the bundled python dir to be relative to its own directory.
+while IFS= read -r -d '' link; do
+	target="$(readlink "$link")"
+	case "$target" in
+	/*)
+		rel_target="$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[1], sys.argv[2]))' "$target" "$(dirname "$link")")"
+		ln -sfn "$rel_target" "$link"
+		;;
+	esac
+done < <(find "$RES_DIR/python" -type l -print0)
+
+while IFS= read -r -d '' link; do
+	target="$(readlink "$link")"
+	case "$target" in
+	/*)
+		echo "error: symlink still absolute after rewrite: $link -> $target" >&2
+		exit 1
+		;;
+	esac
+done < <(find "$RES_DIR/python" -type l -print0)
+
 APP_PYTHON="$(
 	python3 - "$RES_DIR/python" <<'PY'
 from pathlib import Path
@@ -103,11 +131,68 @@ if [[ -z "$APP_PYTHON" || ! -x "$APP_PYTHON" ]]; then
 	exit 1
 fi
 
-echo "Creating bundled venv..."
-uv venv --python "$APP_PYTHON" --link-mode copy "$RES_DIR/venv"
+echo "Creating relocatable bundled venv..."
+uv venv --python "$APP_PYTHON" --relocatable --link-mode copy "$RES_DIR/venv"
 VENV_PY="$RES_DIR/venv/bin/python"
+VENV_BIN="$RES_DIR/venv/bin"
+# uv --relocatable can still leave absolute symlinks to the build-tree interpreter on
+# some versions. Those resolve on the CI/build host (smoke passes) but break once the
+# .app is copied to a user's machine. Rewrite venv/bin/python* to paths relative to
+# venv/bin/, and keep pyvenv.cfg's `home` relative to the venv too, so nothing depends
+# on the build-host path (mirrors packaging/linux-appimage/build.sh).
+REL_PY="$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))' "$VENV_BIN" "$APP_PYTHON")"
+for name in python "python${PYTHON_VERSION}" python3; do
+	link="$VENV_BIN/$name"
+	if [[ -e "$link" || -L "$link" ]]; then
+		ln -sfn "$REL_PY" "$link"
+	fi
+done
+if [[ -f "$RES_DIR/venv/pyvenv.cfg" ]]; then
+	REL_HOME="$(python3 -c 'import os, sys; print(os.path.relpath(sys.argv[2], sys.argv[1]))' "$RES_DIR/venv" "$(dirname "$APP_PYTHON")")"
+	python3 - "$RES_DIR/venv/pyvenv.cfg" "$REL_HOME" <<'PY'
+from pathlib import Path
+import sys
+
+cfg = Path(sys.argv[1])
+home = sys.argv[2]
+lines = []
+for line in cfg.read_text(encoding="utf-8").splitlines():
+	if line.startswith("home "):
+		lines.append(f"home = {home}")
+	else:
+		lines.append(line)
+cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
+PY
+fi
+
 uv pip install --python "$VENV_PY" "PySide6>=6.6"
 uv pip install --python "$VENV_PY" --no-deps "$ROOT"
+
+# Fail closed if the venv python still points at the build host uv cache / home dir.
+RAW_LINK="$(readlink "$VENV_PY" 2>/dev/null || true)"
+case "$RAW_LINK" in
+"" | /*)
+	echo "error: bundled venv python symlink must be relative for relocation: $VENV_PY -> ${RAW_LINK:-<missing>}" >&2
+	exit 1
+	;;
+esac
+RESOLVED_PY="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$VENV_PY")"
+case "$RESOLVED_PY" in
+"$RES_DIR"/*) ;;
+*)
+	echo "error: bundled venv python is not relocatable: $VENV_PY -> $RESOLVED_PY" >&2
+	echo "expected an interpreter under $RES_DIR." >&2
+	exit 1
+	;;
+esac
+case "$RESOLVED_PY" in
+*"/.local/share/uv/python/"* | *"/Users/runner/"* | *"/home/runner/"*)
+	echo "error: bundled venv python still resolves outside the app bundle: $RESOLVED_PY" >&2
+	exit 1
+	;;
+esac
+echo "Bundled venv python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
+
 "$ROOT/packaging/macos/prune-pyside.sh" "$RES_DIR/venv"
 
 echo "Building wheel for offline installer payload..."

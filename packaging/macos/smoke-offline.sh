@@ -32,6 +32,20 @@ if [[ -z "${APP:-}" || ! -d "$APP" ]]; then
 	exit 1
 fi
 
+# Relocate to a path outside the build tree before smoke-testing. A bundled venv
+# with absolute symlinks back into the build/CI-runner tree would otherwise still
+# resolve here and mask the exact class of bug that broke real user downloads
+# (see packaging/linux-appimage/build.sh for the equivalent AppImage relocation fix).
+BUILT_APP="$APP"
+STAGE_DIR="$(mktemp -d "${TMPDIR:-/tmp}/srxy-offline-smoke.XXXXXX")"
+cleanup() {
+	rm -rf "$STAGE_DIR"
+}
+trap cleanup EXIT
+APP="$STAGE_DIR/$(basename "$BUILT_APP")"
+cp -R "$BUILT_APP" "$APP"
+echo "Smoke-testing relocated copy: $APP (built at $BUILT_APP)"
+
 BIN="$APP/Contents/MacOS/srxy-installer-offline"
 VENV_PY="$APP/Contents/Resources/venv/bin/python"
 if [[ ! -x "$BIN" ]]; then
