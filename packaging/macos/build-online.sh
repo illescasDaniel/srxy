@@ -3,12 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
-APP_NAME="${APP_NAME:-srxy-installer-online.app}"
-APP_BUNDLE="$OUT_DIR/$APP_NAME"
-CONTENTS="$APP_BUNDLE/Contents"
-MACOS_DIR="$CONTENTS/MacOS"
-RES_DIR="$CONTENTS/Resources"
-APPDIR="$CONTENTS"
 BOOTSTRAP_DIR="$ROOT/packaging/online-bootstrap"
 ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-installer-256.png}"
 ICON_ICNS_NAME="srxy-installer.icns"
@@ -54,8 +48,14 @@ build_icns() {
 
 ARCH="$(uname -m)"
 case "$ARCH" in
-arm64) GOARCH=arm64 ;;
-x86_64) GOARCH=amd64 ;;
+arm64)
+	GOARCH=arm64
+	FILE_ARCH=arm64
+	;;
+x86_64)
+	GOARCH=amd64
+	FILE_ARCH=x86_64
+	;;
 *)
 	echo "error: unsupported macOS arch: $ARCH" >&2
 	exit 1
@@ -64,8 +64,6 @@ esac
 
 cd "$ROOT"
 mkdir -p "$OUT_DIR"
-rm -rf "$APP_BUNDLE"
-mkdir -p "$MACOS_DIR" "$RES_DIR" "$APPDIR/usr/share/srxy"
 
 VERSION="$(
 	uv run python -c 'from importlib.metadata import version; print(version("srxy"))'
@@ -78,6 +76,23 @@ if [[ -z "$INSTALLER_VERSION" ]]; then
 	echo "error: installer_version missing from packaging/installer_meta.toml" >&2
 	exit 1
 fi
+
+APP_NAME="${APP_NAME:-Srxy ${VERSION} - Installer Online ${INSTALLER_VERSION}.app}"
+APP_BUNDLE="$OUT_DIR/$APP_NAME"
+CONTENTS="$APP_BUNDLE/Contents"
+MACOS_DIR="$CONTENTS/MacOS"
+RES_DIR="$CONTENTS/Resources"
+APPDIR="$CONTENTS"
+DISPLAY_NAME="Srxy ${VERSION} - Installer Online ${INSTALLER_VERSION}"
+
+rm -rf "$APP_BUNDLE" "$OUT_DIR/srxy-installer-online.app"
+shopt -s nullglob
+for stale in "$OUT_DIR"/Srxy\ *\ -\ Installer\ Online\ *.app; do
+	rm -rf "$stale"
+done
+shopt -u nullglob
+
+mkdir -p "$MACOS_DIR" "$RES_DIR" "$APPDIR/usr/share/srxy"
 
 echo "Writing bootstrap-meta.json..."
 uv run python - <<PY
@@ -108,16 +123,16 @@ echo "Building Go bootstrap..."
 )
 chmod +x "$MACOS_DIR/srxy-online-bootstrap"
 
-cat >"$CONTENTS/Info.plist" <<'EOF'
+cat >"$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key><string>srxy Installer Online</string>
-	<key>CFBundleDisplayName</key><string>srxy Installer Online</string>
+	<key>CFBundleName</key><string>${DISPLAY_NAME}</string>
+	<key>CFBundleDisplayName</key><string>${DISPLAY_NAME}</string>
 	<key>CFBundleIdentifier</key><string>com.srxy.installer.online</string>
-	<key>CFBundleVersion</key><string>1</string>
-	<key>CFBundleShortVersionString</key><string>1</string>
+	<key>CFBundleVersion</key><string>${INSTALLER_VERSION}</string>
+	<key>CFBundleShortVersionString</key><string>${VERSION}</string>
 	<key>CFBundleExecutable</key><string>srxy-online-bootstrap</string>
 	<key>CFBundleIconFile</key><string>srxy-installer.icns</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
@@ -130,23 +145,13 @@ if ! build_icns "$ICON_SRC" "$RES_DIR/$ICON_ICNS_NAME"; then
 	echo "warning: could not generate $ICON_ICNS_NAME (sips/iconutil unavailable); Finder may show generic app icon" >&2
 fi
 
-ARCHIVE="$OUT_DIR/srxy-${VERSION}-installer-macos-online-${INSTALLER_VERSION}-${GOARCH}.app.tar.gz"
-python3 - "$OUT_DIR" "$APP_NAME" "$ARCHIVE" <<'PY'
-import tarfile
-import sys
-from pathlib import Path
-
-out_dir = Path(sys.argv[1])
-app_name = sys.argv[2]
-archive = Path(sys.argv[3])
-with tarfile.open(archive, mode="w:gz", compresslevel=9) as tf:
-	tf.add(out_dir / app_name, arcname=app_name)
-PY
+DMG="$OUT_DIR/srxy-${VERSION}-installer-online-${INSTALLER_VERSION}-${FILE_ARCH}.dmg"
+"$ROOT/packaging/macos/build-dmg.sh" "$APP_BUNDLE" "$DMG" "srxy Installer Online"
 (
 	cd "$OUT_DIR"
-	shasum -a 256 "$(basename "$ARCHIVE")" >"$(basename "$ARCHIVE").sha256"
-	shasum -a 256 "$(basename "$ARCHIVE")" >SHA256SUMS-macos-online
+	shasum -a 256 "$(basename "$DMG")" >"$(basename "$DMG").sha256"
+	shasum -a 256 "$(basename "$DMG")" >SHA256SUMS-macos-online
 )
 
 echo "Built $APP_BUNDLE"
-echo "Built $ARCHIVE"
+echo "Built $DMG"

@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
-# Remove obviously-unused PySide6/Qt payload from macOS installer venv.
+# Remove unused PySide6 / Qt payload from the macOS offline installer venv.
+#
+# The wizard only needs QGuiApplication + QQml + Qt Quick Controls + FolderDialog.
+# Usage: prune-pyside.sh <venv-or-site-packages-path>
 set -euo pipefail
 
 if [[ $# -ne 1 ]]; then
@@ -33,7 +36,11 @@ if [[ ! -d "$PSIDE" ]]; then
 	exit 1
 fi
 
-echo "Pruning PySide6 in $PSIDE ..."
+BEFORE_BYTES=""
+if du_out="$(du -sk "$PSIDE" 2>/dev/null)"; then
+	BEFORE_BYTES="$(awk '{print $1 * 1024}' <<<"$du_out")"
+fi
+echo "Pruning PySide6 under $PSIDE (before: $(du -sh "$PSIDE" 2>/dev/null | cut -f1 || echo unknown))…"
 
 rm_rf() {
 	local path
@@ -61,7 +68,11 @@ rm_rf \
 	"$PSIDE/glue" \
 	"$PSIDE/metatypes" \
 	"$PSIDE/Qt/metatypes" \
-	"$PSIDE/Qt/libexec"
+	"$PSIDE/Qt/libexec" \
+	"$PSIDE/scripts" \
+	"$PSIDE/support" \
+	"$PSIDE/QtAsyncio" \
+	"$PSIDE/py.typed"
 
 shopt -s nullglob
 rm_rf "$PSIDE"/*.pyi
@@ -93,6 +104,45 @@ for so in "$PSIDE"/*.abi3.so; do
 done
 shopt -u nullglob
 
+# macOS PySide ships Qt as .framework bundles under Qt/lib.
+QT_LIB="$PSIDE/Qt/lib"
+if [[ -d "$QT_LIB" ]]; then
+	shopt -s nullglob
+	for item in "$QT_LIB"/*; do
+		base="$(basename "$item")"
+		case "$base" in
+		QtCore.framework | QtGui.framework | QtDBus.framework | QtNetwork.framework | \
+			QtOpenGL.framework | QtQml.framework | QtQmlMeta.framework | QtQmlModels.framework | \
+			QtQmlWorkerScript.framework | QtQmlNetwork.framework | QtQuick.framework | \
+			QtQuickControls2.framework | QtQuickControls2Impl.framework | \
+			QtQuickControls2Basic.framework | QtQuickControls2BasicStyleImpl.framework | \
+			QtQuickControls2Fusion.framework | QtQuickControls2FusionStyleImpl.framework | \
+			QtQuickControls2Material.framework | QtQuickControls2MaterialStyleImpl.framework | \
+			QtQuickControls2Imagine.framework | QtQuickControls2ImagineStyleImpl.framework | \
+			QtQuickControls2Universal.framework | QtQuickControls2UniversalStyleImpl.framework | \
+			QtQuickControls2FluentWinUI3StyleImpl.framework | \
+			QtQuickControls2MacOSStyleImpl.framework | \
+			QtQuickControls2IOSStyleImpl.framework | \
+			QtQuickTemplates2.framework | QtQuickLayouts.framework | \
+			QtQuickDialogs2.framework | QtQuickDialogs2Utils.framework | QtQuickDialogs2QuickImpl.framework | \
+			QtQuickEffects.framework | QtQuickShapes.framework | \
+			QtLabsFolderListModel.framework | QtLabsQmlModels.framework | \
+			QtShaderTools.framework | QtSvg.framework | QtConcurrent.framework | \
+			QtVirtualKeyboard*.framework | \
+			libicudata*.dylib | libicui18n*.dylib | libicuuc*.dylib | \
+			libQt6Core*.dylib | libQt6Gui*.dylib | libQt6DBus*.dylib | libQt6Network*.dylib | \
+			libQt6OpenGL*.dylib | libQt6Qml*.dylib | libQt6Quick*.dylib | \
+			libQt6LabsFolderListModel*.dylib | libQt6LabsQmlModels*.dylib | \
+			libQt6ShaderTools*.dylib | libQt6Svg*.dylib | libQt6Concurrent*.dylib)
+			;;
+		*)
+			rm_rf "$item"
+			;;
+		esac
+	done
+	shopt -u nullglob
+fi
+
 QML="$PSIDE/Qt/qml"
 if [[ -d "$QML" ]]; then
 	rm_rf \
@@ -115,6 +165,29 @@ if [[ -d "$QML" ]]; then
 		"$QML/QtWebSockets" \
 		"$QML/QtWebView" \
 		"$QML/QtWayland"
+	if [[ -d "$QML/QtQuick" ]]; then
+		rm_rf \
+			"$QML/QtQuick/Particles" \
+			"$QML/QtQuick/Pdf" \
+			"$QML/QtQuick/Scene2D" \
+			"$QML/QtQuick/Scene3D" \
+			"$QML/QtQuick/LocalStorage" \
+			"$QML/QtQuick/Timeline" \
+			"$QML/QtQuick/VectorImage" \
+			"$QML/QtQuick/VirtualKeyboard" \
+			"$QML/QtQuick/tooling" \
+			"$QML/QtQuick/Controls/designer"
+	fi
+	if [[ -d "$QML/Qt/labs" ]]; then
+		shopt -s nullglob
+		for lab in "$QML/Qt/labs"/*; do
+			case "$(basename "$lab")" in
+			folderlistmodel | qmlmodels) ;;
+			*) rm_rf "$lab" ;;
+			esac
+		done
+		shopt -u nullglob
+	fi
 fi
 
 PLUGINS="$PSIDE/Qt/plugins"
@@ -149,28 +222,25 @@ if [[ -d "$PLUGINS" ]]; then
 		"$PLUGINS/xcbglintegrations"
 fi
 
-QT_LIB="$PSIDE/Qt/lib"
-if [[ -d "$QT_LIB" ]]; then
+# Strip remaining Mach-O payloads (best-effort).
+if command -v strip >/dev/null 2>&1; then
 	shopt -s nullglob
-	for lib in "$QT_LIB"/libQt6*.dylib "$QT_LIB"/libQt6*.6.dylib "$QT_LIB"/libav*.dylib "$QT_LIB"/libsw*.dylib; do
-		base="$(basename "$lib")"
-		case "$base" in
-		libQt6Core* | libQt6Gui* | libQt6DBus* | libQt6Network* | \
-			libQt6OpenGL* | libQt6QmlWorkerScript* | libQt6QmlNetwork* | \
-			libQt6QmlMeta* | libQt6QmlModels* | libQt6Qml* | \
-			libQt6QuickDialogs2Utils* | libQt6QuickDialogs2QuickImpl* | \
-			libQt6QuickDialogs2* | libQt6QuickControls2* | libQt6QuickTemplates2* | \
-			libQt6QuickLayouts* | libQt6Quick* | \
-			libQt6LabsFolderListModel* | libQt6LabsQmlModels* | \
-			libQt6ShaderTools* | libQt6Svg* | libQt6Concurrent* | \
-			libicudata* | libicui18n* | libicuuc*)
-			;;
-		*)
-			rm_rf "$lib"
-			;;
-		esac
-	done
+	while IFS= read -r -d '' macho; do
+		if [[ -f "$macho" && ! -L "$macho" ]]; then
+			strip -x "$macho" 2>/dev/null || true
+		fi
+	done < <(find "$PSIDE" \( -name '*.dylib' -o -name '*.so' -o -name '*.abi3.so' -o -path '*/Versions/A/Qt*' -o -path '*/Versions/A/lib*' \) -print0 2>/dev/null)
 	shopt -u nullglob
 fi
 
-echo "PySide6 prune complete."
+AFTER_BYTES=""
+if du_out="$(du -sk "$PSIDE" 2>/dev/null)"; then
+	AFTER_BYTES="$(awk '{print $1 * 1024}' <<<"$du_out")"
+fi
+AFTER_HUMAN="$(du -sh "$PSIDE" 2>/dev/null | cut -f1 || echo unknown)"
+if [[ -n "${BEFORE_BYTES:-}" && -n "${AFTER_BYTES:-}" && "$BEFORE_BYTES" =~ ^[0-9]+$ && "$AFTER_BYTES" =~ ^[0-9]+$ ]]; then
+	SAVED=$((BEFORE_BYTES - AFTER_BYTES))
+	echo "Pruned PySide6 to $AFTER_HUMAN (saved $((SAVED / 1024 / 1024)) MiB)."
+else
+	echo "Pruned PySide6 to $AFTER_HUMAN."
+fi

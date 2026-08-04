@@ -17,7 +17,10 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from srxy.adapters.inbound.installer.install import install_srxy
-from srxy.adapters.inbound.installer.launch_app import launch_installed_app
+from srxy.adapters.inbound.installer.launch_app import (
+	LAUNCH_TEARDOWN_DELAY_SECONDS,
+	launch_installed_app,
+)
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_text
 from srxy.adapters.inbound.installer.uninstall import uninstall_prefix
 from srxy.adapters.inbound.installer_online.browser import open_installer_url
@@ -326,8 +329,15 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 				except FileNotFoundError as exc:
 					self._send_json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
 					return
-				print("Launching installed srxy; shutting down installer.", file=sys.stderr)
-				session.stop_event.set()
+				print(
+					"Launching installed srxy; shutting down installer shortly.",
+					file=sys.stderr,
+				)
+
+				def _delayed_stop():
+					session.stop_event.set()
+
+				threading.Timer(LAUNCH_TEARDOWN_DELAY_SECONDS, _delayed_stop).start()
 				self._send_json(HTTPStatus.OK, {"ok": True})
 				return
 

@@ -35,7 +35,7 @@ After install, [`prune_pyside.sh`](prune_pyside.sh) deletes unused Qt modules (W
 
 The online AppImage embeds a small **Go** bootstrap binary (UPX-compressed at build time) and meta (no CPython, no uv, **no** bundled wheel). On first launch it opens your browser to a preparing page, downloads pinned `uv` + managed Python into `~/.cache/srxy/online-bootstrap/`, installs `srxy>=<build>,<next_major>` from PyPI (`--no-deps`) into a cache venv, then hands off to the Python localhost installer (`installer_online`). Later launches reuse the cache (uv upgrades within the major bound when a newer 1.x exists). The *prefix* install still uses `resolve_pypi_install_spec()`. Auto options: PATH, tesseract, ffmpeg; semantic packages only when GPU/MPS is present; `prefetch_models=False`. Checksums are written to `SHA256SUMS-online` so they do not overwrite the offline `SHA256SUMS`.
 
-Building requires **Go** and **xz** (to unpack pinned UPX). Set `SRXY_ONLINE_SKIP_UPX=1` to skip UPX. Override the bootstrap package with `SRXY_ONLINE_BOOTSTRAP_SPEC` for local testing. Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
+Building requires **Go** and **xz** (to unpack pinned UPX). Set `SRXY_ONLINE_SKIP_UPX=1` to skip UPX on the online bootstrap. The offline AppImage may also UPX pruned Qt `.so` files after `prune_pyside.sh`; set `SRXY_OFFLINE_SKIP_UPX=1` to skip that pass. Override the bootstrap package with `SRXY_ONLINE_BOOTSTRAP_SPEC` for local testing. Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
 
 ## Vendor checksums
 

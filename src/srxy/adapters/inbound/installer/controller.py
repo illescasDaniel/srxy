@@ -4,13 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, QTimer, Signal, Slot
 
 from srxy.adapters.inbound.installer.catalog import vendor_downloads_supported
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
-from srxy.adapters.inbound.installer.launch_app import installed_launcher_path, launch_installed_app
+from srxy.adapters.inbound.installer.launch_app import (
+	LAUNCH_TEARDOWN_DELAY_SECONDS,
+	installed_launcher_path,
+	launch_installed_app,
+)
 from srxy.adapters.inbound.installer.manifest import (
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
@@ -777,7 +781,7 @@ class InstallerController(QObject):
 
 	@Slot()
 	def launchInstalled(self):  # noqa: N802
-		"""Start the installed app and close the wizard."""
+		"""Start the installed app and close the wizard shortly after."""
 		if self._mode not in {"install", "reinstall"} or not self._finished:
 			return
 		prefix = Path(self._prefix)
@@ -788,7 +792,8 @@ class InstallerController(QObject):
 			self._error = translate("installer.error.launch_missing", path=launcher)
 			self.errorChanged.emit()
 			return
-		QCoreApplication.quit()
+		# Delay quit so first Qt/dyld load is less contended with wizard teardown.
+		QTimer.singleShot(int(LAUNCH_TEARDOWN_DELAY_SECONDS * 1000), QCoreApplication.quit)
 
 	def _on_failed(self, message: str):
 		self._set_busy(False)

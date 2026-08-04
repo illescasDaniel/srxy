@@ -144,7 +144,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 		_ = timeout
 		return {
 			"info": {
-				"version": "1.6.3",
+				"version": "1.6.4",
 				"requires_dist": ["PySide6>=6.6", "cryptography>=44"],
 			}
 		}
@@ -155,7 +155,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 	spec = package_spec.resolve_pypi_install_spec()
 
 	# then
-	assert spec == "srxy==1.6.3"
+	assert spec == "srxy==1.6.4"
 
 
 def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
@@ -168,7 +168,7 @@ def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
 
 	def fake_fetch(*, timeout: float = 15.0) -> dict[str, Any]:
 		_ = timeout
-		return {"info": {"version": "1.6.3", "requires_dist": ["cryptography>=44"]}}
+		return {"info": {"version": "1.6.4", "requires_dist": ["cryptography>=44"]}}
 
 	monkeypatch.setattr(package_spec, "fetch_pypi_srxy_info", fake_fetch)
 
@@ -411,6 +411,7 @@ def test_given_successful_install_when_posting_launch_then_starts_app_and_stops(
 
 	monkeypatch.setattr(server_mod, "install_srxy", fake_install)
 	monkeypatch.setattr(server_mod, "launch_installed_app", fake_launch)
+	monkeypatch.setattr(server_mod, "LAUNCH_TEARDOWN_DELAY_SECONDS", 0.05)
 
 	prefix = tmp_path / "prefix"
 	code, _ = online_server.api(
@@ -439,6 +440,9 @@ def test_given_successful_install_when_posting_launch_then_starts_app_and_stops(
 	assert launch_payload.get("ok") is True
 	assert launched == [str(prefix.resolve())]
 	assert online_server.session is not None
+	stop_deadline = time.monotonic() + 2
+	while time.monotonic() < stop_deadline and not online_server.session.stop_event.is_set():
+		time.sleep(0.02)
 	assert online_server.session.stop_event.is_set()
 
 

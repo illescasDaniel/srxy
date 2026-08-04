@@ -54,13 +54,13 @@ The GUI checks PyPI for updates on startup and under **Help → Check for update
 
 ### macOS wrappers
 
-1. Download and extract:
-   - `srxy-*-installer-macos-offline-*.app.tar.gz` (offline wizard app), or
-   - `srxy-*-installer-macos-online-*.app.tar.gz` (online bootstrap app).
-2. Launch the `.app` bundle.
+1. Download a DMG from Releases:
+   - `srxy-*-installer-<installer_version>-<arch>.dmg` (offline wizard), or
+   - `srxy-*-installer-online-<installer_version>-<arch>.dmg` (online bootstrap).
+2. Open the DMG and double-click the installer `.app`.
 3. Both wrappers target `~/Applications/srxy` by default and do not require admin rights for that path.
 4. Optionally vendor Tesseract and ffmpeg (Apple Silicon downloads; no Homebrew required), plus semantic extras / models when offered.
-5. Finish — launcher and shell PATH updates use the chosen prefix under `~/Applications/srxy` by default.
+5. Finish — launcher and shell PATH updates use the chosen prefix under `~/Applications/srxy` by default. The first Launch after install may take several seconds (cold Qt load).
 
 CI builds macOS wrappers via [`.github/workflows/macos-installer.yml`](../.github/workflows/macos-installer.yml). Linux CI builds AppImages via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md)).
 

@@ -38,7 +38,7 @@ Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srx
 
 Default prefix: `~/Applications/srxy`. The online AppImage needs a network connection on first launch (downloads `uv`, managed Python, and srxy into `~/.cache/srxy/online-bootstrap/`); later runs reuse the cache. It vendors PATH / tesseract / ffmpeg automatically and enables smarter-search packages only when a GPU is detected — model weights download later when you use those features. No reinstall/uninstall UI on the online path (use the offline wizard or remove the prefix).
 
-macOS wrappers (`.app.tar.gz`, offline + online) are also published in releases and install to `~/Applications/srxy` by default. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+macOS installers (`.dmg`, offline + online) are also published in releases and install to `~/Applications/srxy` by default. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 <img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
 

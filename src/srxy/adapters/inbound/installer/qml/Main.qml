@@ -70,10 +70,14 @@ ApplicationWindow {
 	// Bump when language changes so every t() binding re-evaluates.
 	property int langRev: 0
 	readonly property color primaryText: palette.windowText
-	readonly property color secondaryText: palette.placeholderText.a > 0
-		? palette.placeholderText
-		: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.65)
+	// Do not use palette.placeholderText — on macOS light themes it is nearly invisible.
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
+	readonly property color secondaryText: Qt.rgba(
+		palette.windowText.r,
+		palette.windowText.g,
+		palette.windowText.b,
+		lightTheme ? 0.78 : 0.80
+	)
 	readonly property color warningText: lightTheme ? "#9a6700" : "#e0a060"
 	readonly property color errorText: lightTheme ? "#c62828" : "#ff8a80"
 
@@ -669,7 +673,7 @@ ApplicationWindow {
 
 	Connections {
 		target: c
-		function onUnsafeConfirmChanged() {
+		function onUnsafeConfirmOpenChanged() {
 			if (c && c.unsafeConfirmOpen)
 				unsafePrefixDialog.open()
 			else

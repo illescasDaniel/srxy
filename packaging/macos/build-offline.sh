@@ -3,12 +3,6 @@ set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT/dist}"
-APP_NAME="${APP_NAME:-srxy-installer-offline.app}"
-APP_BUNDLE="$OUT_DIR/$APP_NAME"
-CONTENTS="$APP_BUNDLE/Contents"
-MACOS_DIR="$CONTENTS/MacOS"
-RES_DIR="$CONTENTS/Resources"
-APPDIR="$CONTENTS"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-installer-256.png}"
 ICON_ICNS_NAME="srxy-installer.icns"
@@ -49,7 +43,42 @@ build_icns() {
 
 cd "$ROOT"
 mkdir -p "$OUT_DIR"
-rm -rf "$APP_BUNDLE"
+
+VERSION="$(
+	uv run python -c 'from importlib.metadata import version; print(version("srxy"))'
+)"
+INSTALLER_VERSION="$(
+	uv run python -c 'import tomllib, sys; from pathlib import Path; print(tomllib.loads(Path(sys.argv[1]).read_text())["installer_version"])' \
+		"$ROOT/packaging/installer_meta.toml"
+)"
+ARCH="$(uname -m)"
+case "$ARCH" in
+arm64 | x86_64) ;;
+*)
+	echo "error: unsupported macOS arch: $ARCH" >&2
+	exit 1
+	;;
+esac
+
+APP_NAME="${APP_NAME:-Srxy ${VERSION} - Installer ${INSTALLER_VERSION}.app}"
+APP_BUNDLE="$OUT_DIR/$APP_NAME"
+CONTENTS="$APP_BUNDLE/Contents"
+MACOS_DIR="$CONTENTS/MacOS"
+RES_DIR="$CONTENTS/Resources"
+APPDIR="$CONTENTS"
+DISPLAY_NAME="Srxy ${VERSION} - Installer ${INSTALLER_VERSION}"
+
+# Remove previous offline bundles (versioned + legacy).
+rm -rf "$APP_BUNDLE" "$OUT_DIR/srxy-installer-offline.app"
+shopt -s nullglob
+for stale in "$OUT_DIR"/Srxy\ *\ -\ Installer\ *.app; do
+	case "$(basename "$stale")" in
+	*"Installer Online"*) ;;
+	*) rm -rf "$stale" ;;
+	esac
+done
+shopt -u nullglob
+
 mkdir -p "$MACOS_DIR" "$RES_DIR" "$APPDIR/usr/share/srxy"
 
 echo "Installing managed Python ${PYTHON_VERSION}..."
@@ -97,12 +126,6 @@ cp "$WHEEL" "$APPDIR/usr/share/srxy/"
 cp "$WHEEL" "$APPDIR/usr/share/srxy/srxy.whl"
 cp "$ROOT/packaging/installer_meta.toml" "$APPDIR/usr/share/srxy/installer_meta.toml"
 
-VERSION="$("$VENV_PY" -c 'from importlib.metadata import version; print(version("srxy"))')"
-INSTALLER_VERSION="$(
-	"$VENV_PY" -c 'import tomllib, sys; from pathlib import Path; print(tomllib.loads(Path(sys.argv[1]).read_text())["installer_version"])' \
-		"$ROOT/packaging/installer_meta.toml"
-)"
-
 cat >"$MACOS_DIR/srxy-installer-offline" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -118,16 +141,16 @@ cp "$ICON_SRC" "$RES_DIR/srxy-installer.png"
 if ! build_icns "$ICON_SRC" "$RES_DIR/$ICON_ICNS_NAME"; then
 	echo "warning: could not generate $ICON_ICNS_NAME (sips/iconutil unavailable); Finder may show generic app icon" >&2
 fi
-cat >"$CONTENTS/Info.plist" <<'EOF'
+cat >"$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
 <dict>
-	<key>CFBundleName</key><string>srxy Installer Offline</string>
-	<key>CFBundleDisplayName</key><string>srxy Installer Offline</string>
+	<key>CFBundleName</key><string>${DISPLAY_NAME}</string>
+	<key>CFBundleDisplayName</key><string>${DISPLAY_NAME}</string>
 	<key>CFBundleIdentifier</key><string>com.srxy.installer.offline</string>
-	<key>CFBundleVersion</key><string>1</string>
-	<key>CFBundleShortVersionString</key><string>1</string>
+	<key>CFBundleVersion</key><string>${INSTALLER_VERSION}</string>
+	<key>CFBundleShortVersionString</key><string>${VERSION}</string>
 	<key>CFBundleExecutable</key><string>srxy-installer-offline</string>
 	<key>CFBundleIconFile</key><string>srxy-installer.icns</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
@@ -136,23 +159,13 @@ cat >"$CONTENTS/Info.plist" <<'EOF'
 </plist>
 EOF
 
-ARCHIVE="$OUT_DIR/srxy-${VERSION}-installer-macos-offline-${INSTALLER_VERSION}.app.tar.gz"
-python3 - "$OUT_DIR" "$APP_NAME" "$ARCHIVE" <<'PY'
-import tarfile
-import sys
-from pathlib import Path
-
-out_dir = Path(sys.argv[1])
-app_name = sys.argv[2]
-archive = Path(sys.argv[3])
-with tarfile.open(archive, mode="w:gz", compresslevel=9) as tf:
-	tf.add(out_dir / app_name, arcname=app_name)
-PY
+DMG="$OUT_DIR/srxy-${VERSION}-installer-${INSTALLER_VERSION}-${ARCH}.dmg"
+"$ROOT/packaging/macos/build-dmg.sh" "$APP_BUNDLE" "$DMG" "srxy Installer Offline"
 (
 	cd "$OUT_DIR"
-	shasum -a 256 "$(basename "$ARCHIVE")" >"$(basename "$ARCHIVE").sha256"
-	shasum -a 256 "$(basename "$ARCHIVE")" >SHA256SUMS-macos-offline
+	shasum -a 256 "$(basename "$DMG")" >"$(basename "$DMG").sha256"
+	shasum -a 256 "$(basename "$DMG")" >SHA256SUMS-macos-offline
 )
 
 echo "Built $APP_BUNDLE"
-echo "Built $ARCHIVE"
+echo "Built $DMG"

@@ -108,6 +108,57 @@ echo "AppDir python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
 echo "Pruning unused PySide6 / Qt payload…"
 "$ROOT/packaging/linux-appimage/prune_pyside.sh" "$APPDIR/usr/venv"
 
+# Optional UPX on already-pruned Qt shared objects (same pin as online bootstrap).
+UPX_VERSION="${UPX_VERSION:-5.2.0}"
+UPX_URL="${UPX_URL:-https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz}"
+UPX_SHA256="${UPX_SHA256:-3db5d3294707439db97866feab8d75d800f028f48481a40547411824da4288a1}"
+SKIP_UPX="${SRXY_OFFLINE_SKIP_UPX:-0}"
+if [[ "$SKIP_UPX" != "1" ]]; then
+	if ! command -v xz >/dev/null 2>&1; then
+		echo "error: xz is required to unpack pinned UPX (or set SRXY_OFFLINE_SKIP_UPX=1)" >&2
+		exit 1
+	fi
+	UPX_DIR="$OUT_DIR/upx-${UPX_VERSION}-amd64_linux"
+	UPX_ARCHIVE="$OUT_DIR/upx-${UPX_VERSION}-amd64_linux.tar.xz"
+	UPX_BIN="$UPX_DIR/upx"
+	if [[ ! -x "$UPX_BIN" ]]; then
+		if [[ ! -f "$UPX_ARCHIVE" ]] || ! echo "$UPX_SHA256  $UPX_ARCHIVE" | sha256sum -c - >/dev/null 2>&1; then
+			echo "Fetching UPX ${UPX_VERSION}…"
+			curl -fsSL -o "$UPX_ARCHIVE" "$UPX_URL"
+		fi
+		echo "$UPX_SHA256  $UPX_ARCHIVE" | sha256sum -c -
+		rm -rf "$UPX_DIR"
+		tar -xJf "$UPX_ARCHIVE" -C "$OUT_DIR"
+		if [[ ! -x "$UPX_BIN" ]]; then
+			FOUND="$(find "$OUT_DIR" -maxdepth 2 -type f -name upx | head -n 1)"
+			if [[ -z "$FOUND" ]]; then
+				echo "error: upx binary missing after extract" >&2
+				exit 1
+			fi
+			UPX_BIN="$FOUND"
+		fi
+	fi
+	echo "Compressing pruned Qt .so with UPX (--best --lzma)…"
+	mapfile -t UPX_TARGETS < <(
+		find "$APPDIR/usr/venv" -type f \( -name 'libQt6*.so*' -o -name '*.abi3.so' \) ! -name '*.debug' 2>/dev/null
+	)
+	upx_ok=0
+	upx_fail=0
+	for so in "${UPX_TARGETS[@]}"; do
+		if [[ ! -f "$so" || -L "$so" ]]; then
+			continue
+		fi
+		if "$UPX_BIN" --best --lzma -q -f "$so" 2>/dev/null; then
+			upx_ok=$((upx_ok + 1))
+		else
+			upx_fail=$((upx_fail + 1))
+		fi
+	done
+	echo "UPX compressed ${upx_ok} libs (${upx_fail} skipped/failed)."
+else
+	echo "Skipping offline UPX (SRXY_OFFLINE_SKIP_UPX=1)"
+fi
+
 echo "Smoke-testing pruned wizard imports / QML…"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 "$VENV_PY" -c 'import srxy.adapters.inbound.installer'
