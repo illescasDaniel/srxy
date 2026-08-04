@@ -33,8 +33,8 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 
 ### Offline wizard (full)
 
-1. Download `srxy-*-installer-<installer_version>-x86_64.AppImage` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)). Do **not** confuse this with the `*-installer-online-*` artifact.
-2. Make it executable and run it — no `libfuse2` host package required (type2 static runtime).
+1. Download `srxy-*-installer-<installer_version>-x86_64.AppImage.xz` from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (or build with [`packaging/linux-appimage/build.sh`](../packaging/linux-appimage/build.sh)). Do **not** confuse this with the `*-installer-online-*` artifact.
+2. Decompress (`xz -d srxy-*-installer-*-x86_64.AppImage.xz`), make it executable, and run it — no `libfuse2` host package required (type2 static runtime).
 3. Choose **Install or update**, **Reinstall**, or **Uninstall**. Default install prefix: `~/Applications/srxy` (binaries, models, and cache under that folder via `SRXY_HOME`).
    - **Install or update** installs into the chosen folder, or updates an existing srxy install there in place (venv is recreated; models/cache may remain).
    - **Reinstall** removes that install completely (including models/cache in the prefix), then installs fresh — you enter the path only once.
@@ -44,8 +44,8 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 
 ### Online one-click (slim)
 
-1. Download `srxy-*-installer-online-<installer_version>-x86_64.AppImage` (or build with [`packaging/linux-appimage/build-online.sh`](../packaging/linux-appimage/build-online.sh)).
-2. Run it — it opens your default browser. First launch may download `uv`, Python, and the srxy installer package from PyPI into `~/.cache/srxy/online-bootstrap/` (needs network), then shows the install page on localhost only. Acknowledge privacy, click **Install**. Installs **from PyPI** into your chosen prefix. Always vendors uv/tesseract/ffmpeg and adds PATH; enables smarter-search packages only when a GPU/MPS is detected. AI model weights are **not** prefetched (downloaded on first smarter search).
+1. Download `srxy-*-installer-online-<installer_version>-x86_64.AppImage.xz` (or build with [`packaging/linux-appimage/build-online.sh`](../packaging/linux-appimage/build-online.sh)).
+2. Decompress (`xz -d …`), then run it — it opens your default browser. First launch may download `uv`, Python, and the srxy installer package from PyPI into `~/.cache/srxy/online-bootstrap/` (needs network), then shows the install page on localhost only. Acknowledge privacy, click **Install**. Installs **from PyPI** into your chosen prefix. Always vendors uv/tesseract/ffmpeg and adds PATH; enables smarter-search packages only when a GPU/MPS is detected. AI model weights are **not** prefetched (downloaded on first smarter search).
 3. No reinstall/uninstall UI in this artifact — use the offline wizard or remove the prefix manually. Closing the browser tab stops the installer process.
 
 Language defaults to the system locale (English or Spanish). Override with the installer language combo (offline wizard), GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.

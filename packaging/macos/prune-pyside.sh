@@ -133,8 +133,7 @@ if [[ -d "$QT_LIB" ]]; then
 			libQt6Core*.dylib | libQt6Gui*.dylib | libQt6DBus*.dylib | libQt6Network*.dylib | \
 			libQt6OpenGL*.dylib | libQt6Qml*.dylib | libQt6Quick*.dylib | \
 			libQt6LabsFolderListModel*.dylib | libQt6LabsQmlModels*.dylib | \
-			libQt6ShaderTools*.dylib | libQt6Svg*.dylib | libQt6Concurrent*.dylib)
-			;;
+			libQt6ShaderTools*.dylib | libQt6Svg*.dylib | libQt6Concurrent*.dylib) ;;
 		*)
 			rm_rf "$item"
 			;;

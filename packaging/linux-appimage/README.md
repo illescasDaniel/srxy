@@ -4,10 +4,10 @@ Two separate artifacts (do not overwrite each other):
 
 | Artifact | Build | Smoke | UI |
 |----------|-------|-------|----|
-| `dist/srxy-<srxy-version>-installer-<installer-version>-x86_64.AppImage` | [`build.sh`](build.sh) | [`smoke-appimage.sh`](smoke-appimage.sh) | PySide6 full wizard (bundled wheel) |
-| `dist/srxy-<srxy-version>-installer-online-<installer-version>-x86_64.AppImage` | [`build-online.sh`](build-online.sh) | [`smoke-appimage-online.sh`](smoke-appimage-online.sh) | Go bootstrap + browser UI (PyPI) |
+| `dist/srxy-<srxy-version>-installer-<installer-version>-x86_64.AppImage.xz` | [`build.sh`](build.sh) | [`smoke-appimage.sh`](smoke-appimage.sh) | PySide6 full wizard (bundled wheel) |
+| `dist/srxy-<srxy-version>-installer-online-<installer-version>-x86_64.AppImage.xz` | [`build-online.sh`](build-online.sh) | [`smoke-appimage-online.sh`](smoke-appimage-online.sh) | Go bootstrap + browser UI (PyPI) |
 
-The installer segment is `installer_version` from [`packaging/installer_meta.toml`](../installer_meta.toml).
+The installer segment is `installer_version` from [`packaging/installer_meta.toml`](../installer_meta.toml). Builds also leave the uncompressed `.AppImage` in `dist/` for smoke tests; the preferred release artifact is the `.xz` wrap (`xz -9e -T0`, override via `SRXY_XZ_OPTS`).
 
 ```bash
 ./packaging/linux-appimage/build.sh
@@ -19,7 +19,7 @@ The installer segment is `installer_version` from [`packaging/installer_meta.tom
 ./packaging/linux-appimage/smoke-appimage-online.sh
 ```
 
-Uses pinned [appimagetool 1.9.1](https://github.com/AppImage/appimagetool/releases/tag/1.9.1) with the [type2-runtime](https://github.com/AppImage/type2-runtime) (no host `libfuse2`). The build scripts verify the tool's SHA-256 before packing.
+Uses pinned [appimagetool 1.9.1](https://github.com/AppImage/appimagetool/releases/tag/1.9.1) with the [type2-runtime](https://github.com/AppImage/type2-runtime) (no host `libfuse2`). The build scripts verify the tool's SHA-256 before packing. Both builds require **xz** to wrap the AppImage.
 
 ## Relocatable Python
 
@@ -29,13 +29,13 @@ Each AppDir installs a uv-managed CPython under `AppDir/usr/python` (`UV_PYTHON_
 
 The offline AppImage venv is **wizard-only**: `PySide6` plus `uv pip install --no-deps` of srxy. It does **not** pull the full search-stack dependency tree (wordfreq, pillow-heif, textual, …). Prefix installs still use the bundled wheel under `usr/share/srxy/` (full package + PyPI prefer-newer via `resolve_srxy_install_spec()`).
 
-After install, [`prune_pyside.sh`](prune_pyside.sh) deletes unused Qt modules (WebEngine, 3D, Charts, Multimedia, designer/qmlls, …) while keeping the Quick / Controls / Dialogs / FolderDialog stack the wizard needs. The build then smoke-tests installer imports and a tiny offscreen QML load. Packing uses squashfs **zstd** at compression level **19**. Build logs print AppDir and AppImage sizes (`du -sh`). Optional model prefetch remains available in this wizard.
+After install, [`prune_pyside.sh`](prune_pyside.sh) deletes unused Qt modules (WebEngine, 3D, Charts, Multimedia, designer/qmlls, …) while keeping the Quick / Controls / Dialogs / FolderDialog stack the wizard needs. The build then smoke-tests installer imports and a tiny offscreen QML load. Packing uses squashfs **zstd** at compression level **19**, then wraps the AppImage with **xz** (`-9e -T0` by default). Build logs print AppDir, AppImage, and `.xz` sizes (`du -sh`). Checksums cover the `.xz` file. Optional model prefetch remains available in this wizard.
 
 ## Online one-click (Go bootstrap + localhost browser UI)
 
-The online AppImage embeds a small **Go** bootstrap binary (UPX-compressed at build time) and meta (no CPython, no uv, **no** bundled wheel). On first launch it opens your browser to a preparing page, downloads pinned `uv` + managed Python into `~/.cache/srxy/online-bootstrap/`, installs `srxy>=<build>,<next_major>` from PyPI (`--no-deps`) into a cache venv, then hands off to the Python localhost installer (`installer_online`). Later launches reuse the cache (uv upgrades within the major bound when a newer 1.x exists). The *prefix* install still uses `resolve_pypi_install_spec()`. Auto options: PATH, tesseract, ffmpeg; semantic packages only when GPU/MPS is present; `prefetch_models=False`. Checksums are written to `SHA256SUMS-online` so they do not overwrite the offline `SHA256SUMS`.
+The online AppImage embeds a small **Go** bootstrap binary (UPX-compressed at build time) and meta (no CPython, no uv, **no** bundled wheel). On first launch it opens your browser to a preparing page, downloads pinned `uv` + managed Python into `~/.cache/srxy/online-bootstrap/`, installs `srxy>=<build>,<next_major>` from PyPI (`--no-deps`) into a cache venv, then hands off to the Python localhost installer (`installer_online`). Later launches reuse the cache (uv upgrades within the major bound when a newer 1.x exists). The *prefix* install still uses `resolve_pypi_install_spec()`. Auto options: PATH, tesseract, ffmpeg; semantic packages only when GPU/MPS is present; `prefetch_models=False`. Checksums for the `.AppImage.xz` wrap are written to `SHA256SUMS-online` so they do not overwrite the offline `SHA256SUMS`.
 
-Building requires **Go** and **xz** (to unpack pinned UPX). Set `SRXY_ONLINE_SKIP_UPX=1` to skip UPX on the online bootstrap. The offline AppImage may also UPX pruned Qt `.so` files after `prune_pyside.sh`; set `SRXY_OFFLINE_SKIP_UPX=1` to skip that pass. Override the bootstrap package with `SRXY_ONLINE_BOOTSTRAP_SPEC` for local testing. Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
+Building requires **Go** and **xz** (UPX unpack + AppImage wrap). Set `SRXY_ONLINE_SKIP_UPX=1` to skip UPX on the online bootstrap. Override the bootstrap package with `SRXY_ONLINE_BOOTSTRAP_SPEC` for local testing. Bootstrap sources live under [`packaging/online-bootstrap/`](../online-bootstrap/).
 
 ## Vendor checksums
 
@@ -49,7 +49,7 @@ Installer downloads (uv, tesseract, tessdata, ffmpeg) are HTTPS-only and require
 
 ## CI
 
-[`.github/workflows/appimage.yml`](../../.github/workflows/appimage.yml) builds and smokes **both** AppImages on PRs/main (separate artifacts) and attaches both AppImages + checksum files to GitHub Releases on `v*` tags.
+[`.github/workflows/appimage.yml`](../../.github/workflows/appimage.yml) builds and smokes **both** AppImages on PRs/main (separate artifacts) and attaches both `.AppImage.xz` wraps + checksum files to GitHub Releases on `v*` tags.
 
 ## Icons and meta
 

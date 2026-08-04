@@ -86,6 +86,10 @@ def test_given_offline_build_script_when_reading_then_names_offline_artifact():
 	# then
 	assert "installer-${INSTALLER_VERSION}" in output_line
 	assert "installer-online" not in output_line
+	assert output_line.endswith('.AppImage"')
+	assert "OUTPUT_XZ=" in text
+	assert "xz " in text
+	assert 'basename "$OUTPUT_XZ"' in text
 	assert "prune_pyside.sh" in text
 	assert "UV_PYTHON_PREFERENCE=only-managed" in text
 	assert "realpath --relative-to" in text
@@ -102,6 +106,10 @@ def test_given_online_build_script_when_reading_then_names_online_artifact_and_c
 
 	# then
 	assert "installer-online-${INSTALLER_VERSION}" in output_line
+	assert output_line.endswith('.AppImage"')
+	assert "OUTPUT_XZ=" in text
+	assert "xz " in text
+	assert 'basename "$OUTPUT_XZ"' in text
 	assert "srxy-online-bootstrap" in text
 	assert "bootstrap-meta.json" in text
 	assert "SHA256SUMS-online" in text

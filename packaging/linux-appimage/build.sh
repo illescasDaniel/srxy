@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build a thin Linux AppImage for the srxy install/uninstall wizard.
-# Requires: curl, uv. Downloads pinned appimagetool (type2 static runtime) if missing.
+# Requires: curl, uv, xz. Downloads pinned appimagetool (type2 static runtime) if missing.
+# Preferred release artifact is the AppImage wrapped as .AppImage.xz.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -14,6 +15,8 @@ APPIMAGETOOL_URL="${APPIMAGETOOL_URL:-https://github.com/AppImage/appimagetool/r
 APPIMAGETOOL_SHA256="${APPIMAGETOOL_SHA256:-ed4ce84f0d9caff66f50bcca6ff6f35aae54ce8135408b3fa33abfc3cb384eb0}"
 ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-installer-256.png}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
+# shellcheck disable=SC2206 # intentional word-split of xz flags
+SRXY_XZ_OPTS=(${SRXY_XZ_OPTS:--9e -T0})
 
 cd "$ROOT"
 mkdir -p "$OUT_DIR"
@@ -22,6 +25,10 @@ mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/i
 
 if ! command -v uv >/dev/null 2>&1; then
 	echo "error: uv is required to build the AppImage" >&2
+	exit 1
+fi
+if ! command -v xz >/dev/null 2>&1; then
+	echo "error: xz is required to wrap the AppImage" >&2
 	exit 1
 fi
 
@@ -108,59 +115,9 @@ echo "AppDir python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
 echo "Pruning unused PySide6 / Qt payload…"
 "$ROOT/packaging/linux-appimage/prune_pyside.sh" "$APPDIR/usr/venv"
 
-# Optional UPX on already-pruned Qt shared objects (same pin as online bootstrap).
-UPX_VERSION="${UPX_VERSION:-5.2.0}"
-UPX_URL="${UPX_URL:-https://github.com/upx/upx/releases/download/v${UPX_VERSION}/upx-${UPX_VERSION}-amd64_linux.tar.xz}"
-UPX_SHA256="${UPX_SHA256:-3db5d3294707439db97866feab8d75d800f028f48481a40547411824da4288a1}"
-SKIP_UPX="${SRXY_OFFLINE_SKIP_UPX:-0}"
-if [[ "$SKIP_UPX" != "1" ]]; then
-	if ! command -v xz >/dev/null 2>&1; then
-		echo "error: xz is required to unpack pinned UPX (or set SRXY_OFFLINE_SKIP_UPX=1)" >&2
-		exit 1
-	fi
-	UPX_DIR="$OUT_DIR/upx-${UPX_VERSION}-amd64_linux"
-	UPX_ARCHIVE="$OUT_DIR/upx-${UPX_VERSION}-amd64_linux.tar.xz"
-	UPX_BIN="$UPX_DIR/upx"
-	if [[ ! -x "$UPX_BIN" ]]; then
-		if [[ ! -f "$UPX_ARCHIVE" ]] || ! echo "$UPX_SHA256  $UPX_ARCHIVE" | sha256sum -c - >/dev/null 2>&1; then
-			echo "Fetching UPX ${UPX_VERSION}…"
-			curl -fsSL -o "$UPX_ARCHIVE" "$UPX_URL"
-		fi
-		echo "$UPX_SHA256  $UPX_ARCHIVE" | sha256sum -c -
-		rm -rf "$UPX_DIR"
-		tar -xJf "$UPX_ARCHIVE" -C "$OUT_DIR"
-		if [[ ! -x "$UPX_BIN" ]]; then
-			FOUND="$(find "$OUT_DIR" -maxdepth 2 -type f -name upx | head -n 1)"
-			if [[ -z "$FOUND" ]]; then
-				echo "error: upx binary missing after extract" >&2
-				exit 1
-			fi
-			UPX_BIN="$FOUND"
-		fi
-	fi
-	echo "Compressing pruned Qt .so with UPX (--best --lzma)…"
-	mapfile -t UPX_TARGETS < <(
-		find "$APPDIR/usr/venv" -type f \( -name 'libQt6*.so*' -o -name '*.abi3.so' \) ! -name '*.debug' 2>/dev/null
-	)
-	upx_ok=0
-	upx_fail=0
-	for so in "${UPX_TARGETS[@]}"; do
-		if [[ ! -f "$so" || -L "$so" ]]; then
-			continue
-		fi
-		if "$UPX_BIN" --best --lzma -q -f "$so" 2>/dev/null; then
-			upx_ok=$((upx_ok + 1))
-		else
-			upx_fail=$((upx_fail + 1))
-		fi
-	done
-	echo "UPX compressed ${upx_ok} libs (${upx_fail} skipped/failed)."
-else
-	echo "Skipping offline UPX (SRXY_OFFLINE_SKIP_UPX=1)"
-fi
+# Do not UPX Qt shared libraries: compressed .so files commonly SIGBUS on load.
 
-echo "Smoke-testing pruned wizard imports / QML…"
-export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
+echo "Smoke-testing pruned wizard imports / QML…"export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
 "$VENV_PY" -c 'import srxy.adapters.inbound.installer'
 "$VENV_PY" -m srxy.adapters.inbound.installer --help >/dev/null
 "$VENV_PY" <<'PY'
@@ -288,10 +245,15 @@ ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" \
 chmod +x "$OUTPUT"
 echo "Built $OUTPUT ($(du -sh "$OUTPUT" | cut -f1))"
 
-# Write checksums alongside the artifact for release uploads.
+OUTPUT_XZ="${OUTPUT}.xz"
+echo "Wrapping $OUTPUT_XZ (xz ${SRXY_XZ_OPTS[*]})…"
+xz "${SRXY_XZ_OPTS[@]}" -k -f "$OUTPUT"
+echo "Wrapped $OUTPUT_XZ ($(du -sh "$OUTPUT_XZ" | cut -f1))"
+
+# Write checksums for the preferred .xz release artifact.
 (
 	cd "$OUT_DIR"
-	sha256sum "$(basename "$OUTPUT")" >"$(basename "$OUTPUT").sha256"
-	sha256sum "$(basename "$OUTPUT")" >SHA256SUMS
+	sha256sum "$(basename "$OUTPUT_XZ")" >"$(basename "$OUTPUT_XZ").sha256"
+	sha256sum "$(basename "$OUTPUT_XZ")" >SHA256SUMS
 )
 echo "Wrote $OUT_DIR/SHA256SUMS"

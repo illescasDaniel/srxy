@@ -10,10 +10,10 @@ Two separate AppImages (do not mix them up):
 
 | Artifact name pattern | Role |
 |-----------------------|------|
-| `srxy-*-installer-<installer_version>-x86_64.AppImage` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
-| `srxy-*-installer-online-<installer_version>-x86_64.AppImage` | **Online one-click** — slim Go bootstrap + localhost browser page; install from PyPI |
+| `srxy-*-installer-<installer_version>-x86_64.AppImage.xz` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
+| `srxy-*-installer-online-<installer_version>-x86_64.AppImage.xz` | **Online one-click** — slim Go bootstrap + localhost browser page; install from PyPI |
 
-Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), make executable, and run (type2 static runtime — no host `libfuse2`). Default prefix: `~/Applications/srxy`.
+Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), decompress (`xz -d …`), make executable, and run (type2 static runtime — no host `libfuse2`). Default prefix: `~/Applications/srxy`.
 
 ### Offline wizard
 

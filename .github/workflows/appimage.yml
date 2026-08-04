@@ -49,8 +49,8 @@ jobs:
         with:
           name: srxy-installer-appimage-${{ github.sha }}
           path: |
-            dist/srxy-*-installer-*-x86_64.AppImage
-            !dist/srxy-*-installer-online-*-x86_64.AppImage
+            dist/srxy-*-installer-*-x86_64.AppImage.xz
+            !dist/srxy-*-installer-online-*-x86_64.AppImage.xz
             dist/SHA256SUMS
             dist/*.sha256
             !dist/*-installer-online-*.sha256
@@ -87,7 +87,7 @@ jobs:
         with:
           name: srxy-installer-online-appimage-${{ github.sha }}
           path: |
-            dist/srxy-*-installer-online-*-x86_64.AppImage
+            dist/srxy-*-installer-online-*-x86_64.AppImage.xz
             dist/SHA256SUMS-online
             dist/*-installer-online-*.sha256
           if-no-files-found: error
@@ -117,7 +117,7 @@ jobs:
         uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
         with:
           files: |
-            dist/srxy-*-installer-*-x86_64.AppImage
+            dist/srxy-*-installer-*-x86_64.AppImage.xz
             dist/SHA256SUMS
             dist/SHA256SUMS-online
             dist/*.sha256

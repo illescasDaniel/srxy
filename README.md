@@ -29,12 +29,12 @@ Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](do
 
 **Desktop installers (Linux + macOS):**
 
-Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (make executable and run; no host `libfuse2`):
+Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (decompress the `.xz`, make executable, and run; no host `libfuse2`):
 
 | Artifact | What you get |
 |----------|----------------|
-| `srxy-*-installer-*.AppImage` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
-| `srxy-*-installer-online-*.AppImage` | **Online one-click** — slim Go bootstrap; opens your browser to a localhost page and installs from PyPI |
+| `srxy-*-installer-*.AppImage.xz` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
+| `srxy-*-installer-online-*.AppImage.xz` | **Online one-click** — slim Go bootstrap; opens your browser to a localhost page and installs from PyPI |
 
 Default prefix: `~/Applications/srxy`. The online AppImage needs a network connection on first launch (downloads `uv`, managed Python, and srxy into `~/.cache/srxy/online-bootstrap/`); later runs reuse the cache. It vendors PATH / tesseract / ffmpeg automatically and enables smarter-search packages only when a GPU is detected — model weights download later when you use those features. No reinstall/uninstall UI on the online path (use the offline wizard or remove the prefix).
 

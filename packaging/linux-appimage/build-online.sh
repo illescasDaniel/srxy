@@ -3,8 +3,8 @@
 # Go bootstrap downloads uv + managed Python + srxy from PyPI on first run,
 # then hands off to the Python localhost installer. Does not replace the
 # offline PySide AppImage.
-# Requires: curl, uv, go, xz (to unpack pinned UPX). Downloads pinned
-# appimagetool + UPX if missing.
+# Requires: curl, uv, go, xz (UPX unpack + AppImage wrap). Downloads pinned
+# appimagetool + UPX if missing. Preferred release artifact is .AppImage.xz.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -21,6 +21,8 @@ ICON_SRC="${ICON_SRC:-$ROOT/src/srxy/resources/icons/srxy-installer-256.png}"
 PYTHON_VERSION="${PYTHON_VERSION:-3.12}"
 BOOTSTRAP_DIR="$ROOT/packaging/online-bootstrap"
 SKIP_UPX="${SRXY_ONLINE_SKIP_UPX:-0}"
+# shellcheck disable=SC2206 # intentional word-split of xz flags
+SRXY_XZ_OPTS=(${SRXY_XZ_OPTS:--9e -T0})
 
 cd "$ROOT"
 mkdir -p "$OUT_DIR"
@@ -35,6 +37,10 @@ if ! command -v uv >/dev/null 2>&1; then
 fi
 if ! command -v go >/dev/null 2>&1; then
 	echo "error: go is required to build the online bootstrap AppImage" >&2
+	exit 1
+fi
+if ! command -v xz >/dev/null 2>&1; then
+	echo "error: xz is required to wrap the AppImage (and unpack pinned UPX)" >&2
 	exit 1
 fi
 if [[ ! -f "$ICON_SRC" ]]; then
@@ -185,9 +191,14 @@ ARCH="$ARCH" VERSION="$VERSION" APPIMAGE_EXTRACT_AND_RUN=1 "$TOOL" \
 chmod +x "$OUTPUT"
 echo "Built $OUTPUT ($(du -sh "$OUTPUT" | cut -f1))"
 
+OUTPUT_XZ="${OUTPUT}.xz"
+echo "Wrapping $OUTPUT_XZ (xz ${SRXY_XZ_OPTS[*]})…"
+xz "${SRXY_XZ_OPTS[@]}" -k -f "$OUTPUT"
+echo "Wrapped $OUTPUT_XZ ($(du -sh "$OUTPUT_XZ" | cut -f1))"
+
 (
 	cd "$OUT_DIR"
-	sha256sum "$(basename "$OUTPUT")" >"$(basename "$OUTPUT").sha256"
-	sha256sum "$(basename "$OUTPUT")" >SHA256SUMS-online
+	sha256sum "$(basename "$OUTPUT_XZ")" >"$(basename "$OUTPUT_XZ").sha256"
+	sha256sum "$(basename "$OUTPUT_XZ")" >SHA256SUMS-online
 )
 echo "Wrote $OUT_DIR/SHA256SUMS-online"
