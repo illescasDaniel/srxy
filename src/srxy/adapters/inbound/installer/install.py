@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import os
+import platform
+import plistlib
 import shlex
 import shutil
 import subprocess
@@ -161,6 +163,7 @@ def write_launcher(prefix: Path):
 	]
 	path_prefix = ":".join(vendor_bin_parts)
 	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
+	tessdata_dist = prefix / "vendor" / "tesseract" / "dist" / "tessdata"
 	log_file = log_dir / "srxy.log"
 	q_prefix = shlex.quote(prefix.as_posix())
 	q_venv = shlex.quote(venv_srxy.as_posix())
@@ -172,7 +175,11 @@ set -eu
 SRXY_HOME={q_prefix}
 export SRXY_HOME
 export PATH="{path_prefix}:$PATH"
-export TESSDATA_PREFIX={q_tessdata}
+if [ -d {shlex.quote(tessdata_dist.as_posix())} ]; then
+	export TESSDATA_PREFIX={shlex.quote(tessdata_dist.as_posix())}
+else
+	export TESSDATA_PREFIX={q_tessdata}
+fi
 LOG_DIR={q_log_dir}
 LOG_FILE={q_log_file}
 mkdir -p "$LOG_DIR"
@@ -195,6 +202,53 @@ fi
 """
 	launcher.write_text(content, encoding="utf-8")
 	launcher.chmod(0o755)
+	_write_macos_app(prefix, launcher_text=content)
+
+
+def _write_macos_app(prefix: Path, *, launcher_text: str):
+	if platform.system().lower() != "darwin":
+		return
+	app_bundle = prefix / "Srxy.app"
+	macos_dir = app_bundle / "Contents" / "MacOS"
+	resources_dir = app_bundle / "Contents" / "Resources"
+	macos_dir.mkdir(parents=True, exist_ok=True)
+	resources_dir.mkdir(parents=True, exist_ok=True)
+	app_launcher = macos_dir / "srxy"
+	app_launcher.write_text(launcher_text, encoding="utf-8")
+	app_launcher.chmod(0o755)
+
+	icon_png = app_icon_path(size=512)
+	shutil.copy2(icon_png, resources_dir / "srxy.png")
+	icns_name = "srxy.icns"
+	icns_path = resources_dir / icns_name
+	if shutil.which("sips") and shutil.which("iconutil"):
+		iconset = resources_dir / "srxy.iconset"
+		if iconset.exists():
+			shutil.rmtree(iconset)
+		iconset.mkdir(parents=True, exist_ok=True)
+		for size in (16, 32, 128, 256, 512):
+			target = iconset / f"icon_{size}x{size}.png"
+			_run(["sips", "-z", str(size), str(size), str(icon_png), "--out", str(target)])
+			if size <= 512:
+				target2x = iconset / f"icon_{size}x{size}@2x.png"
+				_run(["sips", "-z", str(size * 2), str(size * 2), str(icon_png), "--out", str(target2x)])
+		_run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns_path)])
+
+	plist = {
+		"CFBundleName": "Srxy",
+		"CFBundleDisplayName": "Srxy",
+		"CFBundleIdentifier": "com.srxy.app",
+		"CFBundleVersion": "1",
+		"CFBundleShortVersionString": "1",
+		"CFBundleExecutable": "srxy",
+		"CFBundlePackageType": "APPL",
+		"LSMinimumSystemVersion": "12.0",
+	}
+	if icns_path.is_file():
+		plist["CFBundleIconFile"] = icns_name
+	plist_path = app_bundle / "Contents" / "Info.plist"
+	plist_path.parent.mkdir(parents=True, exist_ok=True)
+	plist_path.write_bytes(plistlib.dumps(plist))
 
 
 def _install_icons(prefix: Path) -> tuple[Path, list[Path]]:
@@ -247,6 +301,10 @@ def _write_desktop_entry(prefix: Path):
 		),
 		encoding="utf-8",
 	)
+
+
+def _is_linux() -> bool:
+	return platform.system().lower() == "linux"
 
 
 def _resolve_uv(prefix: Path) -> Path:
@@ -396,8 +454,10 @@ def install_srxy(
 	local_index, phase = phase_by_key["launcher"]
 	emit_task(local_index, phase.label)
 	write_launcher(prefix)
-	_, user_icon_paths = _install_icons(prefix)
-	_write_desktop_entry(prefix)
+	user_icon_paths: list[Path] = []
+	if _is_linux():
+		_, user_icon_paths = _install_icons(prefix)
+		_write_desktop_entry(prefix)
 	_complete_phase(progress=progress, label=phase.label)
 
 	path_rc = ""

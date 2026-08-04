@@ -35,6 +35,21 @@ DEFAULT_CLIENT_IDLE_SECONDS = 3.0
 DEFAULT_CLIENT_GRACE_SECONDS = 20.0
 
 
+def _append_online_error_log(prefix: Path, detail: str):
+	"""Write installer-online failures under <prefix>/logs for post-mortem."""
+	try:
+		log_dir = prefix.expanduser().resolve() / "logs"
+		log_dir.mkdir(parents=True, exist_ok=True)
+		log_file = log_dir / "installer-online.log"
+		timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+		with log_file.open("a", encoding="utf-8") as handle:
+			handle.write(f"[{timestamp}] install failed\n")
+			handle.write(detail.rstrip() + "\n\n")
+	except Exception:
+		# Best-effort logging only.
+		return
+
+
 class InstallSession:
 	"""Thread-safe install progress shared with HTTP handlers."""
 
@@ -350,6 +365,7 @@ def _client_watchdog(
 
 
 def _run_install(session: InstallSession, prefix: Path | None):
+	options = None
 	try:
 		options = build_online_install_options(prefix=prefix)
 
@@ -371,6 +387,8 @@ def _run_install(session: InstallSession, prefix: Path | None):
 		session.mark_done(can_launch=True, prefix=str(options.prefix))
 	except Exception as exc:
 		detail = str(exc).strip() or traceback.format_exc()
+		target_prefix = options.prefix if options is not None else (prefix or default_install_prefix())
+		_append_online_error_log(target_prefix, detail)
 		session.mark_error(detail)
 
 

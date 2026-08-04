@@ -50,3 +50,18 @@ Run the full local gate (`./scripts/quality/checks.sh`) so integration, TUI, and
 ## Typing
 
 Do not annotate functions that return `None` with `-> None`. Omit the return type instead.
+
+## Task command verification
+
+When you add or modify any Taskipy task or the script it runs, execute that exact task command before reporting completion.
+
+- If the task is interactive/long-running, run a deterministic smoke variant (`--help`, `--version`, or equivalent non-interactive flag) plus one realistic invocation path that reaches the changed code.
+- Include the exact command(s) and outcome in your final update.
+
+## Third-party binary policy
+
+Do not bundle third-party runtime binaries (for example tesseract, ffmpeg, CUDA, or similar) inside installer app artifacts, the git repository, or project GitHub Releases.
+
+- Keep third-party components as opt-in downloads from pinned upstream HTTPS sources at install/runtime.
+- Do not host rebuilt/repackaged third-party runtime binaries under srxy release tags.
+- If a change would embed third-party runtime binaries into an installer artifact, the repo, or our releases, stop and use a download-based approach instead.

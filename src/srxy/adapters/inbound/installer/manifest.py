@@ -138,7 +138,8 @@ def looks_like_partial_srxy_prefix(prefix: Path) -> bool:
 	"""True when the folder looks like a broken / incomplete srxy install.
 
 	Valid installs (``is_srxy_prefix``) are not partial. Markers include a
-	venv, vendor uv, launcher, or any install manifest (including invalid).
+	venv, vendor tooling, launcher, macOS app bundle, installer logs, or any
+	install manifest (including invalid).
 	"""
 	if not prefix.is_dir():
 		return False
@@ -148,7 +149,12 @@ def looks_like_partial_srxy_prefix(prefix: Path) -> bool:
 	markers = (
 		resolved / ".venv",
 		resolved / "vendor" / "uv",
+		resolved / "vendor" / "tesseract",
+		resolved / "vendor" / "ffmpeg",
 		resolved / "bin" / "srxy",
+		resolved / "Srxy.app",
+		resolved / "logs" / "installer-online.log",
+		resolved / "logs" / "srxy.log",
 		manifest_path(resolved),
 	)
 	return any(path.exists() for path in markers)

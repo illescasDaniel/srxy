@@ -9,7 +9,8 @@ import tarfile
 import tempfile
 import urllib.error
 import urllib.request
-from collections.abc import Callable
+import zipfile
+from collections.abc import Callable, Mapping
 from pathlib import Path
 
 
@@ -47,9 +48,13 @@ def _stream_to_file(
 	*,
 	display: str,
 	progress: ProgressCallback | None,
+	headers: Mapping[str, str] | None,
 ) -> str:
 	"""Stream ``url`` into ``target`` and return the hex SHA-256 of the bytes written."""
-	request = urllib.request.Request(url, headers={"User-Agent": "srxy-installer"})  # noqa: S310
+	request_headers = {"User-Agent": "srxy-installer"}
+	if headers:
+		request_headers.update(headers)
+	request = urllib.request.Request(url, headers=request_headers)  # noqa: S310
 	hasher = hashlib.sha256()
 	downloaded = 0
 	total = 0
@@ -78,6 +83,7 @@ def download_file(
 	sha256: str = "",
 	label: str = "",
 	progress: ProgressCallback | None = None,
+	headers: Mapping[str, str] | None = None,
 ) -> Path:
 	display = label or destination.name
 	expected = sha256.strip().lower()
@@ -87,7 +93,7 @@ def download_file(
 	partial = _partial_path(destination)
 	partial.unlink(missing_ok=True)
 	try:
-		digest = _stream_to_file(url, partial, display=display, progress=progress)
+		digest = _stream_to_file(url, partial, display=display, progress=progress, headers=headers)
 		if expected and digest != expected:
 			raise RuntimeError(f"SHA-256 mismatch for {display}: got {digest}, expected {expected}")
 		os.replace(partial, destination)
@@ -101,6 +107,21 @@ def extract_tar_archive(archive: Path, destination: Path) -> Path:
 	destination.mkdir(parents=True, exist_ok=True)
 	with tarfile.open(archive, mode="r:*") as handle:
 		handle.extractall(destination, filter="data")  # type: ignore[call-arg]
+	return destination
+
+
+def extract_zip_archive(archive: Path, destination: Path) -> Path:
+	destination.mkdir(parents=True, exist_ok=True)
+	dest_root = destination.resolve()
+	with zipfile.ZipFile(archive) as handle:
+		for info in handle.infolist():
+			member_path = Path(info.filename)
+			if member_path.is_absolute() or ".." in member_path.parts:
+				raise RuntimeError(f"refusing unsafe zip member path: {info.filename}")
+			target = (destination / member_path).resolve()
+			if not target.is_relative_to(dest_root):
+				raise RuntimeError(f"refusing zip member outside destination: {info.filename}")
+			handle.extract(info, destination)
 	return destination
 
 
@@ -118,12 +139,13 @@ def download_to_temp(
 	sha256: str = "",
 	label: str = "",
 	progress: ProgressCallback | None = None,
+	headers: Mapping[str, str] | None = None,
 ) -> Path:
 	handle = tempfile.NamedTemporaryFile(prefix="srxy-dl-", suffix=suffix, delete=False)
 	handle.close()
 	path = Path(handle.name)
 	try:
-		return download_file(url, path, sha256=sha256, label=label, progress=progress)
+		return download_file(url, path, sha256=sha256, label=label, progress=progress, headers=headers)
 	except BaseException:
 		path.unlink(missing_ok=True)
 		raise
@@ -135,5 +157,6 @@ __all__ = [
 	"download_file",
 	"download_to_temp",
 	"extract_tar_archive",
+	"extract_zip_archive",
 	"move_tree",
 ]

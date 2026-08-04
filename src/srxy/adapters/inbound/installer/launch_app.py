@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import platform
 import subprocess
 from pathlib import Path
 
 
 def installed_launcher_path(prefix: Path | str) -> Path:
-	return Path(prefix).expanduser().resolve() / "bin" / "srxy"
+	root = Path(prefix).expanduser().resolve()
+	if platform.system().lower() == "darwin":
+		app_exe = root / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+		if app_exe.is_file():
+			return app_exe
+	return root / "bin" / "srxy"
 
 
 def launch_installed_app(prefix: Path | str):

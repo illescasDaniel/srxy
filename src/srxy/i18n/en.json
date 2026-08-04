@@ -66,6 +66,7 @@
   "installer.options.models_hint": "If you skip this, srxy can later install the models when needed.",
   "installer.options.info_tooltip": "About this option",
   "installer.options.gpu_tooltip": "Why smarter search is unavailable",
+  "installer.options.vendor_unavailable": "Automatic Tesseract/ffmpeg downloads are not available on this platform yet.",
   "installer.no_gpu.banner": "No usable GPU detected — smarter search stays off on this computer.",
   "installer.path.title": "Terminal access",
   "installer.path.body": "Adds a shortcut so you can type srxy in a terminal to open search (same app as the menu).",

@@ -6,6 +6,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, Signal, Slot
 
+from srxy.adapters.inbound.installer.catalog import vendor_downloads_supported
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
@@ -144,8 +145,9 @@ class InstallerController(QObject):
 		self._mode = "install"
 		self._prefix = str(default_install_prefix())
 		self._privacy_ack = False
-		self._download_tesseract = True
-		self._download_ffmpeg = True
+		self._vendor_downloads_supported = vendor_downloads_supported()
+		self._download_tesseract = self._vendor_downloads_supported
+		self._download_ffmpeg = self._vendor_downloads_supported
 		self._has_gpu = has_accelerated_gpu()
 		# When a usable GPU is present, opt into all AI-related extras by default.
 		self._install_semantic = self._has_gpu
@@ -240,6 +242,8 @@ class InstallerController(QObject):
 
 	@Slot(bool)
 	def setDownloadTesseract(self, value: bool):
+		if not self._vendor_downloads_supported:
+			return
 		if self._download_tesseract != value:
 			self._download_tesseract = value
 			self.downloadTesseractChanged.emit()
@@ -250,9 +254,15 @@ class InstallerController(QObject):
 
 	@Slot(bool)
 	def setDownloadFfmpeg(self, value: bool):
+		if not self._vendor_downloads_supported:
+			return
 		if self._download_ffmpeg != value:
 			self._download_ffmpeg = value
 			self.downloadFfmpegChanged.emit()
+
+	@Property(bool, constant=True)
+	def vendorDownloadsSupported(self) -> bool:
+		return self._vendor_downloads_supported
 
 	@Property(bool, constant=True)
 	def hasGpu(self) -> bool:

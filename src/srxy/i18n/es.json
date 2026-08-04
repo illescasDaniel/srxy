@@ -66,6 +66,7 @@
   "installer.options.models_hint": "Si lo omites, srxy podrá instalar los modelos más adelante cuando haga falta.",
   "installer.options.info_tooltip": "Sobre esta opción",
   "installer.options.gpu_tooltip": "Por qué no está disponible la búsqueda más inteligente",
+  "installer.options.vendor_unavailable": "Las descargas automáticas de Tesseract/ffmpeg aún no están disponibles en esta plataforma.",
   "installer.no_gpu.banner": "No se detectó una GPU usable — la búsqueda más inteligente queda desactivada en este equipo.",
   "installer.path.title": "Acceso desde la terminal",
   "installer.path.body": "Añade un acceso para escribir srxy en una terminal y abrir la búsqueda (la misma app del menú).",

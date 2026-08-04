@@ -25,9 +25,9 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 `[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch first if you have an NVIDIA GPU ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
-## Linux AppImage installers (optional)
+## Desktop installers (optional)
 
-**Linux AppImages are available now.** Windows and macOS desktop installers are in progress — until then use the paths above on those platforms. Short reference: [installers.md](installers.md).
+Linux AppImages and macOS `.app` wrappers are available now. Windows desktop installers are still in progress. Short reference: [installers.md](installers.md).
 
 PyPI / `uv tool install` remain the primary install paths. On Linux you can also use a **desktop installer AppImage**:
 
@@ -52,7 +52,17 @@ Language defaults to the system locale (English or Spanish). Override with the i
 
 The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip). After an update completes, restart srxy to load the new version.
 
-Linux CI builds both AppImages via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md)).
+### macOS wrappers
+
+1. Download and extract:
+   - `srxy-*-installer-macos-offline-*.app.tar.gz` (offline wizard app), or
+   - `srxy-*-installer-macos-online-*.app.tar.gz` (online bootstrap app).
+2. Launch the `.app` bundle.
+3. Both wrappers target `~/Applications/srxy` by default and do not require admin rights for that path.
+4. Optionally vendor Tesseract and ffmpeg (Apple Silicon downloads; no Homebrew required), plus semantic extras / models when offered.
+5. Finish — launcher and shell PATH updates use the chosen prefix under `~/Applications/srxy` by default.
+
+CI builds macOS wrappers via [`.github/workflows/macos-installer.yml`](../.github/workflows/macos-installer.yml). Linux CI builds AppImages via [`.github/workflows/appimage.yml`](../.github/workflows/appimage.yml) (see [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md)).
 
 ```bash
 uv run python -m srxy.adapters.inbound.installer          # offline wizard
@@ -64,7 +74,6 @@ uv run task installer-online-local                        # build local wheel + 
 ```
 
 `SRXY_INSTALL_WHEEL` (checked before `SRXY_INSTALL_SPEC`) points the installer at a local `.whl` and skips the PyPI package lookup. Vendor downloads (uv / tesseract / ffmpeg) still need the network.
-macOS and Windows installers are planned (see [installers.md](installers.md)).
 
 ## System dependencies
 
@@ -111,7 +120,7 @@ macOS `python3` often **3.9–3.10** or missing. srxy needs **3.11+**. Install n
 
 2. Install **uv** ([docs](https://docs.astral.sh/uv/getting-started/installation/)), or **pipx** if you prefer that installer.
 
-3. System binaries ([Homebrew](https://brew.sh/)):
+3. **ffmpeg** / **tesseract** (optional): the macOS installer wrappers can vendor Apple Silicon builds without Homebrew. For PyPI / `uv tool` installs, use Homebrew or another package manager:
 
    ```bash
    brew install ffmpeg tesseract

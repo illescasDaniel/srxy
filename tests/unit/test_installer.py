@@ -306,6 +306,36 @@ def test_given_partial_venv_when_checking_then_flags_partial(tmp_path: Path):
 	assert is_srxy_prefix(tmp_path) is False
 
 
+def test_given_macos_failed_online_leftovers_when_uninstalling_then_removes_prefix(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given: failed online install wrote logs but never a manifest/uv binary
+	home = tmp_path / "home"
+	home.mkdir()
+	prefix = home / "Applications" / "srxy"
+	(prefix / "logs").mkdir(parents=True)
+	(prefix / "vendor").mkdir(parents=True)
+	(prefix / "logs" / "installer-online.log").write_text("install failed\n", encoding="utf-8")
+	set_fake_home(monkeypatch, home)
+
+	# when / then
+	assert looks_like_partial_srxy_prefix(prefix) is True
+	assert discover_default_prefix() == prefix.resolve()
+	uninstall_prefix(prefix)
+	assert not prefix.exists()
+
+
+def test_given_macos_srxy_app_only_when_checking_then_flags_partial(tmp_path: Path):
+	# given
+	(tmp_path / "Srxy.app" / "Contents" / "MacOS").mkdir(parents=True)
+	(tmp_path / "Srxy.app" / "Contents" / "MacOS" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+
+	# when / then
+	assert looks_like_partial_srxy_prefix(tmp_path) is True
+	assert is_srxy_prefix(tmp_path) is False
+
+
 def test_given_foreign_notes_only_when_checking_then_not_partial(tmp_path: Path):
 	# given
 	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
@@ -900,6 +930,30 @@ def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_befor
 	assert tty_index < redirect_index
 	tty_branch = text.split("else", 1)[0]
 	assert '>>"$LOG_FILE" 2>&1' not in tty_branch
+
+
+def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from srxy.adapters.inbound.installer import install as install_mod
+
+	monkeypatch.setattr(install_mod.platform, "system", lambda: "Darwin")
+	monkeypatch.setattr(install_mod.shutil, "which", lambda _name: None)
+	prefix = tmp_path / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "bin").mkdir(parents=True)
+	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+	assert app_exe.is_file()
+	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
+	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
 
 
 def test_given_default_options_when_planning_phases_then_includes_vendor_and_path(tmp_path: Path):
