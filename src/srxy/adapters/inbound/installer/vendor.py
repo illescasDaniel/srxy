@@ -174,7 +174,18 @@ def _run_install_name_tool(*args: str):
 	tool = shutil.which("install_name_tool")
 	if tool is None:
 		raise RuntimeError("install_name_tool not found on PATH (required to relocate Darwin tesseract)")
-	subprocess.check_call([tool, *args])  # noqa: S603
+	# install_name_tool warns that edits invalidate code signatures; we re-sign
+	# with an ad-hoc signature afterward. Capture stderr so the installer console
+	# is not flooded with expected Xcode toolchain noise.
+	result = subprocess.run(  # noqa: S603
+		[tool, *args],
+		check=False,
+		capture_output=True,
+		text=True,
+	)
+	if result.returncode != 0:
+		detail = (result.stderr or result.stdout or "").strip() or f"exit {result.returncode}"
+		raise RuntimeError(f"install_name_tool {' '.join(args)} failed: {detail}")
 
 
 def _rewrite_darwin_install_names(bin_path: Path, lib_dir: Path, copied: dict[str, str]):
