@@ -181,8 +181,13 @@ def test_given_go_toolchain_when_running_online_bootstrap_tests_then_pass():
 		check=False,
 		timeout=120,
 	)
-	if "invalid go version" in result.stderr:
-		pytest.skip("local go toolchain cannot parse packaging/online-bootstrap/go.mod")
+	skip_markers = (
+		"invalid go version",
+		"toolchain not available",
+		"requires go >=",  # GOTOOLCHAIN=local on an older system go
+	)
+	if any(marker in result.stderr for marker in skip_markers):
+		pytest.skip("local go toolchain cannot run packaging/online-bootstrap tests")
 
 	# then
 	assert result.returncode == 0, result.stdout + result.stderr
