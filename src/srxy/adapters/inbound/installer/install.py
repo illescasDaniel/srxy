@@ -31,7 +31,7 @@ from srxy.adapters.inbound.installer.vendor import install_ffmpeg, install_tesse
 from srxy.adapters.outbound.models.model_store import parse_progress_line
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.i18n import tr
-from srxy.resources.icons import app_icon_path, available_icon_sizes
+from srxy.resources.icons import app_icon_path, available_icon_sizes, macos_app_icon_path
 
 
 StatusCallback = Callable[[str], None]
@@ -217,7 +217,8 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 	app_launcher.write_text(launcher_text, encoding="utf-8")
 	app_launcher.chmod(0o755)
 
-	icon_png = app_icon_path(size=512)
+	# Prefer squircle-masked macOS artwork so Finder/Dock show rounded corners.
+	icon_png = macos_app_icon_path()
 	shutil.copy2(icon_png, resources_dir / "srxy.png")
 	icns_name = "srxy.icns"
 	icns_path = resources_dir / icns_name
@@ -233,6 +234,7 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 				target2x = iconset / f"icon_{size}x{size}@2x.png"
 				_run(["sips", "-z", str(size * 2), str(size * 2), str(icon_png), "--out", str(target2x)])
 		_run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns_path)])
+		shutil.rmtree(iconset, ignore_errors=True)
 
 	plist = {
 		"CFBundleName": "Srxy",

@@ -53,11 +53,12 @@ Installer downloads (uv, tesseract, tessdata, ffmpeg) are HTTPS-only and require
 
 ## Icons and meta
 
-App icons live in [`src/srxy/resources/icons/`](../../src/srxy/resources/icons/). The installed app uses `srxy-*.png`; installer AppImages use `srxy-installer-*.png` (same artwork with a gears badge). Regenerate installer icons after changing the base set:
+App icons live in [`src/srxy/resources/icons/`](../../src/srxy/resources/icons/) (packaged; may be compressed). The uncompressed original is [`assets/icons/srxy.png`](../../assets/icons/srxy.png). The installed app uses `srxy-*.png`; installer AppImages use `srxy-installer-*.png` (same artwork with a gears badge). Regenerate packaged icons after changing the original:
 
 ```bash
 task generate-installer-icons
 # or: uv run python scripts/generate_installer_icons.py
+task generate-macos-icons
 ```
 
 The AppImage embeds that icon as `.DirIcon` for file managers. Showing it in the browser still needs a working AppImage thumbnailer on the host (e.g. KDE `appimagethumbnail` via `kio-extras` + `libappimage`). Without that, desktops fall back to the generic AppImage MIME icon — packaging cannot override that.

@@ -80,7 +80,7 @@ _GLYPHS: dict[str, list[str]] = {
 }
 TEXT = "Double-click the installer"
 WIDTH, HEIGHT = 640, 400
-SCALE = 3
+SCALE = 1
 FG = (36, 36, 36)
 BG = (245, 245, 242)
 
@@ -101,8 +101,8 @@ for i in range(0, len(pixels), 3):
 glyph_w = 5 * SCALE + SCALE  # glyph + gap
 text_w = len(TEXT) * glyph_w
 start_x = max(0, (WIDTH - text_w) // 2)
-# Bottom-aligned instruction text (with padding), horizontally centered.
-start_y = max(0, HEIGHT - 7 * SCALE - 32)
+# Lower third, not flush to the bottom edge.
+start_y = max(0, HEIGHT - 7 * SCALE - 100)
 
 for idx, ch in enumerate(TEXT):
 	rows = _GLYPHS.get(ch, _GLYPHS[" "])

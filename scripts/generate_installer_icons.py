@@ -1,6 +1,12 @@
 #!/usr/bin/env python3
 """Generate srxy-installer icons: base app icon + gears badge overlay.
 
+Source of truth (uncompressed original):
+
+	assets/icons/srxy.png
+
+Packaged outputs (compress these) land under ``src/srxy/resources/icons/``.
+
 Run from the repo root:
 
 	task generate-installer-icons
@@ -15,6 +21,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
+ORIGINAL = ROOT / "assets" / "icons" / "srxy.png"
 ICON_DIR = ROOT / "src" / "srxy" / "resources" / "icons"
 SIZES = [16, 32, 48, 64, 128, 256, 512]
 MASTER = 1024
@@ -134,22 +141,32 @@ def composite(base: Image.Image) -> Image.Image:
 
 
 def main():
-	master = Image.open(ICON_DIR / "srxy.png")
+	if not ORIGINAL.is_file():
+		raise SystemExit(f"missing original icon: {ORIGINAL}")
+	master = Image.open(ORIGINAL).convert("RGBA")
 	if master.size != (MASTER, MASTER):
 		raise SystemExit(f"expected {MASTER}x{MASTER} master icon, got {master.size}")
 
+	ICON_DIR.mkdir(parents=True, exist_ok=True)
+	# Refresh packaged square masters from the uncompressed original.
+	master.save(ICON_DIR / "srxy.png", format="PNG", optimize=False)
+	print(f"wrote {ICON_DIR / 'srxy.png'} ({MASTER}x{MASTER})")
+	for size in SIZES:
+		sized = master.resize((size, size), Image.Resampling.LANCZOS)
+		sized.save(ICON_DIR / f"srxy-{size}.png", format="PNG", optimize=False)
+		print(f"wrote srxy-{size}.png ({size}x{size})")
+
 	inst_master = composite(master)
-	inst_master.save(ICON_DIR / "srxy-installer.png", optimize=True)
+	inst_master.save(ICON_DIR / "srxy-installer.png", format="PNG", optimize=False)
 
 	for size in SIZES:
-		base = Image.open(ICON_DIR / f"srxy-{size}.png")
 		if size >= 128:
 			img = inst_master.resize((size, size), Image.Resampling.LANCZOS)
 		else:
-			img = composite(base)
-		img.save(ICON_DIR / f"srxy-installer-{size}.png", optimize=True)
+			img = composite(Image.open(ICON_DIR / f"srxy-{size}.png"))
+		img.save(ICON_DIR / f"srxy-installer-{size}.png", format="PNG", optimize=False)
 		print(f"wrote srxy-installer-{size}.png ({size}x{size})")
-	print("wrote srxy-installer.png (1024x1024)")
+	print(f"wrote {ICON_DIR / 'srxy-installer.png'} ({MASTER}x{MASTER})")
 
 
 if __name__ == "__main__":
