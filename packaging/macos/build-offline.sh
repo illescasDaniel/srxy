@@ -185,9 +185,13 @@ case "$RESOLVED_PY" in
 	exit 1
 	;;
 esac
+# Extra guard against a common failure mode: resolving into the host uv
+# managed-python cache. Do NOT blacklist /Users/runner/ or /home/runner/
+# wholesale — CI builds the .app under those prefixes (e.g.
+# /Users/runner/work/...), so a legitimate in-bundle path would match.
 case "$RESOLVED_PY" in
-*"/.local/share/uv/python/"* | *"/Users/runner/"* | *"/home/runner/"*)
-	echo "error: bundled venv python still resolves outside the app bundle: $RESOLVED_PY" >&2
+*"/.local/share/uv/python/"*)
+	echo "error: bundled venv python still resolves to the host uv python cache: $RESOLVED_PY" >&2
 	exit 1
 	;;
 esac
