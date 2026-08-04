@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import platform
 from html import escape
 
 from srxy.i18n import tr
@@ -22,11 +23,26 @@ _TESSDATA = (
 	"https://github.com/tesseract-ocr/tessdata",
 	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
 )
+_TESSERACT_LINUX = (
+	"tesseract_linux",
+	"https://github.com/DanielMYT/tesseract-static",
+	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
+_TESSERACT_MACOS = (
+	"tesseract_macos",
+	"https://formulae.brew.sh/formula/tesseract",
+	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
 _FFMPEG = ("ffmpeg", "https://ffmpeg.org/", "https://ffmpeg.org/")
 _FFMPEG_BUILD = (
 	"ffmpeg_build",
 	"https://github.com/BtbN/FFmpeg-Builds",
 	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
+_FFMPEG_MACOS = (
+	"ffmpeg_macos",
+	"https://ffmpeg.martin-riedl.de/",
+	"https://ffmpeg.org/",
 )
 _PYTORCH = ("pytorch", "https://pytorch.org/", "https://www.linuxfoundation.org/legal/privacy")
 _NVIDIA = (
@@ -61,6 +77,8 @@ _MODEL_WHISPER = (
 	"https://huggingface.co/privacy",
 )
 
+Party = tuple[str, str, str]
+
 
 def _party_label(key: str) -> str:
 	return tr(f"privacy.party.{key}")
@@ -84,7 +102,8 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 	)
 
 
-PRIVACY_NOTICE_VERSION = "1"
+# Bump when ack'd notice content changes so users re-acknowledge.
+PRIVACY_NOTICE_VERSION = "2"
 
 
 def _copy_key(stem: str, *, for_app: bool) -> str:
@@ -92,6 +111,69 @@ def _copy_key(stem: str, *, for_app: bool) -> str:
 	if stem == "title":
 		return "privacy.app_title" if for_app else "privacy.title"
 	return f"privacy.app_{stem}" if for_app else f"privacy.{stem}"
+
+
+def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[Party]:
+	"""OS-specific vendor download sources for the installer; full set for in-app."""
+	host = (system or platform.system()).lower()
+	if for_app:
+		return [_TESSERACT_LINUX, _TESSERACT_MACOS, _FFMPEG_BUILD, _FFMPEG_MACOS]
+	if host == "darwin":
+		return [_TESSERACT_MACOS, _FFMPEG_MACOS]
+	if host == "linux":
+		return [_TESSERACT_LINUX, _FFMPEG_BUILD]
+	return []
+
+
+def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
+	link = _html_link if html else _plain_link
+	bullet = "<li>" if html else "• "
+	end = "</li>" if html else ""
+	indent = "" if html else "  "
+	sep = "<br/>" if html else "\n"
+
+	lines = [
+		f"{bullet}{link(*_UV)}{end}",
+		(
+			f"{bullet}{link(*_PYPI)} — {escape(tr('privacy.includes_qt')) if html else tr('privacy.includes_qt')}:"
+			f"{sep}{indent}{link(*_QT)}{end}"
+		),
+		f"{bullet}{link(*_TESSERACT)}{end}",
+		f"{bullet}{link(*_TESSDATA)}{end}",
+		f"{bullet}{link(*_FFMPEG)}{end}",
+	]
+	for party in _vendor_source_parties(for_app=for_app):
+		lines.append(f"{bullet}{link(*party)}{end}")
+	ai_label = escape(tr("privacy.optional_ai")) if html else tr("privacy.optional_ai")
+	models_label = (
+		escape(tr("privacy.optional_models", party=_party_label("hf")))
+		if html
+		else tr("privacy.optional_models", party=_party_label("hf"))
+	)
+	if html:
+		lines.append(f"<li>{ai_label}:<br/>{link(*_PYTORCH)}<br/>{link(*_NVIDIA)}<br/>{link(*_NVIDIA_EULA)}</li>")
+		lines.append(
+			f"<li>{models_label}:<br/>"
+			f"{link(*_MODEL_TEXT)}<br/>"
+			f"{link(*_MODEL_CLIP)}<br/>"
+			f"{link(*_MODEL_FW)}<br/>"
+			f"{link(*_MODEL_WHISPER)}</li>"
+		)
+	else:
+		lines.extend(
+			[
+				f"• {ai_label}:",
+				f"  {link(*_PYTORCH)}",
+				f"  {link(*_NVIDIA)}",
+				f"  {link(*_NVIDIA_EULA)}",
+				f"• {models_label}:",
+				f"  {link(*_MODEL_TEXT)}",
+				f"  {link(*_MODEL_CLIP)}",
+				f"  {link(*_MODEL_FW)}",
+				f"  {link(*_MODEL_WHISPER)}",
+			]
+		)
+	return lines
 
 
 def privacy_disclaimer_text(*, for_app: bool = False) -> str:
@@ -105,22 +187,7 @@ def privacy_disclaimer_text(*, for_app: bool = False) -> str:
 		"",
 		tr(_copy_key("what_heading", for_app=for_app)),
 		"",
-		f"• {_plain_link(*_UV)}",
-		f"• {_plain_link(*_PYPI)} — {tr('privacy.includes_qt')}:",
-		f"  {_plain_link(*_QT)}",
-		f"• {_plain_link(*_TESSERACT)}",
-		f"• {_plain_link(*_TESSDATA)}",
-		f"• {_plain_link(*_FFMPEG)}",
-		f"• {_plain_link(*_FFMPEG_BUILD)}",
-		f"• {tr('privacy.optional_ai')}:",
-		f"  {_plain_link(*_PYTORCH)}",
-		f"  {_plain_link(*_NVIDIA)}",
-		f"  {_plain_link(*_NVIDIA_EULA)}",
-		f"• {tr('privacy.optional_models', party=_party_label('hf'))}:",
-		f"  {_plain_link(*_MODEL_TEXT)}",
-		f"  {_plain_link(*_MODEL_CLIP)}",
-		f"  {_plain_link(*_MODEL_FW)}",
-		f"  {_plain_link(*_MODEL_WHISPER)}",
+		*_download_party_lines(for_app=for_app, html=False),
 		"",
 		tr("privacy.section_privacy"),
 		"",
@@ -141,21 +208,7 @@ def privacy_disclaimer_html(*, for_app: bool = False) -> str:
 		f"<p>{escape(tr(_copy_key('intro_downloads', for_app=for_app)))}</p>",
 		f"<p><b>{escape(tr(_copy_key('what_heading', for_app=for_app)))}</b></p>",
 		"<ul>",
-		f"<li>{_html_link(*_UV)}</li>",
-		f"<li>{_html_link(*_PYPI)} — {escape(tr('privacy.includes_qt'))}:<br/>{_html_link(*_QT)}</li>",
-		f"<li>{_html_link(*_TESSERACT)}</li>",
-		f"<li>{_html_link(*_TESSDATA)}</li>",
-		f"<li>{_html_link(*_FFMPEG)}</li>",
-		f"<li>{_html_link(*_FFMPEG_BUILD)}</li>",
-		f"<li>{escape(tr('privacy.optional_ai'))}:<br/>"
-		f"{_html_link(*_PYTORCH)}<br/>"
-		f"{_html_link(*_NVIDIA)}<br/>"
-		f"{_html_link(*_NVIDIA_EULA)}</li>",
-		f"<li>{escape(tr('privacy.optional_models', party=_party_label('hf')))}:<br/>"
-		f"{_html_link(*_MODEL_TEXT)}<br/>"
-		f"{_html_link(*_MODEL_CLIP)}<br/>"
-		f"{_html_link(*_MODEL_FW)}<br/>"
-		f"{_html_link(*_MODEL_WHISPER)}</li>",
+		*_download_party_lines(for_app=for_app, html=True),
 		"</ul>",
 		f"<p><b>{escape(tr('privacy.section_privacy'))}</b></p>",
 		"<ul>",

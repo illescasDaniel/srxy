@@ -1,7 +1,8 @@
-"""Pinned upstream download catalog for the desktop installer (Linux x86_64)."""
+"""Pinned upstream download catalog for desktop installer dependencies."""
 
 from __future__ import annotations
 
+import platform
 from dataclasses import dataclass
 
 
@@ -14,6 +15,32 @@ class DownloadArtifact:
 	# Relative path under prefix/vendor/<name>/ after extraction, or binary name.
 	kind: str
 	notes: str = ""
+
+
+@dataclass(frozen=True, slots=True)
+class BrewBottle:
+	"""Pinned Homebrew core bottle blob (immutable ghcr.io digest URL)."""
+
+	formula: str
+	version: str
+	url: str
+	sha256: str
+
+
+# Homebrew's public anonymous GHCR token (not a secret). Required to fetch core bottle blobs.
+GHCR_BOTTLE_HEADERS: dict[str, str] = {
+	"Authorization": "Bearer QQ==",
+	"Accept": "application/vnd.oci.image.layer.v1.tar+gzip",
+}
+
+
+def _brew_bottle(formula: str, version: str, digest: str) -> BrewBottle:
+	return BrewBottle(
+		formula=formula,
+		version=version,
+		url=f"https://ghcr.io/v2/homebrew/core/{formula}/blobs/sha256:{digest}",
+		sha256=digest,
+	)
 
 
 # Every URL must be https and immutable: a release tag asset or a raw commit URL,
@@ -67,15 +94,129 @@ LINUX_X86_64_CATALOG: dict[str, DownloadArtifact] = {
 }
 
 
+# Homebrew core arm64_sonoma bottles. Digests are the bottle file SHA-256 (also the ghcr blob id).
+# Source of truth: https://formulae.brew.sh/api/formula/<name>.json → bottle.stable.files.arm64_sonoma
+DARWIN_ARM64_TESSERACT_BOTTLES: tuple[BrewBottle, ...] = (
+	_brew_bottle("tesseract", "5.5.3", "5a992bfcbb16e0dd15250c490bb0df82545eb9113713b3bfea3ca273a36fe649"),
+	_brew_bottle("leptonica", "1.87.0", "bc58db017510f010f5feccc1e88aaaf3ca118dc6750ad9ecef6cbb47e0358539"),
+	_brew_bottle("libarchive", "3.8.9", "4561e7a6d54788627a8e50f188a5f8bddcba31ad1676423b84a8723282e77d2e"),
+	_brew_bottle("giflib", "6.1.3", "513c620b8bcf0f74370b4852fa823f1e29761b843540abfb6b9fa9cd9517994b"),
+	_brew_bottle("jpeg-turbo", "3.2.0", "0d248d272a2e9d4f3442ce8d82c2df322079e77a76011cf75cb18d7114e78655"),
+	_brew_bottle("libpng", "1.6.58", "fd6cbd5d7a231b83e359fd96231bb3dd668124ab5c2009697dee906ace98fadd"),
+	_brew_bottle("libtiff", "4.7.2", "3783a59d14d00405ee96a9cbf5bba49a9c764c62b67274e642e71a0f65c9fb6e"),
+	_brew_bottle("openjpeg", "2.5.4", "0eff9d5aae88cd27eaaedb4a4f56804ae14c4ed9df1c856846ff81ebc3dcb4c2"),
+	_brew_bottle("webp", "1.6.0", "2c0172632efa4d17103aad0d82dd27addce7db290b5cf52cd9afcbff3c39a497"),
+	_brew_bottle("libb2", "0.98.1", "52cef2730b3520e99f75f1478f2b953dc46e362a8dbf90f2c6a9028b47bbb8bd"),
+	_brew_bottle("lz4", "1.10.0", "6590245dc4a919c46afa16366914cd4b5c0c4a8f4fb35a4f6ab89053f289ae5d"),
+	_brew_bottle("xz", "5.8.3", "0a6e40dbeea3358a1277f347ef9b892070096a79a81cda90edfedbfe721c4ba3"),
+	_brew_bottle("zstd", "1.5.7", "35b5150b27512a94ebaee7b4399aaa8adf42d247e6968319e4aeac3c05365281"),
+)
+
+
+DARWIN_ARM64_CATALOG: dict[str, DownloadArtifact] = {
+	"uv": DownloadArtifact(
+		name="uv",
+		version="0.12.1",
+		url="https://github.com/astral-sh/uv/releases/download/0.12.1/uv-aarch64-apple-darwin.tar.gz",
+		sha256="77d2906988e8074fd43f2f329ec452ebbf9b0c257ba1c66451c71de70a6baf42",
+		kind="archive",
+		notes="Astral uv standalone (Apple Silicon, Apache-2.0 / MIT).",
+	),
+	# Assembled at install time from pinned Homebrew core arm64_sonoma bottles (ghcr.io).
+	"tesseract": DownloadArtifact(
+		name="tesseract",
+		version=DARWIN_ARM64_TESSERACT_BOTTLES[0].version,
+		url=DARWIN_ARM64_TESSERACT_BOTTLES[0].url,
+		sha256=DARWIN_ARM64_TESSERACT_BOTTLES[0].sha256,
+		kind="brew_bottles",
+		notes="Homebrew core tesseract + runtime deps (arm64_sonoma bottles via ghcr.io).",
+	),
+	"tessdata_eng": DownloadArtifact(
+		name="tessdata_eng",
+		version="4.1.0",
+		url=(
+			"https://raw.githubusercontent.com/tesseract-ocr/tessdata/"
+			"4767ea922bcc460e70b87b1d303ebdfed0897da8/eng.traineddata"
+		),
+		sha256="daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+		kind="file",
+		notes="English traineddata for Tesseract, tessdata 4.1.0 (Apache-2.0).",
+	),
+	# Static arm64 ffmpeg from martin-riedl immutable snapshot URL (zip of a single binary).
+	"ffmpeg": DownloadArtifact(
+		name="ffmpeg",
+		version="8.1.2",
+		url="https://ffmpeg.martin-riedl.de/download/macos/arm64/1783011502_8.1.2/ffmpeg.zip",
+		sha256="ef1aa60006c7b77ce170c1608c08d8e4ba1c30c5746f2ac986ded932d0ac2c3c",
+		kind="zip",
+		notes="Static FFmpeg 8.1.2 for Apple Silicon (martin-riedl builds).",
+	),
+}
+
+DARWIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
+	"uv": DownloadArtifact(
+		name="uv",
+		version="0.12.1",
+		url="https://github.com/astral-sh/uv/releases/download/0.12.1/uv-x86_64-apple-darwin.tar.gz",
+		sha256="69d9f9a00337f25a50dcb13882052da08b8469bac11091c98c5694c3c6721467",
+		kind="archive",
+		notes="Astral uv standalone (Intel macOS, Apache-2.0 / MIT).",
+	),
+}
+
+
+def _normalize_machine(value: str) -> str:
+	machine = value.strip().lower()
+	aliases = {
+		"amd64": "x86_64",
+		"x64": "x86_64",
+		"x86-64": "x86_64",
+		"arm64e": "arm64",
+		"aarch64": "arm64",
+	}
+	return aliases.get(machine, machine)
+
+
+def platform_catalog() -> dict[str, DownloadArtifact]:
+	system = platform.system().lower()
+	machine = _normalize_machine(platform.machine())
+	if system == "linux" and machine == "x86_64":
+		return LINUX_X86_64_CATALOG
+	if system == "darwin" and machine == "arm64":
+		return DARWIN_ARM64_CATALOG
+	if system == "darwin" and machine == "x86_64":
+		return DARWIN_X86_64_CATALOG
+	return LINUX_X86_64_CATALOG
+
+
+def vendor_downloads_supported() -> bool:
+	"""True when this host can auto-download tesseract/ffmpeg from the pinned catalog."""
+	system = platform.system().lower()
+	machine = _normalize_machine(platform.machine())
+	if system == "linux" and machine == "x86_64":
+		return True
+	if system == "darwin" and machine == "arm64":
+		return True
+	return False
+
+
 def artifact(name: str) -> DownloadArtifact:
+	catalog = platform_catalog()
 	try:
-		return LINUX_X86_64_CATALOG[name]
+		return catalog[name]
 	except KeyError as exc:
-		raise KeyError(f"unknown installer artifact: {name}") from exc
+		raise KeyError(f"unknown installer artifact for this platform: {name}") from exc
 
 
 __all__ = [
+	"BrewBottle",
+	"DARWIN_ARM64_CATALOG",
+	"DARWIN_ARM64_TESSERACT_BOTTLES",
+	"DARWIN_X86_64_CATALOG",
 	"DownloadArtifact",
+	"GHCR_BOTTLE_HEADERS",
 	"LINUX_X86_64_CATALOG",
 	"artifact",
+	"platform_catalog",
+	"vendor_downloads_supported",
 ]

@@ -104,4 +104,7 @@ func TestResolvePaths_Layout(t *testing.T) {
 	if paths.MetaPath != filepath.Join(app, "usr", "share", "srxy", "bootstrap-meta.json") {
 		t.Fatalf("MetaPath=%q", paths.MetaPath)
 	}
+	if paths.AppDir != app {
+		t.Fatalf("AppDir=%q want %q", paths.AppDir, app)
+	}
 }

@@ -66,6 +66,11 @@ def test_given_installer_controller_when_snapshotting_chrome_then_matches(
 	_ensure_qt_core()
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	monkeypatch.delenv("SRXY_LANGUAGE", raising=False)
+	# Keep vendor defaults platform-stable (Windows/macOS x86_64 disable catalog downloads).
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.controller.vendor_downloads_supported",
+		lambda: True,
+	)
 	controller = InstallerController()
 	controller.setLanguage("en")
 

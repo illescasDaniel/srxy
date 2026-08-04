@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from collections.abc import Callable
 from pathlib import Path
 
@@ -12,7 +13,9 @@ from srxy.resources.icons import (
 	app_icon_path,
 	available_icon_sizes,
 	available_installer_icon_sizes,
+	available_macos_icon_sizes,
 	installer_icon_path,
+	macos_app_icon_path,
 )
 
 
@@ -67,6 +70,15 @@ def _apply_icon(
 
 
 def apply_app_icon(app: QGuiApplication):
+	# On macOS, setWindowIcon overrides the Dock tile while running. Use the
+	# squircle-masked artwork so the running Dock icon matches the pinned one.
+	if sys.platform == "darwin" and available_macos_icon_sizes():
+		_apply_icon(
+			app,
+			path_for_size=macos_app_icon_path,
+			sizes=available_macos_icon_sizes(),
+		)
+		return
 	_apply_icon(app, path_for_size=app_icon_path, sizes=available_icon_sizes())
 
 

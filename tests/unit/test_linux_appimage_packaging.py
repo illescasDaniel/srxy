@@ -20,6 +20,7 @@ pytestmark = pytest.mark.unit
 _REPO = Path(__file__).resolve().parents[2]
 _PACKAGING = _REPO / "packaging"
 _LINUX = _PACKAGING / "linux-appimage"
+_MACOS = _PACKAGING / "macos"
 _BOOTSTRAP = _PACKAGING / "online-bootstrap"
 _META_PACKAGING = _PACKAGING / "installer_meta.toml"
 _META_SRC = _REPO / "src" / "srxy" / "adapters" / "inbound" / "installer" / "installer_meta.toml"
@@ -59,6 +60,22 @@ def test_given_linux_appimage_scripts_when_checking_layout_then_present_and_exec
 	assert (_LINUX / "README.md").is_file()
 
 
+def test_given_macos_packaging_scripts_when_checking_layout_then_present_and_executable():
+	# given
+	scripts = [
+		_MACOS / "build-offline.sh",
+		_MACOS / "build-online.sh",
+		_MACOS / "smoke-offline.sh",
+		_MACOS / "smoke-online.sh",
+	]
+
+	# when / then
+	for path in scripts:
+		assert path.is_file(), f"missing {path}"
+		assert os.access(path, os.X_OK), f"not executable: {path}"
+	assert (_MACOS / "README.md").is_file()
+
+
 def test_given_offline_build_script_when_reading_then_names_offline_artifact():
 	# given
 	text = (_LINUX / "build.sh").read_text(encoding="utf-8")
@@ -69,6 +86,10 @@ def test_given_offline_build_script_when_reading_then_names_offline_artifact():
 	# then
 	assert "installer-${INSTALLER_VERSION}" in output_line
 	assert "installer-online" not in output_line
+	assert output_line.endswith('.AppImage"')
+	assert "OUTPUT_XZ=" in text
+	assert "xz " in text
+	assert 'basename "$OUTPUT_XZ"' in text
 	assert "prune_pyside.sh" in text
 	assert "UV_PYTHON_PREFERENCE=only-managed" in text
 	assert "realpath --relative-to" in text
@@ -85,6 +106,10 @@ def test_given_online_build_script_when_reading_then_names_online_artifact_and_c
 
 	# then
 	assert "installer-online-${INSTALLER_VERSION}" in output_line
+	assert output_line.endswith('.AppImage"')
+	assert "OUTPUT_XZ=" in text
+	assert "xz " in text
+	assert 'basename "$OUTPUT_XZ"' in text
 	assert "srxy-online-bootstrap" in text
 	assert "bootstrap-meta.json" in text
 	assert "SHA256SUMS-online" in text
@@ -156,6 +181,13 @@ def test_given_go_toolchain_when_running_online_bootstrap_tests_then_pass():
 		check=False,
 		timeout=120,
 	)
+	skip_markers = (
+		"invalid go version",
+		"toolchain not available",
+		"requires go >=",  # GOTOOLCHAIN=local on an older system go
+	)
+	if any(marker in result.stderr for marker in skip_markers):
+		pytest.skip("local go toolchain cannot run packaging/online-bootstrap tests")
 
 	# then
 	assert result.returncode == 0, result.stdout + result.stderr

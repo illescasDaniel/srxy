@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 import pytest
 
+from srxy.adapters.inbound.installer.catalog import vendor_downloads_supported
 from srxy.adapters.inbound.installer.install import InstallOptions
 from srxy.adapters.inbound.installer_online.__main__ import main
 from srxy.adapters.inbound.installer_online.options import build_online_install_options
@@ -68,8 +69,8 @@ def test_given_gpu_when_building_online_options_then_semantic_on_prefetch_off(
 	assert options.install_semantic is True
 	assert options.prefetch_models is False
 	assert options.add_to_path is True
-	assert options.download_tesseract is True
-	assert options.download_ffmpeg is True
+	assert options.download_tesseract is vendor_downloads_supported()
+	assert options.download_ffmpeg is vendor_downloads_supported()
 	assert options.srxy_spec == "srxy==9.9.9"
 	assert options.prefix == (tmp_path / "srxy").resolve()
 
@@ -91,6 +92,46 @@ def test_given_no_gpu_when_building_online_options_then_semantic_off(
 	assert options.prefetch_models is False
 
 
+def test_given_darwin_arm64_when_building_online_options_then_vendor_downloads_on(
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer import catalog as catalog_mod
+	from srxy.adapters.inbound.installer_online import options as options_mod
+
+	monkeypatch.setattr(catalog_mod.platform, "system", lambda: "Darwin")
+	monkeypatch.setattr(catalog_mod.platform, "machine", lambda: "arm64")
+	monkeypatch.setenv("SRXY_INSTALL_SPEC", "srxy==1.6.0")
+
+	# when
+	options = options_mod.build_online_install_options(prefix=tmp_path / "app")
+
+	# then
+	assert options.download_tesseract is True
+	assert options.download_ffmpeg is True
+
+
+def test_given_windows_when_building_online_options_then_vendor_downloads_off(
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer import catalog as catalog_mod
+	from srxy.adapters.inbound.installer_online import options as options_mod
+
+	monkeypatch.setattr(catalog_mod.platform, "system", lambda: "Windows")
+	monkeypatch.setattr(catalog_mod.platform, "machine", lambda: "AMD64")
+	monkeypatch.setenv("SRXY_INSTALL_SPEC", "srxy==1.6.0")
+
+	# when
+	options = options_mod.build_online_install_options(prefix=tmp_path / "app")
+
+	# then
+	assert options.download_tesseract is False
+	assert options.download_ffmpeg is False
+
+
 def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version(
 	monkeypatch: pytest.MonkeyPatch,
 ):
@@ -103,7 +144,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 		_ = timeout
 		return {
 			"info": {
-				"version": "1.6.3",
+				"version": "1.6.4",
 				"requires_dist": ["PySide6>=6.6", "cryptography>=44"],
 			}
 		}
@@ -114,7 +155,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 	spec = package_spec.resolve_pypi_install_spec()
 
 	# then
-	assert spec == "srxy==1.6.3"
+	assert spec == "srxy==1.6.4"
 
 
 def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
@@ -127,7 +168,7 @@ def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
 
 	def fake_fetch(*, timeout: float = 15.0) -> dict[str, Any]:
 		_ = timeout
-		return {"info": {"version": "1.6.3", "requires_dist": ["cryptography>=44"]}}
+		return {"info": {"version": "1.6.4", "requires_dist": ["cryptography>=44"]}}
 
 	monkeypatch.setattr(package_spec, "fetch_pypi_srxy_info", fake_fetch)
 
@@ -370,6 +411,7 @@ def test_given_successful_install_when_posting_launch_then_starts_app_and_stops(
 
 	monkeypatch.setattr(server_mod, "install_srxy", fake_install)
 	monkeypatch.setattr(server_mod, "launch_installed_app", fake_launch)
+	monkeypatch.setattr(server_mod, "LAUNCH_TEARDOWN_DELAY_SECONDS", 0.05)
 
 	prefix = tmp_path / "prefix"
 	code, _ = online_server.api(
@@ -398,6 +440,9 @@ def test_given_successful_install_when_posting_launch_then_starts_app_and_stops(
 	assert launch_payload.get("ok") is True
 	assert launched == [str(prefix.resolve())]
 	assert online_server.session is not None
+	stop_deadline = time.monotonic() + 2
+	while time.monotonic() < stop_deadline and not online_server.session.stop_event.is_set():
+		time.sleep(0.02)
 	assert online_server.session.stop_event.is_set()
 
 

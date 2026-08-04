@@ -9,6 +9,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
 	"time"
@@ -27,6 +28,7 @@ type Meta struct {
 }
 
 type Paths struct {
+	AppDir     string
 	CacheDir   string
 	UvBin      string
 	VenvDir    string
@@ -45,7 +47,11 @@ func DefaultCacheDir() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		base = filepath.Join(home, ".cache")
+		if runtime.GOOS == "darwin" {
+			base = filepath.Join(home, "Library", "Caches")
+		} else {
+			base = filepath.Join(home, ".cache")
+		}
 	}
 	return filepath.Join(base, "srxy", "online-bootstrap"), nil
 }
@@ -68,6 +74,7 @@ func LoadMeta(path string) (Meta, error) {
 func ResolvePaths(appDir, cacheDir string, meta Meta) Paths {
 	_ = meta
 	return Paths{
+		AppDir:     appDir,
 		CacheDir:   cacheDir,
 		UvBin:      filepath.Join(cacheDir, "uv", "uv"),
 		VenvDir:    filepath.Join(cacheDir, "venv"),
@@ -290,6 +297,9 @@ func LaunchInstaller(paths Paths) (*Child, string, error) {
 	cmd.Stdout = os.Stderr
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), "PYTHONNOUSERSITE=1")
+	if paths.AppDir != "" {
+		cmd.Env = append(cmd.Env, "APPDIR="+paths.AppDir)
+	}
 	if err := cmd.Start(); err != nil {
 		return nil, "", err
 	}

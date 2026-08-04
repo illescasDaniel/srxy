@@ -4,12 +4,17 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, Signal, Slot
+from PySide6.QtCore import Property, QCoreApplication, QObject, QThread, QTimer, Signal, Slot
 
+from srxy.adapters.inbound.installer.catalog import vendor_downloads_supported
 from srxy.adapters.inbound.installer.gpu import has_accelerated_gpu
 from srxy.adapters.inbound.installer.help_text import help_text
 from srxy.adapters.inbound.installer.install import InstallOptions, install_srxy
-from srxy.adapters.inbound.installer.launch_app import installed_launcher_path, launch_installed_app
+from srxy.adapters.inbound.installer.launch_app import (
+	LAUNCH_TEARDOWN_DELAY_SECONDS,
+	installed_launcher_path,
+	launch_installed_app,
+)
 from srxy.adapters.inbound.installer.manifest import (
 	is_non_empty_foreign_prefix,
 	is_srxy_prefix,
@@ -144,8 +149,9 @@ class InstallerController(QObject):
 		self._mode = "install"
 		self._prefix = str(default_install_prefix())
 		self._privacy_ack = False
-		self._download_tesseract = True
-		self._download_ffmpeg = True
+		self._vendor_downloads_supported = vendor_downloads_supported()
+		self._download_tesseract = self._vendor_downloads_supported
+		self._download_ffmpeg = self._vendor_downloads_supported
 		self._has_gpu = has_accelerated_gpu()
 		# When a usable GPU is present, opt into all AI-related extras by default.
 		self._install_semantic = self._has_gpu
@@ -240,6 +246,8 @@ class InstallerController(QObject):
 
 	@Slot(bool)
 	def setDownloadTesseract(self, value: bool):
+		if not self._vendor_downloads_supported:
+			return
 		if self._download_tesseract != value:
 			self._download_tesseract = value
 			self.downloadTesseractChanged.emit()
@@ -250,9 +258,15 @@ class InstallerController(QObject):
 
 	@Slot(bool)
 	def setDownloadFfmpeg(self, value: bool):
+		if not self._vendor_downloads_supported:
+			return
 		if self._download_ffmpeg != value:
 			self._download_ffmpeg = value
 			self.downloadFfmpegChanged.emit()
+
+	@Property(bool, constant=True)
+	def vendorDownloadsSupported(self) -> bool:
+		return self._vendor_downloads_supported
 
 	@Property(bool, constant=True)
 	def hasGpu(self) -> bool:
@@ -767,7 +781,7 @@ class InstallerController(QObject):
 
 	@Slot()
 	def launchInstalled(self):  # noqa: N802
-		"""Start the installed app and close the wizard."""
+		"""Start the installed app and close the wizard shortly after."""
 		if self._mode not in {"install", "reinstall"} or not self._finished:
 			return
 		prefix = Path(self._prefix)
@@ -778,7 +792,8 @@ class InstallerController(QObject):
 			self._error = translate("installer.error.launch_missing", path=launcher)
 			self.errorChanged.emit()
 			return
-		QCoreApplication.quit()
+		# Delay quit so first Qt/dyld load is less contended with wizard teardown.
+		QTimer.singleShot(int(LAUNCH_TEARDOWN_DELAY_SECONDS * 1000), QCoreApplication.quit)
 
 	def _on_failed(self, message: str):
 		self._set_busy(False)

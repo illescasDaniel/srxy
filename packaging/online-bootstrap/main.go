@@ -144,11 +144,23 @@ func resolveAppDir(explicit string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	// AppImage layout: $APPDIR/usr/bin/srxy-online-bootstrap
+	exe, err = filepath.EvalSymlinks(exe)
+	if err != nil {
+		return "", err
+	}
 	binDir := filepath.Dir(exe)
+
+	// macOS .app: Contents/MacOS/<binary> with meta under Contents/usr/share/srxy/
+	contents := filepath.Dir(binDir)
+	meta := filepath.Join(contents, "usr", "share", "srxy", "bootstrap-meta.json")
+	if _, err := os.Stat(meta); err == nil {
+		return contents, nil
+	}
+
+	// AppImage layout: $APPDIR/usr/bin/srxy-online-bootstrap
 	usrDir := filepath.Dir(binDir)
 	appDir := filepath.Dir(usrDir)
-	meta := filepath.Join(appDir, "usr", "share", "srxy", "bootstrap-meta.json")
+	meta = filepath.Join(appDir, "usr", "share", "srxy", "bootstrap-meta.json")
 	if _, err := os.Stat(meta); err == nil {
 		return appDir, nil
 	}

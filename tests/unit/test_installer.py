@@ -177,7 +177,8 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	assert "https://huggingface.co/privacy" in html
 	assert "instalador de escritorio de srxy" in html.lower()
 	assert "este instalador" in html.lower()
-	assert "este appimage" in html.lower() or "este AppImage".lower() in html.lower()
+	assert "este instalador de escritorio" in html.lower() or "instalador de escritorio" in html.lower()
+	assert "este appimage" not in html.lower()
 	assert "instalador de escritorio de srxy" not in app_html.lower()
 	assert "este instalador" not in app_html.lower()
 	assert "este appimage" not in app_html.lower()
@@ -190,6 +191,45 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	assert "this appimage" not in app_en.lower()
 	assert "what srxy may download" in app_en.lower()
 	assert "acknowledgment box" not in app_en.lower()
+
+
+def test_given_darwin_when_loading_installer_privacy_then_lists_macos_vendor_sources(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	from srxy.adapters.inbound.installer import privacy as privacy_mod
+	from srxy.i18n import set_language
+
+	set_language("en")
+	monkeypatch.setattr(privacy_mod.platform, "system", lambda: "Darwin")
+
+	text = privacy_disclaimer_text()
+	assert "formulae.brew.sh/formula/tesseract" in text
+	assert "ffmpeg.martin-riedl.de" in text
+	assert "BtbN/FFmpeg-Builds" not in text
+	assert "DanielMYT/tesseract-static" not in text
+	assert "desktop installer" in text.lower()
+	assert "appimage" not in text.lower()
+
+	app_text = privacy_disclaimer_text(for_app=True)
+	assert "formulae.brew.sh/formula/tesseract" in app_text
+	assert "BtbN/FFmpeg-Builds" in app_text
+	assert "DanielMYT/tesseract-static" in app_text
+
+
+def test_given_linux_when_loading_installer_privacy_then_lists_linux_vendor_sources(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	from srxy.adapters.inbound.installer import privacy as privacy_mod
+	from srxy.i18n import set_language
+
+	set_language("en")
+	monkeypatch.setattr(privacy_mod.platform, "system", lambda: "Linux")
+
+	text = privacy_disclaimer_text()
+	assert "DanielMYT/tesseract-static" in text
+	assert "BtbN/FFmpeg-Builds" in text
+	assert "formulae.brew.sh/formula/tesseract" not in text
+	assert "ffmpeg.martin-riedl.de" not in text
 
 
 def test_given_prefix_with_manifest_when_uninstalling_then_removes_tree(
@@ -303,6 +343,36 @@ def test_given_partial_venv_when_checking_then_flags_partial(tmp_path: Path):
 	# when / then
 	assert looks_like_partial_srxy_prefix(tmp_path) is True
 	assert is_non_empty_foreign_prefix(tmp_path) is True
+	assert is_srxy_prefix(tmp_path) is False
+
+
+def test_given_macos_failed_online_leftovers_when_uninstalling_then_removes_prefix(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given: failed online install wrote logs but never a manifest/uv binary
+	home = tmp_path / "home"
+	home.mkdir()
+	prefix = home / "Applications" / "srxy"
+	(prefix / "logs").mkdir(parents=True)
+	(prefix / "vendor").mkdir(parents=True)
+	(prefix / "logs" / "installer-online.log").write_text("install failed\n", encoding="utf-8")
+	set_fake_home(monkeypatch, home)
+
+	# when / then
+	assert looks_like_partial_srxy_prefix(prefix) is True
+	assert discover_default_prefix() == prefix.resolve()
+	uninstall_prefix(prefix)
+	assert not prefix.exists()
+
+
+def test_given_macos_srxy_app_only_when_checking_then_flags_partial(tmp_path: Path):
+	# given
+	(tmp_path / "Srxy.app" / "Contents" / "MacOS").mkdir(parents=True)
+	(tmp_path / "Srxy.app" / "Contents" / "MacOS" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+
+	# when / then
+	assert looks_like_partial_srxy_prefix(tmp_path) is True
 	assert is_srxy_prefix(tmp_path) is False
 
 
@@ -902,6 +972,30 @@ def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_befor
 	assert '>>"$LOG_FILE" 2>&1' not in tty_branch
 
 
+def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from srxy.adapters.inbound.installer import install as install_mod
+
+	monkeypatch.setattr(install_mod.platform, "system", lambda: "Darwin")
+	monkeypatch.setattr(install_mod.shutil, "which", lambda _name: None)
+	prefix = tmp_path / "Applications" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "bin").mkdir(parents=True)
+	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+	assert app_exe.is_file()
+	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
+	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
+
+
 def test_given_default_options_when_planning_phases_then_includes_vendor_and_path(tmp_path: Path):
 	# given
 	from srxy.adapters.inbound.installer.install import InstallOptions, plan_install_phases
@@ -1135,6 +1229,7 @@ def test_given_prefix_with_launcher_when_launching_installed_app_then_spawns_det
 		assert kwargs.get("start_new_session") is True
 		return object()
 
+	monkeypatch.setattr(launch_app.platform, "system", lambda: "Linux")
 	monkeypatch.setattr(launch_app.subprocess, "Popen", fake_popen)
 
 	# when
@@ -1142,6 +1237,32 @@ def test_given_prefix_with_launcher_when_launching_installed_app_then_spawns_det
 
 	# then
 	assert seen == [[str(launcher.resolve())]]
+
+
+def test_given_darwin_app_bundle_when_launching_then_uses_open(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	from srxy.adapters.inbound.installer import launch_app
+
+	prefix = tmp_path / "Applications" / "srxy"
+	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+	app_exe.parent.mkdir(parents=True)
+	app_exe.write_text("#!/bin/sh\n", encoding="utf-8")
+	app_exe.chmod(0o755)
+	seen: list[list[str]] = []
+
+	def fake_popen(cmd: list[str], **kwargs: object):
+		seen.append(list(cmd))
+		return object()
+
+	monkeypatch.setattr(launch_app.platform, "system", lambda: "Darwin")
+	monkeypatch.setattr(launch_app.shutil, "which", lambda _name: "/usr/bin/open")
+	monkeypatch.setattr(launch_app.subprocess, "Popen", fake_popen)
+
+	launch_app.launch_installed_app(prefix)
+
+	assert seen == [["/usr/bin/open", str((prefix / "Srxy.app").resolve())]]
 
 
 def test_given_finished_install_when_launch_installed_then_starts_app_and_quits(
@@ -1167,11 +1288,17 @@ def test_given_finished_install_when_launch_installed_then_starts_app_and_quits(
 	(bin_dir / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
 	launched: list[str] = []
 	quit_calls: list[int] = []
+	timer_ms: list[int] = []
 
 	monkeypatch.setattr(
 		controller_mod,
 		"launch_installed_app",
 		lambda path: launched.append(str(path)),
+	)
+	monkeypatch.setattr(
+		controller_mod.QTimer,
+		"singleShot",
+		lambda ms, cb: (timer_ms.append(int(ms)), cb()),
 	)
 	monkeypatch.setattr(controller_mod.QCoreApplication, "quit", lambda: quit_calls.append(1))
 
@@ -1185,4 +1312,5 @@ def test_given_finished_install_when_launch_installed_then_starts_app_and_quits(
 
 	# then
 	assert launched == [str(prefix)]
+	assert timer_ms == [int(controller_mod.LAUNCH_TEARDOWN_DELAY_SECONDS * 1000)]
 	assert quit_calls == [1]

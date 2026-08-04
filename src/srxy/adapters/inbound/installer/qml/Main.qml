@@ -11,16 +11,73 @@ ApplicationWindow {
 	title: root.t("installer.window_title")
 	color: palette.window
 
-	property var c: controller
+	QtObject {
+		id: fallbackController
+		property string page: "mode"
+		property string mode: "install"
+		property string language: "en"
+		property string prefix: ""
+		property string uninstallPrefix: ""
+		property string uninstallHint: ""
+		property string noGpuMessage: ""
+		property string status: ""
+		property string progressLabel: ""
+		property string taskProgressText: ""
+		property string overallProgressText: ""
+		property string error: ""
+		property string privacyText: ""
+		property string unsafeConfirmMessage: ""
+		property bool privacyAck: false
+		property bool downloadTesseract: false
+		property bool downloadFfmpeg: false
+		property bool vendorDownloadsSupported: false
+		property bool hasGpu: false
+		property bool installSemantic: false
+		property bool prefetchModels: false
+		property bool addToPath: false
+		property bool busy: false
+		property bool progressDeterminate: false
+		property bool canGoBack: false
+		property bool finished: false
+		property bool unsafeConfirmOpen: false
+		property real progressValue: 0
+		property real overallProgressValue: 0
+		function i18nTr(key) { return key }
+		function helpText(_key) { return "" }
+		function setLanguage(_lang) {}
+		function setMode(_mode) {}
+		function setPrefix(_value) {}
+		function setUninstallPrefix(_value) {}
+		function setPrivacyAck(_value) {}
+		function setDownloadTesseract(_value) {}
+		function setDownloadFfmpeg(_value) {}
+		function setInstallSemantic(_value) {}
+		function setPrefetchModels(_value) {}
+		function setAddToPath(_value) {}
+		function goBack() {}
+		function goNext() {}
+		function startInstall() {}
+		function startReinstall() {}
+		function startUninstall() {}
+		function launchInstalled() {}
+		function acceptUnsafeConfirm() {}
+		function rejectUnsafeConfirm() {}
+	}
+
+	property var c: controller ? controller : fallbackController
 	// Which path field the folder dialog should update ("prefix" or "uninstall").
 	property string browseTarget: "prefix"
 	// Bump when language changes so every t() binding re-evaluates.
 	property int langRev: 0
 	readonly property color primaryText: palette.windowText
-	readonly property color secondaryText: palette.placeholderText.a > 0
-		? palette.placeholderText
-		: Qt.rgba(palette.windowText.r, palette.windowText.g, palette.windowText.b, 0.65)
+	// Do not use palette.placeholderText — on macOS light themes it is nearly invisible.
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
+	readonly property color secondaryText: Qt.rgba(
+		palette.windowText.r,
+		palette.windowText.g,
+		palette.windowText.b,
+		lightTheme ? 0.78 : 0.80
+	)
 	readonly property color warningText: lightTheme ? "#9a6700" : "#e0a060"
 	readonly property color errorText: lightTheme ? "#c62828" : "#ff8a80"
 
@@ -178,9 +235,8 @@ ApplicationWindow {
 						radius: 2
 					}
 
-					TextEdit {
+					TextArea {
 						id: privacyEdit
-						width: Math.max(0, privacyScroll.availableWidth)
 						readOnly: true
 						selectByMouse: true
 						wrapMode: TextEdit.Wrap
@@ -191,6 +247,7 @@ ApplicationWindow {
 						rightPadding: 14
 						topPadding: 12
 						bottomPadding: 12
+						background: null
 						onLinkActivated: function(link) { Qt.openUrlExternally(link) }
 
 						HoverHandler {
@@ -261,6 +318,7 @@ ApplicationWindow {
 					subtitleKey: "installer.options.tesseract_sub"
 					helpKey: "tesseract"
 					optionChecked: c.downloadTesseract
+					optionEnabled: c.vendorDownloadsSupported
 					onToggled: function(checked) { c.setDownloadTesseract(checked) }
 				}
 				OptionRow {
@@ -268,7 +326,16 @@ ApplicationWindow {
 					subtitleKey: "installer.options.ffmpeg_sub"
 					helpKey: "ffmpeg"
 					optionChecked: c.downloadFfmpeg
+					optionEnabled: c.vendorDownloadsSupported
 					onToggled: function(checked) { c.setDownloadFfmpeg(checked) }
+				}
+				Label {
+					visible: !c.vendorDownloadsSupported
+					text: root.t("installer.options.vendor_unavailable")
+					wrapMode: Text.WordWrap
+					color: root.secondaryText
+					Layout.fillWidth: true
+					Layout.leftMargin: 28
 				}
 				OptionRow {
 					labelKey: "installer.options.semantic"
@@ -606,7 +673,7 @@ ApplicationWindow {
 
 	Connections {
 		target: c
-		function onUnsafeConfirmChanged() {
+		function onUnsafeConfirmOpenChanged() {
 			if (c && c.unsafeConfirmOpen)
 				unsafePrefixDialog.open()
 			else

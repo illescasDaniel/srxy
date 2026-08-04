@@ -98,4 +98,7 @@ else
 fi
 
 export SRXY_INSTALL_WHEEL="$WHEEL"
-exec uv run srxy-installer-online "${FORWARD[@]}"
+if [[ ${#FORWARD[@]} -gt 0 ]]; then
+	exec uv run srxy-installer-online "${FORWARD[@]}"
+fi
+exec uv run srxy-installer-online

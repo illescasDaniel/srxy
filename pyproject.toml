@@ -1,6 +1,6 @@
 [project]
 name = "srxy"
-version = "1.6.3"
+version = "1.6.4"
 description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
@@ -155,9 +155,15 @@ gui-bare = { cmd = "./scripts/gui-bare.sh", help = "GUI from core-only .venv-bar
 installer = { cmd = "uv run srxy-installer", help = "launch desktop install/uninstall wizard" }
 installer-online = { cmd = "uv run srxy-installer-online", help = "launch one-click online installer (localhost browser UI)" }
 installer-online-local = { cmd = "./scripts/installer-online-local.sh", help = "build local wheel + launch online installer (SRXY_INSTALL_WHEEL; --no-build to reuse)" }
+installer-macos = { cmd = "uv run srxy-installer", help = "launch macOS offline installer wizard (.app parity)" }
+installer-online-macos = { cmd = "uv run srxy-installer-online", help = "launch macOS online installer flow (localhost browser UI)" }
+installer-online-local-macos = { cmd = "./scripts/installer-online-local.sh", help = "build local wheel + launch macOS online installer flow (SRXY_INSTALL_WHEEL)" }
 build-appimage = { cmd = "./packaging/linux-appimage/build.sh", help = "build offline Linux installer AppImage into dist/" }
 build-appimage-online = { cmd = "./packaging/linux-appimage/build-online.sh", help = "build online Linux installer AppImage into dist/" }
-generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate srxy-installer-*.png gears-badge icons from base app icons" }
+build-macos-installer-offline = { cmd = "./packaging/macos/build-offline.sh", help = "build offline macOS installer .app wrapper into dist/" }
+build-macos-installer-online = { cmd = "./packaging/macos/build-online.sh", help = "build online macOS installer .app wrapper into dist/" }
+generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate packaged square + installer icons from assets/icons/srxy.png" }
+generate-macos-icons = { cmd = "uv run python scripts/generate_macos_icons.py", help = "regenerate squircle-masked macOS icons from assets/icons/srxy.png" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
 checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }

@@ -17,7 +17,10 @@ from typing import Any
 from urllib.parse import parse_qs, urlparse
 
 from srxy.adapters.inbound.installer.install import install_srxy
-from srxy.adapters.inbound.installer.launch_app import launch_installed_app
+from srxy.adapters.inbound.installer.launch_app import (
+	LAUNCH_TEARDOWN_DELAY_SECONDS,
+	launch_installed_app,
+)
 from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_text
 from srxy.adapters.inbound.installer.uninstall import uninstall_prefix
 from srxy.adapters.inbound.installer_online.browser import open_installer_url
@@ -33,6 +36,21 @@ STATIC_DIR = Path(__file__).resolve().parent / "static"
 DEFAULT_CLIENT_IDLE_SECONDS = 3.0
 # Allow time for the default browser to open the installer URL.
 DEFAULT_CLIENT_GRACE_SECONDS = 20.0
+
+
+def _append_online_error_log(prefix: Path, detail: str):
+	"""Write installer-online failures under <prefix>/logs for post-mortem."""
+	try:
+		log_dir = prefix.expanduser().resolve() / "logs"
+		log_dir.mkdir(parents=True, exist_ok=True)
+		log_file = log_dir / "installer-online.log"
+		timestamp = time.strftime("%Y-%m-%dT%H:%M:%S%z")
+		with log_file.open("a", encoding="utf-8") as handle:
+			handle.write(f"[{timestamp}] install failed\n")
+			handle.write(detail.rstrip() + "\n\n")
+	except Exception:
+		# Best-effort logging only.
+		return
 
 
 class InstallSession:
@@ -311,8 +329,15 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 				except FileNotFoundError as exc:
 					self._send_json(HTTPStatus.NOT_FOUND, {"error": str(exc)})
 					return
-				print("Launching installed srxy; shutting down installer.", file=sys.stderr)
-				session.stop_event.set()
+				print(
+					"Launching installed srxy; shutting down installer shortly.",
+					file=sys.stderr,
+				)
+
+				def _delayed_stop():
+					session.stop_event.set()
+
+				threading.Timer(LAUNCH_TEARDOWN_DELAY_SECONDS, _delayed_stop).start()
 				self._send_json(HTTPStatus.OK, {"ok": True})
 				return
 
@@ -350,6 +375,7 @@ def _client_watchdog(
 
 
 def _run_install(session: InstallSession, prefix: Path | None):
+	options = None
 	try:
 		options = build_online_install_options(prefix=prefix)
 
@@ -371,6 +397,8 @@ def _run_install(session: InstallSession, prefix: Path | None):
 		session.mark_done(can_launch=True, prefix=str(options.prefix))
 	except Exception as exc:
 		detail = str(exc).strip() or traceback.format_exc()
+		target_prefix = options.prefix if options is not None else (prefix or default_install_prefix())
+		_append_online_error_log(target_prefix, detail)
 		session.mark_error(detail)
 
 
