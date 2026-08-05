@@ -10,6 +10,15 @@ uv sync --extra semantic
 ./scripts/quality/checks.sh --full+cpu   # release + forced-CPU transcribe matrix
 ```
 
+On **Windows**, use the PowerShell gate instead of `checks.sh` (bash/`flock` often fail under Git Bash or WSL mounts):
+
+```powershell
+uv sync --extra semantic --extra windows
+powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1 -Fix
+powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
+# or: uv run task checks-win-fix / uv run task checks-win
+```
+
 `uv sync` creates `.venv`, installs the project editable, and pulls the default **`dev`** dependency group (pytest, ruff, taskipy, …). Add `--extra windows` on Windows for Explorer tags. Upload tooling: `uv sync --group uploader`.
 
 On **Windows** with an NVIDIA GPU, install CUDA PyTorch in `.venv` before relying on GPU features ([installation.md → Windows](installation.md#windows)).
@@ -29,14 +38,14 @@ uv run python scripts/bench_file_search.py
 
 ## Quality gate
 
-Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel**, then pytest runs **alone** (safe parallel pass, then serial heavy). With `--fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
+Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel** on Unix, then pytest runs **alone** (safe parallel pass, then serial heavy). On Windows (`checks-win.ps1`), light steps run **sequentially**, then the same pytest split. With `--fix` / `-Fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
 
 | Command | pytest |
 |---------|--------|
-| `checks.sh` | Safe parallel: `unit and not semantic and not transcribe and not gui and not tui and not integration` (`-n` = `min(4, nproc)`, `--testmon-forceselect --ff`). Then serial heavy: `(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix` (`-n 0`, `QT_QPA_PLATFORM=offscreen`). No coverage |
-| `checks.sh --full` | Same two-pass split; heavy marker also includes `integration_full` / `transcribe_device_matrix`; no testmon; coverage on both passes (`--cov-append` on serial) |
-| `checks.sh --full+cpu` | `--full` + `--integration-test-cpu` on the serial heavy pass |
-| `CI=true checks.sh` | Single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe`. Linux CI sets `QT_QPA_PLATFORM=offscreen`. Light steps parallel then pytest; no testmon, no coverage, no serial follow-up. `--fix`, `--full`, `--full+cpu` ignored |
+| `checks.sh` / `checks-win.ps1` | Safe parallel: `unit and not semantic and not transcribe and not gui and not tui and not integration` (`-n` = `min(4, nproc)`, `--testmon-forceselect --ff`). Then serial heavy: `(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix` (`-n 0`, `QT_QPA_PLATFORM=offscreen`). No coverage |
+| `checks.sh --full` / `checks-win.ps1 -Full` | Same two-pass split; heavy marker also includes `integration_full` / `transcribe_device_matrix`; no testmon; coverage on both passes (`--cov-append` on serial) |
+| `checks.sh --full+cpu` / `checks-win.ps1 -FullCpu` | `--full` + `--integration-test-cpu` on the serial heavy pass |
+| `CI=true checks.sh` / `CI=true checks-win.ps1` | Single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe`. Linux CI sets `QT_QPA_PLATFORM=offscreen`. Light steps parallel then pytest; no testmon, no coverage, no serial follow-up. On GitHub Actions, `--fix`/`--full`/`--full+cpu` (and Windows `-Fix`/`-Full`/`-FullCpu`) are ignored. Locally, `checks-win.ps1 -Full` clears a leftover `CI=true` so the heavy suite still runs |
 
 `--fix` = Ruff + shell autofix, then remaining steps sequentially; ignored in CI.
 
@@ -60,7 +69,7 @@ Default local gate pytest uses two passes so torch/whisper/Qt do not share xdist
 
 **pytest-testmon** (`--testmon-forceselect`) plus `--ff` select/reorder by recent changes on the day-to-day **safe** pass only — disabled for `--full` / `--full+cpu` and CI. Coverage runs only on `--full` / `--full+cpu` (serial pass appends). The `.testmondata` DB is local and gitignored; the first run builds it.
 
-**Anti-hang:** pytest output is always streamed live (never buffered until EOF). `pytest-timeout` defaults to 60s per test (`timeout_method=signal`). [`scripts/quality/pytest.sh`](../scripts/quality/pytest.sh) wraps runs with a wall-clock and no-output stall watchdog (override via `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS`); stalls exit 124 with a process tree dump.
+**Anti-hang:** pytest output is always streamed live (never buffered until EOF). `pytest-timeout` defaults to 60s per test (`timeout_method=thread`). Integration tests under `tests/integration/` get a 300s timeout, and semantic model warmup runs in `pytest_sessionstart` so cold scipy/sentence-transformers imports are not charged to the first test. [`scripts/quality/pytest.sh`](../scripts/quality/pytest.sh) wraps runs with a wall-clock and no-output stall watchdog (override via `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS`); stalls exit 124 with a process tree dump.
 
 ```bash
 uv run pytest -m unit -n auto

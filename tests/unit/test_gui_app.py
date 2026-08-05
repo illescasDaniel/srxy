@@ -58,6 +58,9 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 		def setApplicationName(self, _name: str):
 			return None
 
+		def setOrganizationName(self, _name: str):
+			return None
+
 		def exec(self) -> int:
 			for slot in quit_slots:
 				slot()  # type: ignore[operator]
@@ -78,6 +81,7 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 		patch("srxy.adapters.inbound.gui.app.QQmlApplicationEngine", FakeEngine),
 		patch("srxy.adapters.inbound.gui.app.apply_app_icon"),
 		patch("srxy.adapters.inbound.gui.app.apply_desktop_file_name"),
+		patch("srxy.adapters.inbound.gui.app.apply_qt_quick_theme"),
 		patch("srxy.i18n.qt.install_qt_translator"),
 		patch("srxy.i18n.get_language", return_value="en"),
 		patch("srxy.adapters.inbound.gui.app.build_app_services"),

@@ -17,7 +17,8 @@ Only after you choose the related options (and after acknowledging this notice).
 | **tessdata** | [tesseract-ocr/tessdata](https://github.com/tesseract-ocr/tessdata) | [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
 | Tesseract Linux binary | [DanielMYT/tesseract-static](https://github.com/DanielMYT/tesseract-static) | [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
 | Tesseract macOS bottles (Homebrew core via ghcr.io) | [formulae.brew.sh/tesseract](https://formulae.brew.sh/formula/tesseract) | [Homebrew](https://brew.sh/) · [GitHub Container Registry](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
-| Tesseract Windows installer (UB-Mannheim) | [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract) | [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
+| Tesseract Windows setup (UB-Mannheim; extracted without elevation) | [UB-Mannheim/tesseract](https://github.com/UB-Mannheim/tesseract) | [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
+| **7-Zip** (Windows install-time extract helper for Tesseract) | [7-zip.org](https://www.7-zip.org/) | [7-zip.org](https://www.7-zip.org/) |
 | **ffmpeg** | [ffmpeg.org](https://ffmpeg.org/) | [ffmpeg.org](https://ffmpeg.org/) |
 | ffmpeg Linux/Windows builds (BtbN) | [BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds) | [GitHub privacy](https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement) |
 | ffmpeg macOS builds (martin-riedl) | [ffmpeg.martin-riedl.de](https://ffmpeg.martin-riedl.de/) | [ffmpeg.org](https://ffmpeg.org/) |

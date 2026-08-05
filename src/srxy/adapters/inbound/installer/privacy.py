@@ -39,6 +39,11 @@ _TESSERACT_WINDOWS = (
 	"https://github.com/UB-Mannheim/tesseract",
 	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
 )
+_SEVENZIP = (
+	"sevenzip",
+	"https://www.7-zip.org/",
+	"https://www.7-zip.org/",
+)
 _FFMPEG = ("ffmpeg", "https://ffmpeg.org/", "https://ffmpeg.org/")
 _FFMPEG_BUILD = (
 	"ffmpeg_build",
@@ -109,7 +114,7 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "3"
+PRIVACY_NOTICE_VERSION = "4"
 
 
 def _cache_bullet_key(*, system: str | None = None) -> str:
@@ -130,13 +135,20 @@ def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[
 	"""OS-specific vendor download sources for the installer; full set for in-app."""
 	host = (system or platform.system()).lower()
 	if for_app:
-		return [_TESSERACT_LINUX, _TESSERACT_MACOS, _TESSERACT_WINDOWS, _FFMPEG_BUILD, _FFMPEG_MACOS]
+		return [
+			_TESSERACT_LINUX,
+			_TESSERACT_MACOS,
+			_TESSERACT_WINDOWS,
+			_SEVENZIP,
+			_FFMPEG_BUILD,
+			_FFMPEG_MACOS,
+		]
 	if host == "darwin":
 		return [_TESSERACT_MACOS, _FFMPEG_MACOS]
 	if host == "linux":
 		return [_TESSERACT_LINUX, _FFMPEG_BUILD]
 	if host == "windows":
-		return [_TESSERACT_WINDOWS, _FFMPEG_BUILD]
+		return [_TESSERACT_WINDOWS, _SEVENZIP, _FFMPEG_BUILD]
 	return []
 
 

@@ -1,0 +1,22 @@
+installerWindow:
+  title: srxy installer
+  mode: install
+  page: mode
+  language: es
+  hasGpu: False
+  privacyAck: False
+  downloadTesseract: True
+  downloadFfmpeg: True
+  installSemantic: False
+  prefetchModels: False
+  addToPath: True
+  busy: False
+  finished: False
+  modes: Instalar o actualizar srxy, Reinstalar srxy, Desinstalar srxy
+  pages: mode, prefix, privacy, options, path, uninstall, progress
+  optionLabels: Texto en imágenes, Ayuda de audio y vídeo, Búsqueda más inteligente (necesita GPU), Descargar modelos de IA ahora (nested under Búsqueda más inteligente)
+  optionSubtitles: Tesseract, ffmpeg, PyTorch y paquetes relacionados (PyPI), Archivos de modelo de Hugging Face
+  pathCheckbox: También quiero ejecutar srxy desde la Terminal
+  languageCombo: English, Español
+  buttons: Atrás, Siguiente, Instalar, Reinstalar, Desinstalar, Iniciar, Finalizar, Cerrar, Examinar…, Info (i), GPU warning (!)
+  helpMenu: (installer uses language combo on mode page)

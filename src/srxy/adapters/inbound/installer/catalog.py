@@ -174,7 +174,7 @@ WIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
 		kind="zip",
 		notes="Astral uv standalone (Windows x86_64, Apache-2.0 / MIT).",
 	),
-	# UB-Mannheim Inno Setup installer; extracted/run into the prefix vendor tree at install time.
+	# UB-Mannheim NSIS setup; extracted (not executed) into the prefix vendor tree — avoids UAC.
 	"tesseract": DownloadArtifact(
 		name="tesseract",
 		version="5.4.0.20240606",
@@ -183,8 +183,25 @@ WIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
 			"v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
 		),
 		sha256="c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9",
-		kind="inno_installer",
-		notes="UB-Mannheim Tesseract OCR Windows x64 installer (Apache-2.0).",
+		kind="nsis_installer",
+		notes="UB-Mannheim Tesseract OCR Windows x64 NSIS setup (Apache-2.0); extracted without elevation.",
+	),
+	# Install-time helpers only (not shipped in the offline EXE). Used to unpack the NSIS setup.
+	"7zr": DownloadArtifact(
+		name="7zr",
+		version="24.09",
+		url="https://github.com/ip7z/7zip/releases/download/24.09/7zr.exe",
+		sha256="d2c0045523cf053a6b43f9315e9672fc2535f06aeadd4ffa53c729cd8b2b6dfe",
+		kind="binary",
+		notes="7-Zip reduced console (public domain) for unpacking the full 7-Zip SFX.",
+	),
+	"7zip": DownloadArtifact(
+		name="7zip",
+		version="24.09",
+		url="https://github.com/ip7z/7zip/releases/download/24.09/7z2409-x64.exe",
+		sha256="bdd1a33de78618d16ee4ce148b849932c05d0015491c34887846d431d29f308e",
+		kind="sfx",
+		notes="7-Zip 24.09 Windows x64 SFX (LGPL) providing 7z.exe+7z.dll for NSIS extraction.",
 	),
 	"tessdata_eng": DownloadArtifact(
 		name="tessdata_eng",

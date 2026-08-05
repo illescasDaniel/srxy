@@ -6,6 +6,7 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
 from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION
+from srxy.i18n import tr
 
 
 def _print_version() -> int:
@@ -16,9 +17,14 @@ def _print_version() -> int:
 	return 0
 
 
+def _progress_text(value: object) -> str:
+	"""Normalize progress text for Inno ExecAndLogOutput (ANSI-safe ellipsis)."""
+	return str(value).replace("\u2026", "...")
+
+
 def _emit(kind: str, *parts: object):
 	"""Write a machine-readable progress line to stdout (Inno / scripts)."""
-	payload = "\t".join(str(part) for part in parts)
+	payload = "\t".join(_progress_text(part) for part in parts)
 	sys.stdout.write(f"{kind}\t{payload}\n")
 	sys.stdout.flush()
 
@@ -85,6 +91,12 @@ def _build_parser() -> argparse.ArgumentParser:
 		default="",
 		help="Override package spec / wheel path for install.",
 	)
+	parser.add_argument(
+		"--language",
+		type=str,
+		default="",
+		help="UI language for progress messages (en|es). Defaults to system/settings.",
+	)
 	return parser
 
 
@@ -109,11 +121,17 @@ def _run_headless(args: argparse.Namespace) -> int:
 	prefix = Path(prefix_raw).expanduser() if prefix_raw else default_install_prefix()
 
 	if args.uninstall:
+		_status_cb(tr("installer.status.removing_app"))
+		_task_cb(1, 2, tr("installer.status.removing_app"))
+		_progress_cb(0, 0, tr("installer.status.removing_app"))
 		uninstall_prefix(
 			prefix,
 			status=_status_cb,
 			confirm_unsafe=bool(args.confirm_unsafe),
 		)
+		_task_cb(2, 2, tr("installer.status.uninstall_complete"))
+		_progress_cb(1, 1, tr("installer.status.uninstall_complete"))
+		_status_cb(tr("installer.status.uninstall_complete"))
 		_emit("OK", "uninstall")
 		return 0
 
@@ -175,6 +193,11 @@ def main(argv: list[str] | None = None) -> int:
 		qt_like = [flag for flag in unknown if flag.startswith("-")]
 		if qt_like:
 			parser.error(f"unrecognized arguments: {' '.join(qt_like)}")
+		lang = (args.language or "").strip()
+		if lang:
+			from srxy.i18n import resolve_language, set_language
+
+			set_language(resolve_language(lang))
 		try:
 			return _run_headless(args)
 		except Exception as exc:

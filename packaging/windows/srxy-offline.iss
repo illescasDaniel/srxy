@@ -1,9 +1,13 @@
-﻿; Srxy offline Windows installer (Inno Setup 6).
+﻿; Srxy offline Windows installer (Inno Setup 6.2+ / 7).
 ; Built by packaging/windows/build-offline.ps1 - do not compile without the staged payload.
 ;
 ; Defines expected from the build script:
 ;   MyAppVersion, InstallerVersion, Arch, PayloadDir, OutputDir,
 ;   PrivacyEnFile, PrivacyEsFile, SetupIconFile
+
+#if Ver < EncodeVer(6,2,0)
+  #error Inno Setup 6.2 or later is required (ExecAndLogOutput). Prefer Inno Setup 7.
+#endif
 
 #ifndef MyAppVersion
   #define MyAppVersion "0.0.0"
@@ -25,6 +29,9 @@
 #endif
 #ifndef PrivacyEsFile
   #define PrivacyEsFile "privacy-es.txt"
+#endif
+#ifndef PrivacyAckVersion
+  #define PrivacyAckVersion "4"
 #endif
 #ifndef SetupIconFile
   #define SetupIconFile "srxy-installer.ico"
@@ -48,13 +55,15 @@ DefaultGroupName={#MyAppName}
 DisableProgramGroupPage=yes
 PrivilegesRequired=lowest
 PrivilegesRequiredOverridesAllowed=dialog
-ArchitecturesAllowed=x64
-ArchitecturesInstallIn64BitMode=x64
+#if Ver >= EncodeVer(7,0,0)
+SetupArchitecture=x64
+#endif
+ArchitecturesAllowed=x64compatible
+ArchitecturesInstallIn64BitMode=x64compatible
 OutputDir={#OutputDir}
 OutputBaseFilename=srxy-{#MyAppVersion}-installer-{#InstallerVersion}-{#Arch}
 Compression=lzma2/ultra64
 SolidCompression=yes
-LZMAUseSeparateProcess=yes
 WizardStyle=modern
 SetupIconFile={#SetupIconFile}
 UninstallDisplayIcon={app}\bin\{#MyAppExeName}
@@ -102,7 +111,19 @@ english.PrivacyNeedAck=Please acknowledge the privacy notice to continue.
 english.ProgressCaption=Installing Srxy
 english.ProgressDescription=Please wait while Srxy is installed.
 english.ProgressRunning=Running install engine...
+english.ProgressUninstallCaption=Uninstalling Srxy
+english.ProgressUninstallDescription=Please wait while Srxy is removed.
+english.ProgressUninstallRunning=Running uninstall engine...
+english.ProgressReinstallCaption=Reinstalling Srxy
+english.ProgressReinstallDescription=Please wait while Srxy is reinstalled.
+english.ProgressReinstallRunning=Running reinstall engine...
 english.ReadyModeLabel=Mode:
+english.ReadyUninstallCaption=Ready to Uninstall
+english.ReadyUninstallDescription=Setup is now ready to remove Srxy from your computer. Click Uninstall to continue, or click Back if you want to review or change any settings.
+english.ReadyReinstallCaption=Ready to Reinstall
+english.ReadyReinstallDescription=Setup is now ready to remove and reinstall Srxy. Click Reinstall to continue, or click Back if you want to review or change any settings.
+english.ButtonUninstall=Uninstall
+english.ButtonReinstall=Reinstall
 english.ErrBootstrapMissing=Bootstrap Python was not found. The installer payload may be incomplete.
 english.ErrEngineStart=Failed to start the install engine.
 english.ErrEngineFailed=Install engine failed with exit code %1. See %2 for details.
@@ -137,7 +158,19 @@ spanish.PrivacyNeedAck=Confirma el aviso de privacidad para continuar.
 spanish.ProgressCaption=Instalando Srxy
 spanish.ProgressDescription=Espera mientras se instala Srxy.
 spanish.ProgressRunning=Ejecutando el motor de instalación...
+spanish.ProgressUninstallCaption=Desinstalando Srxy
+spanish.ProgressUninstallDescription=Espera mientras se elimina Srxy.
+spanish.ProgressUninstallRunning=Ejecutando el motor de desinstalación...
+spanish.ProgressReinstallCaption=Reinstalando Srxy
+spanish.ProgressReinstallDescription=Espera mientras se reinstala Srxy.
+spanish.ProgressReinstallRunning=Ejecutando el motor de reinstalación...
 spanish.ReadyModeLabel=Modo:
+spanish.ReadyUninstallCaption=Listo para desinstalar
+spanish.ReadyUninstallDescription=El asistente está listo para eliminar Srxy de tu equipo. Haz clic en Desinstalar para continuar, o en Atrás si quieres revisar o cambiar alguna opción.
+spanish.ReadyReinstallCaption=Listo para reinstalar
+spanish.ReadyReinstallDescription=El asistente está listo para quitar e instalar de nuevo Srxy. Haz clic en Reinstalar para continuar, o en Atrás si quieres revisar o cambiar alguna opción.
+spanish.ButtonUninstall=Desinstalar
+spanish.ButtonReinstall=Reinstalar
 spanish.ErrBootstrapMissing=No se encontró el Python de arranque. El contenido del instalador puede estar incompleto.
 spanish.ErrEngineStart=No se pudo iniciar el motor de instalación.
 spanish.ErrEngineFailed=El motor de instalación falló con el código %1. Consulta %2 para más detalles.
@@ -181,6 +214,9 @@ Filename: "{app}\bin\{#MyAppExeName}"; Description: "{cm:RunLaunch}"; Flags: now
 Type: filesandordirs; Name: "{app}"
 
 [Code]
+function SetEnvironmentVariable(Name, Value: String): BOOL;
+  external 'SetEnvironmentVariableW@kernel32.dll stdcall';
+
 var
   ModePage: TInputOptionWizardPage;
   PrivacyPage: TWizardPage;
@@ -190,10 +226,164 @@ var
   SelectedMode: Integer; { 0=install/update, 1=reinstall, 2=uninstall }
   DetectedGpu: Boolean;
   DefaultTypeApplied: Boolean;
+  EngineLogFile: String;
+  EngineShowProgress: Boolean;
+  EnginePhaseLabel: String;
+  EnginePhaseIndex: Integer;
+  EnginePhaseTotal: Integer;
+  EngineProgressLabel: String;
+  EngineProgressDone: Int64;
+  EngineProgressTotal: Int64;
 
 function IsUninstallMode: Boolean;
 begin
   Result := SelectedMode = 2;
+end;
+
+function FormatBytes(N: Int64): String;
+begin
+  if N < Int64(1024) then
+  begin
+    Result := IntToStr(N) + ' B';
+    Exit;
+  end;
+  if N < Int64(1024) * Int64(1024) then
+  begin
+    Result := IntToStr(N div Int64(1024)) + ' KB';
+    Exit;
+  end;
+  if N < Int64(1024) * Int64(1024) * Int64(1024) then
+  begin
+    Result := IntToStr(N div (Int64(1024) * Int64(1024))) + ' MB';
+    Exit;
+  end;
+  Result := IntToStr(N div (Int64(1024) * Int64(1024) * Int64(1024))) + ' GB';
+end;
+
+function TabField(const S: String; Index: Integer): String;
+var
+  StartPos, Current, I: Integer;
+begin
+  Result := '';
+  StartPos := 1;
+  Current := 0;
+  for I := 1 to Length(S) + 1 do
+  begin
+    if (I > Length(S)) or (S[I] = #9) then
+    begin
+      if Current = Index then
+      begin
+        Result := Copy(S, StartPos, I - StartPos);
+        Exit;
+      end;
+      Current := Current + 1;
+      StartPos := I + 1;
+    end;
+  end;
+end;
+
+procedure ApplyEngineProgressUI;
+var
+  Primary, Secondary: String;
+  Pct: Integer;
+begin
+  if (not EngineShowProgress) or (ProgressPage = nil) then
+    Exit;
+  Primary := EnginePhaseLabel;
+  if Primary = '' then
+    Primary := CustomMessage('ProgressRunning');
+  if (EnginePhaseTotal > 0) and (EnginePhaseIndex > 0) then
+    Primary := Primary + ' (' + IntToStr(EnginePhaseIndex) + '/' + IntToStr(EnginePhaseTotal) + ')';
+  Secondary := '';
+  if (EngineProgressTotal > 1) and (EngineProgressLabel <> '') then
+    Secondary := EngineProgressLabel + ' - ' +
+      FormatBytes(EngineProgressDone) + ' / ' + FormatBytes(EngineProgressTotal)
+  else if EngineProgressLabel <> '' then
+    Secondary := EngineProgressLabel;
+  ProgressPage.SetText(Primary, Secondary);
+  if EngineProgressTotal > 1 then
+  begin
+    if EngineProgressTotal <= 0 then
+      Pct := 0
+    else
+      Pct := Integer((EngineProgressDone * Int64(1000)) div EngineProgressTotal);
+    if Pct < 0 then Pct := 0;
+    if Pct > 1000 then Pct := 1000;
+    ProgressPage.SetProgress(Pct, 1000);
+  end
+  else if EnginePhaseTotal > 0 then
+  begin
+    if EnginePhaseIndex < 0 then
+      ProgressPage.SetProgress(0, EnginePhaseTotal)
+    else if EnginePhaseIndex > EnginePhaseTotal then
+      ProgressPage.SetProgress(EnginePhaseTotal, EnginePhaseTotal)
+    else
+      ProgressPage.SetProgress(EnginePhaseIndex, EnginePhaseTotal);
+  end
+  else
+    ProgressPage.SetProgress(0, 0);
+end;
+
+procedure OnEngineOutput(const S: String; const Error, FirstLine: Boolean);
+var
+  Kind, DoneText, TotalText, LabelText: String;
+  DoneValue, TotalValue: Int64;
+begin
+  if FirstLine and (EngineLogFile <> '') then
+    DeleteFile(EngineLogFile);
+  if EngineLogFile <> '' then
+    SaveStringToFile(EngineLogFile, S + #13#10, True);
+  if Error then
+  begin
+    Log('Install engine output error: ' + S);
+    Exit;
+  end;
+  Kind := TabField(S, 0);
+  if Kind = 'STATUS' then
+  begin
+    LabelText := TabField(S, 1);
+    if LabelText <> '' then
+      EnginePhaseLabel := LabelText;
+    ApplyEngineProgressUI;
+    Exit;
+  end;
+  if Kind = 'TASK' then
+  begin
+    DoneText := TabField(S, 1);
+    TotalText := TabField(S, 2);
+    LabelText := TabField(S, 3);
+    EnginePhaseIndex := StrToIntDef(DoneText, EnginePhaseIndex);
+    EnginePhaseTotal := StrToIntDef(TotalText, EnginePhaseTotal);
+    if LabelText <> '' then
+      EnginePhaseLabel := LabelText;
+    EngineProgressDone := 0;
+    EngineProgressTotal := 0;
+    EngineProgressLabel := '';
+    ApplyEngineProgressUI;
+    Exit;
+  end;
+  if Kind = 'PROGRESS' then
+  begin
+    DoneText := TabField(S, 1);
+    TotalText := TabField(S, 2);
+    LabelText := TabField(S, 3);
+    try
+      DoneValue := StrToInt64(DoneText);
+    except
+      DoneValue := 0;
+    end;
+    try
+      TotalValue := StrToInt64(TotalText);
+    except
+      TotalValue := 0;
+    end;
+    EngineProgressDone := DoneValue;
+    EngineProgressTotal := TotalValue;
+    if LabelText <> '' then
+      EngineProgressLabel := LabelText;
+    ApplyEngineProgressUI;
+    Exit;
+  end;
 end;
 
 function EnvTruthy(const Name: String): Boolean;
@@ -207,6 +397,7 @@ end;
 function DetectNvidiaGpu: Boolean;
 var
   ResultCode: Integer;
+  Candidate: String;
 begin
   { Match srxy.application.gpu_availability force switches. }
   if EnvTruthy('SRXY_FORCE_NO_GPU') or EnvTruthy('SRXY_INSTALLER_FORCE_NO_GPU') then
@@ -219,15 +410,38 @@ begin
     Result := True;
     Exit;
   end;
-  { Same probe as the Python installer: nvidia-smi -L. }
-  if Exec('nvidia-smi.exe', '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  { 32-bit Setup cannot see System32 nvidia-smi.exe via WOW64 (missing from SysWOW64).
+    Prefer sysnative (real System32), then sys, then PATH. }
+  Candidate := ExpandConstant('{sysnative}\nvidia-smi.exe');
+  if (Candidate <> '') and FileExists(Candidate) then
   begin
-    Result := ResultCode = 0;
+    if Exec(Candidate, '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    begin
+      Log('GPU detection: nvidia-smi ok via sysnative');
+      Result := True;
+      Exit;
+    end;
+  end;
+  Candidate := ExpandConstant('{sys}\nvidia-smi.exe');
+  if (Candidate <> '') and FileExists(Candidate) then
+  begin
+    if Exec(Candidate, '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+    begin
+      Log('GPU detection: nvidia-smi ok via sys');
+      Result := True;
+      Exit;
+    end;
+  end;
+  if Exec('nvidia-smi.exe', '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
+  begin
+    Log('GPU detection: nvidia-smi ok via PATH nvidia-smi.exe');
+    Result := True;
     Exit;
   end;
-  if Exec('nvidia-smi', '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
+  if Exec('nvidia-smi', '-L', '', SW_HIDE, ewWaitUntilTerminated, ResultCode) and (ResultCode = 0) then
   begin
-    Result := ResultCode = 0;
+    Log('GPU detection: nvidia-smi ok via PATH nvidia-smi');
+    Result := True;
     Exit;
   end;
   Result := False;
@@ -280,9 +494,9 @@ begin
   Result := ExpandConstant('{tmp}\srxy-boot');
 end;
 
-function PrivacyAckVersion: String;
+function PrivacyAckVersionValue: String;
 begin
-  Result := '3';
+  Result := '{#PrivacyAckVersion}';
 end;
 
 function PrivacyFileForLanguage: String;
@@ -355,16 +569,26 @@ begin
     RegWriteExpandStringValue(HKCU, 'Environment', 'Path', Kept);
 end;
 
+function EngineLanguageCode: String;
+begin
+  { Map Inno [Languages] Name values to srxy i18n codes. }
+  if CompareText(ActiveLanguage, 'spanish') = 0 then
+    Result := 'es'
+  else
+    Result := 'en';
+end;
+
 function BuildEngineArgs(const Action: String): String;
 var
   Args: String;
 begin
   Args := '-m srxy.adapters.inbound.installer ' + Action +
     ' --prefix "' + WizardDirValue + '"' +
-    ' --confirm-unsafe';
+    ' --confirm-unsafe' +
+    ' --language ' + EngineLanguageCode;
   if Action <> '--uninstall' then
   begin
-    Args := Args + ' --privacy-ack ' + PrivacyAckVersion;
+    Args := Args + ' --privacy-ack ' + PrivacyAckVersionValue;
     if WizardIsComponentSelected('tesseract') then
       Args := Args + ' --tesseract';
     if WizardIsComponentSelected('ffmpeg') then
@@ -381,14 +605,21 @@ begin
   Result := Args;
 end;
 
+function ProgressRunningMessage(const Action: String): String;
+begin
+  if Action = '--uninstall' then
+    Result := CustomMessage('ProgressUninstallRunning')
+  else if Action = '--reinstall' then
+    Result := CustomMessage('ProgressReinstallRunning')
+  else
+    Result := CustomMessage('ProgressRunning');
+end;
+
 function RunEngine(const Action: String): Boolean;
 var
   Python: String;
   Args: String;
   ResultCode: Integer;
-  EnvPayload: String;
-  CmdLine: String;
-  LogFile: String;
 begin
   Python := BootstrapPython;
   if (Action = '--uninstall') and not FileExists(Python) then
@@ -406,17 +637,34 @@ begin
     Result := False;
     Exit;
   end;
-  EnvPayload := BootstrapRoot;
   Args := BuildEngineArgs(Action);
   ForceDirectories(ExpandConstant('{app}\logs'));
-  LogFile := ExpandConstant('{app}\logs\installer-engine.log');
-  { Quote carefully: redirect engine stdout/stderr into the prefix log. }
-  CmdLine := '/c set "SRXY_INSTALLER_PAYLOAD=' + EnvPayload + '"&& "' + Python + '" ' + Args +
-    ' >"' + LogFile + '" 2>&1';
-  Log('Running: cmd.exe ' + CmdLine);
-  if not Exec('cmd.exe', CmdLine, '', SW_HIDE, ewWaitUntilTerminated, ResultCode) then
-  begin
-    Log('Exec failed to start install engine');
+  EngineLogFile := ExpandConstant('{app}\logs\installer-engine.log');
+  DeleteFile(EngineLogFile);
+  EnginePhaseLabel := ProgressRunningMessage(Action);
+  EnginePhaseIndex := 0;
+  EnginePhaseTotal := 0;
+  EngineProgressLabel := '';
+  EngineProgressDone := 0;
+  EngineProgressTotal := 0;
+  EngineShowProgress := not WizardSilent;
+  if not SetEnvironmentVariable('SRXY_INSTALLER_PAYLOAD', BootstrapRoot) then
+    Log('Warning: failed to set SRXY_INSTALLER_PAYLOAD');
+  if not SetEnvironmentVariable('PYTHONUNBUFFERED', '1') then
+    Log('Warning: failed to set PYTHONUNBUFFERED');
+  Log('Running: ' + Python + ' ' + Args);
+  try
+    if not ExecAndLogOutput(Python, Args, '', SW_SHOWNORMAL, ewWaitUntilTerminated,
+      ResultCode, @OnEngineOutput) then
+    begin
+      Log('ExecAndLogOutput failed to start install engine');
+      if not WizardSilent then
+        MsgBox(CustomMessage('ErrEngineStart'), mbError, MB_OK);
+      Result := False;
+      Exit;
+    end;
+  except
+    Log('ExecAndLogOutput exception: ' + GetExceptionMessage);
     if not WizardSilent then
       MsgBox(CustomMessage('ErrEngineStart'), mbError, MB_OK);
     Result := False;
@@ -426,7 +674,7 @@ begin
   if ResultCode <> 0 then
   begin
     if not WizardSilent then
-      MsgBox(FmtMessage(CustomMessage('ErrEngineFailed'), [IntToStr(ResultCode), LogFile]),
+      MsgBox(FmtMessage(CustomMessage('ErrEngineFailed'), [IntToStr(ResultCode), EngineLogFile]),
         mbError, MB_OK);
     Result := False;
     Exit;
@@ -486,6 +734,35 @@ begin
     DefaultTypeApplied := True;
     ApplyRecommendedSetupType;
   end;
+
+  { Ready page + primary button still say Install by default; retarget for uninstall/reinstall. }
+  if CurPageID = wpReady then
+  begin
+    case SelectedMode of
+      2:
+        begin
+          WizardForm.PageNameLabel.Caption := CustomMessage('ReadyUninstallCaption');
+          WizardForm.PageDescriptionLabel.Caption := CustomMessage('ReadyUninstallDescription');
+          WizardForm.NextButton.Caption := CustomMessage('ButtonUninstall');
+        end;
+      1:
+        begin
+          WizardForm.PageNameLabel.Caption := CustomMessage('ReadyReinstallCaption');
+          WizardForm.PageDescriptionLabel.Caption := CustomMessage('ReadyReinstallDescription');
+          WizardForm.NextButton.Caption := CustomMessage('ButtonReinstall');
+        end;
+    else
+      begin
+        WizardForm.PageNameLabel.Caption := SetupMessage(msgWizardReady);
+        WizardForm.PageDescriptionLabel.Caption := SetupMessage(msgReadyLabel1);
+        WizardForm.NextButton.Caption := SetupMessage(msgButtonInstall);
+      end;
+    end;
+  end
+  else if CurPageID = wpFinished then
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonFinish)
+  else
+    WizardForm.NextButton.Caption := SetupMessage(msgButtonNext);
 end;
 
 function NextButtonClick(CurPageID: Integer): Boolean;
@@ -541,6 +818,27 @@ begin
     Result := Result + MemoComponentsInfo + NewLine + NewLine + MemoTasksInfo;
 end;
 
+procedure PrepareProgressPage(const Action: String);
+begin
+  if Action = '--uninstall' then
+  begin
+    ProgressPage.Caption := CustomMessage('ProgressUninstallCaption');
+    ProgressPage.Description := CustomMessage('ProgressUninstallDescription');
+  end
+  else if Action = '--reinstall' then
+  begin
+    ProgressPage.Caption := CustomMessage('ProgressReinstallCaption');
+    ProgressPage.Description := CustomMessage('ProgressReinstallDescription');
+  end
+  else
+  begin
+    ProgressPage.Caption := CustomMessage('ProgressCaption');
+    ProgressPage.Description := CustomMessage('ProgressDescription');
+  end;
+  ProgressPage.SetText(ProgressRunningMessage(Action), Action);
+  ProgressPage.SetProgress(0, 0);
+end;
+
 procedure CurStepChanged(CurStep: TSetupStep);
 var
   Action: String;
@@ -556,16 +854,16 @@ begin
     Action := '--install';
   end;
   ShowProgress := not WizardSilent;
+  EngineShowProgress := ShowProgress;
   if ShowProgress then
   begin
-    ProgressPage.SetText(CustomMessage('ProgressRunning'), Action);
+    PrepareProgressPage(Action);
     ProgressPage.Show;
   end;
   try
-    if ShowProgress then
-      ProgressPage.SetProgress(0, 0);
     Ok := RunEngine(Action);
   finally
+    EngineShowProgress := False;
     if ShowProgress then
       ProgressPage.Hide;
   end;

@@ -37,7 +37,13 @@ def system_language() -> str:
 
 def resolve_language(explicit: str | None = None) -> str:
 	if explicit:
-		code = explicit.strip().lower().split("-", 1)[0][:2]
+		raw = explicit.strip().lower().replace("_", "-")
+		# Inno Setup [Languages] Name values (and common aliases).
+		if raw in ("spanish", "espanol", "es", "spa"):
+			return "es" if "es" in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+		if raw in ("english", "en", "eng"):
+			return "en" if "en" in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
+		code = raw.split("-", 1)[0][:2]
 		return code if code in SUPPORTED_LANGUAGES else DEFAULT_LANGUAGE
 	setting = get_language_setting()
 	if setting:

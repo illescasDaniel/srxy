@@ -76,6 +76,15 @@ def test_given_macos_packaging_scripts_when_checking_layout_then_present_and_exe
 	assert (_MACOS / "README.md").is_file()
 
 
+def test_given_windows_quality_gate_when_checking_layout_then_present():
+	ps1 = _REPO / "scripts" / "quality" / "checks-win.ps1"
+	assert ps1.is_file()
+	text = ps1.read_text(encoding="utf-8")
+	assert "quality gate" in text.lower()
+	assert "pytest" in text.lower()
+	assert ".srxy-quality-gate.lock" in text
+
+
 def test_given_offline_build_script_when_reading_then_names_offline_artifact():
 	# given
 	text = (_LINUX / "build.sh").read_text(encoding="utf-8")

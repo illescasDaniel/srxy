@@ -25,7 +25,7 @@ from srxy.adapters.inbound.installer.manifest import (
 	write_manifest,
 )
 from srxy.adapters.inbound.installer.meta import load_installer_meta
-from srxy.adapters.inbound.installer.package_spec import resolve_srxy_install_spec, with_semantic_extra
+from srxy.adapters.inbound.installer.package_spec import resolve_srxy_install_spec, with_extras
 from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION
 from srxy.adapters.inbound.installer.vendor import install_ffmpeg, install_tesseract, install_uv
 from srxy.adapters.outbound.models.model_store import parse_progress_line
@@ -448,6 +448,16 @@ def _is_windows() -> bool:
 	return platform.system().lower() == "windows"
 
 
+def package_extras_for_host(*, install_semantic: bool) -> list[str]:
+	"""Extras required for a prefix install on the current host OS."""
+	extras: list[str] = []
+	if install_semantic:
+		extras.append("semantic")
+	if _is_windows():
+		extras.append("windows")
+	return extras
+
+
 def _venv_python(venv: Path) -> Path:
 	if _is_windows():
 		return venv / "Scripts" / "python.exe"
@@ -545,8 +555,10 @@ def install_srxy(
 	env["PATH"] = f"{venv_bin}{_path_sep()}{env.get('PATH', '')}"
 
 	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
-	if options.install_semantic:
-		spec = with_semantic_extra(spec)
+	# Windows installs always need pywin32 ([windows]); semantic is optional.
+	extra_names = package_extras_for_host(install_semantic=options.install_semantic)
+	if extra_names:
+		spec = with_extras(spec, *extra_names)
 
 	# --- 3. package ---
 	package_label = tr("installer.status.installing_package", spec=spec)

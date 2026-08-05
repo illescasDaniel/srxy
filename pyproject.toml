@@ -168,10 +168,14 @@ build-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -F
 smoke-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline.ps1", help = "smoke headless Windows install engine (or pass -InstallerExe)" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate packaged square + installer icons from assets/icons/srxy.png" }
 generate-macos-icons = { cmd = "uv run python scripts/generate_macos_icons.py", help = "regenerate squircle-masked macOS icons from assets/icons/srxy.png" }
-checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day)" }
-checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate" }
-checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release)" }
-checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix" }
+checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day; Unix)" }
+checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate (Unix)" }
+checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release; Unix)" }
+checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix (Unix)" }
+checks-win = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1", help = "run quality gate (day-to-day; Windows)" }
+checks-win-fix = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix", help = "autofix then run quality gate (Windows)" }
+checks-win-full = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Full", help = "full local quality gate (pre-release; Windows)" }
+checks-win-full-cpu = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -FullCpu", help = "full gate + forced-CPU transcribe matrix (Windows)" }
 clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
 clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
 bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }

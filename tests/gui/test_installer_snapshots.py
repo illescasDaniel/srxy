@@ -9,6 +9,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 
 from srxy.adapters.inbound.installer.controller import InstallerController
+from srxy.i18n import tr
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.gui]
@@ -18,6 +19,9 @@ _UPDATE = os.environ.get("UPDATE_GUI_SNAPSHOTS", "").strip() in {"1", "true", "y
 
 
 def _chrome_tree(controller: InstallerController) -> str:
+	models_nested = (
+		f"{tr('installer.options.models')} (nested under {tr('installer.options.semantic').split('(')[0].strip()})"
+	)
 	lines = [
 		"installerWindow:",
 		"  title: srxy installer",
@@ -33,13 +37,51 @@ def _chrome_tree(controller: InstallerController) -> str:
 		f"  addToPath: {controller.addToPath}",
 		f"  busy: {controller.busy}",
 		f"  finished: {controller.finished}",
-		"  modes: Install or update srxy, Reinstall srxy, Uninstall srxy",
+		"  modes: "
+		+ ", ".join(
+			[
+				tr("installer.mode.install"),
+				tr("installer.mode.reinstall"),
+				tr("installer.mode.uninstall"),
+			]
+		),
 		"  pages: mode, prefix, privacy, options, path, uninstall, progress",
-		"  optionLabels: Text in images, Audio/video helper, Smarter search (needs a GPU), Download AI models now (nested under Smarter search)",
-		"  optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files",
-		"  pathCheckbox: Also let me run srxy from the Terminal",
-		"  languageCombo: English, Español",
-		"  buttons: Back, Next, Install, Reinstall, Uninstall, Launch, Finish, Close, Browse…, Info (i), GPU warning (!)",
+		"  optionLabels: "
+		+ ", ".join(
+			[
+				tr("installer.options.tesseract"),
+				tr("installer.options.ffmpeg"),
+				tr("installer.options.semantic"),
+				models_nested,
+			]
+		),
+		"  optionSubtitles: "
+		+ ", ".join(
+			[
+				tr("installer.options.tesseract_sub"),
+				tr("installer.options.ffmpeg_sub"),
+				tr("installer.options.semantic_sub"),
+				tr("installer.options.models_sub"),
+			]
+		),
+		f"  pathCheckbox: {tr('installer.path.checkbox')}",
+		f"  languageCombo: {tr('menu.language.en')}, {tr('menu.language.es')}",
+		"  buttons: "
+		+ ", ".join(
+			[
+				tr("common.back"),
+				tr("common.next"),
+				tr("installer.button.install"),
+				tr("installer.button.reinstall"),
+				tr("installer.button.uninstall"),
+				tr("installer.button.launch"),
+				tr("common.finish"),
+				tr("common.close"),
+				tr("gui.browse"),
+				"Info (i)",
+				"GPU warning (!)",
+			]
+		),
 		"  helpMenu: (installer uses language combo on mode page)",
 	]
 	return "\n".join(lines) + "\n"
@@ -59,10 +101,7 @@ def _ensure_qt_core():
 		QCoreApplication([])
 
 
-def test_given_installer_controller_when_snapshotting_chrome_then_matches(
-	monkeypatch: pytest.MonkeyPatch,
-):
-	# given
+def _make_controller(monkeypatch: pytest.MonkeyPatch, *, language: str) -> InstallerController:
 	_ensure_qt_core()
 	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
 	monkeypatch.delenv("SRXY_LANGUAGE", raising=False)
@@ -72,7 +111,15 @@ def test_given_installer_controller_when_snapshotting_chrome_then_matches(
 		lambda: True,
 	)
 	controller = InstallerController()
-	controller.setLanguage("en")
+	controller.setLanguage(language)
+	return controller
+
+
+def test_given_installer_controller_when_snapshotting_chrome_then_matches(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	controller = _make_controller(monkeypatch, language="en")
 
 	# when
 	tree = _chrome_tree(controller)
@@ -80,3 +127,18 @@ def test_given_installer_controller_when_snapshotting_chrome_then_matches(
 	# then
 	_assert_snapshot("installer_chrome.snap.txt", tree)
 	assert controller.hasGpu is False
+
+
+def test_given_spanish_installer_controller_when_snapshotting_chrome_then_matches(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	controller = _make_controller(monkeypatch, language="es")
+
+	# when
+	tree = _chrome_tree(controller)
+
+	# then
+	_assert_snapshot("installer_chrome_es.snap.txt", tree)
+	assert controller.language == "es"
+	assert tr("installer.mode.install") in tree

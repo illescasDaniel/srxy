@@ -31,7 +31,7 @@ def test_given_installer_meta_when_loaded_then_has_version_and_min_srxy():
 	meta = load_installer_meta()
 
 	# then
-	assert meta.installer_version == "8"
+	assert meta.installer_version == "13"
 	assert version_at_least(meta.min_srxy_version, "1.6.4")
 
 
@@ -109,6 +109,15 @@ def test_given_uv_tool_path_when_detecting_method_then_uv_tool(tmp_path: Path):
 	# when / then
 	assert detect_install_method(home=None, executable=exe) is InstallMethod.UV_TOOL
 	assert upgrade_command(InstallMethod.UV_TOOL)[1:3] == ["tool", "upgrade"]
+
+
+def test_given_inno_language_names_when_resolving_then_maps_to_codes():
+	from srxy.i18n import resolve_language
+
+	assert resolve_language("english") == "en"
+	assert resolve_language("spanish") == "es"
+	assert resolve_language("en") == "en"
+	assert resolve_language("es") == "es"
 
 
 def test_given_spanish_catalog_when_translating_then_uses_es():

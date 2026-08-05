@@ -343,7 +343,13 @@ class StreamingResultWriter:
 		if self._progress is not None:
 			self._progress.write_above(text, self._stdout)
 		else:
-			print(text, file=self._stdout, flush=True)
+			try:
+				print(text, file=self._stdout, flush=True)
+			except UnicodeEncodeError:
+				# Last resort when stdout cannot be reconfigured (legacy Windows code pages).
+				encoding = getattr(self._stdout, "encoding", None) or "utf-8"
+				safe = text.encode(encoding, errors="replace").decode(encoding, errors="replace")
+				print(safe, file=self._stdout, flush=True)
 		if self._output_handle is not None:
 			self._output_handle.write(text)
 			self._output_handle.write("\n")
@@ -849,7 +855,19 @@ def run_plain(args: argparse.Namespace) -> int:
 	return 0 if results else 1
 
 
+def _configure_stdio_utf8():
+	"""Prefer UTF-8 on Windows consoles so grouped CLI glyphs (── │ ·) print cleanly."""
+	for stream in (sys.stdout, sys.stderr):
+		reconfigure = getattr(stream, "reconfigure", None)
+		if callable(reconfigure):
+			try:
+				reconfigure(encoding="utf-8", errors="replace")
+			except (OSError, ValueError, AttributeError):
+				pass
+
+
 def main(argv: list[str] | None = None) -> int:
+	_configure_stdio_utf8()
 	parser = build_parser()
 	args = parser.parse_args(argv)
 	from srxy.application.settings import set_language_setting

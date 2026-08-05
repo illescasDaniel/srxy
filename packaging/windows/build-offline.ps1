@@ -8,7 +8,8 @@
   site-packages (--no-deps, no PySide), a full srxy wheel for prefix installs,
   privacy.txt, then compiles packaging/windows/srxy-offline.iss.
 
-  Prerequisites: uv, Inno Setup 6 (ISCC.exe on PATH or under Program Files).
+  Prerequisites: uv, Inno Setup 7 (preferred) or 6.2+ with ExecAndLogOutput
+  (ISCC.exe on PATH or under Program Files).
 #>
 param(
 	[string]$OutDir = "",
@@ -31,7 +32,11 @@ function Find-Iscc {
 	if ($cmd) {
 		return $cmd.Source
 	}
+	# Prefer Inno Setup 7 (64-bit Program Files), then 6.
 	$candidates = @(
+		"${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
+		"${env:LocalAppData}\Programs\Inno Setup 7\ISCC.exe",
+		"${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
 		"${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
 		"${env:LocalAppData}\Programs\Inno Setup 6\ISCC.exe",
 		"${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
@@ -41,7 +46,7 @@ function Find-Iscc {
 			return $path
 		}
 	}
-	throw "ISCC.exe not found. Install Inno Setup 6 or pass -IsccPath."
+	throw "ISCC.exe not found. Install Inno Setup 7 (or 6.2+) or pass -IsccPath. See https://jrsoftware.org/isdl.php"
 }
 
 function Get-Sha256Hex {
@@ -224,7 +229,11 @@ else:
 		Remove-Item -LiteralPath $IsccOut -Recurse -Force
 	}
 	New-Item -ItemType Directory -Force -Path $IsccOut | Out-Null
-	Write-Host "Compiling Inno Setup script with $Iscc ..."
+	$PrivacyAckVersion = (uv run python -c "from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION; print(PRIVACY_NOTICE_VERSION)").Trim()
+	if (-not $PrivacyAckVersion) {
+		throw "failed to read PRIVACY_NOTICE_VERSION"
+	}
+	Write-Host "Compiling Inno Setup script with $Iscc (privacy-ack=$PrivacyAckVersion) ..."
 	& $Iscc `
 		"/DMyAppVersion=$Version" `
 		"/DInstallerVersion=$InstallerVersion" `
@@ -234,6 +243,7 @@ else:
 		"/DPrivacyEnFile=$PrivacyEn" `
 		"/DPrivacyEsFile=$PrivacyEs" `
 		"/DSetupIconFile=$SetupIco" `
+		"/DPrivacyAckVersion=$PrivacyAckVersion" `
 		$Iss
 	if ($LASTEXITCODE -ne 0) {
 		throw "ISCC failed with exit code $LASTEXITCODE"

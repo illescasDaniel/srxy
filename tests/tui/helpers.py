@@ -3,8 +3,9 @@ from __future__ import annotations
 import html
 import os
 import re
-from collections.abc import Iterable
+from collections.abc import Awaitable, Callable, Iterable
 from pathlib import Path
+from typing import Any
 
 from textual.app import App
 
@@ -38,7 +39,7 @@ def snapshot_svg_text(svg: str) -> str:
 	return "\n".join(extract_svg_visible_text(svg)).replace("\xa0", " ")
 
 
-def assert_svg_snapshot(name: str, svg: str) -> None:
+def assert_svg_snapshot(name: str, svg: str):
 	"""Compare exported SVG visible text against a committed snapshot."""
 	SNAPSHOTS_DIR.mkdir(parents=True, exist_ok=True)
 	path = SNAPSHOTS_DIR / f"{name}.snap.txt"
@@ -55,7 +56,7 @@ def assert_svg_snapshot(name: str, svg: str) -> None:
 		)
 
 
-def assert_labels_visible(svg: str, labels: Iterable[str]) -> None:
+def assert_labels_visible(svg: str, labels: Iterable[str]):
 	"""Assert each label appears in the exported screenshot."""
 	visible = normalized_svg_text(svg)
 	missing = [label for label in labels if label not in visible]
@@ -64,8 +65,35 @@ def assert_labels_visible(svg: str, labels: Iterable[str]) -> None:
 		raise AssertionError(f"Missing labels in TUI screenshot: {missing}\nVisible text: {snippet!r}")
 
 
-async def export_app_screenshot(app: App[int], *, size: tuple[int, int] = (100, 30)) -> str:
+async def export_app_screenshot(app: App[Any], *, size: tuple[int, int] = (100, 30)) -> str:
 	"""Run the app headlessly and return an SVG screenshot."""
 	async with app.run_test(size=size) as pilot:
-		await pilot.pause()
-		return app.export_screenshot(title="srxy-tui")
+		return await settled_screenshot(
+			app,
+			pilot,
+			title="srxy-tui",
+			required_labels=("Ready", "Quit"),
+		)
+
+
+async def settled_screenshot(
+	app: App[Any],
+	pilot: Any,
+	*,
+	title: str,
+	required_labels: Iterable[str] = ("Ready", "Quit"),
+	attempts: int = 30,
+) -> str:
+	"""Export a screenshot after layout/bindings have painted (reduces dark-theme flake)."""
+	pause: Callable[..., Awaitable[None]] = pilot.pause
+	await pause()
+	last = ""
+	for _ in range(attempts):
+		svg = app.export_screenshot(title=title)
+		visible = normalized_svg_text(svg)
+		if all(label in visible for label in required_labels):
+			return svg
+		last = visible
+		await pause()
+	missing = [label for label in required_labels if label not in last]
+	raise AssertionError(f"TUI screenshot never settled; missing {missing!r}. Visible: {last[:500]!r}")

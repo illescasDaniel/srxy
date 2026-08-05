@@ -52,6 +52,7 @@ def test_given_windows_when_resolving_non_prefix_cache_then_uses_localappdata(
 	# when / then
 	assert paths.default_cache_root() == local / "srxy"
 
+
 def test_given_srxy_home_when_resolving_paths_then_uses_prefix(
 	tmp_path: Path,
 	monkeypatch: pytest.MonkeyPatch,

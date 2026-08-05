@@ -14,7 +14,7 @@ checksums), not the bare exe.
 
 - Windows x64
 - [uv](https://docs.astral.sh/uv/)
-- [Inno Setup 6](https://jrsoftware.org/isinfo.php) (`ISCC.exe` on `PATH` or under Program Files)
+- [Inno Setup 7](https://jrsoftware.org/isdl.php) preferred (6.2+ also works for `ExecAndLogOutput`). `ISCC.exe` on `PATH` or under Program Files.
 
 ## Build
 
@@ -49,6 +49,20 @@ Optional components (Tesseract, ffmpeg, semantic, models) are **not** embedded; 
 - Start Menu / desktop shortcuts target `bin\Srxy.exe` (icon embedded); `bin\srxy.cmd` remains for PATH/CLI.
 - Privacy pages ship English and Spanish UTF-8 notices (BOM) and follow the installer language choice.
 - Custom wizard pages, components, and tasks use Inno `[CustomMessages]` so Spanish/English stay consistent with the built-in chrome.
-- Setup types: **Recommended (GPU)** (Tesseract + ffmpeg + semantic), **Recommended (no GPU)** (Tesseract + ffmpeg), **Simple** (app only), **Complete** (also prefetches AI models), **Custom**. The wizard detects NVIDIA GPUs via `nvidia-smi` and pre-selects the matching recommended type (override with env `SRXY_FORCE_GPU` / `SRXY_FORCE_NO_GPU`). Silent installs default to the CPU recommended type unless you pass `/TYPE=recommendedgpu` (or another type).
+- Setup types: **Recommended (GPU)** (Tesseract + ffmpeg + semantic), **Recommended (no GPU)** (Tesseract + ffmpeg), **Simple** (app only), **Complete** (also prefetches AI models), **Custom**. The wizard detects NVIDIA GPUs via `nvidia-smi` (including `{sysnative}` so 32-bit Setup can see it under WOW64) and pre-selects the matching recommended type (override with env `SRXY_FORCE_GPU` / `SRXY_FORCE_NO_GPU`). Inno Setup 7 builds a **64-bit** Setup (`SetupArchitecture=x64`). Silent installs default to the CPU recommended type unless you pass `/TYPE=recommendedgpu` (or another type).
+- Interactive installs stream the headless engine’s stdout into the progress page via Inno `ExecAndLogOutput` (`STATUS` / `PROGRESS` / `TASK` lines) and tee the same lines to `{app}\logs\installer-engine.log`. Requires Inno Setup 6.2+ (CI uses 7.0.2).
+- Windows Tesseract is downloaded as the UB-Mannheim NSIS setup, then **extracted** with a pinned 7-Zip helper (no UAC / no running the setup EXE).
 - Signing / SmartScreen: unsigned builds may warn (same class of issue as unsigned macOS DMGs). Authenticode is a follow-up.
 - Online Windows installer is out of scope for this packaging tree.
+
+## Engine progress protocol
+
+The headless CLI (`python -m srxy.adapters.inbound.installer`) prints tab-separated lines for the Inno wizard:
+
+| Line | Meaning |
+|------|---------|
+| `STATUS\t<message>` | Current phase text |
+| `TASK\t<index>\t<total>\t<label>` | Install phase N of M |
+| `PROGRESS\t<done>\t<total>\t<label>` | Byte progress for a download (`total>1`), or `1\t1` when a phase finishes |
+| `OK\tinstall\|reinstall\|uninstall` | Success |
+| `ERROR\t<message>` | Failure (non-zero exit) |
