@@ -62,10 +62,20 @@ def uninstall_prefix(
 		manifest = require_matching_manifest(resolved)
 		_remove_desktop_if_matches(resolved, recorded_prefix=manifest.prefix, status=status)
 		_remove_user_icons(manifest, status=status)
-		from srxy.adapters.inbound.installer.path_setup import remove_srxy_path_from_shell
+		from srxy.adapters.inbound.installer.path_setup import (
+			WINDOWS_USER_PATH_MARKER,
+			remove_srxy_path_from_shell,
+		)
 
-		rc_path = Path(manifest.path_rc).expanduser() if manifest.path_rc.strip() else None
-		result = remove_srxy_path_from_shell(rc_path=rc_path)
+		rc_raw = manifest.path_rc.strip()
+		if rc_raw == WINDOWS_USER_PATH_MARKER:
+			result = remove_srxy_path_from_shell(
+				rc_path=WINDOWS_USER_PATH_MARKER,
+				bin_dir=resolved / "bin",
+			)
+		else:
+			rc_path = Path(rc_raw).expanduser() if rc_raw else None
+			result = remove_srxy_path_from_shell(rc_path=rc_path)
 		if result.incomplete_block and status is not None:
 			status(tr("installer.status.path_incomplete_block"))
 		elif result.changed and status is not None:

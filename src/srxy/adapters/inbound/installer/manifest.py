@@ -129,9 +129,22 @@ def is_non_empty_foreign_prefix(prefix: Path) -> bool:
 	if is_srxy_prefix(prefix):
 		return False
 	try:
-		return any(prefix.iterdir())
+		entries = list(prefix.iterdir())
 	except OSError:
 		return True
+	ignored_names = {
+		".srxy-installer-marker",
+		".srxy-bootstrap",
+		"logs",  # Inno / engine may create logs before the prefix install finishes
+	}
+	meaningful = [
+		path
+		for path in entries
+		if path.name not in ignored_names
+		and not path.name.lower().startswith("unins")
+		and path.name.lower() not in {"desktop.ini", "thumbs.db"}
+	]
+	return bool(meaningful)
 
 
 def looks_like_partial_srxy_prefix(prefix: Path) -> bool:
@@ -152,6 +165,8 @@ def looks_like_partial_srxy_prefix(prefix: Path) -> bool:
 		resolved / "vendor" / "tesseract",
 		resolved / "vendor" / "ffmpeg",
 		resolved / "bin" / "srxy",
+		resolved / "bin" / "srxy.cmd",
+		resolved / "bin" / "Srxy.exe",
 		resolved / "Srxy.app",
 		resolved / "logs" / "installer-online.log",
 		resolved / "logs" / "srxy.log",

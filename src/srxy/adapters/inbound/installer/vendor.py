@@ -64,9 +64,10 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 	item = artifact("uv")
 	vendor = prefix / "vendor" / "uv"
 	vendor.mkdir(parents=True, exist_ok=True)
+	is_zip = item.kind == "zip" or item.url.lower().endswith(".zip")
 	archive = download_to_temp(
 		item.url,
-		suffix=".tar.gz",
+		suffix=".zip" if is_zip else ".tar.gz",
 		sha256=item.sha256,
 		label=f"uv {item.version}",
 		progress=progress,
@@ -75,11 +76,20 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 		extract_dir = vendor / "_extract"
 		if extract_dir.exists():
 			shutil.rmtree(extract_dir)
-		extract_tar_archive(archive, extract_dir)
-		binary = _find_named_binary(extract_dir, "uv")
+		if is_zip:
+			extract_zip_archive(archive, extract_dir)
+		else:
+			extract_tar_archive(archive, extract_dir)
+		binary_names = ("uv.exe", "uv") if platform.system().lower() == "windows" else ("uv",)
+		binary = None
+		for name in binary_names:
+			binary = _find_named_binary(extract_dir, name)
+			if binary is not None:
+				break
 		if binary is None:
 			raise RuntimeError("uv binary missing from downloaded archive")
-		target = vendor / "uv"
+		target_name = "uv.exe" if binary.name.lower().endswith(".exe") else "uv"
+		target = vendor / target_name
 		if target.exists():
 			target.unlink()
 		shutil.move(str(binary), str(target))
@@ -371,13 +381,85 @@ def _install_tesseract_brew_bottles(prefix: Path, *, progress: ProgressCallback 
 		shutil.rmtree(extract_root, ignore_errors=True)
 
 
+def _install_tesseract_inno(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+	"""Run the UB-Mannheim Inno Setup installer into ``prefix/vendor/tesseract``."""
+	item = artifact("tesseract")
+	vendor = prefix / "vendor" / "tesseract"
+	if vendor.exists():
+		shutil.rmtree(vendor)
+	vendor.mkdir(parents=True, exist_ok=True)
+	installer = download_to_temp(
+		item.url,
+		suffix=".exe",
+		sha256=item.sha256,
+		label=f"tesseract {item.version}",
+		progress=progress,
+	)
+	try:
+		cmd = [
+			str(installer),
+			"/VERYSILENT",
+			"/SUPPRESSMSGBOXES",
+			"/NORESTART",
+			"/NOCANCEL",
+			f"/DIR={vendor}",
+		]
+		result = subprocess.run(  # noqa: S603
+			cmd,
+			check=False,
+			capture_output=True,
+			text=True,
+		)
+		if result.returncode != 0:
+			detail = (result.stderr or result.stdout or "").strip()
+			raise RuntimeError(f"tesseract Windows installer failed ({result.returncode}): {detail}")
+		_ensure_eng_tessdata(vendor, progress=progress)
+		target = _find_named_binary(vendor, "tesseract.exe")
+		if target is None:
+			raise RuntimeError("tesseract.exe missing after Windows installer finished")
+		# Expose a stable bin/ layout for PATH / resolve helpers.
+		bin_dir = vendor / "bin"
+		bin_dir.mkdir(parents=True, exist_ok=True)
+		link = bin_dir / "tesseract.exe"
+		if not link.exists():
+			shutil.copy2(target, link)
+		tessdata = vendor / "tessdata"
+		if not tessdata.is_dir():
+			# Some layouts nest tessdata under a subfolder; prefer any eng.traineddata parent.
+			for eng in vendor.rglob("eng.traineddata"):
+				tessdata = eng.parent
+				break
+		_self_check_tesseract(link, tessdata)
+		return link
+	finally:
+		installer.unlink(missing_ok=True)
+
+
 def install_tesseract(prefix: Path, *, progress: ProgressCallback | None = None) -> Path:
 	item = artifact("tesseract")
 	if item.kind == "binary":
 		return _install_tesseract_linux(prefix, progress=progress)
 	if item.kind == "brew_bottles":
 		return _install_tesseract_brew_bottles(prefix, progress=progress)
+	if item.kind == "inno_installer":
+		return _install_tesseract_inno(prefix, progress=progress)
 	raise RuntimeError(f"unsupported tesseract artifact kind: {item.kind}")
+
+
+def _expose_ffmpeg_bin(vendor: Path, binary: Path) -> Path:
+	"""Point ``vendor/bin/ffmpeg[.exe]`` at the real binary without requiring symlinks."""
+	bin_dir = vendor / "bin"
+	bin_dir.mkdir(parents=True, exist_ok=True)
+	target_name = "ffmpeg.exe" if binary.name.lower().endswith(".exe") else "ffmpeg"
+	target = bin_dir / target_name
+	if target.exists() or target.is_symlink():
+		target.unlink()
+	try:
+		os.symlink(binary, target)
+	except OSError:
+		shutil.copy2(binary, target)
+	_chmod_executable(target.resolve() if target.is_symlink() else target)
+	return target
 
 
 def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> Path:
@@ -404,14 +486,8 @@ def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> P
 		final = vendor / "dist"
 		move_tree(package_root, final)
 		shutil.rmtree(extract_dir, ignore_errors=True)
-		link_bin = vendor / "bin"
-		link_bin.mkdir(parents=True, exist_ok=True)
-		target = link_bin / "ffmpeg"
-		if target.exists() or target.is_symlink():
-			target.unlink()
-		os.symlink(final / "bin" / "ffmpeg" if (final / "bin" / "ffmpeg").exists() else final / "ffmpeg", target)
-		_chmod_executable(target.resolve())
-		return target
+		real = final / "bin" / "ffmpeg" if (final / "bin" / "ffmpeg").exists() else final / "ffmpeg"
+		return _expose_ffmpeg_bin(vendor, real)
 	finally:
 		archive.unlink(missing_ok=True)
 
@@ -431,12 +507,27 @@ def _install_ffmpeg_zip(prefix: Path, *, progress: ProgressCallback | None) -> P
 		if extract_dir.exists():
 			shutil.rmtree(extract_dir)
 		extract_zip_archive(archive, extract_dir)
-		binary = _find_named_binary(extract_dir, "ffmpeg")
+		names = ("ffmpeg.exe", "ffmpeg") if platform.system().lower() == "windows" else ("ffmpeg",)
+		binary = None
+		for name in names:
+			binary = _find_named_binary(extract_dir, name)
+			if binary is not None:
+				break
 		if binary is None:
 			raise RuntimeError("ffmpeg binary missing from downloaded zip")
+		# BtbN Windows shared builds need the whole tree (bin + lib next to each other).
+		if binary.parent.name.lower() == "bin":
+			package_root = binary.parent.parent
+			final = vendor / "dist"
+			if final.exists():
+				shutil.rmtree(final)
+			move_tree(package_root, final)
+			shutil.rmtree(extract_dir, ignore_errors=True)
+			real = final / "bin" / binary.name
+			return _expose_ffmpeg_bin(vendor, real)
 		bin_dir = vendor / "bin"
 		bin_dir.mkdir(parents=True, exist_ok=True)
-		target = bin_dir / "ffmpeg"
+		target = bin_dir / binary.name
 		if target.exists() or target.is_symlink():
 			target.unlink()
 		shutil.move(str(binary), str(target))

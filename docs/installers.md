@@ -1,6 +1,6 @@
 # Desktop installers
 
-Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages and macOS installer wrappers are available now.
+Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline Inno Setup installer are available.
 
 PyPI / `uv tool install` remain the primary install paths on every platform. Privacy / third-party downloads: [privacy.md](privacy.md).
 
@@ -57,9 +57,33 @@ Notes:
 - No admin rights are required for the default `~/Applications` prefix.
 - First **Launch** after install can take several seconds while Qt libraries load cold; later opens from Finder are normal.
 
-## Windows (coming soon)
+## Windows (supported)
 
-A dedicated Windows installer is still planned. Until then, use [Installation](installation.md) (`uv tool install` / pipx) on Windows.
+Offline Inno Setup installer (x86_64):
+
+| Artifact name pattern | Role |
+|-----------------------|------|
+| `srxy-*-installer-<installer_version>-x86_64.exe.zip` | **Offline wizard** — native Inno UI (zip of the setup `.exe`); headless Python engine; install / update / reinstall / uninstall |
+
+Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) and run. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required).
+
+### Offline wizard
+
+- Choose **Install or update**, **Reinstall**, or **Uninstall**.
+- Acknowledge the privacy notice, then pick a setup type:
+  - **Recommended (GPU)** — Tesseract, ffmpeg, and smarter-search packages (no model prefetch)
+  - **Recommended (no GPU)** — Tesseract and ffmpeg only
+  - **Simple** — app only (not recommended)
+  - **Complete** — recommended GPU set plus AI model download
+  - **Custom** — pick components yourself
+- The wizard probes for an NVIDIA GPU (`nvidia-smi`) and pre-selects the matching recommended type.
+- Optional **Add to PATH** (user `PATH` via the registry).
+- Start Menu shortcut is created; desktop shortcut is optional.
+- Builds are currently **unsigned** (SmartScreen may warn on first run).
+
+Until you prefer the wizard, [Installation](installation.md) (`uv tool install` / pipx) remains supported on Windows.
+
+Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md).
 
 ## Build from source
 
@@ -69,6 +93,7 @@ A dedicated Windows installer is still planned. Until then, use [Installation](i
 | Online | `./packaging/linux-appimage/build-online.sh` | `./packaging/linux-appimage/smoke-appimage-online.sh` |
 | macOS Offline | `./packaging/macos/build-offline.sh` | `./packaging/macos/smoke-offline.sh` |
 | macOS Online | `./packaging/macos/build-online.sh` | `./packaging/macos/smoke-online.sh` |
+| Windows Offline | `./packaging/windows/build-offline.ps1` | `./packaging/windows/smoke-offline.ps1` |
 
 Packaging details (AppDir layout, UPX, checksums, CI): [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md). Bootstrap sources: [`packaging/online-bootstrap/`](../packaging/online-bootstrap/). Compatibility pins: [`packaging/installer_meta.toml`](../packaging/installer_meta.toml).
 

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,7 @@ def test_given_manifest_when_writing_and_reading_then_round_trips(tmp_path: Path
 	assert payload["prefix"] == str(tmp_path)
 
 
-def test_given_force_gpu_when_creating_controller_then_ai_options_default_on(
+def test_given_force_gpu_when_creating_controller_then_semantic_on_prefetch_off(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -72,7 +73,7 @@ def test_given_force_gpu_when_creating_controller_then_ai_options_default_on(
 	# then
 	assert controller.hasGpu is True
 	assert controller.installSemantic is True
-	assert controller.prefetchModels is True
+	assert controller.prefetchModels is False
 
 
 def test_given_force_no_gpu_when_creating_controller_then_ai_options_default_off(
@@ -134,6 +135,48 @@ def test_given_spanish_when_set_on_installer_then_ui_strings_switch(monkeypatch:
 	controller.setLanguage("en")
 	assert "third-party notice" in controller.privacyText.lower()
 	assert "marker file" in controller.uninstallHint.lower()
+
+
+def test_given_language_when_writing_privacy_utf8_then_uses_bom_and_locale(
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer.privacy import write_privacy_notice_utf8
+
+	en = tmp_path / "privacy-en.txt"
+	es = tmp_path / "privacy-es.txt"
+
+	# when
+	write_privacy_notice_utf8(en, language="en")
+	write_privacy_notice_utf8(es, language="es")
+
+	# then
+	assert en.read_bytes()[:3] == b"\xef\xbb\xbf"
+	assert es.read_bytes()[:3] == b"\xef\xbb\xbf"
+	en_text = en.read_text(encoding="utf-8-sig")
+	es_text = es.read_text(encoding="utf-8-sig")
+	assert "privacy" in en_text.lower()
+	assert "aviso" in es_text.lower()
+	assert "Ã" not in en_text
+	assert "Ã" not in es_text
+
+
+def test_given_windows_when_loading_privacy_then_mentions_localappdata_cache(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	from srxy.adapters.inbound.installer import privacy as privacy_mod
+	from srxy.i18n import set_language
+
+	set_language("en")
+	monkeypatch.setattr(privacy_mod.platform, "system", lambda: "Windows")
+
+	# when
+	text = privacy_disclaimer_text()
+
+	# then
+	assert "%LOCALAPPDATA%\\srxy" in text
+	assert "~/.cache/srxy" not in text
 
 
 def test_given_privacy_text_when_loading_then_mentions_third_parties():
@@ -282,8 +325,10 @@ def test_given_partial_default_prefix_when_discovering_then_returns_path(
 	monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
 	# given
+	from srxy.application.install_paths import default_install_prefix
+
 	set_fake_home(monkeypatch, tmp_path)
-	prefix = tmp_path / "Applications" / "srxy"
+	prefix = default_install_prefix()
 	prefix.mkdir(parents=True)
 	(prefix / "vendor" / "uv").mkdir(parents=True)
 	(prefix / "vendor" / "uv" / "uv").write_text("x", encoding="utf-8")
@@ -351,13 +396,15 @@ def test_given_macos_failed_online_leftovers_when_uninstalling_then_removes_pref
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given: failed online install wrote logs but never a manifest/uv binary
+	from srxy.application.install_paths import default_install_prefix
+
 	home = tmp_path / "home"
 	home.mkdir()
-	prefix = home / "Applications" / "srxy"
+	set_fake_home(monkeypatch, home)
+	prefix = default_install_prefix()
 	(prefix / "logs").mkdir(parents=True)
 	(prefix / "vendor").mkdir(parents=True)
 	(prefix / "logs" / "installer-online.log").write_text("install failed\n", encoding="utf-8")
-	set_fake_home(monkeypatch, home)
 
 	# when / then
 	assert looks_like_partial_srxy_prefix(prefix) is True
@@ -931,6 +978,7 @@ def test_given_matching_manifest_when_requiring_then_returns_manifest(tmp_path: 
 	assert loaded.prefix == str(tmp_path)
 
 
+@pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
 def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exist(tmp_path: Path):
 	# given
 	prefix = tmp_path / "Applications" / "srxy"
@@ -951,6 +999,7 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	assert 'exec ">>"$LOG_FILE"' not in content.replace("\n", " ")
 
 
+@pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
 def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_before_tty_check(
 	tmp_path: Path,
 ):
@@ -994,6 +1043,54 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	assert app_exe.is_file()
 	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
 	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
+
+
+def test_given_windows_prefix_when_writing_launcher_then_writes_cmd(
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer import install as install_mod
+
+	monkeypatch.setattr(install_mod.platform, "system", lambda: "Windows")
+	monkeypatch.setattr(install_mod, "_write_windows_gui_exe", lambda _prefix: None)
+	prefix = tmp_path / "Programs" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "Scripts").mkdir(parents=True)
+	(prefix / ".venv" / "Scripts" / "srxy.exe").write_bytes(b"")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	cmd = prefix / "bin" / "srxy.cmd"
+	assert cmd.is_file()
+	text = cmd.read_text(encoding="utf-8")
+	assert "SRXY_HOME=" in text
+	assert "srxy.exe" in text
+	assert "TESSDATA_PREFIX" in text
+
+
+@pytest.mark.skipif(platform.system().lower() != "windows", reason="requires csc.exe")
+def test_given_windows_prefix_when_writing_launcher_then_builds_gui_exe(
+	tmp_path: Path,
+):
+	# given
+	prefix = tmp_path / "Programs" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "Scripts").mkdir(parents=True)
+	(prefix / ".venv" / "Scripts" / "srxy.exe").write_bytes(b"")
+	(prefix / ".venv" / "Scripts" / "pythonw.exe").write_bytes(b"")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	gui = prefix / "bin" / "Srxy.exe"
+	assert gui.is_file()
+	assert gui.stat().st_size > 0
+	assert (prefix / "share" / "icons" / "srxy.ico").is_file()
+	assert (prefix / "bin" / "srxy.cmd").is_file()
 
 
 def test_given_default_options_when_planning_phases_then_includes_vendor_and_path(tmp_path: Path):

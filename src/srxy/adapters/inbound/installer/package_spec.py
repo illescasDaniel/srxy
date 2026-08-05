@@ -40,8 +40,23 @@ def _bundled_wheel_candidates() -> list[Path]:
 		share = Path(appdir) / "usr" / "share" / "srxy"
 		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
 		candidates.append(share / "srxy.whl")
+	# Windows Inno offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
+	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
+	if payload:
+		share = Path(payload) / "share" / "srxy"
+		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
+		candidates.append(share / "srxy.whl")
+	# Relative to the frozen/bootstrap tree: share/srxy next to the installer package.
 	here = Path(__file__).resolve().parent
 	candidates.extend(sorted((here / "wheels").glob("srxy-*.whl"), reverse=True))
+	# packaging layout: <payload>/share/srxy when running from bootstrap venv site-packages
+	# that still has a sibling share directory at the payload root.
+	for parent in here.parents:
+		share = parent / "share" / "srxy"
+		if share.is_dir():
+			candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
+			candidates.append(share / "srxy.whl")
+			break
 	return candidates
 
 

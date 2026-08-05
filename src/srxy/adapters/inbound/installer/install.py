@@ -154,6 +154,9 @@ def write_launcher(prefix: Path):
 	bin_dir.mkdir(parents=True, exist_ok=True)
 	log_dir = prefix / "logs"
 	log_dir.mkdir(parents=True, exist_ok=True)
+	if _is_windows():
+		_write_windows_launcher(prefix)
+		return
 	venv_srxy = prefix / ".venv" / "bin" / "srxy"
 	launcher = bin_dir / "srxy"
 	vendor_bin_parts = [
@@ -203,6 +206,138 @@ fi
 	launcher.write_text(content, encoding="utf-8")
 	launcher.chmod(0o755)
 	_write_macos_app(prefix, launcher_text=content)
+
+
+def _write_windows_launcher(prefix: Path):
+	"""Write ``bin\\srxy.cmd`` (CLI/PATH) and ``bin\\Srxy.exe`` (GUI shortcuts)."""
+	bin_dir = prefix / "bin"
+	venv_srxy = prefix / ".venv" / "Scripts" / "srxy.exe"
+	launcher = bin_dir / "srxy.cmd"
+	vendor_tess = prefix / "vendor" / "tesseract" / "bin"
+	vendor_ffmpeg = prefix / "vendor" / "ffmpeg" / "bin"
+	vendor_uv = prefix / "vendor" / "uv"
+	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
+	log_dir = prefix / "logs"
+	log_file = log_dir / "srxy.log"
+	# Use delayed expansion carefully; prefer explicit setlocal for PATH mutation.
+	content = f"""@echo off
+setlocal EnableExtensions
+set "SRXY_HOME={prefix}"
+set "PATH={vendor_tess};{vendor_ffmpeg};{vendor_uv};%PATH%"
+if exist "{prefix}\\vendor\\tesseract\\dist\\tessdata" (
+	set "TESSDATA_PREFIX={prefix}\\vendor\\tesseract\\dist\\tessdata"
+) else (
+	set "TESSDATA_PREFIX={tessdata}"
+)
+if not exist "{log_dir}" mkdir "{log_dir}"
+>>"{log_file}" echo ===== %DATE% %TIME% srxy start =====
+>>"{log_file}" echo SRXY_HOME=%SRXY_HOME%
+"{venv_srxy}" %*
+set "EXITCODE=%ERRORLEVEL%"
+exit /b %EXITCODE%
+"""
+	launcher.write_text(content, encoding="utf-8")
+	# Convenience shim without extension for tooling that looks for ``bin/srxy``.
+	shim = bin_dir / "srxy"
+	if not shim.exists():
+		shim.write_text(content, encoding="utf-8")
+	_write_windows_gui_exe(prefix)
+
+
+def _find_csc() -> Path | None:
+	roots = [
+		Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "Framework64",
+		Path(os.environ.get("WINDIR", r"C:\Windows")) / "Microsoft.NET" / "Framework",
+	]
+	for root in roots:
+		if not root.is_dir():
+			continue
+		versions = sorted(
+			(p for p in root.iterdir() if p.is_dir() and p.name.startswith("v")),
+			key=lambda p: p.name,
+			reverse=True,
+		)
+		for version_dir in versions:
+			csc = version_dir / "csc.exe"
+			if csc.is_file():
+				return csc
+	return None
+
+
+def _packaged_windows_ico(*, installer: bool = False) -> Path | None:
+	from importlib import resources
+
+	name = "srxy-installer.ico" if installer else "srxy.ico"
+	path = Path(str(resources.files("srxy.resources.icons").joinpath(name)))
+	return path if path.is_file() else None
+
+
+def _write_windows_ico(path: Path, *, installer: bool = False):
+	"""Write a multi-size .ico (copy packaged asset, else generate via Pillow)."""
+	path.parent.mkdir(parents=True, exist_ok=True)
+	packaged = _packaged_windows_ico(installer=installer)
+	if packaged is not None:
+		shutil.copy2(packaged, path)
+		return
+	from PIL import Image
+
+	from srxy.resources.icons import installer_icon_path
+
+	sizes = (16, 32, 48, 64, 128, 256)
+	images: list[Image.Image] = []
+	for size in sizes:
+		source = installer_icon_path(size=size) if installer else app_icon_path(size=size)
+		images.append(Image.open(source).convert("RGBA"))
+	# Primary must be the largest; bitmap_format=bmp avoids PNG-in-ICO frames that
+	# break Inno Setup EndUpdateResource (110) and some older Win32 icon loaders.
+	images[-1].save(
+		path,
+		format="ICO",
+		bitmap_format="bmp",
+		sizes=[(img.width, img.height) for img in images],
+		append_images=images[:-1],
+	)
+
+
+def _launcher_cs_source() -> Path:
+	from importlib import resources
+
+	return Path(str(resources.files("srxy.resources").joinpath("windows/SrxyLauncher.cs")))
+
+
+def _write_windows_gui_exe(prefix: Path):
+	"""Compile or copy ``bin\\Srxy.exe`` with the app icon for Start Menu / desktop."""
+	bin_dir = prefix / "bin"
+	bin_dir.mkdir(parents=True, exist_ok=True)
+	dest = bin_dir / "Srxy.exe"
+	icons_dir = prefix / "share" / "icons"
+	ico = icons_dir / "srxy.ico"
+	_write_windows_ico(ico, installer=False)
+
+	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
+	if payload:
+		prebuilt = Path(payload) / "share" / "srxy" / "windows" / "Srxy.exe"
+		if prebuilt.is_file():
+			shutil.copy2(prebuilt, dest)
+			return
+
+	csc = _find_csc()
+	cs_path = _launcher_cs_source()
+	if csc is None or not cs_path.is_file():
+		raise RuntimeError(
+			"Unable to build Srxy.exe launcher (csc.exe or SrxyLauncher.cs missing). "
+			"Install .NET Framework 4.x developer pack tools, or rebuild the offline installer."
+		)
+	cmd = [
+		str(csc),
+		"/nologo",
+		"/target:winexe",
+		f"/win32icon:{ico}",
+		"/reference:System.Windows.Forms.dll",
+		f"/out:{dest}",
+		str(cs_path),
+	]
+	subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
 
 
 def _write_macos_app(prefix: Path, *, launcher_text: str):
@@ -309,10 +444,26 @@ def _is_linux() -> bool:
 	return platform.system().lower() == "linux"
 
 
+def _is_windows() -> bool:
+	return platform.system().lower() == "windows"
+
+
+def _venv_python(venv: Path) -> Path:
+	if _is_windows():
+		return venv / "Scripts" / "python.exe"
+	return venv / "bin" / "python"
+
+
+def _path_sep() -> str:
+	return ";" if _is_windows() else ":"
+
+
 def _resolve_uv(prefix: Path) -> Path:
-	vendor_uv = prefix / "vendor" / "uv" / "uv"
-	if vendor_uv.is_file():
-		return vendor_uv
+	vendor_uv = prefix / "vendor" / "uv"
+	for name in ("uv.exe", "uv"):
+		candidate = vendor_uv / name
+		if candidate.is_file():
+			return candidate
 	which = shutil.which("uv")
 	if which:
 		return Path(which)
@@ -321,7 +472,7 @@ def _resolve_uv(prefix: Path) -> Path:
 
 def _package_version(venv: Path | None = None) -> str:
 	if venv is not None:
-		python = venv / "bin" / "python"
+		python = _venv_python(venv)
 		if python.is_file():
 			result = subprocess.run(  # noqa: S603
 				[str(python), "-c", "from importlib.metadata import version; print(version('srxy'))"],
@@ -390,7 +541,8 @@ def install_srxy(
 
 	env = os.environ.copy()
 	env["VIRTUAL_ENV"] = str(venv)
-	env["PATH"] = f"{venv / 'bin'}:{env.get('PATH', '')}"
+	venv_bin = venv / "Scripts" if _is_windows() else venv / "bin"
+	env["PATH"] = f"{venv_bin}{_path_sep()}{env.get('PATH', '')}"
 
 	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
 	if options.install_semantic:
@@ -403,7 +555,7 @@ def install_srxy(
 	_complete_phase(progress=progress, label=package_label)
 
 	probe = subprocess.run(  # noqa: S603
-		[str(venv / "bin" / "python"), "-c", "import PySide6"],
+		[str(_venv_python(venv)), "-c", "import PySide6"],
 		capture_output=True,
 		text=True,
 		check=False,
@@ -441,7 +593,7 @@ def install_srxy(
 		env["SRXY_AUTO_DOWNLOAD"] = "1"
 		_run_with_progress(
 			[
-				str(venv / "bin" / "python"),
+				str(_venv_python(venv)),
 				"-m",
 				"srxy.adapters.outbound.models.model_store",
 				"all",

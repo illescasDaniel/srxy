@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 from html import escape
+from pathlib import Path
 
 from srxy.i18n import tr
 
@@ -31,6 +32,11 @@ _TESSERACT_LINUX = (
 _TESSERACT_MACOS = (
 	"tesseract_macos",
 	"https://formulae.brew.sh/formula/tesseract",
+	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
+_TESSERACT_WINDOWS = (
+	"tesseract_windows",
+	"https://github.com/UB-Mannheim/tesseract",
 	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
 )
 _FFMPEG = ("ffmpeg", "https://ffmpeg.org/", "https://ffmpeg.org/")
@@ -103,7 +109,14 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "2"
+PRIVACY_NOTICE_VERSION = "3"
+
+
+def _cache_bullet_key(*, system: str | None = None) -> str:
+	host = (system or platform.system()).lower()
+	if host == "windows":
+		return "privacy.bullet_cache_windows"
+	return "privacy.bullet_cache"
 
 
 def _copy_key(stem: str, *, for_app: bool) -> str:
@@ -117,11 +130,13 @@ def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[
 	"""OS-specific vendor download sources for the installer; full set for in-app."""
 	host = (system or platform.system()).lower()
 	if for_app:
-		return [_TESSERACT_LINUX, _TESSERACT_MACOS, _FFMPEG_BUILD, _FFMPEG_MACOS]
+		return [_TESSERACT_LINUX, _TESSERACT_MACOS, _TESSERACT_WINDOWS, _FFMPEG_BUILD, _FFMPEG_MACOS]
 	if host == "darwin":
 		return [_TESSERACT_MACOS, _FFMPEG_MACOS]
 	if host == "linux":
 		return [_TESSERACT_LINUX, _FFMPEG_BUILD]
+	if host == "windows":
+		return [_TESSERACT_WINDOWS, _FFMPEG_BUILD]
 	return []
 
 
@@ -176,28 +191,47 @@ def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
 	return lines
 
 
-def privacy_disclaimer_text(*, for_app: bool = False) -> str:
-	"""Plain-text notice (docs / fallbacks)."""
-	parts = [
-		tr(_copy_key("title", for_app=for_app)),
-		"",
-		tr(_copy_key("intro_mit", for_app=for_app)),
-		"",
-		tr(_copy_key("intro_downloads", for_app=for_app)),
-		"",
-		tr(_copy_key("what_heading", for_app=for_app)),
-		"",
-		*_download_party_lines(for_app=for_app, html=False),
-		"",
-		tr("privacy.section_privacy"),
-		"",
-		f"• {tr('privacy.bullet_local')}",
-		f"• {tr('privacy.bullet_third_party')}",
-		f"• {tr('privacy.bullet_cache')}",
-		"",
-		tr(_copy_key("ack_footer", for_app=for_app)),
-	]
-	return "\n".join(parts)
+def privacy_disclaimer_text(*, for_app: bool = False, language: str | None = None) -> str:
+	"""Plain-text notice (docs / fallbacks).
+
+	When ``language`` is set, temporarily switch the active catalog for this call.
+	"""
+	from srxy.i18n import get_language, set_language
+
+	previous: str | None = None
+	if language is not None:
+		previous = get_language()
+		set_language(language)
+	try:
+		parts = [
+			tr(_copy_key("title", for_app=for_app)),
+			"",
+			tr(_copy_key("intro_mit", for_app=for_app)),
+			"",
+			tr(_copy_key("intro_downloads", for_app=for_app)),
+			"",
+			tr(_copy_key("what_heading", for_app=for_app)),
+			"",
+			*_download_party_lines(for_app=for_app, html=False),
+			"",
+			tr("privacy.section_privacy"),
+			"",
+			f"• {tr('privacy.bullet_local')}",
+			f"• {tr('privacy.bullet_third_party')}",
+			f"• {tr(_cache_bullet_key())}",
+			"",
+			tr(_copy_key("ack_footer", for_app=for_app)),
+		]
+		return "\n".join(parts)
+	finally:
+		if previous is not None:
+			set_language(previous)
+
+
+def write_privacy_notice_utf8(path: Path, *, language: str, for_app: bool = False):
+	"""Write a UTF-8 privacy notice with BOM (Inno Setup LoadStringsFromFile-friendly)."""
+	text = privacy_disclaimer_text(for_app=for_app, language=language)
+	path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
 
 
 def privacy_disclaimer_html(*, for_app: bool = False) -> str:
@@ -214,7 +248,7 @@ def privacy_disclaimer_html(*, for_app: bool = False) -> str:
 		"<ul>",
 		f"<li>{escape(tr('privacy.bullet_local'))}</li>",
 		f"<li>{escape(tr('privacy.bullet_third_party'))}</li>",
-		f"<li>{escape(tr('privacy.bullet_cache'))}</li>",
+		f"<li>{escape(tr(_cache_bullet_key()))}</li>",
 		"</ul>",
 		f"<p>{escape(tr(_copy_key('ack_footer', for_app=for_app)))}</p>",
 	]
@@ -225,4 +259,5 @@ __all__ = [
 	"PRIVACY_NOTICE_VERSION",
 	"privacy_disclaimer_html",
 	"privacy_disclaimer_text",
+	"write_privacy_notice_utf8",
 ]

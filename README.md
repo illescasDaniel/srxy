@@ -45,7 +45,7 @@ Two macOS `.dmg` installers from the same [GitHub Releases](https://github.com/i
 | `srxy-*-installer-*.dmg` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
 | `srxy-*-installer-online-*.dmg` | **Online one-click** — slim Go bootstrap; localhost browser UI; installs from PyPI |
 
-These macOS DMGs are currently **unsigned** (Gatekeeper may warn or block on first open); a signed and notarized release is coming soon. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+These macOS DMGs are currently **unsigned** (Gatekeeper may warn or block on first open); a signed and notarized release is coming soon. A Windows offline installer (`.exe`, Inno Setup) is also available from the same releases page (unsigned; SmartScreen may warn). PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
 <img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
 

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import sys
 import tarfile
 import zipfile
 from pathlib import Path
@@ -10,6 +11,22 @@ from pathlib import Path
 import pytest
 
 from srxy.adapters.inbound.installer import catalog as catalog_mod, vendor as vendor_mod
+
+
+def test_given_windows_x86_64_when_reading_catalog_then_includes_vendors(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	monkeypatch.setattr(catalog_mod.platform, "system", lambda: "Windows")
+	monkeypatch.setattr(catalog_mod.platform, "machine", lambda: "AMD64")
+
+	catalog = catalog_mod.platform_catalog()
+
+	assert catalog["uv"].kind == "zip"
+	assert catalog["uv"].url.endswith(".zip")
+	assert catalog["tesseract"].kind == "inno_installer"
+	assert catalog["ffmpeg"].kind == "zip"
+	assert "win64" in catalog["ffmpeg"].url
+	assert catalog_mod.vendor_downloads_supported() is True
 
 
 def test_given_darwin_arm64_when_reading_catalog_then_includes_ffmpeg_and_tesseract(
@@ -219,4 +236,6 @@ def test_given_ffmpeg_zip_when_installing_then_places_binary(
 
 	assert binary.is_file()
 	assert binary.read_bytes() == payload
-	assert binary.stat().st_mode & 0o111
+	# Executable bit is meaningful on Unix only (and this test monkeypatches platform.system).
+	if sys.platform != "win32":
+		assert binary.stat().st_mode & 0o111

@@ -1,0 +1,94 @@
+name: Windows Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: windows-installer-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  build-offline:
+    runs-on: windows-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Install Inno Setup 6
+        shell: pwsh
+        run: |
+          $url = "https://jrsoftware.org/download.php/is.exe"
+          $installer = Join-Path $env:TEMP "innosetup-install.exe"
+          Invoke-WebRequest -Uri $url -OutFile $installer
+          Start-Process -FilePath $installer -ArgumentList "/VERYSILENT","/SUPPRESSMSGBOXES","/NORESTART","/SP-" -Wait
+          $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+          if (-not (Test-Path -LiteralPath $iscc)) {
+            throw "ISCC.exe missing after Inno Setup install: $iscc"
+          }
+          Write-Host "ISCC=$iscc"
+
+      - name: Build offline Windows installer
+        shell: pwsh
+        run: .\packaging\windows\build-offline.ps1
+
+      - name: Smoke headless engine
+        shell: pwsh
+        run: .\packaging\windows\smoke-offline.ps1
+
+      - name: Smoke silent installer
+        shell: pwsh
+        run: |
+          $exe = Get-ChildItem -LiteralPath dist -Filter "srxy-*-installer-*-x86_64.exe" |
+            Where-Object { $_.Name -notlike "*.zip*" } |
+            Select-Object -First 1
+          if (-not $exe) { throw "built installer exe not found in dist/" }
+          .\packaging\windows\smoke-offline.ps1 -InstallerExe $exe.FullName
+
+      - name: Upload offline Windows installer artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: srxy-installer-offline-windows-${{ github.sha }}
+          path: |
+            dist/srxy-*-installer-*-x86_64.exe.zip
+            dist/srxy-*-installer-*-x86_64.exe.zip.sha256
+            dist/SHA256SUMS-windows-offline
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && 90 || 7 }}
+
+  release-attach:
+    if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
+    needs: [build-offline]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download offline artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: srxy-installer-offline-windows-${{ github.sha }}
+          path: dist
+
+      - name: Upload assets to GitHub Release
+        uses: softprops/action-gh-release@3d0d9888cb7fd7b750713d6e236d1fcb99157228 # v3.0.2
+        with:
+          files: |
+            dist/srxy-*-installer-*-x86_64.exe.zip
+            dist/srxy-*-installer-*-x86_64.exe.zip.sha256
+            dist/SHA256SUMS-windows-offline
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

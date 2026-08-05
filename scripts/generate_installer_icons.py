@@ -140,6 +140,12 @@ def composite(base: Image.Image) -> Image.Image:
 	return out
 
 
+def save_png(img: Image.Image, path: Path):
+	"""Write a PNG with max zlib compression (Pillow optimize + compress_level 9)."""
+	# PNG has no JPEG-style quality knob; max deflate + optimize is the safe bet.
+	img.save(path, format="PNG", optimize=True, compress_level=9)
+
+
 def main():
 	if not ORIGINAL.is_file():
 		raise SystemExit(f"missing original icon: {ORIGINAL}")
@@ -149,24 +155,46 @@ def main():
 
 	ICON_DIR.mkdir(parents=True, exist_ok=True)
 	# Refresh packaged square masters from the uncompressed original.
-	master.save(ICON_DIR / "srxy.png", format="PNG", optimize=False)
+	save_png(master, ICON_DIR / "srxy.png")
 	print(f"wrote {ICON_DIR / 'srxy.png'} ({MASTER}x{MASTER})")
 	for size in SIZES:
 		sized = master.resize((size, size), Image.Resampling.LANCZOS)
-		sized.save(ICON_DIR / f"srxy-{size}.png", format="PNG", optimize=False)
+		save_png(sized, ICON_DIR / f"srxy-{size}.png")
 		print(f"wrote srxy-{size}.png ({size}x{size})")
 
 	inst_master = composite(master)
-	inst_master.save(ICON_DIR / "srxy-installer.png", format="PNG", optimize=False)
+	save_png(inst_master, ICON_DIR / "srxy-installer.png")
 
 	for size in SIZES:
 		if size >= 128:
 			img = inst_master.resize((size, size), Image.Resampling.LANCZOS)
 		else:
-			img = composite(Image.open(ICON_DIR / f"srxy-{size}.png"))
-		img.save(ICON_DIR / f"srxy-installer-{size}.png", format="PNG", optimize=False)
+			img = composite(Image.open(ICON_DIR / f"srxy-{size}.png").convert("RGBA"))
+		save_png(img, ICON_DIR / f"srxy-installer-{size}.png")
 		print(f"wrote srxy-installer-{size}.png ({size}x{size})")
 	print(f"wrote {ICON_DIR / 'srxy-installer.png'} ({MASTER}x{MASTER})")
+
+	# Windows .ico companions (Start Menu / Inno SetupIconFile / taskbar).
+	# bitmap_format=bmp avoids PNG-compressed 256px frames that break Inno's
+	# EndUpdateResource (error 110) when embedding SetupIconFile.
+	def write_ico(stem: str):
+		sizes = (16, 32, 48, 64, 128, 256)
+		images = [
+			Image.open(ICON_DIR / f"{stem}-{size}.png").convert("RGBA")
+			for size in sizes
+		]
+		out = ICON_DIR / f"{stem}.ico"
+		images[-1].save(
+			out,
+			format="ICO",
+			bitmap_format="bmp",
+			sizes=[(im.width, im.height) for im in images],
+			append_images=images[:-1],
+		)
+		print(f"wrote {out.name} ({out.stat().st_size} bytes)")
+
+	write_ico("srxy")
+	write_ico("srxy-installer")
 
 
 if __name__ == "__main__":

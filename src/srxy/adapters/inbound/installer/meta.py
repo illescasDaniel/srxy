@@ -23,6 +23,9 @@ def _meta_candidates() -> list[Path]:
 	appdir = os.environ.get("APPDIR", "").strip()
 	if appdir:
 		candidates.append(Path(appdir) / "usr" / "share" / "srxy" / "installer_meta.toml")
+	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
+	if payload:
+		candidates.append(Path(payload) / "share" / "srxy" / "installer_meta.toml")
 	# Repo packaging/ when running from source
 	root = Path(__file__).resolve().parents[5]
 	candidates.append(root / "packaging" / "installer_meta.toml")

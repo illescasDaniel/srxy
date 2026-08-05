@@ -165,6 +165,52 @@ DARWIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
 }
 
 
+WIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
+	"uv": DownloadArtifact(
+		name="uv",
+		version="0.12.1",
+		url="https://github.com/astral-sh/uv/releases/download/0.12.1/uv-x86_64-pc-windows-msvc.zip",
+		sha256="8fcb0cb46e1229065e344758980924e569bef5882ef45f46fada8fb24e06b74a",
+		kind="zip",
+		notes="Astral uv standalone (Windows x86_64, Apache-2.0 / MIT).",
+	),
+	# UB-Mannheim Inno Setup installer; extracted/run into the prefix vendor tree at install time.
+	"tesseract": DownloadArtifact(
+		name="tesseract",
+		version="5.4.0.20240606",
+		url=(
+			"https://github.com/UB-Mannheim/tesseract/releases/download/"
+			"v5.4.0.20240606/tesseract-ocr-w64-setup-5.4.0.20240606.exe"
+		),
+		sha256="c885fff6998e0608ba4bb8ab51436e1c6775c2bafc2559a19b423e18678b60c9",
+		kind="inno_installer",
+		notes="UB-Mannheim Tesseract OCR Windows x64 installer (Apache-2.0).",
+	),
+	"tessdata_eng": DownloadArtifact(
+		name="tessdata_eng",
+		version="4.1.0",
+		url=(
+			"https://raw.githubusercontent.com/tesseract-ocr/tessdata/"
+			"4767ea922bcc460e70b87b1d303ebdfed0897da8/eng.traineddata"
+		),
+		sha256="daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+		kind="file",
+		notes="English traineddata for Tesseract, tessdata 4.1.0 (Apache-2.0).",
+	),
+	"ffmpeg": DownloadArtifact(
+		name="ffmpeg",
+		version="n8.1.2-34-g9b6c8969e0",
+		url=(
+			"https://github.com/BtbN/FFmpeg-Builds/releases/download/autobuild-2026-08-01-13-21/"
+			"ffmpeg-n8.1.2-34-g9b6c8969e0-win64-lgpl-shared-8.1.zip"
+		),
+		sha256="3bba81dcfd017a6ea1627905549769913948831ef10f3e7df7541f736067bff8",
+		kind="zip",
+		notes="FFmpeg 8.1 Windows x86_64 LGPL shared build (BtbN autobuild-2026-08-01-13-21).",
+	),
+}
+
+
 def _normalize_machine(value: str) -> str:
 	machine = value.strip().lower()
 	aliases = {
@@ -186,6 +232,8 @@ def platform_catalog() -> dict[str, DownloadArtifact]:
 		return DARWIN_ARM64_CATALOG
 	if system == "darwin" and machine == "x86_64":
 		return DARWIN_X86_64_CATALOG
+	if system == "windows" and machine == "x86_64":
+		return WIN_X86_64_CATALOG
 	return LINUX_X86_64_CATALOG
 
 
@@ -196,6 +244,8 @@ def vendor_downloads_supported() -> bool:
 	if system == "linux" and machine == "x86_64":
 		return True
 	if system == "darwin" and machine == "arm64":
+		return True
+	if system == "windows" and machine == "x86_64":
 		return True
 	return False
 
@@ -216,6 +266,7 @@ __all__ = [
 	"DownloadArtifact",
 	"GHCR_BOTTLE_HEADERS",
 	"LINUX_X86_64_CATALOG",
+	"WIN_X86_64_CATALOG",
 	"artifact",
 	"platform_catalog",
 	"vendor_downloads_supported",

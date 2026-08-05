@@ -112,7 +112,7 @@ def test_given_darwin_arm64_when_building_online_options_then_vendor_downloads_o
 	assert options.download_ffmpeg is True
 
 
-def test_given_windows_when_building_online_options_then_vendor_downloads_off(
+def test_given_windows_when_building_online_options_then_vendor_downloads_on(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
@@ -128,8 +128,8 @@ def test_given_windows_when_building_online_options_then_vendor_downloads_off(
 	options = options_mod.build_online_install_options(prefix=tmp_path / "app")
 
 	# then
-	assert options.download_tesseract is False
-	assert options.download_ffmpeg is False
+	assert options.download_tesseract is True
+	assert options.download_ffmpeg is True
 
 
 def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version(

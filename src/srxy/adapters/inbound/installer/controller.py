@@ -153,9 +153,10 @@ class InstallerController(QObject):
 		self._download_tesseract = self._vendor_downloads_supported
 		self._download_ffmpeg = self._vendor_downloads_supported
 		self._has_gpu = has_accelerated_gpu()
-		# When a usable GPU is present, opt into all AI-related extras by default.
+		# GPU machines default to semantic extras; model weights stay opt-in
+		# (same idea as the Windows recommended-GPU preset).
 		self._install_semantic = self._has_gpu
-		self._prefetch_models = self._has_gpu
+		self._prefetch_models = False
 		self._add_to_path = True
 		from srxy.i18n import get_language, resolve_language, set_language
 
