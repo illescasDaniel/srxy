@@ -68,3 +68,20 @@ def test_given_offline_iss_when_reading_then_privacy_ack_define_matches_engine(
 ):
 	assert "#ifndef PrivacyAckVersion" in iss_text
 	assert f'#define PrivacyAckVersion "{PRIVACY_NOTICE_VERSION}"' in iss_text
+
+
+def test_given_offline_iss_when_reading_then_installing_page_retargets_uninstall(iss_text: str):
+	"""Wizard uninstall must not leave Inno's default 'Installing' captions visible."""
+	assert "CurPageID = wpInstalling" in iss_text
+	assert "CustomMessage('WizardUninstalling')" in iss_text
+	assert "CustomMessage('WizardUninstallingLabel')" in iss_text
+	assert "CustomMessage('WizardReinstalling')" in iss_text
+	assert "english.WizardUninstalling=Uninstalling" in iss_text
+	assert "english.WizardUninstallingLabel=Please wait while Setup removes Srxy from your computer." in iss_text
+	assert "spanish.WizardUninstalling=Desinstalando" in iss_text
+
+
+def test_given_offline_iss_when_reading_then_engine_utf8_env_vars_set(iss_text: str):
+	"""RunEngine must set PYTHONUTF8 + PYTHONIOENCODING so the log is valid Unicode."""
+	assert "SetEnvironmentVariable('PYTHONUTF8', '1')" in iss_text
+	assert "SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8')" in iss_text

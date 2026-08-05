@@ -246,6 +246,46 @@ def test_given_ellipsis_in_progress_and_task_when_emitting_then_uses_ascii_dots(
 	assert "\u2026" not in out
 
 
+def test_given_accented_spanish_when_emitting_then_output_is_ascii_safe(
+	capsys: pytest.CaptureFixture[str],
+):
+	"""Diamond-question glyphs must not appear in Inno's ANSI progress pipe.
+
+	Accented characters (ñ, á, é, etc.) must be transliterated to their plain
+	ASCII base letters so the Inno Setup ExecAndLogOutput callback receives a
+	valid ASCII byte sequence regardless of the Windows code page.
+	"""
+	from srxy.adapters.inbound.installer import __main__ as installer_main
+
+	# Spanish strings that appear near the end of installation
+	installer_main._emit("STATUS", "A\u00f1adiendo acceso directo al PATH...")  # pyright: ignore[reportPrivateUsage]
+	installer_main._emit("STATUS", "Instalando srxy\u2026")  # pyright: ignore[reportPrivateUsage]
+	installer_main._emit("STATUS", "Descargando Tesseract\u2026")  # pyright: ignore[reportPrivateUsage]
+	out = capsys.readouterr().out
+	assert out.isascii(), f"Non-ASCII bytes in engine output:\n{out!r}"
+	# Accents stripped, not replaced with '?'
+	assert "Anadiendo" in out
+	assert "Instalando srxy..." in out
+	assert "Descargando Tesseract..." in out
+
+
+def test_given_progress_text_helper_when_called_with_unicode_then_returns_ascii(
+	capsys: pytest.CaptureFixture[str],  # noqa: ARG001
+):
+	from srxy.adapters.inbound.installer import __main__ as installer_main
+
+	# Plain ASCII passthrough
+	assert installer_main._progress_text("hello") == "hello"  # pyright: ignore[reportPrivateUsage]
+	# Ellipsis stripped
+	assert installer_main._progress_text("done\u2026") == "done..."  # pyright: ignore[reportPrivateUsage]
+	# Accented letters transliterated
+	assert installer_main._progress_text("A\u00f1adiendo") == "Anadiendo"  # pyright: ignore[reportPrivateUsage]
+	assert installer_main._progress_text("Instalaci\u00f3n") == "Instalacion"  # pyright: ignore[reportPrivateUsage]
+	# Full Spanish phrase — result must be ASCII
+	result = installer_main._progress_text("Ejecutando el motor de instalaci\u00f3n...")  # pyright: ignore[reportPrivateUsage]
+	assert result.isascii()
+
+
 def test_given_spanish_uninstall_when_headless_then_progress_snapshot(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,

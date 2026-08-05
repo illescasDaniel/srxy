@@ -117,6 +117,10 @@ english.ProgressUninstallRunning=Running uninstall engine...
 english.ProgressReinstallCaption=Reinstalling Srxy
 english.ProgressReinstallDescription=Please wait while Srxy is reinstalled.
 english.ProgressReinstallRunning=Running reinstall engine...
+english.WizardUninstalling=Uninstalling
+english.WizardUninstallingLabel=Please wait while Setup removes Srxy from your computer.
+english.WizardReinstalling=Reinstalling
+english.WizardReinstallingLabel=Please wait while Setup reinstalls Srxy on your computer.
 english.ReadyModeLabel=Mode:
 english.ReadyUninstallCaption=Ready to Uninstall
 english.ReadyUninstallDescription=Setup is now ready to remove Srxy from your computer. Click Uninstall to continue, or click Back if you want to review or change any settings.
@@ -164,6 +168,10 @@ spanish.ProgressUninstallRunning=Ejecutando el motor de desinstalación...
 spanish.ProgressReinstallCaption=Reinstalando Srxy
 spanish.ProgressReinstallDescription=Espera mientras se reinstala Srxy.
 spanish.ProgressReinstallRunning=Ejecutando el motor de reinstalación...
+spanish.WizardUninstalling=Desinstalando
+spanish.WizardUninstallingLabel=Espera mientras el asistente elimina Srxy de tu equipo.
+spanish.WizardReinstalling=Reinstalando
+spanish.WizardReinstallingLabel=Espera mientras el asistente reinstala Srxy en tu equipo.
 spanish.ReadyModeLabel=Modo:
 spanish.ReadyUninstallCaption=Listo para desinstalar
 spanish.ReadyUninstallDescription=El asistente está listo para eliminar Srxy de tu equipo. Haz clic en Desinstalar para continuar, o en Atrás si quieres revisar o cambiar alguna opción.
@@ -652,6 +660,13 @@ begin
     Log('Warning: failed to set SRXY_INSTALLER_PAYLOAD');
   if not SetEnvironmentVariable('PYTHONUNBUFFERED', '1') then
     Log('Warning: failed to set PYTHONUNBUFFERED');
+  { Force UTF-8 stdio so the log file is valid Unicode.  The progress-bar
+    wire protocol (_emit) already strips accents to ASCII, so the Inno ANSI
+    pipe remains unaffected. }
+  if not SetEnvironmentVariable('PYTHONUTF8', '1') then
+    Log('Warning: failed to set PYTHONUTF8');
+  if not SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8') then
+    Log('Warning: failed to set PYTHONIOENCODING');
   Log('Running: ' + Python + ' ' + Args);
   try
     if not ExecAndLogOutput(Python, Args, '', SW_SHOWNORMAL, ewWaitUntilTerminated,
@@ -735,7 +750,7 @@ begin
     ApplyRecommendedSetupType;
   end;
 
-  { Ready page + primary button still say Install by default; retarget for uninstall/reinstall. }
+  { Ready / Installing pages still say Install by default; retarget for uninstall/reinstall. }
   if CurPageID = wpReady then
   begin
     case SelectedMode of
@@ -757,6 +772,21 @@ begin
         WizardForm.PageDescriptionLabel.Caption := SetupMessage(msgReadyLabel1);
         WizardForm.NextButton.Caption := SetupMessage(msgButtonInstall);
       end;
+    end;
+  end
+  else if CurPageID = wpInstalling then
+  begin
+    case SelectedMode of
+      2:
+        begin
+          WizardForm.PageNameLabel.Caption := CustomMessage('WizardUninstalling');
+          WizardForm.PageDescriptionLabel.Caption := CustomMessage('WizardUninstallingLabel');
+        end;
+      1:
+        begin
+          WizardForm.PageNameLabel.Caption := CustomMessage('WizardReinstalling');
+          WizardForm.PageDescriptionLabel.Caption := CustomMessage('WizardReinstallingLabel');
+        end;
     end;
   end
   else if CurPageID = wpFinished then

@@ -66,6 +66,45 @@ def test_given_explicit_path_when_opening_gui_then_keeps_path(qapp: QCoreApplica
 	assert Path(str(controller.path)) == tmp_path
 
 
+@pytest.mark.parametrize(
+	"raw,expected",
+	[
+		# Windows file:/// URL still containing scheme
+		("file:///C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		# Windows path with stray leading slash (QML replace("file://","") bug)
+		("/C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		("/D:/projects/src", "D:/projects/src"),
+		# Already clean Windows path — unchanged
+		("C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		# Unix path — leading slash preserved
+		("/home/user/docs", "/home/user/docs"),
+		("file:///home/user/docs", "/home/user/docs"),
+		# Relative path — unchanged
+		("./relative", "./relative"),
+	],
+)
+def test_given_browsed_path_when_normalizing_then_strips_url_prefix(raw: str, expected: str):
+	from srxy.adapters.inbound.gui.controller import _normalize_browsed_path  # pyright: ignore[reportPrivateUsage]
+
+	assert _normalize_browsed_path(raw) == expected
+
+
+def test_given_windows_url_when_controller_sets_path_then_no_leading_slash(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	"""Setting a Windows-style QUrl path (file:///C:/...) normalises to C:/..."""
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.path = "file:///C:/Users/kaumi/Downloads"
+	assert not controller.path.startswith("/")
+	assert controller.path == "C:/Users/kaumi/Downloads"
+
+	controller.path = "/C:/Users/kaumi/Downloads"
+	assert controller.path == "C:/Users/kaumi/Downloads"
+
+
 def test_given_search_finished_when_handling_event_then_updates_results_model(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)

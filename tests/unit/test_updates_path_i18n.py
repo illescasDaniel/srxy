@@ -31,7 +31,7 @@ def test_given_installer_meta_when_loaded_then_has_version_and_min_srxy():
 	meta = load_installer_meta()
 
 	# then
-	assert meta.installer_version == "13"
+	assert meta.installer_version == "15"
 	assert version_at_least(meta.min_srxy_version, "1.6.4")
 
 

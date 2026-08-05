@@ -71,6 +71,26 @@ from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
 
+def _normalize_browsed_path(path: str) -> str:
+	"""Repair paths returned by QML's FolderDialog on different platforms.
+
+	QML's ``FolderDialog.selectedFolder.toString()`` can return a ``file:///``
+	URL on some Qt versions.  Even after stripping the scheme with a regex,
+	Windows paths sometimes arrive as ``/C:/Users/...`` (a leading slash before
+	the drive letter).  Normalise that to ``C:/Users/...`` so the path is
+	recognised as a valid directory.
+	"""
+	import re
+
+	text = path.strip()
+	# Full URL that slipped through JS: file:///C:/... or file:///home/...
+	text = re.sub(r"^file:///([A-Za-z]:)", r"\1", text)
+	text = re.sub(r"^file://", "", text)
+	# /C:/path → C:/path (Windows drive letter with stray leading slash)
+	text = re.sub(r"^/([A-Za-z]:)", r"\1", text)
+	return text
+
+
 def resolve_gui_search_path(raw: str | None) -> str:
 	"""Default GUI search root is the user's home (CLI default ``.`` maps here)."""
 	text = (raw or "").strip()
@@ -423,8 +443,9 @@ class SearchController(QObject):
 		return self._path
 
 	def _set_path(self, value: str):
-		if self._path != value:
-			self._path = value
+		normalized = _normalize_browsed_path(value)
+		if self._path != normalized:
+			self._path = normalized
 			self.pathChanged.emit()
 			self.pathIssueChanged.emit()
 			self.canSearchChanged.emit()

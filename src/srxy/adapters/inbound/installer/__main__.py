@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import unicodedata
 from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 
@@ -18,8 +19,39 @@ def _print_version() -> int:
 
 
 def _progress_text(value: object) -> str:
-	"""Normalize progress text for Inno ExecAndLogOutput (ANSI-safe ellipsis)."""
-	return str(value).replace("\u2026", "...")
+	"""Normalize progress text for Inno ExecAndLogOutput (ASCII-safe).
+
+	Inno Setup reads the engine subprocess stdout via a Windows ANSI pipe.
+	Any non-ASCII byte sequence appears as diamond-question glyphs in the
+	progress page.  Steps: (1) replace Unicode ellipsis U+2026 with three
+	ASCII dots (it does not decompose via NFD); (2) NFD-decompose so accented
+	letters split into base + combining mark (e.g. n + U+0303 tilde);
+	(3) drop all combining marks (category Mn) so only base letters survive;
+	(4) replace any remaining non-ASCII codepoints with '?'.
+
+	Result: "Anadiendo..." from "Anyadiendo..." (ñ -> n, ... stays ...).
+	"""
+	text = str(value).replace("\u2026", "...")
+	nfd = unicodedata.normalize("NFD", text)
+	# Drop combining marks (accents stripped off base letters).
+	stripped = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+	return stripped.encode("ascii", "replace").decode("ascii")
+
+
+def _configure_headless_stdio():
+	"""Reconfigure stdout/stderr to UTF-8 for the headless engine path.
+
+	On Windows the pipe encoding defaults to the OEM code page.  We force
+	UTF-8 here so the log file receives full Unicode, while _progress_text
+	already produces ASCII for the Inno progress-bar wire protocol.
+	"""
+	for stream in (sys.stdout, sys.stderr):
+		reconfigure = getattr(stream, "reconfigure", None)
+		if callable(reconfigure):
+			try:
+				reconfigure(encoding="utf-8", errors="replace")
+			except (OSError, ValueError, AttributeError):
+				pass
 
 
 def _emit(kind: str, *parts: object):
@@ -150,15 +182,15 @@ def _run_headless(args: argparse.Namespace) -> int:
 	if args.reinstall:
 		install_phases = plan_install_phases(options)
 		overall_total = 1 + len(install_phases)
-		_status_cb("Removing existing installation")
-		_task_cb(1, overall_total, "Removing existing installation")
-		_progress_cb(0, 0, "Removing existing installation")
+		_status_cb(tr("installer.status.removing_app"))
+		_task_cb(1, overall_total, tr("installer.status.removing_app"))
+		_progress_cb(0, 0, tr("installer.status.removing_app"))
 		uninstall_prefix(
 			prefix,
 			status=_status_cb,
 			confirm_unsafe=bool(args.confirm_unsafe),
 		)
-		_progress_cb(1, 1, "Removing existing installation")
+		_progress_cb(1, 1, tr("installer.status.removing_app"))
 		install_srxy(
 			options,
 			status=_status_cb,
@@ -189,6 +221,7 @@ def main(argv: list[str] | None = None) -> int:
 
 	headless = bool(args.install or args.reinstall or args.uninstall)
 	if headless:
+		_configure_headless_stdio()
 		# Reject leftover Qt flags so typos fail loudly.
 		qt_like = [flag for flag in unknown if flag.startswith("-")]
 		if qt_like:

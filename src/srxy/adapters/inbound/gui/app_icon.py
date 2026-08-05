@@ -95,7 +95,12 @@ def apply_icon_to_windows(windows: Iterable[object], icon: QIcon | None = None):
 		app = QGuiApplication.instance()
 		if app is None:
 			return
-		icon = app.windowIcon()
+		# windowIcon is a QGuiApplication method; QCoreApplication (test stubs)
+		# does not have it — skip gracefully.
+		get_icon = getattr(app, "windowIcon", None)
+		if get_icon is None:
+			return
+		icon = get_icon()
 	if icon is None or icon.isNull():
 		return
 	for window in windows:

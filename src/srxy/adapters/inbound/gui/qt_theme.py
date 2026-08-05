@@ -4,11 +4,43 @@ from __future__ import annotations
 
 import sys
 
-from PySide6.QtCore import Qt
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
 
-def follow_system_color_scheme(app: QGuiApplication):
+# Selection highlight used for ListView rows, ComboBox dropdown selection, etc.
+# Checkbox indicator colours are handled directly in Main.qml (StyledCheckBox)
+# so they are not affected by this palette patch.
+_SELECTION_HIGHLIGHT = QColor("#1565c0")  # dark accessible blue
+_SELECTION_HIGHLIGHT_TEXT = QColor("#ffffff")
+
+
+def _patch_fusion_selection_palette(app: QCoreApplication):
+	"""Pin the selection-highlight palette to a reliably accessible dark blue.
+
+	Fusion on Windows inherits the system accent colour for ``Highlight``, which
+	can be a light pastel on some configurations.  This affects ListView rows,
+	ComboBox dropdown selection, and other highlighted widgets.  CheckBox
+	indicator colours are now handled by QML (``StyledCheckBox`` in Main.qml)
+	and are unaffected by this palette change.
+
+	Accepts ``QCoreApplication`` so the signature matches
+	``follow_system_color_scheme``; silently skips non-GUI instances that
+	appear in test contexts (``QCoreApplication`` has no ``setPalette``).
+	"""
+	if not isinstance(app, QGuiApplication):
+		return
+	try:
+		palette = app.palette()
+	except AttributeError:
+		return
+	for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+		palette.setColor(group, QPalette.ColorRole.Highlight, _SELECTION_HIGHLIGHT)
+		palette.setColor(group, QPalette.ColorRole.HighlightedText, _SELECTION_HIGHLIGHT_TEXT)
+	app.setPalette(palette)
+
+
+def follow_system_color_scheme(app: QCoreApplication):
 	"""Prefer the desktop light/dark scheme so Quick Controls match the OS."""
 	hints = app.styleHints()
 	set_scheme = getattr(hints, "setColorScheme", None)
@@ -22,7 +54,7 @@ def follow_system_color_scheme(app: QGuiApplication):
 		set_scheme(unknown)
 
 
-def apply_qt_quick_theme(app: QGuiApplication):
+def apply_qt_quick_theme(app: QCoreApplication):
 	"""Use Fusion on Windows so dark/light palettes apply to Controls + Dialogs.
 
 	The native Windows Quick style keeps light control chrome while
@@ -37,6 +69,7 @@ def apply_qt_quick_theme(app: QGuiApplication):
 		else:
 			QQuickStyle.setStyle("Fusion")
 	follow_system_color_scheme(app)
+	_patch_fusion_selection_palette(app)
 
 
 __all__ = ["apply_qt_quick_theme", "follow_system_color_scheme"]
