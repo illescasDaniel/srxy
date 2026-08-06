@@ -389,6 +389,7 @@ ApplicationWindow {
 				spacing: 8
 
 				RowLayout {
+					Layout.fillWidth: true
 					Button {
 						id: optionsButton
 						objectName: "optionsButton"
@@ -406,6 +407,7 @@ ApplicationWindow {
 					}
 				}
 				RowLayout {
+					Layout.fillWidth: true
 					Button {
 						id: filtersButton
 						objectName: "filtersButton"

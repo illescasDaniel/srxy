@@ -204,10 +204,7 @@ def format_search_options_summary(options: SearchOptions) -> str:
 
 	if not segments:
 		return tr("summary.none")
-	text = " · ".join(segments)
-	if len(text) > 72:
-		return f"{text[:69]}…"
-	return text
+	return " · ".join(segments)
 
 
 def _resolve_search_modes(args: argparse.Namespace) -> tuple[bool, bool]:
