@@ -23,7 +23,9 @@ srxy                          # empty query/path
 srxy "registry" ./src         # pre-filled; auto-starts
 ```
 
-<img src="docs/images/gui.png" alt="srxy GUI" width="550" />
+| macOS | Linux | Windows |
+|:-----:|:-----:|:-------:|
+| <img src="docs/images/gui-macos.png" alt="srxy GUI on macOS" width="280" /> | <img src="docs/images/gui-linux.png" alt="srxy GUI on Linux" width="280" /> | *coming soon* |
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 

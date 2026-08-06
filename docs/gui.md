@@ -41,4 +41,8 @@ GUI text-tree snapshots live under `tests/gui/snapshots/`. Refresh:
 UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen pytest tests/gui/test_gui_snapshots.py
 ```
 
-Regenerate the README screenshot: `./scripts/docs/export_gui_screenshot.sh`
+Regenerate the README screenshot for the host OS (writes `docs/images/gui-macos.png`, `gui-linux.png`, or `gui-windows.png`):
+
+```bash
+./scripts/docs/export_gui_screenshot.sh
+```

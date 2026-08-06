@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Regenerate docs/images/gui.png for README and docs/gui.md.
+# Regenerate docs/images/gui-<os>.png for README and docs/gui.md.
+# Writes gui-macos.png / gui-linux.png / gui-windows.png for the host OS.
 # Mirrors the TUI docs screenshot: multi-term OR query, rich options, fixture results.
+#
+# Usage:
+#   ./scripts/docs/export_gui_screenshot.sh
+#   SRXY_GUI_SCREENSHOT_OS=macos ./scripts/docs/export_gui_screenshot.sh  # force slug (rare)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -22,7 +27,7 @@ from pathlib import Path
 
 # Prefer a real display so grabWindow isn't blank; fall back to offscreen.
 os.environ.setdefault("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", ""))
-if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and sys.platform != "darwin":
 	os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
 from PySide6.QtCore import QMetaObject, Qt, QTimer, QUrl, Q_ARG
@@ -33,10 +38,23 @@ from PySide6.QtQuick import QQuickWindow
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme
 from srxy.application.search_session import SearchFinishedEvent
 from srxy.domain.models import FileSearchResult, LineMatch
 
-OUT = Path("docs/images/gui.png")
+
+def _os_slug() -> str:
+	override = (os.environ.get("SRXY_GUI_SCREENSHOT_OS") or "").strip().lower()
+	if override in {"macos", "linux", "windows"}:
+		return override
+	if sys.platform == "darwin":
+		return "macos"
+	if sys.platform == "win32":
+		return "windows"
+	return "linux"
+
+
+OUT = Path(f"docs/images/gui-{_os_slug()}.png")
 
 
 def fixture_path(relative: str) -> Path:
@@ -104,6 +122,8 @@ results = [
 
 app = QGuiApplication(sys.argv)
 app.setApplicationName("srxy")
+app.setOrganizationName("srxy")
+apply_qt_quick_theme(app)
 
 args = build_parser().parse_args(
 	[

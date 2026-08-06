@@ -181,7 +181,7 @@ clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results 
 bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
 export-api = { cmd = "uv run python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
 export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
-export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate GUI docs screenshot" }
+export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate per-OS GUI docs screenshot (gui-macos/linux/windows.png)" }
 export-installer-screenshot = { cmd = "./scripts/docs/export_installer_screenshot.sh", help = "regenerate offline installer docs screenshot" }
 export-installer-online-screenshot = { cmd = "./scripts/docs/export_installer_online_screenshot.sh", help = "regenerate online web installer docs screenshot" }
 upload = { cmd = "./scripts/upload.sh", help = "upload to PyPI (flags after --)" }
