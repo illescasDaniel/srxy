@@ -769,7 +769,7 @@ begin
     Checked := Required;
     if (not Required) and (CompareText(ActiveLanguage, 'spanish') = 0) and (CompareText(Code, 'spa') = 0) then
       Checked := True;
-    TessLangList.AddCheckBox(LabelText + ' (' + Code + ')', '', 0, Checked, EnabledFlag, False, nil);
+    TessLangList.AddCheckBox(LabelText + ' (' + Code + ')', '', 0, Checked, EnabledFlag, False, True, nil);
     TessLangCodes.Add(Code);
   end;
 end;
