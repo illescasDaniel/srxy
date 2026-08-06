@@ -1,10 +1,13 @@
 import QtQuick
 import QtQuick.Controls
+import QtQuick.Controls.Universal
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
 ApplicationWindow {
 	id: root
+	// Universal on Windows defaults to Light unless this is set; macOS style ignores it.
+	Universal.theme: Universal.System
 	width: 1200
 	height: 800
 	visible: true
