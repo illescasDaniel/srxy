@@ -21,7 +21,7 @@ Use the project env with `uv sync --extra semantic` (default `dev` dependency gr
 
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
 
-Locally, pytest runs in two passes: a **safe parallel** pass (`unit and not semantic and not transcribe and not gui and not tui and not integration`, workers capped at `min(4, nproc)` unless `LIB_PYTEST_WORKERS` is set) then a **serial heavy** pass (`-n 0`, `QT_QPA_PLATFORM=offscreen`) for `semantic` / `transcribe` / `gui` / `tui` / `integration` (plus `integration_full` / `transcribe_device_matrix` on `--full`). Day-to-day local runs also use `--testmon-forceselect --ff` on the safe pass only (change-aware; `.testmondata` is gitignored). Coverage is enabled only for `--full` / `--full+cpu` (serial pass uses `--cov-append`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs a single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe` (`CI=true`); no testmon, no coverage, no serial follow-up.
+Locally, pytest runs in two passes: a **safe parallel** pass (`unit and not semantic and not transcribe and not gui and not tui and not integration and not ocr`, workers capped at `min(4, nproc)` unless `LIB_PYTEST_WORKERS` is set) then a **serial heavy** pass (`-n 0`, `QT_QPA_PLATFORM=offscreen`) for `semantic` / `transcribe` / `gui` / `tui` / `integration` / `ocr` (plus `integration_full` / `transcribe_device_matrix` on `--full`). Day-to-day local runs also use `--testmon-forceselect --ff` on the safe pass only (change-aware; `.testmondata` is gitignored). Coverage is enabled only for `--full` / `--full+cpu` (serial pass uses `--cov-append`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs a single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe` (`CI=true`); no testmon, no coverage, no serial follow-up. OCR orientation tests stay in the CI parallel pass (they carry a 300s timeout).
 
 Local verify (no `--fix`) runs light steps (Ruff, shell, basedpyright, pip-audit, build) **in parallel**, then **pytest alone** (safe parallel + serial heavy). CI skips the serial follow-up (`CI=true`).
 
@@ -64,16 +64,17 @@ Current intent:
 
 - **Windows:** `Universal` (WinUI-like), fallback `Windows`. Follow OS light/dark.
 - **macOS:** `macOS` (native Aqua). Follow OS light/dark.
-- **Linux / other:** Qt default (usually `Fusion`). Follow OS light/dark.
+- **Linux / other:** `Material` (Dense variant for desktop), fallback `Fusion`. Follow OS light/dark.
 
 Hard-won lessons — do not regress these:
 
-1. **Do not `import QtQuick.Controls.Universal` (or set `Universal.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). That import forces Universal chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
-2. **Windows Universal defaults to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. On Windows, set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` in Python **before** `QQuickStyle.setStyle("Universal")` / before the QML engine loads. That is the supported equivalent of `Universal.theme: Universal.System` without a QML Universal import.
+1. **Do not `import QtQuick.Controls.Universal` / `Material` (or set `Universal.theme` / `Material.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). Those imports force that chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
+2. **Windows Universal and Linux Material default to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. Set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` (Windows) or `QT_QUICK_CONTROLS_MATERIAL_THEME=System` (Linux) in Python **before** `QQuickStyle.setStyle(...)` / before the QML engine loads. That is the supported equivalent of `*.theme: *.System` without a QML style import. On Linux also set `QT_QUICK_CONTROLS_MATERIAL_VARIANT=Dense` — Normal is touch-sized and overflows fixed window heights.
 3. **`hints.colorScheme` is a method in PySide6** — call `hints.colorScheme()`, do not pass the unbound method into `setColorScheme` (that TypeError crashes GUI launch).
 4. **Plain `Windows` Quick style looks dated** and its dark-mode mix with a dark window palette is often illegible. Prefer `Universal` + system theme on Windows; do not “fix light” as the long-term fix unless Universal is unavailable.
-5. **macOS packaging prunes Universal frameworks** (`packaging/macos/prune-pyside.sh`). Relying on a Universal QML import in shipped macOS builds is fragile even beyond the style-forcing issue.
-6. When changing themes, **restart the app fully** (no hot-reload assumptions) and visually check both Windows dark mode and macOS native controls before considering the change done.
+5. **macOS packaging prunes Universal/Material frameworks** (`packaging/macos/prune-pyside.sh`). Relying on those QML imports in shipped macOS builds is fragile even beyond the style-forcing issue. Linux AppImage pruning keeps Material (needed at runtime).
+6. **Installer/GUI footers:** Material page chrome (and tall StackLayout implicit heights) can push in-content nav rows below the window. Keep wizard actions in `ApplicationWindow.footer` (see installer `Main.qml`) and give fill-height StackLayouts `Layout.preferredHeight: 0` so they only take leftover space.
+7. When changing themes, **restart the app fully** (no hot-reload assumptions) and visually check Windows dark mode, Linux Material light/dark, and macOS native controls before considering the change done.
 
 ## Typing
 

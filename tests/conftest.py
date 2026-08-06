@@ -57,8 +57,8 @@ def products() -> list[Product]:
 
 
 # Platform-specific tag tests run only on macOS/Windows; deselect elsewhere (not skip).
-# Transcribe / model-load tests need more than the default 60s wall on cold Windows runs.
-_HEAVY_TIMEOUT_MARKERS = frozenset({"transcribe", "semantic", "integration"})
+# Transcribe / model-load / OCR orientation probes need more than the default 60s.
+_HEAVY_TIMEOUT_MARKERS = frozenset({"transcribe", "semantic", "integration", "ocr"})
 _HEAVY_TIMEOUT_SECONDS = 300
 
 

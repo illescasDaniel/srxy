@@ -6,7 +6,7 @@ import QtQuick.Layouts
 ApplicationWindow {
 	id: root
 	width: 720
-	height: 580
+	height: 620
 	visible: true
 	title: root.t("installer.window_title")
 	color: palette.window
@@ -137,6 +137,11 @@ ApplicationWindow {
 		StackLayout {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
+			// preferredHeight 0: take only leftover space so Material page chrome
+			// cannot push the footer (Next/Back/…) below the window.
+			Layout.preferredHeight: 0
+			Layout.minimumHeight: 0
+			clip: true
 			currentIndex: {
 				if (c.page === "mode") return 0
 				if (c.page === "prefix") return 1
@@ -606,9 +611,22 @@ ApplicationWindow {
 			wrapMode: Text.WordWrap
 			Layout.fillWidth: true
 		}
+	}
 
+	// Pin nav actions to the window footer so Material/Fusion page heights cannot
+	// clip Next/Back/Install below the visible area.
+	footer: Pane {
+		padding: 12
+		leftPadding: 20
+		rightPadding: 20
+		bottomPadding: 16
+		topPadding: 8
+		background: Rectangle {
+			color: root.palette.window
+		}
 		RowLayout {
-			Layout.fillWidth: true
+			width: parent.width
+			spacing: 8
 			Button {
 				text: root.t("common.back")
 				visible: c.page !== "mode"

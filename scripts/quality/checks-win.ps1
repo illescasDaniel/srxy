@@ -154,14 +154,14 @@ function Get-SafeMarker {
 	if ($env:CI -eq 'true') {
 		return '(unit or gui) and not integration and not semantic and not transcribe'
 	}
-	return 'unit and not semantic and not transcribe and not gui and not tui and not integration'
+	return 'unit and not semantic and not transcribe and not gui and not tui and not integration and not ocr'
 }
 
 function Get-HeavyMarker {
 	if ($env:LIB_PYTEST_FULL -eq 'true') {
-		return 'semantic or transcribe or gui or tui or integration or integration_full or transcribe_device_matrix'
+		return 'semantic or transcribe or gui or tui or integration or ocr or integration_full or transcribe_device_matrix'
 	}
-	return '(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix'
+	return '(semantic or transcribe or gui or tui or integration or ocr) and not integration_full and not transcribe_device_matrix'
 }
 
 function Acquire-GateLock {
@@ -461,7 +461,7 @@ function Invoke-PytestStep {
 	}
 
 	Write-Host ''
-	Write-Host 'Serial heavy pass (semantic/transcribe/gui/tui/integration, QT_QPA_PLATFORM=offscreen, -n 0)'
+	Write-Host 'Serial heavy pass (semantic/transcribe/gui/tui/integration/ocr, QT_QPA_PLATFORM=offscreen, -n 0)'
 	$prevQt = $env:QT_QPA_PLATFORM
 	$env:QT_QPA_PLATFORM = 'offscreen'
 	try {

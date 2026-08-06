@@ -27,7 +27,7 @@ SPARSE_TEXT_THRESHOLD = 20
 MIN_LEXICAL_TOKEN_LENGTH = 4
 MIN_LEXICAL_ZIPF = 3.0
 LEXICAL_WORDLIST = "small"
-OCR_ENGINE_VARIANT = "tesseract-v9"
+OCR_ENGINE_VARIANT = "tesseract-v10"
 _REGION_MIN_DIMENSION = 400
 _REGION_GRID_DIVISIONS = 3
 _REGION_MIN_CELL = 32
@@ -101,27 +101,34 @@ def reset_ocr_languages_cache():
 	_ocr_langs_cache = None
 
 
-def _upright_image(image: Image.Image) -> Image.Image:
-	"""Rotate image to upright using Tesseract OSD when confidence is high enough."""
+def _upright_image(image: Image.Image) -> tuple[Image.Image, bool]:
+	"""Rotate image using Tesseract OSD.
+
+	Returns ``(image, osd_trusted)``. When ``osd_trusted`` is false (OSD missing,
+	failed, or below ``_OSD_MIN_CONFIDENCE``), callers should still probe
+	cardinals — low-confidence OSD can be wrong *or* right but ignored.
+	"""
 	import pytesseract
 
 	_configure_pytesseract(pytesseract)
 	try:
 		osd = str(pytesseract.image_to_osd(image))
 	except Exception:
-		return image
+		return image, False
 
 	orient_match = _OSD_ORIENTATION_RE.search(osd)
 	conf_match = _OSD_CONFIDENCE_RE.search(osd)
 	if orient_match is None or conf_match is None:
-		return image
+		return image, False
 	degrees = int(orient_match.group(1)) % 360
 	confidence = float(conf_match.group(1))
-	if degrees == 0 or confidence < _OSD_MIN_CONFIDENCE:
-		return image
+	trusted = confidence >= _OSD_MIN_CONFIDENCE
+	if degrees == 0:
+		return image, trusted
 	# PIL rotate is counter-clockwise; OSD "Orientation in degrees" is the clockwise
 	# rotation needed to make the page upright, so rotate CCW by the same amount.
-	return image.rotate(degrees, expand=True)
+	# Apply even when untrusted — probes can still beat a bad guess.
+	return image.rotate(degrees, expand=True), trusted
 
 
 class TesseractEngine(OcrEngine):
@@ -335,19 +342,34 @@ def _collect_region_texts(engine: OcrEngine, image: Image.Image) -> list[str]:
 def ocr_pil_image(image: Image.Image) -> str:
 	engine = get_ocr_engine()
 	processed = preprocess_image(image)
-	upright = _upright_image(processed)
+	upright, osd_trusted = _upright_image(processed)
 	parts = _collect_region_texts(engine, upright)
 	best = "\n".join(parts)
-	if _ocr_looks_reliable(best):
-		return best
 	best_score = _ocr_quality_score(best)
-	# OSD can miss low-confidence pages — probe remaining cardinals, then diagonals.
-	probe_angles = (*_CARDINAL_PROBE_ANGLES, *_DIAGONAL_PROBE_ANGLES)
-	for angle in probe_angles:
+	# Trusted OSD + lexical text: accept without probes (fast path).
+	# Untrusted OSD can leave sideways pages that still look "reliable" (dictionary
+	# noise) — always try cardinals then. Cheap full-frame probes when upright
+	# already looks lexical; full region grid when it does not.
+	if _ocr_looks_reliable(best) and osd_trusted:
+		return best
+	full_frame_only = _ocr_looks_reliable(best)
+	for angle in _CARDINAL_PROBE_ANGLES:
 		fill: str | int = "white" if upright.mode == "RGB" else 255
 		rotated = upright.rotate(angle, expand=True, fillcolor=fill)
-		candidate_parts = _collect_region_texts(engine, rotated)
-		candidate = "\n".join(candidate_parts)
+		if full_frame_only:
+			candidate = engine.recognize(rotated).strip()
+		else:
+			candidate = "\n".join(_collect_region_texts(engine, rotated))
+		score = _ocr_quality_score(candidate)
+		if score > best_score:
+			best_score = score
+			best = candidate
+	if _ocr_looks_reliable(best):
+		return best
+	for angle in _DIAGONAL_PROBE_ANGLES:
+		fill = "white" if upright.mode == "RGB" else 255
+		rotated = upright.rotate(angle, expand=True, fillcolor=fill)
+		candidate = "\n".join(_collect_region_texts(engine, rotated))
 		score = _ocr_quality_score(candidate)
 		if score > best_score:
 			best_score = score

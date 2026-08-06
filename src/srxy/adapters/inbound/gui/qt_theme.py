@@ -72,12 +72,13 @@ def apply_qt_quick_theme(app: QCoreApplication):
 
 	- Windows: ``Universal`` (WinUI-like), falling back to ``Windows``.
 	- macOS: ``macOS`` (native Aqua controls).
-	- Other: Qt default (typically ``Fusion`` on Linux).
+	- Linux / other: ``Material`` (Dense), falling back to ``Fusion``.
 
-	Windows Universal defaults to Light unless ``QT_QUICK_CONTROLS_UNIVERSAL_THEME``
-	is set (or ``Universal.theme`` is set in QML). We use the env var on Windows
-	only so shared QML never imports Universal (which would force that style on
-	macOS).
+	Universal and Material default to Light unless their ``*_THEME`` env vars are
+	set (or the matching attached property is set in QML). We set those env vars
+	in Python only so shared QML never imports Universal/Material (which would
+	force that style on macOS). Linux also sets Material ``Dense`` so desktop
+	controls fit fixed window heights.
 	"""
 	if sys.platform == "win32":
 		os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "System")
@@ -89,6 +90,12 @@ def apply_qt_quick_theme(app: QCoreApplication):
 		_set_quick_style("macOS")
 		follow_system_color_scheme(app)
 	else:
+		# Dense: desktop-sized controls (Normal is touch-oriented and overflows our
+		# fixed installer/GUI window heights, clipping footer actions like Next).
+		os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_THEME", "System")
+		os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_VARIANT", "Dense")
+		if not _set_quick_style("Material"):
+			_set_quick_style("Fusion")
 		follow_system_color_scheme(app)
 
 
