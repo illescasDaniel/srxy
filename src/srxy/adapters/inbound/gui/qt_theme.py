@@ -12,6 +12,7 @@ from typing import TYPE_CHECKING
 from PySide6.QtCore import QCoreApplication, Qt
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
+
 if TYPE_CHECKING:
 	from collections.abc import Sequence
 
@@ -167,7 +168,7 @@ def _portal_cli_commands() -> list[list[str]]:
 
 def _run_portal_command(command: Sequence[str]) -> str | None:
 	try:
-		completed = subprocess.run(
+		completed = subprocess.run(  # noqa: S603 — fixed session-bus CLI argv from shutil.which
 			list(command),
 			check=False,
 			capture_output=True,
@@ -195,7 +196,9 @@ def _accent_from_xdg_portal() -> str | None:
 
 def _is_usable_accent(color: QColor) -> bool:
 	"""Reject near-gray / near-black / near-white palette highlights."""
-	r, g, b, _a = color.getRgb()
+	r = color.red()
+	g = color.green()
+	b = color.blue()
 	mx = max(r, g, b)
 	mn = min(r, g, b)
 	if mx == 0:
@@ -222,11 +225,7 @@ def _accent_from_palette(app: QCoreApplication) -> str | None:
 
 
 def _resolve_material_accent(app: QCoreApplication) -> str:
-	return (
-		_accent_from_xdg_portal()
-		or _accent_from_palette(app)
-		or _MATERIAL_ACCENT_FALLBACK
-	)
+	return _accent_from_xdg_portal() or _accent_from_palette(app) or _MATERIAL_ACCENT_FALLBACK
 
 
 def _apply_material_accent(app: QCoreApplication):

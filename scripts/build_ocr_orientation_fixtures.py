@@ -13,7 +13,7 @@ from PIL import Image
 
 ROOT = Path(__file__).resolve().parents[1] / "tests" / "fixtures" / "file_search" / "ocr" / "orientation"
 MAX_DIM = 1400
-ANGLES = (0, 90, 180, 270, 45)
+ANGLES = (0, 90, 180, 270)
 _UA = {"User-Agent": "srxy-fixture-builder/1.0"}
 
 SOURCES = [
@@ -87,6 +87,8 @@ def main():
 	# Drop superseded fixture names from earlier builds.
 	for stale in ROOT.glob("welcome_sign_*.jpg"):
 		stale.unlink()
+	for stale in ROOT.glob("*_45.jpg"):
+		stale.unlink()
 
 	attrib = ["# OCR orientation fixtures — attribution", ""]
 	for src in SOURCES:
@@ -104,7 +106,7 @@ def main():
 		attrib.append(f"- Source: [{src['title']}]({src['page']})")
 		attrib.append(f"- Author: {src['author']}")
 		attrib.append(f"- License: [{src['license']}]({src['license_url']})")
-		attrib.append(f"- Modifications: resized (max {MAX_DIM}px), JPEG q75, rotated to 0/90/180/270/45")
+		attrib.append(f"- Modifications: resized (max {MAX_DIM}px), JPEG q75, rotated to 0/90/180/270")
 		attrib.append(f"- Expected OCR token: `{src['token']}`")
 		attrib.append("")
 	(ROOT / "ATTRIBUTION.md").write_text("\n".join(attrib) + "\n", encoding="utf-8")
