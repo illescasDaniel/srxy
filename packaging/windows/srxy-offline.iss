@@ -31,7 +31,7 @@
   #define PrivacyEsFile "privacy-es.txt"
 #endif
 #ifndef PrivacyAckVersion
-  #define PrivacyAckVersion "5"
+  #define PrivacyAckVersion "6"
 #endif
 #ifndef SetupIconFile
   #define SetupIconFile "srxy-installer.ico"

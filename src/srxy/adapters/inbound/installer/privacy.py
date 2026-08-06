@@ -89,6 +89,35 @@ _MODEL_WHISPER = (
 )
 
 Party = tuple[str, str, str]
+# (stable i18n key, display name, project url)
+Dep = tuple[str, str, str]
+
+_CORE_DEPS: tuple[Dep, ...] = (
+	("cryptography", "cryptography", "https://cryptography.io/"),
+	("exifread", "exifread", "https://github.com/ianare/exif-py"),
+	("jellyfish", "jellyfish", "https://github.com/jamesturk/jellyfish"),
+	("mutagen", "mutagen", "https://mutagen.readthedocs.io/"),
+	("openpyxl", "openpyxl", "https://openpyxl.readthedocs.io/"),
+	("pillow", "Pillow", "https://python-pillow.org/"),
+	("pillow_heif", "pillow-heif", "https://github.com/bigcat88/pillow_heif"),
+	("pypdf", "pypdf", "https://pypdf.readthedocs.io/"),
+	("pytesseract", "pytesseract", "https://github.com/madmaze/pytesseract"),
+	("pyside6", "PySide6", "https://doc.qt.io/qtforpython/"),
+	("python_docx", "python-docx", "https://python-docx.readthedocs.io/"),
+	("python_pptx", "python-pptx", "https://python-pptx.readthedocs.io/"),
+	("rapidfuzz", "rapidfuzz", "https://github.com/rapidfuzz/RapidFuzz"),
+	("textual", "textual", "https://textual.textualize.io/"),
+	("wordfreq", "wordfreq", "https://github.com/rspeer/wordfreq"),
+)
+
+_SEMANTIC_DEPS: tuple[Dep, ...] = (
+	("faster_whisper", "faster-whisper", "https://github.com/SYSTRAN/faster-whisper"),
+	("nvidia_cublas", "nvidia-cublas-cu12", "https://developer.nvidia.com/cublas"),
+	("rawpy", "rawpy", "https://github.com/letmaik/rawpy"),
+	("sentence_transformers", "sentence-transformers", "https://www.sbert.net/"),
+)
+
+_WINDOWS_DEPS: tuple[Dep, ...] = (("pywin32", "pywin32", "https://github.com/mhammond/pywin32"),)
 
 
 def _party_label(key: str) -> str:
@@ -114,7 +143,7 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "5"
+PRIVACY_NOTICE_VERSION = "6"
 
 
 def _vendor_source_parties(*, system: str | None = None) -> list[Party]:
@@ -180,6 +209,61 @@ def _download_party_lines(*, html: bool) -> list[str]:
 	return lines
 
 
+def _plain_dep(key: str, name: str, url: str) -> str:
+	use = tr(f"privacy.dep.use.{key}")
+	project = tr("privacy.label.project")
+	return f"{name} — {use}\n    {project}: {url}"
+
+
+def _html_dep(key: str, name: str, url: str) -> str:
+	use = escape(tr(f"privacy.dep.use.{key}"))
+	project = escape(tr("privacy.label.project"))
+	return f'{escape(name)} — {use}<br/>&nbsp;&nbsp;{project}: <a href="{escape(url, quote=True)}">{escape(url)}</a>'
+
+
+def _dep_group_lines(*, html: bool, heading_key: str, deps: tuple[Dep, ...]) -> list[str]:
+	fmt = _html_dep if html else _plain_dep
+	heading = escape(tr(heading_key)) if html else tr(heading_key)
+	if html:
+		lines = [f"<li><b>{heading}</b><ul>"]
+		for dep in deps:
+			lines.append(f"<li>{fmt(*dep)}</li>")
+		lines.append("</ul></li>")
+		return lines
+	lines = [f"• {heading}"]
+	for dep in deps:
+		for part in fmt(*dep).split("\n"):
+			lines.append(f"  {part}")
+	return lines
+
+
+def _library_section_lines(*, html: bool) -> list[str]:
+	"""Direct runtime libraries (via PyPI) with project links and brief uses."""
+	if html:
+		parts = [
+			f"<p><b>{escape(tr('privacy.deps_heading'))}</b></p>",
+			f"<p>{escape(tr('privacy.deps_intro'))}</p>",
+			"<ul>",
+			*_dep_group_lines(html=True, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
+			*_dep_group_lines(html=True, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
+			*_dep_group_lines(html=True, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
+			"</ul>",
+		]
+		return parts
+	parts = [
+		tr("privacy.deps_heading"),
+		"",
+		tr("privacy.deps_intro"),
+		"",
+		*_dep_group_lines(html=False, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
+		"",
+		*_dep_group_lines(html=False, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
+		"",
+		*_dep_group_lines(html=False, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
+	]
+	return parts
+
+
 def privacy_disclaimer_text(*, language: str | None = None) -> str:
 	"""Plain-text notice (docs / fallbacks).
 
@@ -202,6 +286,8 @@ def privacy_disclaimer_text(*, language: str | None = None) -> str:
 			tr("privacy.what_heading"),
 			"",
 			*_download_party_lines(html=False),
+			"",
+			*_library_section_lines(html=False),
 			"",
 			tr("privacy.section_privacy"),
 			"",
@@ -237,6 +323,7 @@ def privacy_disclaimer_html() -> str:
 		"<ul>",
 		*_download_party_lines(html=True),
 		"</ul>",
+		*_library_section_lines(html=True),
 		f"<p><b>{escape(tr('privacy.section_privacy'))}</b></p>",
 		"<ul>",
 		f"<li>{escape(tr('privacy.bullet_local'))}</li>",

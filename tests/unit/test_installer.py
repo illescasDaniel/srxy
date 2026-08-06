@@ -237,6 +237,15 @@ def test_given_privacy_text_when_loading_then_mentions_third_parties():
 	assert "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in html
 	assert "Disclaimer of Warranties" in html
 	assert "without any warranty" in html.lower()
+	assert "Python libraries (via PyPI)" in text
+	assert "jellyfish" in text
+	assert "https://github.com/jamesturk/jellyfish" in text
+	assert "Phonetic matching" in text
+	assert "Pillow" in text
+	assert "https://python-pillow.org/" in html
+	assert "sentence-transformers" in text
+	assert "https://www.sbert.net/" in html
+	assert "pywin32" in text
 
 
 def test_given_spanish_when_loading_privacy_then_translates_prose():
@@ -260,6 +269,9 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	assert "exención de garantías" in html.lower()
 	assert "sin ninguna garantía" in html.lower()
 	assert "este appimage" not in html.lower()
+	assert "bibliotecas de python" in text.lower()
+	assert "coincidencia fonética" in text.lower()
+	assert "Proyecto:" in text or "Proyecto:" in html
 	set_language("en")
 	en_html = privacy_disclaimer_html()
 	assert "this appimage" not in en_html.lower()

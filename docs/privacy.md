@@ -37,6 +37,45 @@ Only when you enable the related options (and after acknowledging this notice). 
 
 Each model card has its own license and usage terms.
 
+## Python libraries (via PyPI)
+
+These direct runtime libraries ship with srxy (or with optional extras) via PyPI. They process files **on your machine**; install/download privacy for the index itself is under PyPI above.
+
+### Core
+
+| Library | Project | Used for |
+|---------|---------|----------|
+| **cryptography** | [cryptography.io](https://cryptography.io/) | Encrypts the local search cache on disk |
+| **exifread** | [ianare/exif-py](https://github.com/ianare/exif-py) | Reads image EXIF/GPS/camera metadata |
+| **jellyfish** | [jamesturk/jellyfish](https://github.com/jamesturk/jellyfish) | Phonetic matching (“sounds like” search) |
+| **mutagen** | [mutagen](https://mutagen.readthedocs.io/) | Reads audio/video tags |
+| **openpyxl** | [openpyxl](https://openpyxl.readthedocs.io/) | Extracts text from Excel `.xlsx` |
+| **Pillow** | [python-pillow.org](https://python-pillow.org/) | Opens/rotates images for OCR, EXIF, and vision |
+| **pillow-heif** | [bigcat88/pillow_heif](https://github.com/bigcat88/pillow_heif) | Opens HEIC/HEIF images |
+| **pypdf** | [pypdf](https://pypdf.readthedocs.io/) | Extracts PDF text (and pages for OCR) |
+| **pytesseract** | [madmaze/pytesseract](https://github.com/madmaze/pytesseract) | Python bridge to local Tesseract OCR |
+| **PySide6** | [Qt for Python](https://doc.qt.io/qtforpython/) | Desktop GUI and installer UI |
+| **python-docx** | [python-docx](https://python-docx.readthedocs.io/) | Extracts text from Word `.docx` |
+| **python-pptx** | [python-pptx](https://python-pptx.readthedocs.io/) | Extracts text from PowerPoint `.pptx` |
+| **rapidfuzz** | [rapidfuzz/RapidFuzz](https://github.com/rapidfuzz/RapidFuzz) | Fuzzy string scoring for search |
+| **textual** | [textual.textualize.io](https://textual.textualize.io/) | Terminal UI (TUI) |
+| **wordfreq** | [rspeer/wordfreq](https://github.com/rspeer/wordfreq) | Scores OCR text against word-frequency lists |
+
+### Optional `[semantic]`
+
+| Library | Project | Used for |
+|---------|---------|----------|
+| **faster-whisper** | [SYSTRAN/faster-whisper](https://github.com/SYSTRAN/faster-whisper) | Local speech-to-text |
+| **nvidia-cublas-cu12** | [cuBLAS](https://developer.nvidia.com/cublas) | cuBLAS libs for GPU transcription (Linux/Windows) |
+| **rawpy** | [letmaik/rawpy](https://github.com/letmaik/rawpy) | Decodes camera RAW for metadata/vision |
+| **sentence-transformers** | [sbert.net](https://www.sbert.net/) | Local text/image embeddings |
+
+### Optional `[windows]`
+
+| Library | Project | Used for |
+|---------|---------|----------|
+| **pywin32** | [mhammond/pywin32](https://github.com/mhammond/pywin32) | Windows Explorer file tags |
+
 ## Privacy
 
 - srxy searches files **on your machine**. It does not upload your files to a remote srxy search service.
