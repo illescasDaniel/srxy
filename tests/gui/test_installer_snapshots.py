@@ -45,7 +45,7 @@ def _chrome_tree(controller: InstallerController) -> str:
 				tr("installer.mode.uninstall"),
 			]
 		),
-		"  pages: mode, prefix, privacy, options, path, uninstall, progress",
+		"  pages: mode, prefix, privacy, options, tessdata, path, uninstall, progress",
 		"  optionLabels: "
 		+ ", ".join(
 			[
@@ -64,6 +64,7 @@ def _chrome_tree(controller: InstallerController) -> str:
 				tr("installer.options.models_sub"),
 			]
 		),
+		f"  tessdataPage: {tr('installer.tessdata.title')}; {tr('installer.tessdata.body')}",
 		f"  pathCheckbox: {tr('installer.path.checkbox')}",
 		f"  languageCombo: {tr('menu.language.en')}, {tr('menu.language.es')}",
 		"  buttons: "

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 import json
+import locale
+import os
 from dataclasses import dataclass
 from functools import lru_cache
 from importlib import resources
@@ -342,6 +344,37 @@ def locale_to_tessdata(tag: str) -> str | None:
 	return code
 
 
+def system_preferred_locale_tags() -> tuple[str, ...]:
+	"""OS preferred locale tags from LANGUAGE, getlocale, LANG/LC_ALL (Qt-free)."""
+	ordered: list[str] = []
+	seen: set[str] = set()
+
+	def _add(raw: str):
+		tag = raw.strip()
+		if not tag:
+			return
+		# Drop charset/modifier suffixes: es_ES.UTF-8@euro → es_ES
+		tag = tag.split(".", 1)[0].split("@", 1)[0]
+		if not tag or tag in {"C", "POSIX"}:
+			return
+		if tag in seen:
+			return
+		ordered.append(tag)
+		seen.add(tag)
+
+	for part in os.environ.get("LANGUAGE", "").split(":"):
+		_add(part)
+	try:
+		loc = locale.getlocale()[0]
+		if loc:
+			_add(loc)
+	except (TypeError, ValueError):
+		pass
+	for key in ("LANG", "LC_ALL"):
+		_add(os.environ.get(key, ""))
+	return tuple(ordered)
+
+
 def default_tessdata_langs(*locale_tags: str) -> tuple[str, ...]:
 	"""eng + osd + every mapped locale tag (deduped, stable order)."""
 	ordered: list[str] = []
@@ -408,6 +441,7 @@ __all__ = [
 	"locale_to_tessdata",
 	"normalize_tessdata_langs",
 	"selectable_tessdata_languages",
+	"system_preferred_locale_tags",
 	"tessdata_artifact",
 	"tessdata_bytes",
 	"tessdata_commit",

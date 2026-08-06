@@ -64,12 +64,12 @@ Current intent:
 
 - **Windows:** `Universal` (WinUI-like), fallback `Windows`. Follow OS light/dark.
 - **macOS:** `macOS` (native Aqua). Follow OS light/dark.
-- **Linux / other:** `Material` (Dense variant for desktop), fallback `Fusion`. Follow OS light/dark.
+- **Linux / other:** `Material` (Dense variant for desktop), fallback `Fusion`. Follow OS light/dark. Also set `QT_QUICK_CONTROLS_MATERIAL_ACCENT` from the XDG Desktop Portal `accent-color` (session-bus CLI), else `QPalette` Highlight if it looks like a real tint, else Material `"Blue"`.
 
 Hard-won lessons — do not regress these:
 
 1. **Do not `import QtQuick.Controls.Universal` / `Material` (or set `Universal.theme` / `Material.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). Those imports force that chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
-2. **Windows Universal and Linux Material default to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. Set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` (Windows) or `QT_QUICK_CONTROLS_MATERIAL_THEME=System` (Linux) in Python **before** `QQuickStyle.setStyle(...)` / before the QML engine loads. That is the supported equivalent of `*.theme: *.System` without a QML style import. On Linux also set `QT_QUICK_CONTROLS_MATERIAL_VARIANT=Dense` — Normal is touch-sized and overflows fixed window heights.
+2. **Windows Universal and Linux Material default to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. Set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` (Windows) or `QT_QUICK_CONTROLS_MATERIAL_THEME=System` (Linux) in Python **before** `QQuickStyle.setStyle(...)` / before the QML engine loads. That is the supported equivalent of `*.theme: *.System` without a QML style import. On Linux also set `QT_QUICK_CONTROLS_MATERIAL_VARIANT=Dense` — Normal is touch-sized and overflows fixed window heights. Set `QT_QUICK_CONTROLS_MATERIAL_ACCENT` the same way (portal / palette / `"Blue"`) so Material does not keep Qt’s default pink accent.
 3. **`hints.colorScheme` is a method in PySide6** — call `hints.colorScheme()`, do not pass the unbound method into `setColorScheme` (that TypeError crashes GUI launch).
 4. **Plain `Windows` Quick style looks dated** and its dark-mode mix with a dark window palette is often illegible. Prefer `Universal` + system theme on Windows; do not “fix light” as the long-term fix unless Universal is unavailable.
 5. **macOS packaging prunes Universal/Material frameworks** (`packaging/macos/prune-pyside.sh`). Relying on those QML imports in shipped macOS builds is fragile even beyond the style-forcing issue. Linux AppImage pruning keeps Material (needed at runtime).

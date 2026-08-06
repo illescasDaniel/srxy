@@ -18,7 +18,7 @@ Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/
 ### Offline wizard
 
 - Choose **Install or update**, **Reinstall**, or **Uninstall**.
-- Acknowledge the privacy notice, then optionally vendor Tesseract / ffmpeg / semantic extras and prefetch models. When Tesseract is selected, choose OCR language packs (English + orientation detection always included; UI language pre-checked).
+- Acknowledge the privacy notice, then optionally vendor Tesseract / ffmpeg / semantic extras and prefetch models. When Tesseract is selected, the next page is OCR languages (English + orientation detection always included; OS preferred languages pre-selected) — same idea as the Windows offline installer.
 - Optional PATH block in your shell rc (`# >>> srxy PATH >>>`).
 
 ### Online one-click

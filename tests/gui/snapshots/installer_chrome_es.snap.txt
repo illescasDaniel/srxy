@@ -13,9 +13,10 @@ installerWindow:
   busy: False
   finished: False
   modes: Instalar o actualizar srxy, Reinstalar srxy, Desinstalar srxy
-  pages: mode, prefix, privacy, options, path, uninstall, progress
+  pages: mode, prefix, privacy, options, tessdata, path, uninstall, progress
   optionLabels: Texto en imágenes, Ayuda de audio y vídeo, Búsqueda más inteligente (necesita GPU), Descargar modelos de IA ahora (nested under Búsqueda más inteligente)
   optionSubtitles: Tesseract, ffmpeg, PyTorch y paquetes relacionados (PyPI), Archivos de modelo de Hugging Face
+  tessdataPage: Idiomas de OCR; Elige idiomas para texto en imágenes (inglés + orientación siempre activos). Los idiomas del sistema vienen preseleccionados.
   pathCheckbox: También quiero ejecutar srxy desde la Terminal
   languageCombo: English, Español
   buttons: Atrás, Siguiente, Instalar, Reinstalar, Desinstalar, Iniciar, Finalizar, Cerrar, Examinar…, Info (i), GPU warning (!)

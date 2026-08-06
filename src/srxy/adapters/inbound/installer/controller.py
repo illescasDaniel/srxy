@@ -159,12 +159,19 @@ class InstallerController(QObject):
 		self._install_semantic = self._has_gpu
 		self._prefetch_models = False
 		self._add_to_path = True
-		from srxy.adapters.inbound.installer.tessdata_langs import default_tessdata_langs
+		from PySide6.QtCore import QLocale
+
+		from srxy.adapters.inbound.installer.tessdata_langs import (
+			default_tessdata_langs,
+			system_preferred_locale_tags,
+		)
 		from srxy.i18n import get_language, resolve_language, set_language
 
 		set_language(resolve_language())
 		self._language = get_language()
-		self._tessdata_langs = list(default_tessdata_langs(self._language))
+		system_tags = system_preferred_locale_tags()
+		qt_tags = tuple(QLocale.system().uiLanguages())
+		self._tessdata_langs = list(default_tessdata_langs(*system_tags, *qt_tags, self._language))
 		self._busy = False
 		self._status = ""
 		self._error = ""
@@ -278,6 +285,12 @@ class InstallerController(QObject):
 	@Property(str, notify=tessdataLangsChanged)
 	def tessdataLangsCsv(self) -> str:
 		return ",".join(self._tessdata_langs)
+
+	@Property(str, notify=tessdataLangsChanged)
+	def tessdataLangsSummary(self) -> str:
+		from srxy.adapters.inbound.installer.tessdata_langs import tessdata_display_name
+
+		return ", ".join(tessdata_display_name(code) for code in self._tessdata_langs)
 
 	@Slot(str, bool)
 	def setTessdataLang(self, code: str, checked: bool):
@@ -488,7 +501,7 @@ class InstallerController(QObject):
 				self._page = "uninstall"
 				self.pageChanged.emit()
 			return
-		order = ["mode", "prefix", "privacy", "options", "path", "progress"]
+		order = self._install_pages()
 		try:
 			index = order.index(self._page)
 		except ValueError:
@@ -518,7 +531,7 @@ class InstallerController(QObject):
 				self._page = "mode"
 				self.pageChanged.emit()
 			return
-		order = ["mode", "prefix", "privacy", "options", "path", "progress"]
+		order = self._install_pages()
 		try:
 			index = order.index(self._page)
 		except ValueError:
@@ -526,6 +539,14 @@ class InstallerController(QObject):
 		if index > 0:
 			self._page = order[index - 1]
 			self.pageChanged.emit()
+
+	def _install_pages(self) -> list[str]:
+		"""Wizard pages for install/reinstall; OCR langs only when Tesseract is on."""
+		pages = ["mode", "prefix", "privacy", "options"]
+		if self._download_tesseract and self._vendor_downloads_supported:
+			pages.append("tessdata")
+		pages.extend(["path", "progress"])
+		return pages
 
 	def _set_unsafe_confirm(self, open_: bool, message: str = "", *, action: str | None = None):
 		self._unsafe_confirm_open = open_

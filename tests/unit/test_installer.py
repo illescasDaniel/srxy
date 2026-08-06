@@ -95,6 +95,44 @@ def test_given_force_no_gpu_when_creating_controller_then_ai_options_default_off
 	assert "GPU" in str(controller.noGpuMessage)
 
 
+def test_given_system_locale_tags_when_creating_controller_then_preselects_mapped_packs(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	monkeypatch.delenv("SRXY_LANGUAGE", raising=False)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.tessdata_langs.system_preferred_locale_tags",
+		lambda: ("fr", "de"),
+	)
+
+	class _FakeLocale:
+		@staticmethod
+		def system():
+			return _FakeLocale()
+
+		def uiLanguages(self):
+			return ["es-ES", "en-US"]
+
+	monkeypatch.setattr("PySide6.QtCore.QLocale", _FakeLocale)
+
+	# when
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+	controller = InstallerController()
+
+	# then — eng/osd always; fr→fra, de→deu, es→spa from system/Qt tags
+	assert controller.tessdataLangsCsv.split(",")[:2] == ["eng", "osd"]
+	selected = set(controller.tessdataLangsCsv.split(","))
+	assert {"fra", "deu", "spa"}.issubset(selected)
+	assert "English" in str(controller.tessdataLangsSummary)
+	assert "Orientation detection" in str(controller.tessdataLangsSummary)
+
+
 def test_given_help_keys_when_asking_controller_then_returns_plain_language(
 	monkeypatch: pytest.MonkeyPatch,
 ):
@@ -749,7 +787,39 @@ def test_given_reinstall_mode_when_going_next_then_follows_install_page_order(
 	controller.goNext()
 	assert str(controller.page) == "options"
 	controller.goNext()
+	assert str(controller.page) == "tessdata"
+	controller.goNext()
 	assert str(controller.page) == "path"
+
+
+def test_given_tesseract_off_when_going_next_then_skips_tessdata_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.controller.vendor_downloads_supported",
+		lambda: True,
+	)
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	controller = InstallerController()
+	controller.setPrivacyAck(True)
+	controller.setDownloadTesseract(False)
+	# Advance to options
+	controller.goNext()  # prefix
+	controller.goNext()  # privacy
+	controller.goNext()  # options
+	assert str(controller.page) == "options"
+
+	# when
+	controller.goNext()
+
+	# then
+	assert str(controller.page) == "path"
+	controller.goBack()
+	assert str(controller.page) == "options"
 
 
 def test_given_non_srxy_prefix_when_starting_reinstall_then_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
