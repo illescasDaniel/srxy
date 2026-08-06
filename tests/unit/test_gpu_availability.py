@@ -104,10 +104,9 @@ def test_given_windows_with_nvapi_when_nofork_probe_then_detects_gpu(tmp_path: P
 	"""On a real Windows system, nvapi64.dll presence determines the result."""
 	monkeypatch.delenv("SRXY_FORCE_GPU", raising=False)
 	monkeypatch.delenv("SRXY_FORCE_NO_GPU", raising=False)
-	# Create a fake nvapi64.dll in a temp System32 dir
-	system32 = tmp_path / "System32"
-	system32.mkdir()
+	# Create a fake nvapi64.dll under a temp SystemRoot/System32 tree.
+	system32 = tmp_path / "Windows" / "System32"
+	system32.mkdir(parents=True)
 	(system32 / "nvapi64.dll").touch()
-	monkeypatch.setenv("SystemRoot", str(tmp_path.parent))
-	# Direct probe
+	monkeypatch.setenv("SystemRoot", str(tmp_path / "Windows"))
 	assert _has_nvidia_windows_nofork() is True
