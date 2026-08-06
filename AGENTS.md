@@ -56,6 +56,25 @@ When adding or changing GUI QML layout or visible labels, add or update text-tre
 
 Run the full local gate (`./scripts/quality/checks.sh`) so integration, TUI, and GUI tests execute; CI (`CI=true`) runs `unit` tests excluding `semantic` and `transcribe`.
 
+### Qt Quick Controls theming (platform pitfalls)
+
+Theme/style selection lives in [`src/srxy/adapters/inbound/gui/qt_theme.py`](src/srxy/adapters/inbound/gui/qt_theme.py) (`apply_qt_quick_theme`), shared by the main GUI and installer. Keep platform style choice in Python, not in shared QML.
+
+Current intent:
+
+- **Windows:** `Universal` (WinUI-like), fallback `Windows`. Follow OS light/dark.
+- **macOS:** `macOS` (native Aqua). Follow OS light/dark.
+- **Linux / other:** Qt default (usually `Fusion`). Follow OS light/dark.
+
+Hard-won lessons — do not regress these:
+
+1. **Do not `import QtQuick.Controls.Universal` (or set `Universal.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). That import forces Universal chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
+2. **Windows Universal defaults to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. On Windows, set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` in Python **before** `QQuickStyle.setStyle("Universal")` / before the QML engine loads. That is the supported equivalent of `Universal.theme: Universal.System` without a QML Universal import.
+3. **`hints.colorScheme` is a method in PySide6** — call `hints.colorScheme()`, do not pass the unbound method into `setColorScheme` (that TypeError crashes GUI launch).
+4. **Plain `Windows` Quick style looks dated** and its dark-mode mix with a dark window palette is often illegible. Prefer `Universal` + system theme on Windows; do not “fix light” as the long-term fix unless Universal is unavailable.
+5. **macOS packaging prunes Universal frameworks** (`packaging/macos/prune-pyside.sh`). Relying on a Universal QML import in shipped macOS builds is fragile even beyond the style-forcing issue.
+6. When changing themes, **restart the app fully** (no hot-reload assumptions) and visually check both Windows dark mode and macOS native controls before considering the change done.
+
 ## Typing
 
 Do not annotate functions that return `None` with `-> None`. Omit the return type instead.

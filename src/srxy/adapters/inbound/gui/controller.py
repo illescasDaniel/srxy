@@ -8,7 +8,7 @@ from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 
-from PySide6.QtCore import Property, QObject, Qt, QThread, Signal, Slot
+from PySide6.QtCore import Property, QObject, Qt, QThread, QTimer, Signal, Slot
 
 from srxy.adapters.inbound.cli.cli import apply_args_to_env
 from srxy.adapters.inbound.gui.capabilities import (
@@ -66,7 +66,7 @@ from srxy.domain.file_query import (
 	sanitize_literal_term,
 )
 from srxy.domain.models import FileSearchResult
-from srxy.domain.progress import format_activity_status
+from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
@@ -206,6 +206,7 @@ class _UpdateWorker(QObject):
 class SearchController(QObject):
 	statusChanged = Signal()
 	progressChanged = Signal()
+	progressCountChanged = Signal()
 	staleChanged = Signal()
 	searchingChanged = Signal()
 	hasSearchedChanged = Signal()
@@ -254,9 +255,14 @@ class SearchController(QObject):
 		self._path = resolve_gui_search_path(getattr(args, "path", None))
 		self._status = ""
 		self._progress = 0.0
+		self._scan_current = 0
+		self._scan_total = 0
 		self._stale = True
 		self._searching = False
 		self._has_searched = False
+		self._activity: ActivityUpdate | None = None
+		self._activity_spinner_index = 0
+		self._activity_spinner_timer: QTimer | None = None
 		self._preview_text = ""
 		self._preview_header = ""
 		self._selected_row = -1
@@ -357,6 +363,22 @@ class SearchController(QObject):
 		return self._progress
 
 	progress = Property(float, _get_progress, notify=progressChanged)
+
+	def _get_progress_count(self) -> str:
+		if self._scan_total <= 0:
+			return ""
+		return f"{self._scan_current}/{self._scan_total}"
+
+	progressCount = Property(str, _get_progress_count, notify=progressCountChanged)
+
+	def _set_scan_progress(self, current: int, total: int):
+		total = max(total, 0)
+		current = max(0, min(current, total)) if total else max(0, current)
+		if self._scan_current == current and self._scan_total == total:
+			return
+		self._scan_current = current
+		self._scan_total = total
+		self.progressCountChanged.emit()
 
 	def _get_stale(self) -> bool:
 		return self._stale
@@ -676,6 +698,37 @@ class SearchController(QObject):
 			self.searchingChanged.emit()
 			self._notify_results_empty_hint()
 			self.canSearchChanged.emit()
+			if not value:
+				self._clear_activity_status()
+
+	def _clear_activity_status(self):
+		if self._activity_spinner_timer is not None:
+			self._activity_spinner_timer.stop()
+			self._activity_spinner_timer = None
+		self._activity = None
+		self._activity_spinner_index = 0
+
+	def _refresh_activity_status(self):
+		if self._activity is None:
+			return
+		frame = ACTIVITY_SPINNER_FRAMES[self._activity_spinner_index % len(ACTIVITY_SPINNER_FRAMES)]
+		self._set_status(format_activity_status(self._activity, spinner_frame=frame))
+
+	@Slot()
+	def _tick_activity_spinner(self):
+		if self._activity is None:
+			self._clear_activity_status()
+			return
+		self._activity_spinner_index += 1
+		self._refresh_activity_status()
+
+	def _start_activity_spinner_if_needed(self):
+		if self._activity_spinner_timer is None:
+			timer = QTimer(self)
+			timer.setInterval(100)
+			timer.timeout.connect(self._tick_activity_spinner)
+			self._activity_spinner_timer = timer
+			timer.start()
 
 	def _set_download_confirm(self, open_: bool, message: str = ""):
 		self._download_confirm_open = open_
@@ -841,8 +894,10 @@ class SearchController(QObject):
 		self._preview_text = ""
 		self._preview_header = ""
 		self.previewChanged.emit()
+		self._clear_activity_status()
 		self._progress = 0.0
 		self.progressChanged.emit()
+		self._set_scan_progress(0, 0)
 		self._notify_results_empty_hint()
 		self._set_status_tr("status.starting")
 		self._set_searching(True)
@@ -984,20 +1039,32 @@ class SearchController(QObject):
 			total = max(event.total, 1)
 			self._progress = min(100.0, 100.0 * event.current / total)
 			self.progressChanged.emit()
-			self._set_status_tr("status.scanning", current=event.current, total=event.total)
+			self._set_scan_progress(event.current, event.total)
+			if self._activity is None:
+				self._set_status_tr("status.scanning", current=event.current, total=event.total)
 		elif isinstance(event, SearchActivityEvent):
 			if event.update is None:
+				self._clear_activity_status()
 				return
-			self._set_status(format_activity_status(event.update) or self._status)
+			self._activity = event.update
+			self._start_activity_spinner_if_needed()
+			if event.update.determinate and event.update.current is not None and event.update.total is not None:
+				total = max(event.update.total, 1)
+				self._progress = min(100.0, 100.0 * event.update.current / total)
+				self.progressChanged.emit()
+			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
 			self._results_model.insert_result(event.result)
 			self._notify_results_empty_hint()
-			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
+			if self._activity is None:
+				self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
 		elif isinstance(event, SearchErrorEvent):
+			self._clear_activity_status()
 			self.errorOccurred.emit(event.message)
 			self._exit_code = 2
 			self._set_status(event.message)
 		elif isinstance(event, SearchFinishedEvent):
+			self._clear_activity_status()
 			if event.results:
 				self._results_model.replace_results(event.results)
 			count = self._results_model.rowCount()

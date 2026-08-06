@@ -670,6 +670,14 @@ ApplicationWindow {
 					horizontalAlignment: Text.AlignRight
 				}
 				Label {
+					objectName: "progressCount"
+					visible: controller && controller.progressCount.length > 0
+					text: controller ? controller.progressCount : ""
+					Layout.preferredWidth: 88
+					elide: Text.ElideRight
+					horizontalAlignment: Text.AlignRight
+				}
+				Label {
 					objectName: "statusLabel"
 					text: controller ? controller.status : ""
 					Layout.preferredWidth: 280
