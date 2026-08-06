@@ -30,6 +30,11 @@ os.environ.setdefault("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", ""))
 if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY") and sys.platform != "darwin":
 	os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+# Docs screenshots stay English + light regardless of host locale / dark mode.
+os.environ.setdefault("SRXY_LANGUAGE", "en")
+os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_THEME", "Light")
+os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "Light")
+
 from PySide6.QtCore import QMetaObject, Qt, QTimer, QUrl, Q_ARG
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
@@ -41,6 +46,10 @@ from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme
 from srxy.application.search_session import SearchFinishedEvent
 from srxy.domain.models import FileSearchResult, LineMatch
+from srxy.i18n import set_language
+from srxy.i18n.qt import install_qt_translator
+
+set_language("en")
 
 
 def _os_slug() -> str:
@@ -124,6 +133,15 @@ app = QGuiApplication(sys.argv)
 app.setApplicationName("srxy")
 app.setOrganizationName("srxy")
 apply_qt_quick_theme(app)
+install_qt_translator(app, "en")
+# Pin light scheme after theme apply (host may be dark).
+hints = app.styleHints()
+set_scheme = getattr(hints, "setColorScheme", None)
+color_scheme = getattr(Qt, "ColorScheme", None)
+if callable(set_scheme) and color_scheme is not None:
+	light = getattr(color_scheme, "Light", None)
+	if light is not None:
+		set_scheme(light)
 
 args = build_parser().parse_args(
 	[
@@ -131,6 +149,8 @@ args = build_parser().parse_args(
 		"tests/fixtures/file_search",
 		"--semantic-all",
 		"--content-only",
+		"--language",
+		"en",
 		"--cli",
 	]
 )

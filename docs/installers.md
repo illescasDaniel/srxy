@@ -2,7 +2,7 @@
 
 Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline Inno Setup installer are available.
 
-PyPI / `uv tool install` remain the primary install paths on every platform. Privacy / third-party downloads: [privacy.md](privacy.md).
+Download free builds from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), or [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). PyPI / `uv tool install` remain the primary install paths on every platform. Privacy / third-party downloads: [privacy.md](privacy.md).
 
 ## Linux (supported)
 
@@ -47,7 +47,7 @@ Two macOS DMG installers (same naming shape as Linux AppImages):
 2. Open the DMG and double-click the installer (the volume background reminds you).
 3. Both installers target `~/Applications/srxy` by default.
 
-These DMGs are currently **unsigned** (Gatekeeper may warn or block on first open). A signed and notarized release is coming soon.
+GitHub Release DMGs are currently **unsigned** (Gatekeeper may warn or block on first open). A **signed** macOS installer is available from the [official shop](https://www.daniel-ir.eu/shop/p/srxy).
 
 Notes:
 
