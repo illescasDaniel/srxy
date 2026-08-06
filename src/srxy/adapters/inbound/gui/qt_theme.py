@@ -9,8 +9,6 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
 
 # Selection highlight used for ListView rows, ComboBox dropdown selection, etc.
-# Checkbox indicator colours are handled directly in Main.qml (StyledCheckBox)
-# so they are not affected by this palette patch.
 _SELECTION_HIGHLIGHT = QColor("#1565c0")  # dark accessible blue
 _SELECTION_HIGHLIGHT_TEXT = QColor("#ffffff")
 
@@ -18,11 +16,9 @@ _SELECTION_HIGHLIGHT_TEXT = QColor("#ffffff")
 def _patch_fusion_selection_palette(app: QCoreApplication):
 	"""Pin the selection-highlight palette to a reliably accessible dark blue.
 
-	Fusion on Windows inherits the system accent colour for ``Highlight``, which
+	Universal on Windows inherits the system accent colour for ``Highlight``, which
 	can be a light pastel on some configurations.  This affects ListView rows,
-	ComboBox dropdown selection, and other highlighted widgets.  CheckBox
-	indicator colours are now handled by QML (``StyledCheckBox`` in Main.qml)
-	and are unaffected by this palette change.
+	ComboBox dropdown selection, and other highlighted widgets.
 
 	Accepts ``QCoreApplication`` so the signature matches
 	``follow_system_color_scheme``; silently skips non-GUI instances that
@@ -58,29 +54,35 @@ def follow_system_color_scheme(app: QCoreApplication):
 		set_scheme(unknown)
 
 
+def _set_quick_style(name: str) -> bool:
+	try:
+		from PySide6.QtQuickControls2 import QQuickStyle
+	except ImportError:
+		return False
+	QQuickStyle.setStyle(name)
+	style_name = getattr(QQuickStyle, "name", None)
+	if callable(style_name):
+		return style_name() == name
+	return True
+
+
 def apply_qt_quick_theme(app: QCoreApplication):
-	"""Prefer native controls and follow the OS light/dark scheme."""
-	using_fusion = False
+	"""Pick Qt Quick Controls style per platform.
+
+	- Windows: ``Universal`` (WinUI-like), falling back to ``Windows``.
+	- macOS: ``macOS`` (native Aqua controls).
+	- Other: Qt default (typically ``Fusion`` on Linux).
+	"""
 	if sys.platform == "win32":
-		try:
-			from PySide6.QtQuickControls2 import QQuickStyle
-		except ImportError:
-			pass
-		else:
-			# Prefer Universal (WinUI-like) when present, then fall back to Windows.
-			try:
-				QQuickStyle.setStyle("Universal")
-			except Exception:
-				QQuickStyle.setStyle("Windows")
-			else:
-				if getattr(QQuickStyle, "name", lambda: "")() != "Universal":
-					QQuickStyle.setStyle("Windows")
+		if not _set_quick_style("Universal"):
+			_set_quick_style("Windows")
+		follow_system_color_scheme(app)
+		_patch_fusion_selection_palette(app)
+	elif sys.platform == "darwin":
+		_set_quick_style("macOS")
 		follow_system_color_scheme(app)
 	else:
-		using_fusion = True
 		follow_system_color_scheme(app)
-	if using_fusion:
-		_patch_fusion_selection_palette(app)
 
 
 __all__ = ["apply_qt_quick_theme", "follow_system_color_scheme"]

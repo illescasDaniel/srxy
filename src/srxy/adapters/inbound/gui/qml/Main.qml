@@ -1,12 +1,10 @@
 import QtQuick
 import QtQuick.Controls
-import QtQuick.Controls.Universal
 import QtQuick.Layouts
 import QtQuick.Dialogs
 
 ApplicationWindow {
 	id: root
-	Universal.theme: Universal.System
 	width: 1200
 	height: 800
 	visible: true
