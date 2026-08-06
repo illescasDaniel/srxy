@@ -49,27 +49,38 @@ def follow_system_color_scheme(app: QCoreApplication):
 	color_scheme = getattr(Qt, "ColorScheme", None)
 	if color_scheme is None:
 		return
+	current_getter = getattr(hints, "colorScheme", None)
+	current = current_getter() if callable(current_getter) else current_getter
 	unknown = getattr(color_scheme, "Unknown", None)
-	if unknown is not None:
+	if current is not None and current != unknown:
+		set_scheme(current)
+	elif unknown is not None:
 		set_scheme(unknown)
 
 
 def apply_qt_quick_theme(app: QCoreApplication):
-	"""Use Fusion on Windows so dark/light palettes apply to Controls + Dialogs.
-
-	The native Windows Quick style keeps light control chrome while
-	``ApplicationWindow`` may already follow a dark system palette, which
-	produces illegible mixed themes (white-on-white About text, etc.).
-	"""
+	"""Prefer native controls and follow the OS light/dark scheme."""
+	using_fusion = False
 	if sys.platform == "win32":
 		try:
 			from PySide6.QtQuickControls2 import QQuickStyle
 		except ImportError:
 			pass
 		else:
-			QQuickStyle.setStyle("Fusion")
-	follow_system_color_scheme(app)
-	_patch_fusion_selection_palette(app)
+			# Prefer Universal (WinUI-like) when present, then fall back to Windows.
+			try:
+				QQuickStyle.setStyle("Universal")
+			except Exception:
+				QQuickStyle.setStyle("Windows")
+			else:
+				if getattr(QQuickStyle, "name", lambda: "")() != "Universal":
+					QQuickStyle.setStyle("Windows")
+		follow_system_color_scheme(app)
+	else:
+		using_fusion = True
+		follow_system_color_scheme(app)
+	if using_fusion:
+		_patch_fusion_selection_palette(app)
 
 
 __all__ = ["apply_qt_quick_theme", "follow_system_color_scheme"]
