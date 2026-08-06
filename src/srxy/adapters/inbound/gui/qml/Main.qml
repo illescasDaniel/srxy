@@ -17,33 +17,8 @@ ApplicationWindow {
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
 
-	// Custom CheckBox with a reliably high-contrast indicator.
-	// Qt Quick Controls 2 Fusion style resolves checkbox colours through the
-	// QML palette inheritance chain, which can diverge from the app-level
-	// QPalette on Windows.  Overriding the indicator here guarantees a dark
-	// fill (#1565c0) with a white tick regardless of system accent or theme.
-	component StyledCheckBox: CheckBox {
-		id: cbRoot
-		indicator: Rectangle {
-			implicitWidth: 18
-			implicitHeight: 18
-			x: cbRoot.leftPadding
-			y: cbRoot.height / 2 - height / 2
-			radius: 3
-			color: cbRoot.checked ? "#1565c0" : "transparent"
-			border.color: cbRoot.checked ? "#1565c0"
-				: (cbRoot.hovered ? "#5a5a5a" : "#aaaaaa")
-			border.width: 2
-			Text {
-				anchors.centerIn: parent
-				text: "\u2714"
-				color: "#ffffff"
-				font.pixelSize: 13
-				font.bold: true
-				visible: cbRoot.checked
-			}
-		}
-	}
+	// Keep platform-native checkbox rendering (especially on macOS).
+	component StyledCheckBox: CheckBox {}
 
 	function t(key) {
 		const _ = root.langRev
@@ -620,7 +595,9 @@ ApplicationWindow {
 										Label {
 											text: matchRow.text
 											textFormat: Text.RichText
-											font.family: "monospace"
+											font.family: Qt.platform.os === "windows"
+												? "Consolas"
+												: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 											Layout.fillWidth: true
 											padding: 6
 											elide: Text.ElideRight
@@ -658,7 +635,9 @@ ApplicationWindow {
 									readOnly: true
 									wrapMode: TextEdit.Wrap
 									textFormat: TextEdit.RichText
-									font.family: "monospace"
+									font.family: Qt.platform.os === "windows"
+										? "Consolas"
+										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 									text: controller ? controller.previewText : ""
 									selectByMouse: true
 								}
