@@ -161,22 +161,20 @@ def test_given_language_when_writing_privacy_utf8_then_uses_bom_and_locale(
 	assert "Ã" not in es_text
 
 
-def test_given_windows_when_loading_privacy_then_mentions_localappdata_cache(
-	monkeypatch: pytest.MonkeyPatch,
-):
+def test_given_privacy_when_loading_then_mentions_both_cache_paths():
 	# given
-	from srxy.adapters.inbound.installer import privacy as privacy_mod
 	from srxy.i18n import set_language
 
 	set_language("en")
-	monkeypatch.setattr(privacy_mod.platform, "system", lambda: "Windows")
 
 	# when
 	text = privacy_disclaimer_text()
 
 	# then
 	assert "%LOCALAPPDATA%\\srxy" in text
-	assert "~/.cache/srxy" not in text
+	assert "~/.cache/srxy" in text
+	assert "Disclaimer of Warranties" in text
+	assert "without any warranty" in text.lower()
 
 
 def test_given_privacy_text_when_loading_then_mentions_third_parties():
@@ -199,6 +197,8 @@ def test_given_privacy_text_when_loading_then_mentions_third_parties():
 	assert "https://github.com/tesseract-ocr/tesseract" in text
 	assert "<a href=" in html
 	assert "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in html
+	assert "Disclaimer of Warranties" in html
+	assert "without any warranty" in html.lower()
 
 
 def test_given_spanish_when_loading_privacy_then_translates_prose():
@@ -210,7 +210,6 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	# when
 	text = privacy_disclaimer_text()
 	html = privacy_disclaimer_html()
-	app_html = privacy_disclaimer_html(for_app=True)
 
 	# then
 	assert "aviso de privacidad" in text.lower()
@@ -218,22 +217,17 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	assert "Sitio:" in text or "Sitio:" in html
 	assert "Privacidad:" in text or "Privacidad:" in html
 	assert "https://huggingface.co/privacy" in html
-	assert "instalador de escritorio de srxy" in html.lower()
-	assert "este instalador" in html.lower()
-	assert "este instalador de escritorio" in html.lower() or "instalador de escritorio" in html.lower()
+	assert "srxy — aviso" in html.lower()
+	assert "qué puede descargar srxy" in html.lower()
+	assert "exención de garantías" in html.lower()
+	assert "sin ninguna garantía" in html.lower()
 	assert "este appimage" not in html.lower()
-	assert "instalador de escritorio de srxy" not in app_html.lower()
-	assert "este instalador" not in app_html.lower()
-	assert "este appimage" not in app_html.lower()
-	assert "qué puede descargar srxy" in app_html.lower()
-	assert "srxy — aviso" in app_html.lower()
-	assert "casilla de aceptación" not in app_html.lower()
 	set_language("en")
-	app_en = privacy_disclaimer_html(for_app=True)
-	assert "this installer" not in app_en.lower()
-	assert "this appimage" not in app_en.lower()
-	assert "what srxy may download" in app_en.lower()
-	assert "acknowledgment box" not in app_en.lower()
+	en_html = privacy_disclaimer_html()
+	assert "this appimage" not in en_html.lower()
+	assert "what srxy may download" in en_html.lower()
+	assert "acknowledgment box" not in en_html.lower()
+	assert "disclaimer of warranties" in en_html.lower()
 
 
 def test_given_darwin_when_loading_installer_privacy_then_lists_macos_vendor_sources(
@@ -250,13 +244,7 @@ def test_given_darwin_when_loading_installer_privacy_then_lists_macos_vendor_sou
 	assert "ffmpeg.martin-riedl.de" in text
 	assert "BtbN/FFmpeg-Builds" not in text
 	assert "DanielMYT/tesseract-static" not in text
-	assert "desktop installer" in text.lower()
 	assert "appimage" not in text.lower()
-
-	app_text = privacy_disclaimer_text(for_app=True)
-	assert "formulae.brew.sh/formula/tesseract" in app_text
-	assert "BtbN/FFmpeg-Builds" in app_text
-	assert "DanielMYT/tesseract-static" in app_text
 
 
 def test_given_linux_when_loading_installer_privacy_then_lists_linux_vendor_sources(

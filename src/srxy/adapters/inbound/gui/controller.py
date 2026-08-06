@@ -1242,7 +1242,7 @@ class SearchController(QObject):
 	def aboutPrivacyHtml(self) -> str:  # noqa: N802
 		from srxy.adapters.inbound.installer.privacy import privacy_disclaimer_html
 
-		return privacy_disclaimer_html(for_app=True)
+		return privacy_disclaimer_html()
 
 	@Property(str, constant=True)
 	def pypiUrl(self) -> str:  # noqa: N802

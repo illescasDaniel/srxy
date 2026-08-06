@@ -114,35 +114,12 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "4"
+PRIVACY_NOTICE_VERSION = "5"
 
 
-def _cache_bullet_key(*, system: str | None = None) -> str:
+def _vendor_source_parties(*, system: str | None = None) -> list[Party]:
+	"""OS-specific vendor download sources for the current platform."""
 	host = (system or platform.system()).lower()
-	if host == "windows":
-		return "privacy.bullet_cache_windows"
-	return "privacy.bullet_cache"
-
-
-def _copy_key(stem: str, *, for_app: bool) -> str:
-	"""Pick installer vs in-app catalog key for shared privacy prose."""
-	if stem == "title":
-		return "privacy.app_title" if for_app else "privacy.title"
-	return f"privacy.app_{stem}" if for_app else f"privacy.{stem}"
-
-
-def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[Party]:
-	"""OS-specific vendor download sources for the installer; full set for in-app."""
-	host = (system or platform.system()).lower()
-	if for_app:
-		return [
-			_TESSERACT_LINUX,
-			_TESSERACT_MACOS,
-			_TESSERACT_WINDOWS,
-			_SEVENZIP,
-			_FFMPEG_BUILD,
-			_FFMPEG_MACOS,
-		]
 	if host == "darwin":
 		return [_TESSERACT_MACOS, _FFMPEG_MACOS]
 	if host == "linux":
@@ -152,7 +129,7 @@ def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[
 	return []
 
 
-def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
+def _download_party_lines(*, html: bool) -> list[str]:
 	link = _html_link if html else _plain_link
 	bullet = "<li>" if html else "• "
 	end = "</li>" if html else ""
@@ -169,7 +146,7 @@ def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
 		f"{bullet}{link(*_TESSDATA)}{end}",
 		f"{bullet}{link(*_FFMPEG)}{end}",
 	]
-	for party in _vendor_source_parties(for_app=for_app):
+	for party in _vendor_source_parties():
 		lines.append(f"{bullet}{link(*party)}{end}")
 	ai_label = escape(tr("privacy.optional_ai")) if html else tr("privacy.optional_ai")
 	models_label = (
@@ -203,7 +180,7 @@ def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
 	return lines
 
 
-def privacy_disclaimer_text(*, for_app: bool = False, language: str | None = None) -> str:
+def privacy_disclaimer_text(*, language: str | None = None) -> str:
 	"""Plain-text notice (docs / fallbacks).
 
 	When ``language`` is set, temporarily switch the active catalog for this call.
@@ -216,23 +193,27 @@ def privacy_disclaimer_text(*, for_app: bool = False, language: str | None = Non
 		set_language(language)
 	try:
 		parts = [
-			tr(_copy_key("title", for_app=for_app)),
+			tr("privacy.title"),
 			"",
-			tr(_copy_key("intro_mit", for_app=for_app)),
+			tr("privacy.intro_mit"),
 			"",
-			tr(_copy_key("intro_downloads", for_app=for_app)),
+			tr("privacy.intro_downloads"),
 			"",
-			tr(_copy_key("what_heading", for_app=for_app)),
+			tr("privacy.what_heading"),
 			"",
-			*_download_party_lines(for_app=for_app, html=False),
+			*_download_party_lines(html=False),
 			"",
 			tr("privacy.section_privacy"),
 			"",
 			f"• {tr('privacy.bullet_local')}",
 			f"• {tr('privacy.bullet_third_party')}",
-			f"• {tr(_cache_bullet_key())}",
+			f"• {tr('privacy.bullet_cache')}",
 			"",
-			tr(_copy_key("ack_footer", for_app=for_app)),
+			tr("privacy.section_disclaimer"),
+			"",
+			f"• {tr('privacy.bullet_warranty')}",
+			"",
+			tr("privacy.ack_footer"),
 		]
 		return "\n".join(parts)
 	finally:
@@ -240,29 +221,33 @@ def privacy_disclaimer_text(*, for_app: bool = False, language: str | None = Non
 			set_language(previous)
 
 
-def write_privacy_notice_utf8(path: Path, *, language: str, for_app: bool = False):
+def write_privacy_notice_utf8(path: Path, *, language: str):
 	"""Write a UTF-8 privacy notice with BOM (Inno Setup LoadStringsFromFile-friendly)."""
-	text = privacy_disclaimer_text(for_app=for_app, language=language)
+	text = privacy_disclaimer_text(language=language)
 	path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
 
 
-def privacy_disclaimer_html(*, for_app: bool = False) -> str:
+def privacy_disclaimer_html() -> str:
 	"""Rich-text notice with clickable links for the installer / About UI."""
 	parts = [
-		f"<p><b>{escape(tr(_copy_key('title', for_app=for_app)))}</b></p>",
-		f"<p>{escape(tr(_copy_key('intro_mit', for_app=for_app)))}</p>",
-		f"<p>{escape(tr(_copy_key('intro_downloads', for_app=for_app)))}</p>",
-		f"<p><b>{escape(tr(_copy_key('what_heading', for_app=for_app)))}</b></p>",
+		f"<p><b>{escape(tr('privacy.title'))}</b></p>",
+		f"<p>{escape(tr('privacy.intro_mit'))}</p>",
+		f"<p>{escape(tr('privacy.intro_downloads'))}</p>",
+		f"<p><b>{escape(tr('privacy.what_heading'))}</b></p>",
 		"<ul>",
-		*_download_party_lines(for_app=for_app, html=True),
+		*_download_party_lines(html=True),
 		"</ul>",
 		f"<p><b>{escape(tr('privacy.section_privacy'))}</b></p>",
 		"<ul>",
 		f"<li>{escape(tr('privacy.bullet_local'))}</li>",
 		f"<li>{escape(tr('privacy.bullet_third_party'))}</li>",
-		f"<li>{escape(tr(_cache_bullet_key()))}</li>",
+		f"<li>{escape(tr('privacy.bullet_cache'))}</li>",
 		"</ul>",
-		f"<p>{escape(tr(_copy_key('ack_footer', for_app=for_app)))}</p>",
+		f"<p><b>{escape(tr('privacy.section_disclaimer'))}</b></p>",
+		"<ul>",
+		f"<li>{escape(tr('privacy.bullet_warranty'))}</li>",
+		"</ul>",
+		f"<p>{escape(tr('privacy.ack_footer'))}</p>",
 	]
 	return "\n".join(parts)
 

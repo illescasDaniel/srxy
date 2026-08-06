@@ -1,12 +1,12 @@
 # Privacy & third-party notice
 
-srxy itself is **MIT**-licensed. You can install it from PyPI and use the GUI, TUI, CLI, or library without any desktop installer.
+srxy itself is **MIT**-licensed. You can install it from PyPI, a desktop installer, or another channel and use the GUI, TUI, CLI, or library.
 
-The optional **desktop installer** (Linux AppImages, macOS `.app` / DMG wrappers, and the Windows offline Inno Setup `.exe`) does **not** ship NVIDIA/CUDA binaries, Hugging Face model weights, Tesseract, or ffmpeg inside the installer artifact. When you opt in, it downloads components from third parties. Review their sites and privacy policies before continuing. See [installers.md](installers.md).
+srxy and its optional features may download NVIDIA/CUDA-related packages, Hugging Face model weights, Tesseract, or ffmpeg from third parties. Review their sites and privacy policies before using those features. See [installers.md](installers.md).
 
-## What the installer may download
+## What srxy may download
 
-Only after you choose the related options (and after acknowledging this notice). Sources vary by OS:
+Only when you enable the related options (and after acknowledging this notice). Sources vary by OS:
 
 | Component | Site | Privacy |
 |-----------|------|---------|
@@ -41,8 +41,12 @@ Each model card has its own license and usage terms.
 
 - srxy searches files **on your machine**. It does not upload your files to a remote srxy search service.
 - Choosing downloads contacts the third-party servers linked above. Those parties have their own privacy policies.
-- For prefix installs, cache and models live under the install folder (`SRXY_HOME`). For PyPI / `uv tool` installs, defaults are `~/.cache/srxy` on Linux/macOS and `%LOCALAPPDATA%\srxy` on Windows (override with `SRXY_CACHE_DIR`).
+- For prefix installs, cache and models live under the install folder (`SRXY_HOME`). For non-prefix installs the default is `~/.cache/srxy` on Linux/macOS or `%LOCALAPPDATA%\srxy` on Windows (override with `SRXY_CACHE_DIR`).
 - When srxy is launched from the desktop menu (non-interactive stdout), the prefix launcher appends output to `{SRXY_HOME}/logs/srxy.log`. Search command-line arguments are **not** logged by default; set `SRXY_DEBUG=1` before launch to include them in that log file.
 - The install manifest records which privacy-notice version you acknowledged (`privacy_ack_version`).
 
-By acknowledging the installer notice you confirm you understand these third-party downloads and accept responsibility for complying with their licenses and privacy policies.
+## Disclaimer of Warranties and Limitation of Liability
+
+This software is provided "as is", without any warranty of any kind, express or implied. The author and contributors shall not be held liable for any damage, data loss, malfunction, or any other harm arising from the use of this software. By accepting these terms, you acknowledge and accept all such limitations.
+
+By acknowledging this notice you confirm you understand these third-party downloads and accept responsibility for complying with their licenses and privacy policies.
