@@ -1,0 +1,128 @@
+afr|0|Afrikaans
+amh|0|Amharic
+ara|0|Arabic
+asm|0|Assamese
+aze|0|Azerbaijani
+aze_cyrl|0|Azerbaijani (Cyrillic)
+bel|0|Belarusian
+ben|0|Bengali
+bod|0|Tibetan
+bos|0|Bosnian
+bre|0|Breton
+bul|0|Bulgarian
+cat|0|Catalan
+ceb|0|Cebuano
+ces|0|Czech
+chi_sim|0|Chinese (Simplified)
+chi_sim_vert|0|Chinese (Simplified, vertical)
+chi_tra|0|Chinese (Traditional)
+chi_tra_vert|0|Chinese (Traditional, vertical)
+chr|0|Cherokee
+cos|0|Corsican
+cym|0|Welsh
+dan|0|Danish
+dan_frak|0|Danish (Fraktur)
+deu|0|German
+deu_frak|0|German (Fraktur)
+div|0|Dhivehi
+dzo|0|Dzongkha
+ell|0|Greek
+eng|1|English
+enm|0|English (Middle)
+epo|0|Esperanto
+est|0|Estonian
+eus|0|Basque
+fao|0|Faroese
+fas|0|Persian
+fil|0|Filipino
+fin|0|Finnish
+fra|0|French
+frk|0|Frankish
+frm|0|French (Middle)
+fry|0|Frisian
+gla|0|Scottish Gaelic
+gle|0|Irish
+glg|0|Galician
+grc|0|Greek (Ancient)
+guj|0|Gujarati
+hat|0|Haitian
+heb|0|Hebrew
+hin|0|Hindi
+hrv|0|Croatian
+hun|0|Hungarian
+hye|0|Armenian
+iku|0|Inuktitut
+ind|0|Indonesian
+isl|0|Icelandic
+ita|0|Italian
+ita_old|0|Italian (Old)
+jav|0|Javanese
+jpn|0|Japanese
+jpn_vert|0|Japanese (vertical)
+kan|0|Kannada
+kat|0|Georgian
+kat_old|0|Georgian (Old)
+kaz|0|Kazakh
+khm|0|Khmer
+kir|0|Kyrgyz
+kmr|0|Kurmanji (Kurdish)
+kor|0|Korean
+kor_vert|0|Korean (vertical)
+lao|0|Lao
+lat|0|Latin
+lav|0|Latvian
+lit|0|Lithuanian
+ltz|0|Luxembourgish
+mal|0|Malayalam
+mar|0|Marathi
+mkd|0|Macedonian
+mlt|0|Maltese
+mon|0|Mongolian
+mri|0|Maori
+msa|0|Malay
+mya|0|Burmese
+nep|0|Nepali
+nld|0|Dutch
+nor|0|Norwegian
+oci|0|Occitan
+ori|0|Odia
+osd|1|Orientation detection
+pan|0|Punjabi
+pol|0|Polish
+por|0|Portuguese
+pus|0|Pashto
+que|0|Quechua
+ron|0|Romanian
+rus|0|Russian
+san|0|Sanskrit
+sin|0|Sinhala
+slk|0|Slovak
+slk_frak|0|Slovak (Fraktur)
+slv|0|Slovenian
+snd|0|Sindhi
+spa|0|Spanish
+spa_old|0|Spanish (Old)
+sqi|0|Albanian
+srp|0|Serbian
+srp_latn|0|Serbian (Latin)
+sun|0|Sundanese
+swa|0|Swahili
+swe|0|Swedish
+syr|0|Syriac
+tam|0|Tamil
+tat|0|Tatar
+tel|0|Telugu
+tgk|0|Tajik
+tgl|0|Tagalog
+tha|0|Thai
+tir|0|Tigrinya
+ton|0|Tonga
+tur|0|Turkish
+uig|0|Uyghur
+ukr|0|Ukrainian
+urd|0|Urdu
+uzb|0|Uzbek
+uzb_cyrl|0|Uzbek (Cyrillic)
+vie|0|Vietnamese
+yid|0|Yiddish
+yor|0|Yoruba

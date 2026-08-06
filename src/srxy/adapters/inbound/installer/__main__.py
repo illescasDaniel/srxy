@@ -93,6 +93,12 @@ def _build_parser() -> argparse.ArgumentParser:
 	)
 	parser.add_argument("--prefix", type=str, default="", help="Install prefix directory.")
 	parser.add_argument("--tesseract", action="store_true", help="Vendor Tesseract OCR.")
+	parser.add_argument(
+		"--tessdata-langs",
+		type=str,
+		default="",
+		help="Comma-separated tessdata language codes (always includes eng,osd).",
+	)
 	parser.add_argument("--ffmpeg", action="store_true", help="Vendor ffmpeg.")
 	parser.add_argument("--semantic", action="store_true", help="Install [semantic] extras.")
 	parser.add_argument(
@@ -168,6 +174,14 @@ def _run_headless(args: argparse.Namespace) -> int:
 		return 0
 
 	_require_privacy_ack(args.privacy_ack)
+	from srxy.adapters.inbound.installer.tessdata_langs import default_tessdata_langs, normalize_tessdata_langs
+	from srxy.i18n import get_language
+
+	raw_langs = [part.strip() for part in str(args.tessdata_langs or "").split(",") if part.strip()]
+	if raw_langs:
+		tessdata_langs = normalize_tessdata_langs(raw_langs)
+	else:
+		tessdata_langs = default_tessdata_langs(get_language())
 	options = InstallOptions(
 		prefix=prefix,
 		download_tesseract=bool(args.tesseract),
@@ -177,6 +191,7 @@ def _run_headless(args: argparse.Namespace) -> int:
 		add_to_path=bool(args.add_path),
 		srxy_spec=(args.srxy_spec or "").strip(),
 		confirm_unsafe=bool(args.confirm_unsafe),
+		tessdata_langs=tessdata_langs,
 	)
 
 	if args.reinstall:

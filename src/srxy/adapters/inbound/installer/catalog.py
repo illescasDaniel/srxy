@@ -268,6 +268,12 @@ def vendor_downloads_supported() -> bool:
 
 
 def artifact(name: str) -> DownloadArtifact:
+	if name.startswith("tessdata_"):
+		from srxy.adapters.inbound.installer.tessdata_langs import tessdata_artifact
+
+		code = name.removeprefix("tessdata_")
+		# Legacy catalog key tessdata_eng → eng
+		return tessdata_artifact(code)
 	catalog = platform_catalog()
 	try:
 		return catalog[name]

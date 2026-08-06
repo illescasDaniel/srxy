@@ -110,9 +110,13 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 		archive.unlink(missing_ok=True)
 
 
-def _install_tesseract_linux(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+def _install_tesseract_linux(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	binary_item = artifact("tesseract")
-	data_item = artifact("tessdata_eng")
 	vendor = prefix / "vendor" / "tesseract"
 	bin_dir = vendor / "bin"
 	tessdata = vendor / "tessdata"
@@ -128,15 +132,7 @@ def _install_tesseract_linux(prefix: Path, *, progress: ProgressCallback | None)
 		progress=progress,
 	)
 	_chmod_executable(target)
-
-	eng = tessdata / "eng.traineddata"
-	download_file(
-		data_item.url,
-		eng,
-		sha256=data_item.sha256,
-		label="tessdata eng",
-		progress=progress,
-	)
+	_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
 	return target
 
 
@@ -315,19 +311,33 @@ def _assemble_relocatable_tesseract(extract_root: Path, vendor: Path) -> Path:
 	return target
 
 
-def _ensure_eng_tessdata(vendor: Path, *, progress: ProgressCallback | None):
-	eng = vendor / "tessdata" / "eng.traineddata"
-	if eng.is_file():
-		return
-	data_item = artifact("tessdata_eng")
-	eng.parent.mkdir(parents=True, exist_ok=True)
-	download_file(
-		data_item.url,
-		eng,
-		sha256=data_item.sha256,
-		label="tessdata eng",
-		progress=progress,
+def _ensure_tessdata_langs(
+	vendor: Path,
+	langs: tuple[str, ...] | list[str] | None,
+	*,
+	progress: ProgressCallback | None,
+):
+	from srxy.adapters.inbound.installer.tessdata_langs import (
+		normalize_tessdata_langs,
+		tessdata_artifact,
+		tessdata_dest_path,
 	)
+
+	tessdata = vendor / "tessdata"
+	tessdata.mkdir(parents=True, exist_ok=True)
+	for code in normalize_tessdata_langs(langs):
+		dest = tessdata_dest_path(tessdata, code)
+		if dest.is_file():
+			continue
+		dest.parent.mkdir(parents=True, exist_ok=True)
+		item = tessdata_artifact(code)
+		download_file(
+			item.url,
+			dest,
+			sha256=item.sha256,
+			label=f"tessdata {code}",
+			progress=progress,
+		)
 
 
 def _self_check_tesseract(target: Path, tessdata: Path):
@@ -348,7 +358,12 @@ def _self_check_tesseract(target: Path, tessdata: Path):
 		raise RuntimeError(f"tesseract vendor binary failed self-check: {exc.stderr.strip() or exc}") from exc
 
 
-def _install_tesseract_brew_bottles(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+def _install_tesseract_brew_bottles(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	if platform.system().lower() != "darwin":
 		raise RuntimeError("Homebrew bottle tesseract install is only supported on macOS")
 
@@ -374,7 +389,7 @@ def _install_tesseract_brew_bottles(prefix: Path, *, progress: ProgressCallback 
 				archive.unlink(missing_ok=True)
 
 		target = _assemble_relocatable_tesseract(extract_root, vendor)
-		_ensure_eng_tessdata(vendor, progress=progress)
+		_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
 		_self_check_tesseract(target, vendor / "tessdata")
 		return target
 	finally:
@@ -469,7 +484,12 @@ def _layout_windows_tesseract_extract(extract_root: Path, vendor: Path) -> Path:
 	return link
 
 
-def _install_tesseract_nsis(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+def _install_tesseract_nsis(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	"""Extract the UB-Mannheim NSIS setup into ``prefix/vendor/tesseract`` without elevation."""
 	item = artifact("tesseract")
 	vendor = prefix / "vendor" / "tesseract"
@@ -499,7 +519,7 @@ def _install_tesseract_nsis(prefix: Path, *, progress: ProgressCallback | None) 
 			label="7z extract tesseract NSIS setup",
 		)
 		link = _layout_windows_tesseract_extract(extract_root, vendor)
-		_ensure_eng_tessdata(vendor, progress=progress)
+		_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
 		_self_check_tesseract(link, vendor / "tessdata")
 		return link
 	finally:
@@ -507,14 +527,19 @@ def _install_tesseract_nsis(prefix: Path, *, progress: ProgressCallback | None) 
 		shutil.rmtree(work_dir, ignore_errors=True)
 
 
-def install_tesseract(prefix: Path, *, progress: ProgressCallback | None = None) -> Path:
+def install_tesseract(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None = None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	item = artifact("tesseract")
 	if item.kind == "binary":
-		return _install_tesseract_linux(prefix, progress=progress)
+		return _install_tesseract_linux(prefix, progress=progress, tessdata_langs=tessdata_langs)
 	if item.kind == "brew_bottles":
-		return _install_tesseract_brew_bottles(prefix, progress=progress)
+		return _install_tesseract_brew_bottles(prefix, progress=progress, tessdata_langs=tessdata_langs)
 	if item.kind == "nsis_installer":
-		return _install_tesseract_nsis(prefix, progress=progress)
+		return _install_tesseract_nsis(prefix, progress=progress, tessdata_langs=tessdata_langs)
 	raise RuntimeError(f"unsupported tesseract artifact kind: {item.kind}")
 
 

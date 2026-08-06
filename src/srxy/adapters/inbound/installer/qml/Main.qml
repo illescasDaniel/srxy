@@ -321,6 +321,59 @@ ApplicationWindow {
 					optionEnabled: c.vendorDownloadsSupported
 					onToggled: function(checked) { c.setDownloadTesseract(checked) }
 				}
+				ColumnLayout {
+					visible: c.downloadTesseract && c.vendorDownloadsSupported
+					Layout.fillWidth: true
+					Layout.leftMargin: 28
+					spacing: 6
+					opacity: c.downloadTesseract ? 1.0 : 0.55
+					Label {
+						text: root.t("installer.options.tessdata_langs")
+						wrapMode: Text.WordWrap
+						color: root.primaryText
+						Layout.fillWidth: true
+					}
+					Label {
+						text: root.t("installer.options.tessdata_langs_sub")
+						wrapMode: Text.WordWrap
+						color: root.secondaryText
+						font.pixelSize: 12
+						Layout.fillWidth: true
+					}
+					TextField {
+						id: tessdataFilter
+						Layout.fillWidth: true
+						placeholderText: root.t("installer.options.tessdata_filter")
+					}
+					ScrollView {
+						Layout.fillWidth: true
+						Layout.preferredHeight: 160
+						clip: true
+						ColumnLayout {
+							width: parent.availableWidth
+							spacing: 2
+							Repeater {
+								model: c.tessdataLanguageOptions
+								delegate: CheckBox {
+									required property var modelData
+									visible: {
+										const q = tessdataFilter.text.trim().toLowerCase()
+										if (!q)
+											return true
+										return String(modelData.label).toLowerCase().indexOf(q) >= 0
+											|| String(modelData.code).toLowerCase().indexOf(q) >= 0
+									}
+									text: modelData.label + " (" + modelData.code + ")"
+									checked: modelData.checked
+									enabled: !modelData.required
+									onToggled: function() {
+										c.setTessdataLang(modelData.code, checked)
+									}
+								}
+							}
+						}
+					}
+				}
 				OptionRow {
 					labelKey: "installer.options.ffmpeg"
 					subtitleKey: "installer.options.ffmpeg_sub"

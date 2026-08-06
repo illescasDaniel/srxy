@@ -43,6 +43,8 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 	monkeypatch.setattr(catalog_mod.platform, "machine", lambda: "AMD64")
 	monkeypatch.setattr(vendor_mod.platform, "system", lambda: "Windows")
 
+	from srxy.adapters.inbound.installer.tessdata_langs import tessdata_url
+
 	setup_bytes = b"fake-tesseract-nsis-setup"
 	sevenzr_bytes = b"fake-7zr"
 	sevenzip_bytes = b"fake-7zip-sfx"
@@ -50,7 +52,8 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 		catalog_mod.WIN_X86_64_CATALOG["tesseract"].url: setup_bytes,
 		catalog_mod.WIN_X86_64_CATALOG["7zr"].url: sevenzr_bytes,
 		catalog_mod.WIN_X86_64_CATALOG["7zip"].url: sevenzip_bytes,
-		catalog_mod.WIN_X86_64_CATALOG["tessdata_eng"].url: b"fake-eng",
+		tessdata_url("eng"): b"fake-eng",
+		tessdata_url("osd"): b"fake-osd",
 	}
 	run_cmds: list[list[str]] = []
 
@@ -122,6 +125,7 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 	assert binary.parent.name == "bin"
 	assert (prefix / "vendor" / "tesseract" / "bin" / "libtesseract-5.dll").is_file()
 	assert (prefix / "vendor" / "tesseract" / "tessdata" / "eng.traineddata").is_file()
+	assert (prefix / "vendor" / "tesseract" / "tessdata" / "osd.traineddata").is_file()
 	assert not (prefix / "vendor" / "tesseract" / "_work").exists()
 	# Setup EXE must never be the process image (CreateProcess elevation / WinError 740).
 	assert all(Path(cmd[0]).read_bytes() != setup_bytes for cmd in run_cmds if Path(cmd[0]).is_file())
@@ -273,6 +277,25 @@ def test_given_tesseract_brew_bottles_when_installing_then_assembles_relocatable
 	monkeypatch.setattr(vendor_mod, "_adhoc_codesign", lambda _path: None)
 	monkeypatch.setattr(vendor_mod, "_self_check_tesseract", lambda *_args, **_kwargs: None)
 
+	from srxy.adapters.inbound.installer.tessdata_langs import tessdata_url
+
+	def fake_download_file(
+		url: str,
+		dest: Path,
+		*,
+		sha256: str = "",
+		label: str = "",
+		progress: object | None = None,
+		headers: dict[str, str] | None = None,
+	):
+		_ = sha256, label, progress, headers
+		if url == tessdata_url("osd"):
+			dest.write_bytes(b"fake-osd")
+			return
+		raise AssertionError(f"unexpected download_file url: {url}")
+
+	monkeypatch.setattr(vendor_mod, "download_file", fake_download_file)
+
 	prefix = tmp_path / "prefix"
 	binary = vendor_mod.install_tesseract(prefix)
 
@@ -281,6 +304,7 @@ def test_given_tesseract_brew_bottles_when_installing_then_assembles_relocatable
 	assert (prefix / "vendor" / "tesseract" / "lib" / "libtesseract.5.dylib").is_file()
 	assert (prefix / "vendor" / "tesseract" / "lib" / "libleptonica.6.dylib").is_file()
 	assert (prefix / "vendor" / "tesseract" / "tessdata" / "eng.traineddata").read_bytes() == b"fake-eng"
+	assert (prefix / "vendor" / "tesseract" / "tessdata" / "osd.traineddata").read_bytes() == b"fake-osd"
 	assert not (prefix / "vendor" / "tesseract" / "_bottles").exists()
 
 

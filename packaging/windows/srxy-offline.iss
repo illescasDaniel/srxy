@@ -90,6 +90,8 @@ english.TypeCustom=Custom installation
 english.InstallerLabel=Installer
 english.CompCore=Srxy application
 english.CompTesseract=Text in images (Tesseract; downloaded during install)
+english.TessLangPageCaption=OCR languages
+english.TessLangPageDescription=Pick languages for text in images (English + orientation always on).
 english.CompFfmpeg=Audio/video helper (ffmpeg; downloaded during install)
 english.CompSemantic=Smarter search packages (semantic extras; needs a GPU)
 english.CompModels=Download AI models now (requires Smarter search)
@@ -141,6 +143,8 @@ spanish.TypeCustom=Instalación personalizada
 spanish.InstallerLabel=Instalador
 spanish.CompCore=Aplicación Srxy
 spanish.CompTesseract=Texto en imágenes (Tesseract; se descarga durante la instalación)
+spanish.TessLangPageCaption=Idiomas de OCR
+spanish.TessLangPageDescription=Elige idiomas para texto en imágenes (inglés + orientación siempre activos).
 spanish.CompFfmpeg=Ayuda de audio y vídeo (ffmpeg; se descarga durante la instalación)
 spanish.CompSemantic=Paquetes de búsqueda más inteligente (extras semantic; necesita GPU)
 spanish.CompModels=Descargar modelos de IA ahora (requiere búsqueda más inteligente)
@@ -210,6 +214,7 @@ Source: "{#PayloadDir}\*"; DestDir: "{tmp}\srxy-boot"; Flags: ignoreversion recu
 Source: "{#PrivacyEnFile}"; DestDir: "{app}"; DestName: ".srxy-installer-marker"; Flags: ignoreversion; Components: core; Check: not IsUninstallMode
 Source: "{#PrivacyEnFile}"; DestName: "privacy-en.txt"; Flags: dontcopy
 Source: "{#PrivacyEsFile}"; DestName: "privacy-es.txt"; Flags: dontcopy
+Source: "tessdata-langs.txt"; DestName: "tessdata-langs.txt"; Flags: dontcopy
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\bin\{#MyAppExeName}"; WorkingDir: "{app}"; IconFilename: "{app}\bin\{#MyAppExeName}"; Check: not IsUninstallMode
@@ -230,6 +235,9 @@ var
   PrivacyPage: TWizardPage;
   PrivacyMemo: TNewMemo;
   PrivacyCheck: TNewCheckBox;
+  TessLangPage: TWizardPage;
+  TessLangList: TNewCheckListBox;
+  TessLangCodes: TStringList;
   ProgressPage: TOutputProgressWizardPage;
   SelectedMode: Integer; { 0=install/update, 1=reinstall, 2=uninstall }
   DetectedGpu: Boolean;
@@ -586,6 +594,34 @@ begin
     Result := 'en';
 end;
 
+function TessdataLangsArg: String;
+var
+  I: Integer;
+  Codes: String;
+begin
+  Codes := '';
+  if (TessLangList <> nil) and (TessLangCodes <> nil) then
+  begin
+    for I := 0 to TessLangList.Items.Count - 1 do
+    begin
+      if TessLangList.Checked[I] and (I < TessLangCodes.Count) then
+      begin
+        if Codes <> '' then
+          Codes := Codes + ',';
+        Codes := Codes + TessLangCodes[I];
+      end;
+    end;
+  end;
+  if Codes = '' then
+  begin
+    if CompareText(ActiveLanguage, 'spanish') = 0 then
+      Codes := 'eng,osd,spa'
+    else
+      Codes := 'eng,osd';
+  end;
+  Result := Codes;
+end;
+
 function BuildEngineArgs(const Action: String): String;
 var
   Args: String;
@@ -598,7 +634,10 @@ begin
   begin
     Args := Args + ' --privacy-ack ' + PrivacyAckVersionValue;
     if WizardIsComponentSelected('tesseract') then
+    begin
       Args := Args + ' --tesseract';
+      Args := Args + ' --tessdata-langs ' + TessdataLangsArg;
+    end;
     if WizardIsComponentSelected('ffmpeg') then
       Args := Args + ' --ffmpeg';
     if WizardIsComponentSelected('semantic') then
@@ -697,6 +736,44 @@ begin
   Result := True;
 end;
 
+procedure LoadTessLangList;
+var
+  Lines: TArrayOfString;
+  I, P1, P2: Integer;
+  Line, Code, Req, LabelText: String;
+  Required, Checked, EnabledFlag: Boolean;
+begin
+  if TessLangCodes = nil then
+    TessLangCodes := TStringList.Create;
+  TessLangCodes.Clear;
+  ExtractTemporaryFile('tessdata-langs.txt');
+  if not LoadStringsFromFile(ExpandConstant('{tmp}\tessdata-langs.txt'), Lines) then
+    Exit;
+  for I := 0 to GetArrayLength(Lines) - 1 do
+  begin
+    Line := Trim(Lines[I]);
+    if Line = '' then
+      Continue;
+    P1 := Pos('|', Line);
+    if P1 = 0 then
+      Continue;
+    Code := Copy(Line, 1, P1 - 1);
+    Line := Copy(Line, P1 + 1, MaxInt);
+    P2 := Pos('|', Line);
+    if P2 = 0 then
+      Continue;
+    Req := Copy(Line, 1, P2 - 1);
+    LabelText := Copy(Line, P2 + 1, MaxInt);
+    Required := Req = '1';
+    EnabledFlag := not Required;
+    Checked := Required;
+    if (not Required) and (CompareText(ActiveLanguage, 'spanish') = 0) and (CompareText(Code, 'spa') = 0) then
+      Checked := True;
+    TessLangList.AddCheckBox(LabelText + ' (' + Code + ')', '', 0, Checked, EnabledFlag, False, nil);
+    TessLangCodes.Add(Code);
+  end;
+end;
+
 procedure InitializeWizard;
 begin
   SelectedMode := 0;
@@ -736,6 +813,18 @@ begin
   PrivacyCheck.Width := PrivacyPage.SurfaceWidth;
   { Silent/CI installs acknowledge via --privacy-ack on the engine CLI. }
   PrivacyCheck.Checked := WizardSilent;
+
+  TessLangPage := CreateCustomPage(
+    wpSelectComponents,
+    CustomMessage('TessLangPageCaption'),
+    CustomMessage('TessLangPageDescription'));
+  TessLangList := TNewCheckListBox.Create(TessLangPage);
+  TessLangList.Parent := TessLangPage.Surface;
+  TessLangList.Left := 0;
+  TessLangList.Top := 0;
+  TessLangList.Width := TessLangPage.SurfaceWidth;
+  TessLangList.Height := TessLangPage.SurfaceHeight;
+  LoadTessLangList;
 
   ProgressPage := CreateOutputProgressPage(
     CustomMessage('ProgressCaption'),
@@ -825,10 +914,17 @@ begin
       Result := True;
     if PageID = PrivacyPage.ID then
       Result := True;
+    if (TessLangPage <> nil) and (PageID = TessLangPage.ID) then
+      Result := True;
   end;
   { Silent installs skip the interactive privacy page; engine still gets --privacy-ack. }
   if WizardSilent and (PageID = PrivacyPage.ID) then
     Result := True;
+  if (TessLangPage <> nil) and (PageID = TessLangPage.ID) then
+  begin
+    if WizardSilent or (not WizardIsComponentSelected('tesseract')) then
+      Result := True;
+  end;
 end;
 
 function UpdateReadyMemo(Space, NewLine, MemoUserInfoInfo, MemoDirInfo, MemoTypeInfo,

@@ -49,6 +49,7 @@ class InstallOptions:
 	add_to_path: bool = True
 	srxy_spec: str = ""
 	confirm_unsafe: bool = False
+	tessdata_langs: tuple[str, ...] = ()
 
 
 @dataclass(frozen=True, slots=True)
@@ -587,7 +588,7 @@ def install_srxy(
 	if options.download_tesseract:
 		local_index, phase = phase_by_key["tesseract"]
 		emit_task(local_index, phase.label)
-		install_tesseract(prefix, progress=progress)
+		install_tesseract(prefix, progress=progress, tessdata_langs=options.tessdata_langs or None)
 		_complete_phase(progress=progress, label=phase.label)
 		vendor_tesseract = True
 	if options.download_ffmpeg:

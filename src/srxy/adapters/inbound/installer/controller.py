@@ -126,6 +126,7 @@ class InstallerController(QObject):
 	prefixChanged = Signal()
 	privacyAckChanged = Signal()
 	downloadTesseractChanged = Signal()
+	tessdataLangsChanged = Signal()
 	downloadFfmpegChanged = Signal()
 	installSemanticChanged = Signal()
 	prefetchModelsChanged = Signal()
@@ -158,10 +159,12 @@ class InstallerController(QObject):
 		self._install_semantic = self._has_gpu
 		self._prefetch_models = False
 		self._add_to_path = True
+		from srxy.adapters.inbound.installer.tessdata_langs import default_tessdata_langs
 		from srxy.i18n import get_language, resolve_language, set_language
 
 		set_language(resolve_language())
 		self._language = get_language()
+		self._tessdata_langs = list(default_tessdata_langs(self._language))
 		self._busy = False
 		self._status = ""
 		self._error = ""
@@ -252,6 +255,47 @@ class InstallerController(QObject):
 		if self._download_tesseract != value:
 			self._download_tesseract = value
 			self.downloadTesseractChanged.emit()
+			self.tessdataLangsChanged.emit()
+
+	@Property(list, notify=tessdataLangsChanged)  # type: ignore[arg-type]
+	def tessdataLanguageOptions(self) -> list[dict[str, object]]:
+		from srxy.adapters.inbound.installer.tessdata_langs import selectable_tessdata_languages
+
+		selected = set(self._tessdata_langs)
+		rows: list[dict[str, object]] = []
+		for lang in selectable_tessdata_languages():
+			rows.append(
+				{
+					"code": lang.code,
+					"label": lang.display_name,
+					"required": lang.required,
+					"checked": lang.code in selected or lang.required,
+					"bytes": lang.bytes_size,
+				}
+			)
+		return rows
+
+	@Property(str, notify=tessdataLangsChanged)
+	def tessdataLangsCsv(self) -> str:
+		return ",".join(self._tessdata_langs)
+
+	@Slot(str, bool)
+	def setTessdataLang(self, code: str, checked: bool):
+		from srxy.adapters.inbound.installer.tessdata_langs import REQUIRED_TESSDATA_LANGS, is_selectable_tessdata_code
+
+		normalized = code.strip().lower()
+		if normalized in REQUIRED_TESSDATA_LANGS:
+			return
+		if not is_selectable_tessdata_code(normalized):
+			return
+		current = list(self._tessdata_langs)
+		if checked and normalized not in current:
+			current.append(normalized)
+			self._tessdata_langs = current
+			self.tessdataLangsChanged.emit()
+		elif not checked and normalized in current:
+			self._tessdata_langs = [item for item in current if item != normalized]
+			self.tessdataLangsChanged.emit()
 
 	@Property(bool, notify=downloadFfmpegChanged)
 	def downloadFfmpeg(self) -> bool:
@@ -321,6 +365,7 @@ class InstallerController(QObject):
 
 	@Slot(str)
 	def setLanguage(self, value: str):
+		from srxy.adapters.inbound.installer.tessdata_langs import locale_to_tessdata
 		from srxy.application.settings import set_language_setting
 		from srxy.i18n import get_language, set_language
 
@@ -328,6 +373,10 @@ class InstallerController(QObject):
 		set_language_setting(value)
 		self._language = get_language()
 		self.languageChanged.emit()
+		mapped = locale_to_tessdata(self._language)
+		if mapped and mapped not in self._tessdata_langs:
+			self._tessdata_langs = [*self._tessdata_langs, mapped]
+			self.tessdataLangsChanged.emit()
 
 	@Slot(str, result=str)
 	def i18nTr(self, key: str) -> str:
@@ -530,6 +579,8 @@ class InstallerController(QObject):
 		self._dispose_worker(wait_ms=thread_wait_ms)
 
 	def _install_options(self, prefix: Path, *, confirm_unsafe: bool) -> InstallOptions:
+		from srxy.adapters.inbound.installer.tessdata_langs import normalize_tessdata_langs
+
 		return InstallOptions(
 			prefix=prefix,
 			download_tesseract=self._download_tesseract,
@@ -538,6 +589,7 @@ class InstallerController(QObject):
 			prefetch_models=self._prefetch_models and self._install_semantic,
 			add_to_path=self._add_to_path,
 			confirm_unsafe=confirm_unsafe,
+			tessdata_langs=normalize_tessdata_langs(self._tessdata_langs),
 		)
 
 	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):

@@ -175,6 +175,9 @@
 				body: JSON.stringify({
 					privacy_ack: true,
 					prefix: els.prefix.value.trim(),
+					languages: Array.isArray(navigator.languages) && navigator.languages.length
+						? Array.from(navigator.languages)
+						: [navigator.language || "en"],
 				}),
 			});
 		} catch (err) {

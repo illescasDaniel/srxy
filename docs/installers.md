@@ -18,14 +18,14 @@ Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/
 ### Offline wizard
 
 - Choose **Install or update**, **Reinstall**, or **Uninstall**.
-- Acknowledge the privacy notice, then optionally vendor Tesseract / ffmpeg / semantic extras and prefetch models.
+- Acknowledge the privacy notice, then optionally vendor Tesseract / ffmpeg / semantic extras and prefetch models. When Tesseract is selected, choose OCR language packs (English + orientation detection always included; UI language pre-checked).
 - Optional PATH block in your shell rc (`# >>> srxy PATH >>>`).
 
 ### Online one-click
 
 - Opens your default browser to a preparing page, then the install UI on `127.0.0.1` only.
 - First launch may download pinned `uv`, managed Python, and the srxy installer package into `~/.cache/srxy/online-bootstrap/` (needs network).
-- Always vendors uv / tesseract / ffmpeg and adds PATH; smarter-search packages only when a GPU/MPS is detected. Model weights are **not** prefetched.
+- Always vendors uv / tesseract / ffmpeg and adds PATH; smarter-search packages only when a GPU/MPS is detected. Model weights are **not** prefetched. OCR languages are chosen automatically: English + orientation detection + every mapped browser/system language.
 - No reinstall/uninstall UI — use the offline wizard or remove the prefix manually. Closing the browser tab stops the process.
 
 <img src="images/installer-online.png" alt="srxy online web installer" width="400" />
