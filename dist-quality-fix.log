@@ -1,3 +1,0 @@
-./scripts/quality/checks.sh: line 24: flock: command not found
-error: another quality gate is already running (lock: /c/Users/kaumi/Documents/Projects/srxy-related/srxy/.srxy-quality-gate.lock).
-Stop leftover checks.sh / pytest processes for this repo, then retry.
