@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import sys
 
 from PySide6.QtCore import QCoreApplication, Qt
@@ -72,8 +73,14 @@ def apply_qt_quick_theme(app: QCoreApplication):
 	- Windows: ``Universal`` (WinUI-like), falling back to ``Windows``.
 	- macOS: ``macOS`` (native Aqua controls).
 	- Other: Qt default (typically ``Fusion`` on Linux).
+
+	Windows Universal defaults to Light unless ``QT_QUICK_CONTROLS_UNIVERSAL_THEME``
+	is set (or ``Universal.theme`` is set in QML). We use the env var on Windows
+	only so shared QML never imports Universal (which would force that style on
+	macOS).
 	"""
 	if sys.platform == "win32":
+		os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "System")
 		if not _set_quick_style("Universal"):
 			_set_quick_style("Windows")
 		follow_system_color_scheme(app)
