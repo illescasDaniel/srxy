@@ -214,6 +214,9 @@ ApplicationWindow {
 
 	component TermRow: RowLayout {
 		property int termIndex: 0
+		// Capture ApplicationWindow before Repeater teardown; `root` is
+		// undefined while a removed delegate is destroyed.
+		readonly property var appWindow: root
 		readonly property var termRow: termIndex >= 0 && termIndex < termModel.count
 			? termModel.get(termIndex) : null
 		spacing: 4
@@ -221,28 +224,28 @@ ApplicationWindow {
 			visible: termIndex > 0
 			model: 2
 			currentIndex: termRow && termRow.join === "and" ? 1 : 0
-			displayText: root.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
+			displayText: appWindow.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
 			delegate: ItemDelegate {
 				required property int index
 				width: parent ? parent.width : 80
-				text: root.t(index === 1 ? "gui.join.and" : "gui.join.or")
+				text: appWindow.t(index === 1 ? "gui.join.and" : "gui.join.or")
 			}
 			onActivated: {
 				if (!termRow)
 					return
 				termModel.setProperty(termIndex, "join", currentIndex === 1 ? "and" : "or")
-				root.syncTermRows()
+				appWindow.syncTermRows()
 			}
 		}
 		TextField {
 			Layout.fillWidth: true
 			text: termRow ? termRow.term : ""
-			placeholderText: root.t("gui.term_placeholder")
+			placeholderText: appWindow.t("gui.term_placeholder")
 			onTextChanged: {
 				if (!termRow)
 					return
 				termModel.setProperty(termIndex, "term", text)
-				root.syncTermRows()
+				appWindow.syncTermRows()
 			}
 			Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 		}
@@ -250,10 +253,12 @@ ApplicationWindow {
 			text: "−"
 			visible: termModel.count > 1
 			onClicked: {
-				if (!termRow)
+				const idx = termIndex
+				if (idx < 0 || idx >= termModel.count)
 					return
-				termModel.remove(termIndex)
-				root.syncTermRows()
+				const sync = appWindow.syncTermRows
+				termModel.remove(idx)
+				Qt.callLater(sync)
 			}
 		}
 	}
@@ -340,7 +345,7 @@ ApplicationWindow {
 						Layout.fillWidth: true
 						Layout.preferredWidth: 1
 						Layout.alignment: Qt.AlignTop
-						readonly property real maxBodyHeight: 200
+						readonly property real maxBodyHeight: 220
 						readonly property real chromeHeight: whatGroup.topPadding + whatGroup.bottomPadding
 						readonly property real desiredHeight: Math.min(
 							maxBodyHeight + chromeHeight,
@@ -362,7 +367,9 @@ ApplicationWindow {
 							ScrollView {
 								id: whatScroll
 								anchors.fill: parent
-								clip: true
+								// Only clip when scrolling — otherwise Material's
+								// outlined floating label gets cut by the viewport.
+								clip: contentHeight > height + 1
 								ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 								ScrollBar.vertical.policy: contentHeight > height + 1
 									? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
@@ -371,8 +378,15 @@ ApplicationWindow {
 									id: whatBody
 									width: whatScroll.width
 									spacing: 4
+									// Breathing room for Material outlined TextField
+									// floating labels / focus rings.
+									readonly property real fieldInset: 10
 									RowLayout {
 										Layout.fillWidth: true
+										Layout.leftMargin: whatBody.fieldInset
+										Layout.rightMargin: whatBody.fieldInset
+										Layout.topMargin: 12
+										Layout.bottomMargin: 4
 										spacing: 4
 										StackLayout {
 											id: queryModeStack
@@ -452,6 +466,8 @@ ApplicationWindow {
 										opacity: 0.7
 										wrapMode: Text.Wrap
 										Layout.fillWidth: true
+										Layout.leftMargin: whatBody.fieldInset
+										Layout.rightMargin: whatBody.fieldInset
 									}
 								}
 							}
