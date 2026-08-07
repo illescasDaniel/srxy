@@ -196,18 +196,6 @@ ApplicationWindow {
 		onClicked: showHelp(helpKey)
 	}
 
-	component SummaryInfoButton: ToolButton {
-		property string summary: ""
-		text: "i"
-		flat: true
-		implicitWidth: 28
-		implicitHeight: 28
-		font.bold: true
-		opacity: summary.length > 0 ? 1.0 : 0.45
-		ToolTip.visible: hovered && summary.length > 0
-		ToolTip.text: summary
-	}
-
 	component WarningButton: ToolButton {
 		property string featureKey: ""
 		text: "!"
@@ -345,112 +333,126 @@ ApplicationWindow {
 					Layout.alignment: Qt.AlignTop
 					spacing: 8
 
-					GroupBox {
-						id: whatGroup
-						title: root.t("gui.section.what")
+					// Wrapper owns Layout width/height so Material GroupBox
+					// implicitWidth (content ↔ chrome) cannot loop.
+					Item {
+						id: whatWrapper
 						Layout.fillWidth: true
+						Layout.preferredWidth: 1
 						Layout.alignment: Qt.AlignTop
-						// Grow with content up to this cap, then scroll inside.
-						readonly property real chromeHeight: topPadding + bottomPadding
 						readonly property real maxBodyHeight: 200
-						Layout.maximumHeight: maxBodyHeight + chromeHeight
-						Layout.preferredHeight: Math.min(
+						readonly property real chromeHeight: whatGroup.topPadding + whatGroup.bottomPadding
+						readonly property real desiredHeight: Math.min(
 							maxBodyHeight + chromeHeight,
 							whatBody.implicitHeight + chromeHeight
 						)
-						ScrollView {
-							id: whatScroll
+						Layout.maximumHeight: maxBodyHeight + chromeHeight
+						Layout.preferredHeight: desiredHeight
+						implicitWidth: 100
+						implicitHeight: desiredHeight
+
+						GroupBox {
+							id: whatGroup
+							title: root.t("gui.section.what")
 							anchors.fill: parent
-							clip: true
-							ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
-							ScrollBar.vertical.policy: contentHeight > height + 1
-								? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
-							contentWidth: availableWidth
-							ColumnLayout {
-								id: whatBody
-								width: whatScroll.availableWidth
-								spacing: 4
-								RowLayout {
-									Layout.fillWidth: true
+							// Material computes implicitWidth from fill-anchored
+							// content (loops). Actual size comes from whatWrapper.
+							implicitWidth: 1
+							implicitHeight: 1
+							ScrollView {
+								id: whatScroll
+								anchors.fill: parent
+								clip: true
+								ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+								ScrollBar.vertical.policy: contentHeight > height + 1
+									? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+								contentWidth: width
+								ColumnLayout {
+									id: whatBody
+									width: whatScroll.width
 									spacing: 4
-									StackLayout {
-										id: queryModeStack
+									RowLayout {
 										Layout.fillWidth: true
-										currentIndex: modeBox.currentIndex
-										Layout.preferredHeight: currentIndex === 0
-											? simpleQuery.implicitHeight
-											: (currentIndex === 1 ? multiTermColumn.implicitHeight : advancedQuery.implicitHeight)
-										TextField {
-											id: simpleQuery
-											objectName: "simpleQueryField"
+										spacing: 4
+										StackLayout {
+											id: queryModeStack
 											Layout.fillWidth: true
-											Layout.preferredHeight: implicitHeight
-											placeholderText: root.t("gui.search_placeholder")
-											text: controller ? controller.simpleQuery : ""
-											onTextChanged: if (controller) controller.simpleQuery = text
-											Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-										}
-										ColumnLayout {
-											id: multiTermColumn
-											spacing: 2
-											width: parent.width
-											Repeater {
-												model: termModel.count
-												delegate: TermRow {
-													termIndex: index
-													Layout.fillWidth: true
-													width: parent.width
+											currentIndex: modeBox.currentIndex
+											Layout.preferredHeight: currentIndex === 0
+												? simpleQuery.implicitHeight
+												: (currentIndex === 1 ? multiTermColumn.implicitHeight : advancedQuery.implicitHeight)
+											TextField {
+												id: simpleQuery
+												objectName: "simpleQueryField"
+												Layout.fillWidth: true
+												Layout.preferredHeight: implicitHeight
+												placeholderText: root.t("gui.search_placeholder")
+												text: controller ? controller.simpleQuery : ""
+												onTextChanged: if (controller) controller.simpleQuery = text
+												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+											}
+											ColumnLayout {
+												id: multiTermColumn
+												spacing: 2
+												width: parent.width
+												Repeater {
+													model: termModel.count
+													delegate: TermRow {
+														termIndex: index
+														Layout.fillWidth: true
+														width: parent.width
+													}
+												}
+												Button {
+													text: root.t("gui.add_term")
+													onClicked: {
+														termModel.append({ term: "", join: "or" })
+														root.syncTermRows()
+													}
 												}
 											}
-											Button {
-												text: root.t("gui.add_term")
-												onClicked: {
-													termModel.append({ term: "", join: "or" })
-													root.syncTermRows()
-												}
+											TextField {
+												id: advancedQuery
+												objectName: "advancedQueryField"
+												Layout.fillWidth: true
+												Layout.preferredHeight: implicitHeight
+												placeholderText: root.t("gui.advanced_placeholder")
+												text: controller ? controller.advancedQuery : ""
+												onTextChanged: if (controller) controller.advancedQuery = text
+												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 											}
 										}
-										TextField {
-											id: advancedQuery
-											objectName: "advancedQueryField"
-											Layout.fillWidth: true
-											Layout.preferredHeight: implicitHeight
-											placeholderText: root.t("gui.advanced_placeholder")
-											text: controller ? controller.advancedQuery : ""
-											onTextChanged: if (controller) controller.advancedQuery = text
-											Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-										}
-									}
-									ComboBox {
-										id: modeBox
-										objectName: "queryModeBox"
-										model: 3
-										implicitWidth: 120
-										Layout.alignment: Qt.AlignTop
-										displayText: root.t(
-											["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
-										)
-										delegate: ItemDelegate {
-											required property int index
-											width: modeBox.width
-											text: root.t(
-												["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+										ComboBox {
+											id: modeBox
+											objectName: "queryModeBox"
+											model: 3
+											implicitWidth: 120
+											Layout.alignment: Qt.AlignTop
+											displayText: root.t(
+												["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
 											)
-										}
-										onCurrentIndexChanged: {
-											const modes = ["simple", "multi", "advanced"]
-											if (controller)
-												controller.queryMode = modes[currentIndex]
+											delegate: ItemDelegate {
+												required property int index
+												width: modeBox.width
+												text: root.t(
+													["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+												)
+											}
+											onCurrentIndexChanged: {
+												const modes = ["simple", "multi", "advanced"]
+												if (controller)
+													controller.queryMode = modes[currentIndex]
+											}
 										}
 									}
-								}
-								Label {
-									objectName: "queryPreview"
-									visible: modeBox.currentIndex !== 0
-									text: controller ? controller.queryPreview : ""
-									opacity: 0.7
-									wrapMode: Text.Wrap
-									Layout.fillWidth: true
+									Label {
+										objectName: "queryPreview"
+										visible: modeBox.currentIndex !== 0
+										text: controller ? controller.queryPreview : ""
+										opacity: 0.7
+										wrapMode: Text.Wrap
+										Layout.fillWidth: true
+									}
 								}
 							}
 						}
@@ -461,12 +463,8 @@ ApplicationWindow {
 						title: root.t("gui.section.how")
 						Layout.fillWidth: false
 						Layout.alignment: Qt.AlignTop
-						Layout.preferredWidth: howButtonRow.implicitWidth
-							+ leftPadding + rightPadding
 						ColumnLayout {
 							id: howBody
-							anchors.left: parent.left
-							anchors.right: parent.right
 							spacing: 4
 							RowLayout {
 								id: howButtonRow
@@ -480,28 +478,24 @@ ApplicationWindow {
 									objectName: "optionsButton"
 									text: root.t("gui.options")
 									Layout.preferredWidth: howButtonRow.sharedButtonWidth
+									ToolTip.visible: hovered && controller && controller.optionsSummary.length > 0
+									ToolTip.text: controller ? controller.optionsSummary : ""
 									onClicked: {
 										loadOptionsFromController()
 										optionsDialog.open()
 									}
-								}
-								SummaryInfoButton {
-									objectName: "optionsSummaryButton"
-									summary: controller ? controller.optionsSummary : ""
 								}
 								Button {
 									id: filtersButton
 									objectName: "filtersButton"
 									text: root.t("gui.filters")
 									Layout.preferredWidth: howButtonRow.sharedButtonWidth
+									ToolTip.visible: hovered && controller && controller.filtersSummary.length > 0
+									ToolTip.text: controller ? controller.filtersSummary : ""
 									onClicked: {
 										loadFiltersFromController()
 										filtersDialog.open()
 									}
-								}
-								SummaryInfoButton {
-									objectName: "filtersSummaryButton"
-									summary: controller ? controller.filtersSummary : ""
 								}
 							}
 						}
