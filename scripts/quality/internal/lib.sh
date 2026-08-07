@@ -108,22 +108,23 @@ lib_require_shell_tools() {
 	fi
 }
 
-# Parallelize only suites that stay safe under xdist. Torch/whisper/Qt-heavy
+# Parallelize only suites that stay safe under xdist. Torch/whisper/Qt/OCR-heavy
 # markers run serially via lib_pytest_heavy_args (see pytest.sh).
 _lib_pytest_safe_marker() {
 	if [[ "${CI:-}" == "true" ]]; then
-		# CI keeps unit+gui snapshots parallel; excludes torch-heavy markers.
+		# CI keeps unit+gui (+ocr) parallel; no serial follow-up under CI=true.
 		echo "(unit or gui) and not integration and not semantic and not transcribe"
 	else
-		echo "unit and not semantic and not transcribe and not gui and not tui and not integration"
+		# Local: OCR orientation probes thrash tesseract under xdist (timeouts/OOM).
+		echo "unit and not semantic and not transcribe and not gui and not tui and not integration and not ocr"
 	fi
 }
 
 _lib_pytest_heavy_marker() {
 	if [[ "${LIB_PYTEST_FULL:-}" == "true" ]]; then
-		echo "semantic or transcribe or gui or tui or integration or integration_full or transcribe_device_matrix"
+		echo "semantic or transcribe or gui or tui or integration or ocr or integration_full or transcribe_device_matrix"
 	else
-		echo "(semantic or transcribe or gui or tui or integration) and not integration_full and not transcribe_device_matrix"
+		echo "(semantic or transcribe or gui or tui or integration or ocr) and not integration_full and not transcribe_device_matrix"
 	fi
 }
 

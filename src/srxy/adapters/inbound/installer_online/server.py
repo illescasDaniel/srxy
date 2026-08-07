@@ -286,9 +286,10 @@ def make_handler(session: InstallSession) -> type[BaseHTTPRequestHandler]:
 					return
 				prefix_raw = str(payload.get("prefix") or "").strip()
 				prefix = Path(prefix_raw) if prefix_raw else None
+				locale_tags = _locale_tags_from_payload(payload, self.headers.get("Accept-Language", ""))
 				thread = threading.Thread(
 					target=_run_install,
-					args=(session, prefix),
+					args=(session, prefix, locale_tags),
 					daemon=True,
 				)
 				thread.start()
@@ -374,10 +375,27 @@ def _client_watchdog(
 			return
 
 
-def _run_install(session: InstallSession, prefix: Path | None):
+def _locale_tags_from_payload(payload: dict[str, object], accept_language: str) -> list[str]:
+	tags: list[str] = []
+	raw = payload.get("languages")
+	if isinstance(raw, list):
+		for item in raw:
+			if isinstance(item, str) and item.strip():
+				tags.append(item.strip())
+	elif isinstance(raw, str) and raw.strip():
+		tags.extend(part.strip() for part in raw.split(",") if part.strip())
+	# Fall back to Accept-Language: "es-BO,es;q=0.9,en;q=0.8"
+	for part in accept_language.split(","):
+		token = part.split(";", 1)[0].strip()
+		if token:
+			tags.append(token)
+	return tags
+
+
+def _run_install(session: InstallSession, prefix: Path | None, locale_tags: list[str] | None = None):
 	options = None
 	try:
-		options = build_online_install_options(prefix=prefix)
+		options = build_online_install_options(prefix=prefix, locale_tags=locale_tags or None)
 
 		def on_status(message: str):
 			session.set_status(message)

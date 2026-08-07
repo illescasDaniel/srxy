@@ -16,16 +16,44 @@ pytestmark = pytest.mark.integration
 
 
 _INTEGRATION_ROOT = Path(__file__).resolve().parent
+# Cold sentence-transformers → sklearn → scipy import + model load often exceeds the
+# default 60s pytest-timeout when charged to the first integration test (Windows).
+_INTEGRATION_TIMEOUT_SECONDS = 300
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]):
 	mark = pytest.mark.xdist_group("integration")
+	long_timeout = pytest.mark.timeout(_INTEGRATION_TIMEOUT_SECONDS)
 	for item in items:
 		try:
 			item.path.resolve().relative_to(_INTEGRATION_ROOT)
 		except ValueError:
 			continue
 		item.add_marker(mark)
+		item.add_marker(long_timeout)
+
+
+def pytest_sessionstart(session: pytest.Session):
+	"""Warm semantic models outside any test's pytest-timeout budget.
+
+	Session autouse fixtures still run in the first test's setup phase, so a 60s
+	per-test timeout can kill Windows runs while scipy DLLs load. Session start is
+	not covered by pytest-timeout's per-test timer.
+	"""
+	_ = session
+	if os.environ.get("CI", "").strip().lower() in {"1", "true", "yes", "on"}:
+		return
+	os.environ.setdefault("SRXY_SEMANTIC", "1")
+	os.environ.setdefault("SRXY_AUTO_DOWNLOAD", "1")
+	# Match file_search_semantic_image_env so image warmup can run here too.
+	os.environ.setdefault("SRXY_SEMANTIC_IMAGE", "1")
+	if not is_semantic_available():
+		return
+	if not ensure_semantic_text_model(interactive=False, auto_download=True):
+		return
+	warmup_semantic_model()
+	if is_semantic_image_available() and ensure_semantic_image_model(interactive=False, auto_download=True):
+		warmup_semantic_image_model()
 
 
 @pytest.fixture(scope="session")
@@ -65,6 +93,7 @@ def semantic_search_enabled():  # pyright: ignore[reportUnusedFunction]
 
 @pytest.fixture(scope="session", autouse=True)
 def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[reportUnusedParameter]
+	"""Require a warm semantic text model; heavy import/load happens in sessionstart."""
 	if not is_semantic_available():
 		pytest.skip(
 			"Integration tests require SRXY_SEMANTIC=1 and "
@@ -72,10 +101,8 @@ def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[repo
 		)
 	if not ensure_semantic_text_model(interactive=False, auto_download=True):
 		pytest.skip("Integration tests require the semantic text model (download failed or unavailable)")
+	# Idempotent if pytest_sessionstart already warmed; otherwise loads here (CI skip path).
 	warmup_semantic_model()
-	if os.environ.get("SRXY_SEMANTIC_IMAGE", "").strip().lower() in {"1", "true", "yes", "on"}:
-		if is_semantic_image_available() and ensure_semantic_image_model(interactive=False, auto_download=True):
-			warmup_semantic_image_model()
 
 
 @pytest.fixture(scope="module")

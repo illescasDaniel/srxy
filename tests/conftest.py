@@ -57,6 +57,11 @@ def products() -> list[Product]:
 
 
 # Platform-specific tag tests run only on macOS/Windows; deselect elsewhere (not skip).
+# Transcribe / model-load / OCR orientation probes need more than the default 60s.
+_HEAVY_TIMEOUT_MARKERS = frozenset({"transcribe", "semantic", "integration", "ocr"})
+_HEAVY_TIMEOUT_SECONDS = 300
+
+
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]):
 	deselected: list[pytest.Item] = []
 	remaining: list[pytest.Item] = []
@@ -70,3 +75,8 @@ def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item
 	if deselected:
 		config.hook.pytest_deselected(items=deselected)
 		items[:] = remaining
+
+	timeout_mark = pytest.mark.timeout(_HEAVY_TIMEOUT_SECONDS)
+	for item in items:
+		if _HEAVY_TIMEOUT_MARKERS.intersection(item.keywords):
+			item.add_marker(timeout_mark)

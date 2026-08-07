@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Regenerate docs/images/gui.png for README and docs/gui.md.
+# Regenerate docs/images/gui-<os>.png for README and docs/gui.md.
+# Writes gui-macos.png / gui-linux.png / gui-windows.png for the host OS.
 # Mirrors the TUI docs screenshot: multi-term OR query, rich options, fixture results.
+#
+# Usage:
+#   ./scripts/docs/export_gui_screenshot.sh
+#   SRXY_GUI_SCREENSHOT_OS=macos ./scripts/docs/export_gui_screenshot.sh  # force slug (rare)
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
@@ -20,23 +25,54 @@ import os
 import sys
 from pathlib import Path
 
-# Prefer a real display so grabWindow isn't blank; fall back to offscreen.
+# Prefer a real display so grabWindow isn't blank; fall back to offscreen on Linux.
 os.environ.setdefault("QT_QPA_PLATFORM", os.environ.get("QT_QPA_PLATFORM", ""))
-if not os.environ.get("DISPLAY") and not os.environ.get("WAYLAND_DISPLAY"):
+if (
+	not os.environ.get("DISPLAY")
+	and not os.environ.get("WAYLAND_DISPLAY")
+	and sys.platform not in {"darwin", "win32"}
+):
 	os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
+# Docs screenshots stay English + light regardless of host locale / dark mode.
+os.environ.setdefault("SRXY_LANGUAGE", "en")
+os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_THEME", "Light")
+os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "Light")
+# Windows: OpenGL RHI + classic fonts so grabWindow doesn't tofu Segoe UI Variable.
+if sys.platform == "win32":
+	os.environ.setdefault("QSG_RHI_BACKEND", "opengl")
+	os.environ.setdefault("QT_QPA_FONTDIR", r"C:\Windows\Fonts")
+
 from PySide6.QtCore import QMetaObject, Qt, QTimer, QUrl, Q_ARG
-from PySide6.QtGui import QGuiApplication
+from PySide6.QtGui import QFont, QFontDatabase, QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme
 from srxy.application.search_session import SearchFinishedEvent
 from srxy.domain.models import FileSearchResult, LineMatch
+from srxy.i18n import set_language
+from srxy.i18n.qt import install_qt_translator
 
-OUT = Path("docs/images/gui.png")
+set_language("en")
+
+
+def _os_slug() -> str:
+	override = (os.environ.get("SRXY_GUI_SCREENSHOT_OS") or "").strip().lower()
+	if override in {"macos", "linux", "windows"}:
+		return override
+	if sys.platform == "darwin":
+		return "macos"
+	if sys.platform == "win32":
+		return "windows"
+	return "linux"
+
+
+OS_SLUG = _os_slug()
+OUT = Path(f"docs/images/gui-{OS_SLUG}.png")
 
 
 def fixture_path(relative: str) -> Path:
@@ -104,6 +140,21 @@ results = [
 
 app = QGuiApplication(sys.argv)
 app.setApplicationName("srxy")
+app.setOrganizationName("srxy")
+# Segoe UI Variable often tofu's in grabWindow; prefer classic Segoe UI.
+if sys.platform == "win32":
+	families = set(QFontDatabase.families())
+	app.setFont(QFont("Segoe UI" if "Segoe UI" in families else "Arial", 10))
+apply_qt_quick_theme(app)
+install_qt_translator(app, "en")
+# Pin light scheme after theme apply (host may be dark).
+hints = app.styleHints()
+set_scheme = getattr(hints, "setColorScheme", None)
+color_scheme = getattr(Qt, "ColorScheme", None)
+if callable(set_scheme) and color_scheme is not None:
+	light = getattr(color_scheme, "Light", None)
+	if light is not None:
+		set_scheme(light)
 
 args = build_parser().parse_args(
 	[
@@ -111,6 +162,8 @@ args = build_parser().parse_args(
 		"tests/fixtures/file_search",
 		"--semantic-all",
 		"--content-only",
+		"--language",
+		"en",
 		"--cli",
 	]
 )
@@ -152,7 +205,8 @@ window = roots[0]
 if not isinstance(window, QQuickWindow):
 	raise SystemExit(f"unexpected root type: {type(window)}")
 window.setWidth(1200)
-window.setHeight(800)
+# Universal chrome is taller than Material/macOS; give results room on Windows.
+window.setHeight(1000 if OS_SLUG == "windows" else 800)
 window.show()
 app.processEvents()
 
@@ -176,6 +230,8 @@ app.processEvents()
 
 def grab():
 	app.processEvents()
+	window.update()
+	app.processEvents()
 	image = window.grabWindow()
 	if image.isNull():
 		raise SystemExit("grabWindow returned null image")
@@ -185,6 +241,7 @@ def grab():
 	app.quit()
 
 
-QTimer.singleShot(900, grab)
+# Windows font/scene settle is slower than macOS/Linux offscreen grabs.
+QTimer.singleShot(2000 if OS_SLUG == "windows" else 900, grab)
 raise SystemExit(app.exec())
 PY

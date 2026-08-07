@@ -19,7 +19,7 @@ Named sections top to bottom:
 | **How to search** | Options and Filters buttons (stacked) open popup dialogs; Options uses the same sections as the TUI (Where / How / Which files); each control has an **(i)** info button |
 | **Search** | Wider Search button (enabled only when path + query are usable); warning icon when the query is invalid; system highlight tint when settings are stale |
 | **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits |
-| **Search progress** | Progress bar, percentage (stays at 100% when done), status, Cancel; inactive until the first search |
+| **Search progress** | Progress bar, percentage, `current/total` file count, animated status spinner during OCR/transcribe/semantic work, Cancel; inactive until the first search |
 
 Power-ups that need optional deps or a GPU (CUDA/MPS) are grayed out when unavailable; **(i)** stays clickable and explains how to fix (install `srxy[semantic]`, Tesseract, ffmpeg, GPU PyTorch). Missing **AI model caches** do not gray out — Search prompts to download with confirm + progress dialogs (same idea as the TUI).
 
@@ -41,4 +41,8 @@ GUI text-tree snapshots live under `tests/gui/snapshots/`. Refresh:
 UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen pytest tests/gui/test_gui_snapshots.py
 ```
 
-Regenerate the README screenshot: `./scripts/docs/export_gui_screenshot.sh`
+Regenerate the README screenshot for the host OS (writes `docs/images/gui-macos.png`, `gui-linux.png`, or `gui-windows.png`):
+
+```bash
+./scripts/docs/export_gui_screenshot.sh
+```

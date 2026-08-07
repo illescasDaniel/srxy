@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import platform
 from html import escape
+from pathlib import Path
 
 from srxy.i18n import tr
 
@@ -32,6 +33,16 @@ _TESSERACT_MACOS = (
 	"tesseract_macos",
 	"https://formulae.brew.sh/formula/tesseract",
 	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
+_TESSERACT_WINDOWS = (
+	"tesseract_windows",
+	"https://github.com/UB-Mannheim/tesseract",
+	"https://docs.github.com/en/site-policy/privacy-policies/github-general-privacy-statement",
+)
+_SEVENZIP = (
+	"sevenzip",
+	"https://www.7-zip.org/",
+	"https://www.7-zip.org/",
 )
 _FFMPEG = ("ffmpeg", "https://ffmpeg.org/", "https://ffmpeg.org/")
 _FFMPEG_BUILD = (
@@ -78,6 +89,35 @@ _MODEL_WHISPER = (
 )
 
 Party = tuple[str, str, str]
+# (stable i18n key, display name, project url)
+Dep = tuple[str, str, str]
+
+_CORE_DEPS: tuple[Dep, ...] = (
+	("cryptography", "cryptography", "https://cryptography.io/"),
+	("exifread", "exifread", "https://github.com/ianare/exif-py"),
+	("jellyfish", "jellyfish", "https://github.com/jamesturk/jellyfish"),
+	("mutagen", "mutagen", "https://mutagen.readthedocs.io/"),
+	("openpyxl", "openpyxl", "https://openpyxl.readthedocs.io/"),
+	("pillow", "Pillow", "https://python-pillow.org/"),
+	("pillow_heif", "pillow-heif", "https://github.com/bigcat88/pillow_heif"),
+	("pypdf", "pypdf", "https://pypdf.readthedocs.io/"),
+	("pytesseract", "pytesseract", "https://github.com/madmaze/pytesseract"),
+	("pyside6", "PySide6", "https://doc.qt.io/qtforpython/"),
+	("python_docx", "python-docx", "https://python-docx.readthedocs.io/"),
+	("python_pptx", "python-pptx", "https://python-pptx.readthedocs.io/"),
+	("rapidfuzz", "rapidfuzz", "https://github.com/rapidfuzz/RapidFuzz"),
+	("textual", "textual", "https://textual.textualize.io/"),
+	("wordfreq", "wordfreq", "https://github.com/rspeer/wordfreq"),
+)
+
+_SEMANTIC_DEPS: tuple[Dep, ...] = (
+	("faster_whisper", "faster-whisper", "https://github.com/SYSTRAN/faster-whisper"),
+	("nvidia_cublas", "nvidia-cublas-cu12", "https://developer.nvidia.com/cublas"),
+	("rawpy", "rawpy", "https://github.com/letmaik/rawpy"),
+	("sentence_transformers", "sentence-transformers", "https://www.sbert.net/"),
+)
+
+_WINDOWS_DEPS: tuple[Dep, ...] = (("pywin32", "pywin32", "https://github.com/mhammond/pywin32"),)
 
 
 def _party_label(key: str) -> str:
@@ -103,29 +143,22 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "2"
+PRIVACY_NOTICE_VERSION = "6"
 
 
-def _copy_key(stem: str, *, for_app: bool) -> str:
-	"""Pick installer vs in-app catalog key for shared privacy prose."""
-	if stem == "title":
-		return "privacy.app_title" if for_app else "privacy.title"
-	return f"privacy.app_{stem}" if for_app else f"privacy.{stem}"
-
-
-def _vendor_source_parties(*, for_app: bool, system: str | None = None) -> list[Party]:
-	"""OS-specific vendor download sources for the installer; full set for in-app."""
+def _vendor_source_parties(*, system: str | None = None) -> list[Party]:
+	"""OS-specific vendor download sources for the current platform."""
 	host = (system or platform.system()).lower()
-	if for_app:
-		return [_TESSERACT_LINUX, _TESSERACT_MACOS, _FFMPEG_BUILD, _FFMPEG_MACOS]
 	if host == "darwin":
 		return [_TESSERACT_MACOS, _FFMPEG_MACOS]
 	if host == "linux":
 		return [_TESSERACT_LINUX, _FFMPEG_BUILD]
+	if host == "windows":
+		return [_TESSERACT_WINDOWS, _SEVENZIP, _FFMPEG_BUILD]
 	return []
 
 
-def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
+def _download_party_lines(*, html: bool) -> list[str]:
 	link = _html_link if html else _plain_link
 	bullet = "<li>" if html else "• "
 	end = "</li>" if html else ""
@@ -142,7 +175,7 @@ def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
 		f"{bullet}{link(*_TESSDATA)}{end}",
 		f"{bullet}{link(*_FFMPEG)}{end}",
 	]
-	for party in _vendor_source_parties(for_app=for_app):
+	for party in _vendor_source_parties():
 		lines.append(f"{bullet}{link(*party)}{end}")
 	ai_label = escape(tr("privacy.optional_ai")) if html else tr("privacy.optional_ai")
 	models_label = (
@@ -176,47 +209,132 @@ def _download_party_lines(*, for_app: bool, html: bool) -> list[str]:
 	return lines
 
 
-def privacy_disclaimer_text(*, for_app: bool = False) -> str:
-	"""Plain-text notice (docs / fallbacks)."""
+def _plain_dep(key: str, name: str, url: str) -> str:
+	use = tr(f"privacy.dep.use.{key}")
+	project = tr("privacy.label.project")
+	return f"{name} — {use}\n    {project}: {url}"
+
+
+def _html_dep(key: str, name: str, url: str) -> str:
+	use = escape(tr(f"privacy.dep.use.{key}"))
+	project = escape(tr("privacy.label.project"))
+	return f'{escape(name)} — {use}<br/>&nbsp;&nbsp;{project}: <a href="{escape(url, quote=True)}">{escape(url)}</a>'
+
+
+def _dep_group_lines(*, html: bool, heading_key: str, deps: tuple[Dep, ...]) -> list[str]:
+	fmt = _html_dep if html else _plain_dep
+	heading = escape(tr(heading_key)) if html else tr(heading_key)
+	if html:
+		lines = [f"<li><b>{heading}</b><ul>"]
+		for dep in deps:
+			lines.append(f"<li>{fmt(*dep)}</li>")
+		lines.append("</ul></li>")
+		return lines
+	lines = [f"• {heading}"]
+	for dep in deps:
+		for part in fmt(*dep).split("\n"):
+			lines.append(f"  {part}")
+	return lines
+
+
+def _library_section_lines(*, html: bool) -> list[str]:
+	"""Direct runtime libraries (via PyPI) with project links and brief uses."""
+	if html:
+		parts = [
+			f"<p><b>{escape(tr('privacy.deps_heading'))}</b></p>",
+			f"<p>{escape(tr('privacy.deps_intro'))}</p>",
+			"<ul>",
+			*_dep_group_lines(html=True, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
+			*_dep_group_lines(html=True, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
+			*_dep_group_lines(html=True, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
+			"</ul>",
+		]
+		return parts
 	parts = [
-		tr(_copy_key("title", for_app=for_app)),
+		tr("privacy.deps_heading"),
 		"",
-		tr(_copy_key("intro_mit", for_app=for_app)),
+		tr("privacy.deps_intro"),
 		"",
-		tr(_copy_key("intro_downloads", for_app=for_app)),
+		*_dep_group_lines(html=False, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
 		"",
-		tr(_copy_key("what_heading", for_app=for_app)),
+		*_dep_group_lines(html=False, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
 		"",
-		*_download_party_lines(for_app=for_app, html=False),
-		"",
-		tr("privacy.section_privacy"),
-		"",
-		f"• {tr('privacy.bullet_local')}",
-		f"• {tr('privacy.bullet_third_party')}",
-		f"• {tr('privacy.bullet_cache')}",
-		"",
-		tr(_copy_key("ack_footer", for_app=for_app)),
+		*_dep_group_lines(html=False, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
 	]
-	return "\n".join(parts)
+	return parts
 
 
-def privacy_disclaimer_html(*, for_app: bool = False) -> str:
+def privacy_disclaimer_text(*, language: str | None = None) -> str:
+	"""Plain-text notice (docs / fallbacks).
+
+	When ``language`` is set, temporarily switch the active catalog for this call.
+	"""
+	from srxy.i18n import get_language, set_language
+
+	previous: str | None = None
+	if language is not None:
+		previous = get_language()
+		set_language(language)
+	try:
+		parts = [
+			tr("privacy.title"),
+			"",
+			tr("privacy.intro_mit"),
+			"",
+			tr("privacy.intro_downloads"),
+			"",
+			tr("privacy.what_heading"),
+			"",
+			*_download_party_lines(html=False),
+			"",
+			*_library_section_lines(html=False),
+			"",
+			tr("privacy.section_privacy"),
+			"",
+			f"• {tr('privacy.bullet_local')}",
+			f"• {tr('privacy.bullet_third_party')}",
+			f"• {tr('privacy.bullet_cache')}",
+			"",
+			tr("privacy.section_disclaimer"),
+			"",
+			f"• {tr('privacy.bullet_warranty')}",
+			"",
+			tr("privacy.ack_footer"),
+		]
+		return "\n".join(parts)
+	finally:
+		if previous is not None:
+			set_language(previous)
+
+
+def write_privacy_notice_utf8(path: Path, *, language: str):
+	"""Write a UTF-8 privacy notice with BOM (Inno Setup LoadStringsFromFile-friendly)."""
+	text = privacy_disclaimer_text(language=language)
+	path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
+
+
+def privacy_disclaimer_html() -> str:
 	"""Rich-text notice with clickable links for the installer / About UI."""
 	parts = [
-		f"<p><b>{escape(tr(_copy_key('title', for_app=for_app)))}</b></p>",
-		f"<p>{escape(tr(_copy_key('intro_mit', for_app=for_app)))}</p>",
-		f"<p>{escape(tr(_copy_key('intro_downloads', for_app=for_app)))}</p>",
-		f"<p><b>{escape(tr(_copy_key('what_heading', for_app=for_app)))}</b></p>",
+		f"<p><b>{escape(tr('privacy.title'))}</b></p>",
+		f"<p>{escape(tr('privacy.intro_mit'))}</p>",
+		f"<p>{escape(tr('privacy.intro_downloads'))}</p>",
+		f"<p><b>{escape(tr('privacy.what_heading'))}</b></p>",
 		"<ul>",
-		*_download_party_lines(for_app=for_app, html=True),
+		*_download_party_lines(html=True),
 		"</ul>",
+		*_library_section_lines(html=True),
 		f"<p><b>{escape(tr('privacy.section_privacy'))}</b></p>",
 		"<ul>",
 		f"<li>{escape(tr('privacy.bullet_local'))}</li>",
 		f"<li>{escape(tr('privacy.bullet_third_party'))}</li>",
 		f"<li>{escape(tr('privacy.bullet_cache'))}</li>",
 		"</ul>",
-		f"<p>{escape(tr(_copy_key('ack_footer', for_app=for_app)))}</p>",
+		f"<p><b>{escape(tr('privacy.section_disclaimer'))}</b></p>",
+		"<ul>",
+		f"<li>{escape(tr('privacy.bullet_warranty'))}</li>",
+		"</ul>",
+		f"<p>{escape(tr('privacy.ack_footer'))}</p>",
 	]
 	return "\n".join(parts)
 
@@ -225,4 +343,5 @@ __all__ = [
 	"PRIVACY_NOTICE_VERSION",
 	"privacy_disclaimer_html",
 	"privacy_disclaimer_text",
+	"write_privacy_notice_utf8",
 ]

@@ -1,4 +1,4 @@
-"""Desktop install / uninstall wizard (Linux AppImage first; macOS/Windows later)."""
+"""Desktop install / uninstall wizard (PySide on Linux/macOS; headless CLI for Windows Inno)."""
 
 from __future__ import annotations
 

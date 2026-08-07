@@ -27,7 +27,7 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 ## Desktop installers (optional)
 
-Linux AppImages and macOS `.app` wrappers are available now. Windows desktop installers are still in progress. Short reference: [installers.md](installers.md).
+Linux AppImages, macOS `.app` / DMG wrappers, and a Windows offline Inno Setup installer are available. Short reference: [installers.md](installers.md).
 
 PyPI / `uv tool install` remain the primary install paths. On Linux you can also use a **desktop installer AppImage**:
 

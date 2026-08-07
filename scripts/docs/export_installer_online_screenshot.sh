@@ -27,7 +27,7 @@ import sys
 import threading
 from pathlib import Path
 
-from PySide6.QtCore import QTimer, QUrl
+from PySide6.QtCore import Qt, QTimer, QUrl
 from PySide6.QtWidgets import QApplication
 from PySide6.QtWebEngineWidgets import QWebEngineView
 
@@ -46,6 +46,14 @@ thread.start()
 
 app = QApplication(sys.argv)
 app.setApplicationName("srxy-installer-online-screenshot")
+# Docs screenshots stay light regardless of host dark mode (matches CSS light defaults).
+hints = app.styleHints()
+set_scheme = getattr(hints, "setColorScheme", None)
+color_scheme = getattr(Qt, "ColorScheme", None)
+if callable(set_scheme) and color_scheme is not None:
+	light = getattr(color_scheme, "Light", None)
+	if light is not None:
+		set_scheme(light)
 
 view = QWebEngineView()
 view.resize(900, 820)

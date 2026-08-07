@@ -40,8 +40,23 @@ def _bundled_wheel_candidates() -> list[Path]:
 		share = Path(appdir) / "usr" / "share" / "srxy"
 		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
 		candidates.append(share / "srxy.whl")
+	# Windows Inno offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
+	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
+	if payload:
+		share = Path(payload) / "share" / "srxy"
+		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
+		candidates.append(share / "srxy.whl")
+	# Relative to the frozen/bootstrap tree: share/srxy next to the installer package.
 	here = Path(__file__).resolve().parent
 	candidates.extend(sorted((here / "wheels").glob("srxy-*.whl"), reverse=True))
+	# packaging layout: <payload>/share/srxy when running from bootstrap venv site-packages
+	# that still has a sibling share directory at the payload root.
+	for parent in here.parents:
+		share = parent / "share" / "srxy"
+		if share.is_dir():
+			candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
+			candidates.append(share / "srxy.whl")
+			break
 	return candidates
 
 
@@ -246,23 +261,50 @@ def _is_local_path_spec(spec: str) -> bool:
 	return candidate.exists()
 
 
-def with_semantic_extra(spec: str) -> str:
-	"""Insert ``[semantic]`` into a PEP 508 requirement (before any version pin).
+def with_extras(spec: str, *extras: str) -> str:
+	"""Insert extras into a PEP 508 requirement (before any version pin).
 
-	Local wheel/path specs become ``srxy[semantic] @ file:///...`` so ``uv pip``
-	accepts extras with a local artifact.
+	Local wheel/path specs become ``srxy[extra,...] @ file:///...`` so ``uv pip``
+	accepts extras with a local artifact. Existing extras are merged (order preserved).
 	"""
+	wanted: list[str] = []
+	for extra in extras:
+		name = extra.strip()
+		if name and name not in wanted:
+			wanted.append(name)
 	text = spec.strip()
-	if "[" in text:
+	if not wanted:
 		return text
+
+	# Already has ``name[extras]...`` (including ``name[extras] @ uri``).
+	bracket = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)\[([^\]]*)\](.*)$", text)
+	if bracket is not None:
+		existing = [part.strip() for part in bracket.group(2).split(",") if part.strip()]
+		merged = existing[:]
+		for name in wanted:
+			if name not in merged:
+				merged.append(name)
+		return f"{bracket.group(1)}[{','.join(merged)}]{bracket.group(3)}"
+
+	extra_clause = ",".join(wanted)
 	if _is_local_path_spec(text):
 		path = Path(text).expanduser().resolve()
-		return f"srxy[semantic] @ {path.as_uri()}"
+		return f"srxy[{extra_clause}] @ {path.as_uri()}"
 	# name==1.2.3 / name>=1.2 / name~=1.2.3 — extras must precede the version clause.
 	match = re.match(r"^([A-Za-z0-9][A-Za-z0-9._-]*)(\s*(?:[<>=!~]=?|===).+)$", text)
 	if match is not None:
-		return f"{match.group(1)}[semantic]{match.group(2)}"
-	return f"{text}[semantic]"
+		return f"{match.group(1)}[{extra_clause}]{match.group(2)}"
+	return f"{text}[{extra_clause}]"
+
+
+def with_semantic_extra(spec: str) -> str:
+	"""Insert ``[semantic]`` into a PEP 508 requirement (before any version pin)."""
+	return with_extras(spec, "semantic")
+
+
+def with_windows_extra(spec: str) -> str:
+	"""Insert ``[windows]`` into a PEP 508 requirement (before any version pin)."""
+	return with_extras(spec, "windows")
 
 
 __all__ = [
@@ -278,5 +320,7 @@ __all__ = [
 	"version_at_least",
 	"version_newer",
 	"wheel_version_from_path",
+	"with_extras",
 	"with_semantic_extra",
+	"with_windows_extra",
 ]

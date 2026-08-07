@@ -63,12 +63,45 @@ def has_apple_mps_gpu() -> bool:
 	return sys.platform == "darwin" and platform.machine() == "arm64"
 
 
+def _has_nvidia_windows_nofork() -> bool:
+	"""Detect NVIDIA GPU on Windows without any subprocess or torch import.
+
+	Checks for NVAPI / CUDA DLL presence (driver-installed artefacts) and, as
+	a fallback, the kernel-mode driver service registry key.  Both are safe to
+	call from Qt worker threads.
+	"""
+	if sys.platform != "win32":
+		return False
+
+	# Fast path: NVAPI and CUDA stub DLLs exist whenever NVIDIA drivers are
+	# installed — no subprocess required.
+	sysroot = Path(os.environ.get("SystemRoot", r"C:\Windows"))
+	system32 = sysroot / "System32"
+	if (system32 / "nvapi64.dll").is_file() or (system32 / "nvcuda.dll").is_file():
+		return True
+
+	# Fallback: kernel-mode display driver service key (present even when the
+	# DLL search path differs, e.g. WOW64-redirected System32).
+	try:
+		import winreg  # stdlib, safe for QThread contexts — no fork, no subprocess
+
+		with winreg.OpenKey(
+			winreg.HKEY_LOCAL_MACHINE,
+			r"SYSTEM\CurrentControlSet\Services\nvlddmkm",
+		):
+			return True
+	except (ImportError, OSError):
+		pass
+
+	return False
+
+
 def has_accelerated_gpu_nofork() -> bool:
 	"""Qt-safe accelerator probe: no torch import and no subprocess/fork."""
 	forced = _env_force_gpu()
 	if forced is not None:
 		return forced
-	return nvidia_device_nodes_present() or has_apple_mps_gpu()
+	return nvidia_device_nodes_present() or _has_nvidia_windows_nofork() or has_apple_mps_gpu()
 
 
 def has_nvidia_gpu() -> bool:
@@ -105,4 +138,5 @@ __all__ = [
 	"nvidia_device_nodes_present",
 	"nvidia_smi_available",
 	"nvidia_smi_reports_gpu",
+	"_has_nvidia_windows_nofork",
 ]

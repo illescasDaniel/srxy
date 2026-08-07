@@ -75,6 +75,10 @@ def set_fake_home(monkeypatch: pytest.MonkeyPatch, home: Path) -> Path:
 	text = str(resolved)
 	monkeypatch.setenv("HOME", text)
 	monkeypatch.setenv("USERPROFILE", text)
+	# Windows default install prefix uses LOCALAPPDATA\Programs\srxy.
+	# Do not create the directory here — empty fake homes must stay empty for
+	# unsafe-prefix / foreign-prefix installer tests.
+	monkeypatch.setenv("LOCALAPPDATA", str(resolved / "AppData" / "Local"))
 	monkeypatch.delenv("HOMEDRIVE", raising=False)
 	monkeypatch.delenv("HOMEPATH", raising=False)
 

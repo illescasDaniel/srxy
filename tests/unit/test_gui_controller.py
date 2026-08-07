@@ -12,8 +12,9 @@ from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
-from srxy.application.search_session import SearchFinishedEvent, SearchResultEvent
+from srxy.application.search_session import SearchActivityEvent, SearchFinishedEvent, SearchResultEvent
 from srxy.domain.models import FileSearchResult
+from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
@@ -66,6 +67,45 @@ def test_given_explicit_path_when_opening_gui_then_keeps_path(qapp: QCoreApplica
 	assert Path(str(controller.path)) == tmp_path
 
 
+@pytest.mark.parametrize(
+	"raw,expected",
+	[
+		# Windows file:/// URL still containing scheme
+		("file:///C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		# Windows path with stray leading slash (QML replace("file://","") bug)
+		("/C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		("/D:/projects/src", "D:/projects/src"),
+		# Already clean Windows path — unchanged
+		("C:/Users/kaumi/Downloads", "C:/Users/kaumi/Downloads"),
+		# Unix path — leading slash preserved
+		("/home/user/docs", "/home/user/docs"),
+		("file:///home/user/docs", "/home/user/docs"),
+		# Relative path — unchanged
+		("./relative", "./relative"),
+	],
+)
+def test_given_browsed_path_when_normalizing_then_strips_url_prefix(raw: str, expected: str):
+	from srxy.adapters.inbound.gui.controller import _normalize_browsed_path  # pyright: ignore[reportPrivateUsage]
+
+	assert _normalize_browsed_path(raw) == expected
+
+
+def test_given_windows_url_when_controller_sets_path_then_no_leading_slash(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	"""Setting a Windows-style QUrl path (file:///C:/...) normalises to C:/..."""
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.path = "file:///C:/Users/kaumi/Downloads"
+	assert not controller.path.startswith("/")
+	assert controller.path == "C:/Users/kaumi/Downloads"
+
+	controller.path = "/C:/Users/kaumi/Downloads"
+	assert controller.path == "C:/Users/kaumi/Downloads"
+
+
 def test_given_search_finished_when_handling_event_then_updates_results_model(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
@@ -74,6 +114,90 @@ def test_given_search_finished_when_handling_event_then_updates_results_model(qa
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
 	assert controller.resultsModel.rowCount() == 1
 	assert controller.status.endswith("matched")
+
+
+def test_given_indeterminate_activity_when_searching_then_status_spinner_animates(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	from PySide6.QtTest import QTest
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · photo.png")))
+
+	assert str(controller.status).startswith(ACTIVITY_SPINNER_FRAMES[0])
+	assert "OCR · photo.png" in str(controller.status)
+
+	first_status = str(controller.status)
+	QTest.qWait(150)
+	qapp.processEvents()
+	assert str(controller.status) != first_status
+	assert str(controller.status).split(" ", 1)[0] in ACTIVITY_SPINNER_FRAMES
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_given_activity_clear_when_handling_event_then_stops_status_spinner(qapp: QCoreApplication, tmp_path: Path):
+	from srxy.application.search_session import SearchProgressEvent
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchProgressEvent(current=5, total=10))
+	assert str(controller.progressCount) == "5/10"
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · photo.png")))
+	assert controller._activity_spinner_timer is not None  # pyright: ignore[reportPrivateUsage]
+	# File count stays visible while activity occupies the status line.
+	assert str(controller.progressCount) == "5/10"
+
+	controller.handle_search_event_for_tests(SearchActivityEvent(None))
+
+	assert controller._activity is None  # pyright: ignore[reportPrivateUsage]
+	assert controller._activity_spinner_timer is None  # pyright: ignore[reportPrivateUsage]
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_given_search_progress_when_handling_event_then_updates_file_count(qapp: QCoreApplication, tmp_path: Path):
+	from srxy.application.search_session import SearchProgressEvent
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	assert str(controller.progressCount) == ""
+
+	controller.handle_search_event_for_tests(SearchProgressEvent(current=3, total=12))
+
+	assert str(controller.progressCount) == "3/12"
+	assert float(controller.progress) == 25.0  # pyright: ignore[reportArgumentType]
+	assert "3/12" in str(controller.status)
+
+
+def test_given_determinate_activity_when_handling_event_then_updates_progress(qapp: QCoreApplication, tmp_path: Path):
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(
+		SearchActivityEvent(ActivityUpdate(label="Transcribe · speech.mp3", current=25, total=100))
+	)
+
+	assert float(controller.progress) == 25.0  # pyright: ignore[reportArgumentType]
+	assert "25%" in str(controller.status)
+	assert "Transcribe · speech.mp3" in str(controller.status)
+	assert str(controller.status).split(" ", 1)[0] in ACTIVITY_SPINNER_FRAMES
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
+
+
+def test_given_search_finished_when_activity_active_then_clears_status_spinner(qapp: QCoreApplication, tmp_path: Path):
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="CLIP · img.png")))
+	assert controller._activity_spinner_timer is not None  # pyright: ignore[reportPrivateUsage]
+
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[], skipped_files=[]))
+
+	assert controller._activity is None  # pyright: ignore[reportPrivateUsage]
+	assert controller._activity_spinner_timer is None  # pyright: ignore[reportPrivateUsage]
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_given_python_file_when_selecting_result_then_preview_is_html_with_line_numbers(

@@ -27,16 +27,23 @@ SPARSE_TEXT_THRESHOLD = 20
 MIN_LEXICAL_TOKEN_LENGTH = 4
 MIN_LEXICAL_ZIPF = 3.0
 LEXICAL_WORDLIST = "small"
-OCR_ENGINE_VARIANT = "tesseract-v8"
+OCR_ENGINE_VARIANT = "tesseract-v10"
 _REGION_MIN_DIMENSION = 400
 _REGION_GRID_DIVISIONS = 3
 _REGION_MIN_CELL = 32
+_OSD_MIN_CONFIDENCE = 2.0
+_PSM_CANDIDATES = (1, 6, 12)
+_DIAGONAL_PROBE_ANGLES = (45, 135, 315)
+_CARDINAL_PROBE_ANGLES = (90, 180, 270)
+_ocr_langs_cache: str | None = None
 
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
 _ocr_engine: OcrEngine | None = None
 _lexical_langs_cache: tuple[str, ...] | None = None
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
+_OSD_ORIENTATION_RE = re.compile(r"Orientation in degrees:\s*(\d+)", re.IGNORECASE)
+_OSD_CONFIDENCE_RE = re.compile(r"Orientation confidence:\s*([0-9.]+)", re.IGNORECASE)
 
 
 def _ocr_unavailable_message() -> str:
@@ -60,29 +67,90 @@ def _configure_pytesseract(pytesseract_module: object):
 		os.environ.setdefault("TESSDATA_PREFIX", str(tessdata))
 
 
+def discover_ocr_languages() -> str:
+	"""Return pytesseract ``lang`` string from installed ``*.traineddata`` (excludes osd)."""
+	global _ocr_langs_cache
+	if _ocr_langs_cache is not None:
+		return _ocr_langs_cache
+
+	codes: list[str] = []
+	seen: set[str] = set()
+	prefix = resolve_tessdata_prefix()
+	search_dirs: list[Path] = []
+	if prefix is not None:
+		search_dirs.append(prefix)
+		# TESSDATA_PREFIX may point at tessdata itself or its parent.
+		nested = prefix / "tessdata"
+		if nested.is_dir():
+			search_dirs.append(nested)
+	for directory in search_dirs:
+		if not directory.is_dir():
+			continue
+		for path in sorted(directory.glob("*.traineddata")):
+			code = path.stem.lower()
+			if code == "osd" or code in seen:
+				continue
+			seen.add(code)
+			codes.append(code)
+	_ocr_langs_cache = "+".join(codes) if codes else "eng"
+	return _ocr_langs_cache
+
+
+def reset_ocr_languages_cache():
+	global _ocr_langs_cache
+	_ocr_langs_cache = None
+
+
+def _upright_image(image: Image.Image) -> tuple[Image.Image, bool]:
+	"""Rotate image using Tesseract OSD.
+
+	Returns ``(image, osd_trusted)``. When ``osd_trusted`` is false (OSD missing,
+	failed, or below ``_OSD_MIN_CONFIDENCE``), callers should still probe
+	cardinals — low-confidence OSD can be wrong *or* right but ignored.
+	"""
+	import pytesseract
+
+	_configure_pytesseract(pytesseract)
+	try:
+		osd = str(pytesseract.image_to_osd(image))
+	except Exception:
+		return image, False
+
+	orient_match = _OSD_ORIENTATION_RE.search(osd)
+	conf_match = _OSD_CONFIDENCE_RE.search(osd)
+	if orient_match is None or conf_match is None:
+		return image, False
+	degrees = int(orient_match.group(1)) % 360
+	confidence = float(conf_match.group(1))
+	trusted = confidence >= _OSD_MIN_CONFIDENCE
+	if degrees == 0:
+		return image, trusted
+	# PIL rotate is counter-clockwise; OSD "Orientation in degrees" is the clockwise
+	# rotation needed to make the page upright, so rotate CCW by the same amount.
+	# Apply even when untrusted — probes can still beat a bad guess.
+	return image.rotate(degrees, expand=True), trusted
+
+
 class TesseractEngine(OcrEngine):
 	def recognize(self, image: Image.Image) -> str:
 		import pytesseract
 
 		_configure_pytesseract(pytesseract)
+		lang = discover_ocr_languages()
 		best_text = ""
 		best_rank = (-1.0, 0)
-		for priority, psm in enumerate((3, 6, 11, 12)):
-			text = str(pytesseract.image_to_string(image, config=f"--psm {psm}")).strip()
+		for priority, psm in enumerate(_PSM_CANDIDATES):
+			try:
+				text = str(pytesseract.image_to_string(image, lang=lang, config=f"--psm {psm}")).strip()
+			except Exception:  # noqa: S112 — try next PSM when a mode fails
+				continue
 			if not text:
 				continue
 			score = _ocr_quality_score(text)
-			if psm == 3 and score >= MIN_OCR_QUALITY_SCORE:
-				return text
 			rank = (score, -priority)
 			if rank > best_rank:
 				best_rank = rank
 				best_text = text
-		default_text = str(pytesseract.image_to_string(image)).strip()
-		if default_text:
-			rank = (_ocr_quality_score(default_text), -4)
-			if rank > best_rank:
-				best_text = default_text
 		return best_text
 
 
@@ -156,6 +224,7 @@ def get_ocr_engine() -> OcrEngine:
 def reset_ocr_engine():
 	global _ocr_engine
 	_ocr_engine = None
+	reset_ocr_languages_cache()
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
@@ -173,15 +242,20 @@ def preprocess_image(image: Image.Image) -> Image.Image:
 
 
 def _ocr_quality_score(text: str) -> float:
-	import re
-
 	collapsed = " ".join(text.split())
 	long_words = re.findall(r"[a-z]{4,}", collapsed.lower())
 	if not long_words:
 		return 0.0
 	compactness = len(collapsed) / max(len(text), 1)
 	short_line_penalty = sum(1 for line in text.splitlines() if 0 < len(line.strip()) <= 2) * 10
-	return len(long_words) * 25 * compactness - short_line_penalty
+	base = len(long_words) * 25 * compactness - short_line_penalty
+	# Prefer dictionary-like output so reversed/gibberish PSM text loses to readable OCR.
+	tokens = list(_iter_ocr_tokens(text))
+	if not tokens:
+		return base
+	lexical_hits = sum(1 for token in tokens if _is_lexical_token(token))
+	lexical_ratio = lexical_hits / len(tokens)
+	return base * (0.35 + 0.65 * lexical_ratio) + lexical_hits * 50
 
 
 def _lexical_langs() -> tuple[str, ...]:
@@ -221,6 +295,17 @@ def has_lexical_ocr_content(text: str) -> bool:
 	return any(_is_lexical_token(token) for token in _iter_ocr_tokens(text))
 
 
+def _ocr_looks_reliable(text: str) -> bool:
+	"""True when OCR text has enough dictionary-like tokens to skip orientation probes."""
+	tokens = list(_iter_ocr_tokens(text))
+	if len(tokens) < 2:
+		return False
+	hits = sum(1 for token in tokens if _is_lexical_token(token))
+	if hits < 2:
+		return False
+	return (hits / len(tokens)) >= 0.25
+
+
 def _iter_ocr_regions(image: Image.Image) -> Iterator[Image.Image]:
 	width, height = image.size
 	yield image
@@ -239,12 +324,10 @@ def _iter_ocr_regions(image: Image.Image) -> Iterator[Image.Image]:
 			yield image.crop((left, top, right, bottom))
 
 
-def ocr_pil_image(image: Image.Image) -> str:
-	engine = get_ocr_engine()
-	processed = preprocess_image(image)
+def _collect_region_texts(engine: OcrEngine, image: Image.Image) -> list[str]:
 	parts: list[str] = []
 	seen: set[str] = set()
-	for region in _iter_ocr_regions(processed):
+	for region in _iter_ocr_regions(image):
 		text = engine.recognize(region).strip()
 		if not text:
 			continue
@@ -253,7 +336,47 @@ def ocr_pil_image(image: Image.Image) -> str:
 			continue
 		seen.add(key)
 		parts.append(text)
-	return "\n".join(parts)
+	return parts
+
+
+def ocr_pil_image(image: Image.Image) -> str:
+	engine = get_ocr_engine()
+	processed = preprocess_image(image)
+	upright, osd_trusted = _upright_image(processed)
+	parts = _collect_region_texts(engine, upright)
+	best = "\n".join(parts)
+	best_score = _ocr_quality_score(best)
+	# Trusted OSD + lexical text: accept without probes (fast path).
+	# Untrusted OSD can leave sideways pages that still look "reliable" (dictionary
+	# noise) — always try cardinals then. Cheap full-frame probes when upright
+	# already looks lexical; full region grid when it does not.
+	if _ocr_looks_reliable(best) and osd_trusted:
+		return best
+	full_frame_only = _ocr_looks_reliable(best)
+	for angle in _CARDINAL_PROBE_ANGLES:
+		fill: str | int = "white" if upright.mode == "RGB" else 255
+		rotated = upright.rotate(angle, expand=True, fillcolor=fill)
+		if full_frame_only:
+			candidate = engine.recognize(rotated).strip()
+		else:
+			candidate = "\n".join(_collect_region_texts(engine, rotated))
+		score = _ocr_quality_score(candidate)
+		if score > best_score:
+			best_score = score
+			best = candidate
+	if _ocr_looks_reliable(best):
+		return best
+	for angle in _DIAGONAL_PROBE_ANGLES:
+		fill = "white" if upright.mode == "RGB" else 255
+		rotated = upright.rotate(angle, expand=True, fillcolor=fill)
+		candidate = "\n".join(_collect_region_texts(engine, rotated))
+		score = _ocr_quality_score(candidate)
+		if score > best_score:
+			best_score = score
+			best = candidate
+		if _ocr_looks_reliable(candidate) and score >= best_score:
+			return best
+	return best
 
 
 def _cached_ocr_text(kind: str, content_hash: str, recognize: Callable[[], str]) -> str:

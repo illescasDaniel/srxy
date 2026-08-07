@@ -67,6 +67,6 @@ Installer compatibility is declared in [`packaging/installer_meta.toml`](../inst
 
 The offline AppImage embeds Python + PySide6 for the wizard and a wheel for optional offline prefix installs. The online AppImage embeds a Go bootstrap + meta only (downloads uv, Python, and srxy from PyPI on first run). Neither embeds NVIDIA/CUDA, Hugging Face models, Tesseract, or ffmpeg — those are downloaded into `~/Applications/srxy` (or a chosen prefix) after the user acknowledges [docs/privacy.md](../../docs/privacy.md).
 
-macOS / Windows installers are planned separately; shared install logic lives under `src/srxy/adapters/inbound/installer/` (online UI under `installer_online/`) and `SRXY_HOME` path resolution.
+macOS / Windows installers live under `packaging/macos/` and `packaging/windows/`; shared install logic lives under `src/srxy/adapters/inbound/installer/` (online UI under `installer_online/`) and `SRXY_HOME` path resolution.
 
 The prefix launcher writes runtime output to `{SRXY_HOME}/logs/srxy.log` when started from the desktop menu (see [docs/privacy.md](../../docs/privacy.md)).

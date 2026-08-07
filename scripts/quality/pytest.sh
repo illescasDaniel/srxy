@@ -54,7 +54,7 @@ fi
 lib_pytest_heavy_args
 if [[ ${#LIB_PYTEST_HEAVY_ARGS[@]} -gt 0 ]]; then
 	echo ""
-	echo "Serial heavy pass (semantic/transcribe/gui/tui/integration, QT_QPA_PLATFORM=offscreen, -n 0)"
+	echo "Serial heavy pass (semantic/transcribe/gui/tui/integration/ocr, QT_QPA_PLATFORM=offscreen, -n 0)"
 	echo "pytest: starting (workers=0 wall=${LIB_PYTEST_WALL_SECONDS}s stall=${LIB_PYTEST_STALL_SECONDS}s)"
 	echo "pytest: args: ${LIB_PYTEST_HEAVY_ARGS[*]} ${LIB_PYTEST_HEAVY_COV[*]:-}"
 	set +e

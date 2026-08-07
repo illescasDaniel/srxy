@@ -23,12 +23,17 @@ pytestmark = pytest.mark.integration
 def _srxy(*args: str, env: dict[str, str] | None = None) -> subprocess.CompletedProcess[str]:
 	merged = os.environ.copy()
 	merged["CI"] = "true"
+	# Windows cp1252 consoles cannot print grouped CLI glyphs; force UTF-8 I/O.
+	merged.setdefault("PYTHONIOENCODING", "utf-8")
+	merged.setdefault("PYTHONUTF8", "1")
 	if env:
 		merged.update(env)
 	return subprocess.run(
 		[sys.executable, "-m", "srxy.adapters.inbound.cli.cli", *args, "--cli", "--no-progress"],
 		capture_output=True,
 		text=True,
+		encoding="utf-8",
+		errors="replace",
 		env=merged,
 		check=False,
 	)

@@ -6,7 +6,7 @@ import QtQuick.Layouts
 ApplicationWindow {
 	id: root
 	width: 720
-	height: 580
+	height: 620
 	visible: true
 	title: root.t("installer.window_title")
 	color: palette.window
@@ -42,6 +42,7 @@ ApplicationWindow {
 		property bool unsafeConfirmOpen: false
 		property real progressValue: 0
 		property real overallProgressValue: 0
+		property var tessdataLanguageOptions: []
 		function i18nTr(key) { return key }
 		function helpText(_key) { return "" }
 		function setLanguage(_lang) {}
@@ -54,6 +55,7 @@ ApplicationWindow {
 		function setInstallSemantic(_value) {}
 		function setPrefetchModels(_value) {}
 		function setAddToPath(_value) {}
+		function setTessdataLang(_code, _checked) {}
 		function goBack() {}
 		function goNext() {}
 		function startInstall() {}
@@ -137,14 +139,20 @@ ApplicationWindow {
 		StackLayout {
 			Layout.fillWidth: true
 			Layout.fillHeight: true
+			// preferredHeight 0: take only leftover space so Material page chrome
+			// cannot push the footer (Next/Back/…) below the window.
+			Layout.preferredHeight: 0
+			Layout.minimumHeight: 0
+			clip: true
 			currentIndex: {
 				if (c.page === "mode") return 0
 				if (c.page === "prefix") return 1
 				if (c.page === "privacy") return 2
 				if (c.page === "options") return 3
-				if (c.page === "path") return 4
-				if (c.page === "uninstall") return 5
-				return 6
+				if (c.page === "tessdata") return 4
+				if (c.page === "path") return 5
+				if (c.page === "uninstall") return 6
+				return 7
 			}
 
 			// 0 mode
@@ -410,7 +418,57 @@ ApplicationWindow {
 				}
 			}
 
-			// 4 path
+			// 4 tessdata (OCR languages) — only shown when Tesseract is selected
+			ColumnLayout {
+				spacing: 12
+				Label {
+					text: root.t("installer.tessdata.title")
+					color: root.primaryText
+					font.pixelSize: 18
+				}
+				Label {
+					text: root.t("installer.tessdata.body")
+					wrapMode: Text.WordWrap
+					color: root.secondaryText
+					Layout.fillWidth: true
+				}
+				TextField {
+					id: tessdataFilter
+					Layout.fillWidth: true
+					placeholderText: root.t("installer.options.tessdata_filter")
+				}
+				ScrollView {
+					Layout.fillWidth: true
+					Layout.fillHeight: true
+					Layout.preferredHeight: 0
+					clip: true
+					ColumnLayout {
+						width: parent.availableWidth
+						spacing: 2
+						Repeater {
+							model: c.tessdataLanguageOptions
+							delegate: CheckBox {
+								required property var modelData
+								visible: {
+									const q = tessdataFilter.text.trim().toLowerCase()
+									if (!q)
+										return true
+									return String(modelData.label).toLowerCase().indexOf(q) >= 0
+										|| String(modelData.code).toLowerCase().indexOf(q) >= 0
+								}
+								text: modelData.label + " (" + modelData.code + ")"
+								checked: modelData.checked
+								enabled: !modelData.required
+								onToggled: function() {
+									c.setTessdataLang(modelData.code, checked)
+								}
+							}
+						}
+					}
+				}
+			}
+
+			// 5 path
 			ColumnLayout {
 				spacing: 12
 				Label { text: root.t("installer.path.title"); color: root.primaryText; font.pixelSize: 18 }
@@ -437,7 +495,7 @@ ApplicationWindow {
 				}
 			}
 
-			// 5 uninstall
+			// 6 uninstall
 			ColumnLayout {
 				spacing: 12
 				Label { text: root.t("installer.uninstall.title"); color: root.primaryText; font.pixelSize: 18 }
@@ -476,7 +534,7 @@ ApplicationWindow {
 				}
 			}
 
-			// 6 progress
+			// 7 progress
 			ColumnLayout {
 				spacing: 12
 				Label {
@@ -553,9 +611,22 @@ ApplicationWindow {
 			wrapMode: Text.WordWrap
 			Layout.fillWidth: true
 		}
+	}
 
+	// Pin nav actions to the window footer so Material/Fusion page heights cannot
+	// clip Next/Back/Install below the visible area.
+	footer: Pane {
+		padding: 12
+		leftPadding: 20
+		rightPadding: 20
+		bottomPadding: 16
+		topPadding: 8
+		background: Rectangle {
+			color: root.palette.window
+		}
 		RowLayout {
-			Layout.fillWidth: true
+			width: parent.width
+			spacing: 8
 			Button {
 				text: root.t("common.back")
 				visible: c.page !== "mode"

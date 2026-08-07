@@ -183,12 +183,15 @@ def test_given_multiple_tesseract_outputs_when_selecting_best_then_prefers_reada
 	garbage = "-\n\nA\n\nf\\\n"
 	good = "MUSIC COMPOSED BY\nBRIAN TYLER"
 
-	def fake_to_string(img: Image.Image, config: str = "") -> str:
-		if "--psm 3" in config:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+		if "--psm 1" in config:
 			return good
 		return garbage
 
-	with patch("pytesseract.image_to_string", side_effect=fake_to_string):
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.discover_ocr_languages", return_value="eng"),
+		patch("pytesseract.image_to_string", side_effect=fake_to_string),
+	):
 		# when
 		text = engine.recognize(image)
 
@@ -201,17 +204,58 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 	engine = TesseractEngine()
 	image = Image.new("RGB", (8, 8))
 
-	def fake_to_string(img: Image.Image, config: str = "") -> str:
-		if "--psm 3" in config:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+		if "--psm 1" in config:
 			return "MUSIC COMPOSED BY\nBRIAN TYLER"
 		return "-\n\nA\n\nf\\\n"
 
-	with patch("pytesseract.image_to_string", side_effect=fake_to_string):
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.discover_ocr_languages", return_value="eng"),
+		patch("pytesseract.image_to_string", side_effect=fake_to_string),
+	):
 		# when
 		text = engine.recognize(image)
 
 	# then
 	assert "BRIAN TYLER" in text
+
+
+def test_given_upside_down_osd_when_ocring_then_rotates_before_recognize():
+	# given
+	image = Image.new("RGB", (100, 100), color=(255, 255, 255))
+	calls: list[Image.Image] = []
+
+	class FakeEngine:
+		def recognize(self, region: Image.Image) -> str:
+			calls.append(region)
+			return "contratista orientation token"
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=FakeEngine()),
+		patch(
+			"srxy.adapters.outbound.ocr.ocr_text._upright_image",
+			side_effect=lambda img: (img.rotate(180, expand=True), True),
+		),
+		patch("srxy.adapters.outbound.ocr.ocr_text._ocr_looks_reliable", return_value=True),
+	):
+		# when
+		text = ocr_pil_image(image)
+
+	# then — trusted OSD + reliable text skips cardinal probes
+	assert "contratista" in text
+	assert calls
+	assert calls[0].size[0] >= 100
+	assert len(calls) == 1
+
+
+def test_given_gibberish_vs_lexical_when_scoring_then_prefers_lexical():
+	from srxy.adapters.outbound.ocr import ocr_text as ocr_mod
+
+	garbage = "olDIAJas jap ugiezijeas ej exed seliesadau sequaiwuesay " * 5
+	good = "Contrato Civil de Prestacion de Servicios CONTRATISTA contratante"
+
+	# when / then
+	assert ocr_mod._ocr_quality_score(good) > ocr_mod._ocr_quality_score(garbage)  # pyright: ignore[reportPrivateUsage]
 
 
 def test_given_lexical_nav_text_when_checking_content_then_returns_true():
@@ -254,19 +298,48 @@ def test_given_small_image_when_ocring_then_uses_full_frame_only():
 	class FakeEngine:
 		def __init__(self):
 			self.calls = 0
+			self.sizes: list[tuple[int, int]] = []
 
 		def recognize(self, region: Image.Image) -> str:
 			self.calls += 1
+			self.sizes.append(region.size)
 			return "camera sunset beach"
 
 	fake = FakeEngine()
-	with patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=fake):
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=fake),
+		patch("srxy.adapters.outbound.ocr.ocr_text._upright_image", return_value=(image, True)),
+	):
+		# when
+		text = ocr_pil_image(image)
+
+	# then — trusted OSD + lexical text: upright full frame only
+	assert fake.calls == 1
+	assert fake.sizes == [(100, 100)]
+	assert "beach" in text
+
+
+def test_given_false_reliable_sideways_when_ocring_then_prefers_better_cardinal():
+	# given — untrusted OSD leaves landscape noise that looks lexical; 90° wins
+	image = Image.new("RGB", (120, 80), color=(255, 255, 255))
+
+	class FakeEngine:
+		def recognize(self, region: Image.Image) -> str:
+			width, height = region.size
+			if width > height:
+				return "smokinc noise token alpha beta"
+			return "no smoking sign clearly readable here"
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.get_ocr_engine", return_value=FakeEngine()),
+		patch("srxy.adapters.outbound.ocr.ocr_text._upright_image", return_value=(image, False)),
+	):
 		# when
 		text = ocr_pil_image(image)
 
 	# then
-	assert fake.calls == 1
-	assert "beach" in text
+	assert "smoking" in text.lower()
+	assert "smokinc" not in text.lower()
 
 
 def test_given_large_image_when_ocring_then_merges_grid_regions():

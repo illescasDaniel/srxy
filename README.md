@@ -23,29 +23,15 @@ srxy                          # empty query/path
 srxy "registry" ./src         # pre-filled; auto-starts
 ```
 
-<img src="docs/images/gui.png" alt="srxy GUI" width="550" />
+| macOS | Linux | Windows |
+|:-----:|:-----:|:-------:|
+| <img src="docs/images/gui-macos.png" alt="srxy GUI on macOS" width="280" /> | <img src="docs/images/gui-linux.png" alt="srxy GUI on Linux" width="280" /> | <img src="docs/images/gui-windows.png" alt="srxy GUI on Windows" width="280" /> |
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
-**Desktop installers (Linux + macOS):**
+**Desktop installers (Linux, macOS, Windows):**
 
-Two Linux AppImages from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) (decompress the `.xz`, make executable, and run; no host `libfuse2`):
-
-| Artifact | What you get |
-|----------|----------------|
-| `srxy-*-installer-*.AppImage.xz` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
-| `srxy-*-installer-online-*.AppImage.xz` | **Online one-click** — slim Go bootstrap; opens your browser to a localhost page and installs from PyPI |
-
-Default prefix: `~/Applications/srxy`. The online AppImage needs a network connection on first launch (downloads `uv`, managed Python, and srxy into `~/.cache/srxy/online-bootstrap/`); later runs reuse the cache. It vendors PATH / tesseract / ffmpeg automatically and enables smarter-search packages only when a GPU is detected — model weights download later when you use those features. No reinstall/uninstall UI on the online path (use the offline wizard or remove the prefix).
-
-Two macOS `.dmg` installers from the same [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) page (open the DMG and double-click the app; default prefix `~/Applications/srxy`):
-
-| Artifact | What you get |
-|----------|----------------|
-| `srxy-*-installer-*.dmg` | **Offline wizard** — full PySide UI; install / update / reinstall / uninstall |
-| `srxy-*-installer-online-*.dmg` | **Online one-click** — slim Go bootstrap; localhost browser UI; installs from PyPI |
-
-These macOS DMGs are currently **unsigned** (Gatekeeper may warn or block on first open); a signed and notarized release is coming soon. Windows installer is still in progress. PyPI / `uv tool install` remain the primary paths on every platform. Guide: [docs/installers.md](docs/installers.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
+Grab the latest installers from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) — AppImages, DMGs, and the Windows `.exe` are all there. You can also [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). Details: [docs/installers.md](docs/installers.md).
 
 <img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
 
@@ -91,7 +77,7 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 | Guide | Contents |
 |-------|----------|
 | [Installation](docs/installation.md) | uv tool / pipx, macOS/Linux/Windows, ffmpeg, tesseract |
-| [Desktop installers](docs/installers.md) | Linux AppImages + macOS DMGs (offline + online) |
+| [Desktop installers](docs/installers.md) | Linux / macOS / Windows installers (free Releases + shop) |
 | [TUI](docs/tui.md) | Layout, keybindings, clipboard, release checklist |
 | [CLI reference](docs/cli.md) | Flags, formats, boolean queries, exit codes |
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |

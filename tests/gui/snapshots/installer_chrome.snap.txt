@@ -13,9 +13,10 @@ installerWindow:
   busy: False
   finished: False
   modes: Install or update srxy, Reinstall srxy, Uninstall srxy
-  pages: mode, prefix, privacy, options, path, uninstall, progress
+  pages: mode, prefix, privacy, options, tessdata, path, uninstall, progress
   optionLabels: Text in images, Audio/video helper, Smarter search (needs a GPU), Download AI models now (nested under Smarter search)
   optionSubtitles: Tesseract, ffmpeg, PyTorch and related packages (PyPI), Hugging Face model files
+  tessdataPage: Languages for text in images; Choose languages for reading text in photos and scans (English and orientation always on). System languages are pre-selected.
   pathCheckbox: Also let me run srxy from the Terminal
   languageCombo: English, Español
   buttons: Back, Next, Install, Reinstall, Uninstall, Launch, Finish, Close, Browse…, Info (i), GPU warning (!)

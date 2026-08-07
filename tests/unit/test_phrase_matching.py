@@ -50,6 +50,7 @@ def test_given_multi_word_query_when_formatting_transcript_preview_then_highligh
 
 
 @pytest.mark.transcribe
+@pytest.mark.timeout(300)
 def test_given_far_cry_query_when_searching_unrelated_audio_then_does_not_match():
 	# given — single known false-positive candidate; avoid transcribing the whole corpus
 	require_file_search_fixtures()

@@ -64,9 +64,10 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 	item = artifact("uv")
 	vendor = prefix / "vendor" / "uv"
 	vendor.mkdir(parents=True, exist_ok=True)
+	is_zip = item.kind == "zip" or item.url.lower().endswith(".zip")
 	archive = download_to_temp(
 		item.url,
-		suffix=".tar.gz",
+		suffix=".zip" if is_zip else ".tar.gz",
 		sha256=item.sha256,
 		label=f"uv {item.version}",
 		progress=progress,
@@ -75,11 +76,20 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 		extract_dir = vendor / "_extract"
 		if extract_dir.exists():
 			shutil.rmtree(extract_dir)
-		extract_tar_archive(archive, extract_dir)
-		binary = _find_named_binary(extract_dir, "uv")
+		if is_zip:
+			extract_zip_archive(archive, extract_dir)
+		else:
+			extract_tar_archive(archive, extract_dir)
+		binary_names = ("uv.exe", "uv") if platform.system().lower() == "windows" else ("uv",)
+		binary = None
+		for name in binary_names:
+			binary = _find_named_binary(extract_dir, name)
+			if binary is not None:
+				break
 		if binary is None:
 			raise RuntimeError("uv binary missing from downloaded archive")
-		target = vendor / "uv"
+		target_name = "uv.exe" if binary.name.lower().endswith(".exe") else "uv"
+		target = vendor / target_name
 		if target.exists():
 			target.unlink()
 		shutil.move(str(binary), str(target))
@@ -100,9 +110,13 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 		archive.unlink(missing_ok=True)
 
 
-def _install_tesseract_linux(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+def _install_tesseract_linux(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	binary_item = artifact("tesseract")
-	data_item = artifact("tessdata_eng")
 	vendor = prefix / "vendor" / "tesseract"
 	bin_dir = vendor / "bin"
 	tessdata = vendor / "tessdata"
@@ -118,15 +132,7 @@ def _install_tesseract_linux(prefix: Path, *, progress: ProgressCallback | None)
 		progress=progress,
 	)
 	_chmod_executable(target)
-
-	eng = tessdata / "eng.traineddata"
-	download_file(
-		data_item.url,
-		eng,
-		sha256=data_item.sha256,
-		label="tessdata eng",
-		progress=progress,
-	)
+	_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
 	return target
 
 
@@ -305,19 +311,33 @@ def _assemble_relocatable_tesseract(extract_root: Path, vendor: Path) -> Path:
 	return target
 
 
-def _ensure_eng_tessdata(vendor: Path, *, progress: ProgressCallback | None):
-	eng = vendor / "tessdata" / "eng.traineddata"
-	if eng.is_file():
-		return
-	data_item = artifact("tessdata_eng")
-	eng.parent.mkdir(parents=True, exist_ok=True)
-	download_file(
-		data_item.url,
-		eng,
-		sha256=data_item.sha256,
-		label="tessdata eng",
-		progress=progress,
+def _ensure_tessdata_langs(
+	vendor: Path,
+	langs: tuple[str, ...] | list[str] | None,
+	*,
+	progress: ProgressCallback | None,
+):
+	from srxy.adapters.inbound.installer.tessdata_langs import (
+		normalize_tessdata_langs,
+		tessdata_artifact,
+		tessdata_dest_path,
 	)
+
+	tessdata = vendor / "tessdata"
+	tessdata.mkdir(parents=True, exist_ok=True)
+	for code in normalize_tessdata_langs(langs):
+		dest = tessdata_dest_path(tessdata, code)
+		if dest.is_file():
+			continue
+		dest.parent.mkdir(parents=True, exist_ok=True)
+		item = tessdata_artifact(code)
+		download_file(
+			item.url,
+			dest,
+			sha256=item.sha256,
+			label=f"tessdata {code}",
+			progress=progress,
+		)
 
 
 def _self_check_tesseract(target: Path, tessdata: Path):
@@ -338,7 +358,12 @@ def _self_check_tesseract(target: Path, tessdata: Path):
 		raise RuntimeError(f"tesseract vendor binary failed self-check: {exc.stderr.strip() or exc}") from exc
 
 
-def _install_tesseract_brew_bottles(prefix: Path, *, progress: ProgressCallback | None) -> Path:
+def _install_tesseract_brew_bottles(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	if platform.system().lower() != "darwin":
 		raise RuntimeError("Homebrew bottle tesseract install is only supported on macOS")
 
@@ -364,20 +389,179 @@ def _install_tesseract_brew_bottles(prefix: Path, *, progress: ProgressCallback 
 				archive.unlink(missing_ok=True)
 
 		target = _assemble_relocatable_tesseract(extract_root, vendor)
-		_ensure_eng_tessdata(vendor, progress=progress)
+		_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
 		_self_check_tesseract(target, vendor / "tessdata")
 		return target
 	finally:
 		shutil.rmtree(extract_root, ignore_errors=True)
 
 
-def install_tesseract(prefix: Path, *, progress: ProgressCallback | None = None) -> Path:
+def _run_checked(cmd: list[str], *, cwd: Path | None = None, label: str) -> None:
+	result = subprocess.run(  # noqa: S603
+		cmd,
+		check=False,
+		capture_output=True,
+		text=True,
+		cwd=str(cwd) if cwd is not None else None,
+	)
+	if result.returncode != 0:
+		detail = (result.stderr or result.stdout or "").strip()
+		raise RuntimeError(f"{label} failed ({result.returncode}): {detail}")
+
+
+def _prepare_7zip_extractor(work_dir: Path, *, progress: ProgressCallback | None) -> Path:
+	"""Download pinned 7zr + 7-Zip SFX and return ``7z.exe`` (with ``7z.dll`` beside it)."""
+	sevenzr_item = artifact("7zr")
+	sevenzip_item = artifact("7zip")
+	tools = work_dir / "_7zip"
+	if tools.exists():
+		shutil.rmtree(tools)
+	tools.mkdir(parents=True, exist_ok=True)
+
+	sevenzr = download_to_temp(
+		sevenzr_item.url,
+		suffix=".exe",
+		sha256=sevenzr_item.sha256,
+		label=f"7zr {sevenzr_item.version}",
+		progress=progress,
+	)
+	sfx = download_to_temp(
+		sevenzip_item.url,
+		suffix=".exe",
+		sha256=sevenzip_item.sha256,
+		label=f"7zip {sevenzip_item.version}",
+		progress=progress,
+	)
+	try:
+		_run_checked(
+			[str(sevenzr), "x", str(sfx), f"-o{tools}", "-y"],
+			label="7zr extract 7-Zip package",
+		)
+		sevenz = tools / "7z.exe"
+		if not sevenz.is_file() or not (tools / "7z.dll").is_file():
+			raise RuntimeError("7z.exe/7z.dll missing after extracting the 7-Zip package")
+		return sevenz
+	finally:
+		sevenzr.unlink(missing_ok=True)
+		sfx.unlink(missing_ok=True)
+
+
+def _layout_windows_tesseract_extract(extract_root: Path, vendor: Path) -> Path:
+	"""Move ``tesseract.exe`` + DLLs into ``vendor/bin`` and ``tessdata`` into ``vendor/tessdata``."""
+	plugins = extract_root / "$PLUGINSDIR"
+	if plugins.exists():
+		shutil.rmtree(plugins, ignore_errors=True)
+
+	target = _find_named_binary(extract_root, "tesseract.exe")
+	if target is None:
+		raise RuntimeError("tesseract.exe missing after extracting Windows NSIS setup")
+
+	tessdata_src = extract_root / "tessdata"
+	if not tessdata_src.is_dir():
+		for eng in extract_root.rglob("eng.traineddata"):
+			tessdata_src = eng.parent
+			break
+
+	bin_dir = vendor / "bin"
+	if bin_dir.exists():
+		shutil.rmtree(bin_dir)
+	bin_dir.mkdir(parents=True, exist_ok=True)
+
+	# Keep DLLs beside the exe so the Windows loader finds them without admin PATH changes.
+	link = bin_dir / "tesseract.exe"
+	shutil.move(str(target), str(link))
+	for dll in extract_root.glob("*.dll"):
+		shutil.move(str(dll), str(bin_dir / dll.name))
+
+	tessdata = vendor / "tessdata"
+	if tessdata.exists():
+		shutil.rmtree(tessdata)
+	if tessdata_src.is_dir():
+		shutil.move(str(tessdata_src), str(tessdata))
+	else:
+		tessdata.mkdir(parents=True, exist_ok=True)
+
+	return link
+
+
+def _install_tesseract_nsis(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
+	"""Extract the UB-Mannheim NSIS setup into ``prefix/vendor/tesseract`` without elevation."""
+	item = artifact("tesseract")
+	vendor = prefix / "vendor" / "tesseract"
+	if vendor.exists():
+		shutil.rmtree(vendor)
+	vendor.mkdir(parents=True, exist_ok=True)
+
+	work_dir = vendor / "_work"
+	work_dir.mkdir(parents=True, exist_ok=True)
+	installer = download_to_temp(
+		item.url,
+		suffix=".exe",
+		sha256=item.sha256,
+		label=f"tesseract {item.version}",
+		progress=progress,
+	)
+	try:
+		sevenz = _prepare_7zip_extractor(work_dir, progress=progress)
+		extract_root = work_dir / "nsis"
+		if extract_root.exists():
+			shutil.rmtree(extract_root)
+		extract_root.mkdir(parents=True, exist_ok=True)
+		# Never CreateProcess the setup EXE (WinError 740 / requireAdministrator).
+		_run_checked(
+			[str(sevenz), "x", str(installer), f"-o{extract_root}", "-y"],
+			cwd=sevenz.parent,
+			label="7z extract tesseract NSIS setup",
+		)
+		link = _layout_windows_tesseract_extract(extract_root, vendor)
+		_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
+		_self_check_tesseract(link, vendor / "tessdata")
+		return link
+	finally:
+		installer.unlink(missing_ok=True)
+		shutil.rmtree(work_dir, ignore_errors=True)
+
+
+def install_tesseract(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None = None,
+	tessdata_langs: tuple[str, ...] | None = None,
+) -> Path:
 	item = artifact("tesseract")
 	if item.kind == "binary":
-		return _install_tesseract_linux(prefix, progress=progress)
+		return _install_tesseract_linux(prefix, progress=progress, tessdata_langs=tessdata_langs)
 	if item.kind == "brew_bottles":
-		return _install_tesseract_brew_bottles(prefix, progress=progress)
+		return _install_tesseract_brew_bottles(prefix, progress=progress, tessdata_langs=tessdata_langs)
+	if item.kind == "nsis_installer":
+		return _install_tesseract_nsis(prefix, progress=progress, tessdata_langs=tessdata_langs)
 	raise RuntimeError(f"unsupported tesseract artifact kind: {item.kind}")
+
+
+def _expose_ffmpeg_bin(vendor: Path, binary: Path) -> Path:
+	"""Point ``vendor/bin/ffmpeg[.exe]`` at the real binary without requiring symlinks."""
+	bin_dir = vendor / "bin"
+	bin_dir.mkdir(parents=True, exist_ok=True)
+	target_name = "ffmpeg.exe" if binary.name.lower().endswith(".exe") else "ffmpeg"
+	target = bin_dir / target_name
+	if target.exists() or target.is_symlink():
+		target.unlink()
+	# Windows: never symlink here. CreateProcess/path resolve across vendor symlinks can
+	# raise WinError 448 (ERROR_UNTRUSTED_MOUNT_POINT) under current Windows hardening.
+	if platform.system().lower() == "windows":
+		shutil.copy2(binary, target)
+	else:
+		try:
+			os.symlink(binary, target)
+		except OSError:
+			shutil.copy2(binary, target)
+	_chmod_executable(target.resolve() if target.is_symlink() else target)
+	return target
 
 
 def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> Path:
@@ -404,14 +588,8 @@ def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> P
 		final = vendor / "dist"
 		move_tree(package_root, final)
 		shutil.rmtree(extract_dir, ignore_errors=True)
-		link_bin = vendor / "bin"
-		link_bin.mkdir(parents=True, exist_ok=True)
-		target = link_bin / "ffmpeg"
-		if target.exists() or target.is_symlink():
-			target.unlink()
-		os.symlink(final / "bin" / "ffmpeg" if (final / "bin" / "ffmpeg").exists() else final / "ffmpeg", target)
-		_chmod_executable(target.resolve())
-		return target
+		real = final / "bin" / "ffmpeg" if (final / "bin" / "ffmpeg").exists() else final / "ffmpeg"
+		return _expose_ffmpeg_bin(vendor, real)
 	finally:
 		archive.unlink(missing_ok=True)
 
@@ -431,12 +609,27 @@ def _install_ffmpeg_zip(prefix: Path, *, progress: ProgressCallback | None) -> P
 		if extract_dir.exists():
 			shutil.rmtree(extract_dir)
 		extract_zip_archive(archive, extract_dir)
-		binary = _find_named_binary(extract_dir, "ffmpeg")
+		names = ("ffmpeg.exe", "ffmpeg") if platform.system().lower() == "windows" else ("ffmpeg",)
+		binary = None
+		for name in names:
+			binary = _find_named_binary(extract_dir, name)
+			if binary is not None:
+				break
 		if binary is None:
 			raise RuntimeError("ffmpeg binary missing from downloaded zip")
+		# BtbN Windows shared builds need the whole tree (bin + lib next to each other).
+		if binary.parent.name.lower() == "bin":
+			package_root = binary.parent.parent
+			final = vendor / "dist"
+			if final.exists():
+				shutil.rmtree(final)
+			move_tree(package_root, final)
+			shutil.rmtree(extract_dir, ignore_errors=True)
+			real = final / "bin" / binary.name
+			return _expose_ffmpeg_bin(vendor, real)
 		bin_dir = vendor / "bin"
 		bin_dir.mkdir(parents=True, exist_ok=True)
-		target = bin_dir / "ffmpeg"
+		target = bin_dir / binary.name
 		if target.exists() or target.is_symlink():
 			target.unlink()
 		shutil.move(str(binary), str(target))

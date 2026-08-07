@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import platform
 from pathlib import Path
 
 import pytest
@@ -57,7 +58,7 @@ def test_given_manifest_when_writing_and_reading_then_round_trips(tmp_path: Path
 	assert payload["prefix"] == str(tmp_path)
 
 
-def test_given_force_gpu_when_creating_controller_then_ai_options_default_on(
+def test_given_force_gpu_when_creating_controller_then_semantic_on_prefetch_off(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -72,7 +73,7 @@ def test_given_force_gpu_when_creating_controller_then_ai_options_default_on(
 	# then
 	assert controller.hasGpu is True
 	assert controller.installSemantic is True
-	assert controller.prefetchModels is True
+	assert controller.prefetchModels is False
 
 
 def test_given_force_no_gpu_when_creating_controller_then_ai_options_default_off(
@@ -92,6 +93,44 @@ def test_given_force_no_gpu_when_creating_controller_then_ai_options_default_off
 	assert controller.installSemantic is False
 	assert controller.prefetchModels is False
 	assert "GPU" in str(controller.noGpuMessage)
+
+
+def test_given_system_locale_tags_when_creating_controller_then_preselects_mapped_packs(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	monkeypatch.delenv("SRXY_LANGUAGE", raising=False)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.tessdata_langs.system_preferred_locale_tags",
+		lambda: ("fr", "de"),
+	)
+
+	class _FakeLocale:
+		@staticmethod
+		def system():
+			return _FakeLocale()
+
+		def uiLanguages(self):
+			return ["es-ES", "en-US"]
+
+	monkeypatch.setattr("PySide6.QtCore.QLocale", _FakeLocale)
+
+	# when
+	from PySide6.QtCore import QCoreApplication
+
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	if QCoreApplication.instance() is None:
+		QCoreApplication([])
+	controller = InstallerController()
+
+	# then — eng/osd always; fr→fra, de→deu, es→spa from system/Qt tags
+	assert controller.tessdataLangsCsv.split(",")[:2] == ["eng", "osd"]
+	selected = set(controller.tessdataLangsCsv.split(","))
+	assert {"fra", "deu", "spa"}.issubset(selected)
+	assert "English" in str(controller.tessdataLangsSummary)
+	assert "Orientation detection" in str(controller.tessdataLangsSummary)
 
 
 def test_given_help_keys_when_asking_controller_then_returns_plain_language(
@@ -136,6 +175,46 @@ def test_given_spanish_when_set_on_installer_then_ui_strings_switch(monkeypatch:
 	assert "marker file" in controller.uninstallHint.lower()
 
 
+def test_given_language_when_writing_privacy_utf8_then_uses_bom_and_locale(
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer.privacy import write_privacy_notice_utf8
+
+	en = tmp_path / "privacy-en.txt"
+	es = tmp_path / "privacy-es.txt"
+
+	# when
+	write_privacy_notice_utf8(en, language="en")
+	write_privacy_notice_utf8(es, language="es")
+
+	# then
+	assert en.read_bytes()[:3] == b"\xef\xbb\xbf"
+	assert es.read_bytes()[:3] == b"\xef\xbb\xbf"
+	en_text = en.read_text(encoding="utf-8-sig")
+	es_text = es.read_text(encoding="utf-8-sig")
+	assert "privacy" in en_text.lower()
+	assert "aviso" in es_text.lower()
+	assert "Ã" not in en_text
+	assert "Ã" not in es_text
+
+
+def test_given_privacy_when_loading_then_mentions_both_cache_paths():
+	# given
+	from srxy.i18n import set_language
+
+	set_language("en")
+
+	# when
+	text = privacy_disclaimer_text()
+
+	# then
+	assert "%LOCALAPPDATA%\\srxy" in text
+	assert "~/.cache/srxy" in text
+	assert "Disclaimer of Warranties" in text
+	assert "without any warranty" in text.lower()
+
+
 def test_given_privacy_text_when_loading_then_mentions_third_parties():
 	# given
 	from srxy.i18n import set_language
@@ -156,6 +235,17 @@ def test_given_privacy_text_when_loading_then_mentions_third_parties():
 	assert "https://github.com/tesseract-ocr/tesseract" in text
 	assert "<a href=" in html
 	assert "https://huggingface.co/sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2" in html
+	assert "Disclaimer of Warranties" in html
+	assert "without any warranty" in html.lower()
+	assert "Python libraries (via PyPI)" in text
+	assert "jellyfish" in text
+	assert "https://github.com/jamesturk/jellyfish" in text
+	assert "Phonetic matching" in text
+	assert "Pillow" in text
+	assert "https://python-pillow.org/" in html
+	assert "sentence-transformers" in text
+	assert "https://www.sbert.net/" in html
+	assert "pywin32" in text
 
 
 def test_given_spanish_when_loading_privacy_then_translates_prose():
@@ -167,7 +257,6 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	# when
 	text = privacy_disclaimer_text()
 	html = privacy_disclaimer_html()
-	app_html = privacy_disclaimer_html(for_app=True)
 
 	# then
 	assert "aviso de privacidad" in text.lower()
@@ -175,22 +264,20 @@ def test_given_spanish_when_loading_privacy_then_translates_prose():
 	assert "Sitio:" in text or "Sitio:" in html
 	assert "Privacidad:" in text or "Privacidad:" in html
 	assert "https://huggingface.co/privacy" in html
-	assert "instalador de escritorio de srxy" in html.lower()
-	assert "este instalador" in html.lower()
-	assert "este instalador de escritorio" in html.lower() or "instalador de escritorio" in html.lower()
+	assert "srxy — aviso" in html.lower()
+	assert "qué puede descargar srxy" in html.lower()
+	assert "exención de garantías" in html.lower()
+	assert "sin ninguna garantía" in html.lower()
 	assert "este appimage" not in html.lower()
-	assert "instalador de escritorio de srxy" not in app_html.lower()
-	assert "este instalador" not in app_html.lower()
-	assert "este appimage" not in app_html.lower()
-	assert "qué puede descargar srxy" in app_html.lower()
-	assert "srxy — aviso" in app_html.lower()
-	assert "casilla de aceptación" not in app_html.lower()
+	assert "bibliotecas de python" in text.lower()
+	assert "coincidencia fonética" in text.lower()
+	assert "Proyecto:" in text or "Proyecto:" in html
 	set_language("en")
-	app_en = privacy_disclaimer_html(for_app=True)
-	assert "this installer" not in app_en.lower()
-	assert "this appimage" not in app_en.lower()
-	assert "what srxy may download" in app_en.lower()
-	assert "acknowledgment box" not in app_en.lower()
+	en_html = privacy_disclaimer_html()
+	assert "this appimage" not in en_html.lower()
+	assert "what srxy may download" in en_html.lower()
+	assert "acknowledgment box" not in en_html.lower()
+	assert "disclaimer of warranties" in en_html.lower()
 
 
 def test_given_darwin_when_loading_installer_privacy_then_lists_macos_vendor_sources(
@@ -207,13 +294,7 @@ def test_given_darwin_when_loading_installer_privacy_then_lists_macos_vendor_sou
 	assert "ffmpeg.martin-riedl.de" in text
 	assert "BtbN/FFmpeg-Builds" not in text
 	assert "DanielMYT/tesseract-static" not in text
-	assert "desktop installer" in text.lower()
 	assert "appimage" not in text.lower()
-
-	app_text = privacy_disclaimer_text(for_app=True)
-	assert "formulae.brew.sh/formula/tesseract" in app_text
-	assert "BtbN/FFmpeg-Builds" in app_text
-	assert "DanielMYT/tesseract-static" in app_text
 
 
 def test_given_linux_when_loading_installer_privacy_then_lists_linux_vendor_sources(
@@ -282,8 +363,10 @@ def test_given_partial_default_prefix_when_discovering_then_returns_path(
 	monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
 	# given
+	from srxy.application.install_paths import default_install_prefix
+
 	set_fake_home(monkeypatch, tmp_path)
-	prefix = tmp_path / "Applications" / "srxy"
+	prefix = default_install_prefix()
 	prefix.mkdir(parents=True)
 	(prefix / "vendor" / "uv").mkdir(parents=True)
 	(prefix / "vendor" / "uv" / "uv").write_text("x", encoding="utf-8")
@@ -351,13 +434,15 @@ def test_given_macos_failed_online_leftovers_when_uninstalling_then_removes_pref
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given: failed online install wrote logs but never a manifest/uv binary
+	from srxy.application.install_paths import default_install_prefix
+
 	home = tmp_path / "home"
 	home.mkdir()
-	prefix = home / "Applications" / "srxy"
+	set_fake_home(monkeypatch, home)
+	prefix = default_install_prefix()
 	(prefix / "logs").mkdir(parents=True)
 	(prefix / "vendor").mkdir(parents=True)
 	(prefix / "logs" / "installer-online.log").write_text("install failed\n", encoding="utf-8")
-	set_fake_home(monkeypatch, home)
 
 	# when / then
 	assert looks_like_partial_srxy_prefix(prefix) is True
@@ -714,7 +799,39 @@ def test_given_reinstall_mode_when_going_next_then_follows_install_page_order(
 	controller.goNext()
 	assert str(controller.page) == "options"
 	controller.goNext()
+	assert str(controller.page) == "tessdata"
+	controller.goNext()
 	assert str(controller.page) == "path"
+
+
+def test_given_tesseract_off_when_going_next_then_skips_tessdata_page(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.setenv("SRXY_INSTALLER_FORCE_NO_GPU", "1")
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.controller.vendor_downloads_supported",
+		lambda: True,
+	)
+	from srxy.adapters.inbound.installer.controller import InstallerController
+
+	controller = InstallerController()
+	controller.setPrivacyAck(True)
+	controller.setDownloadTesseract(False)
+	# Advance to options
+	controller.goNext()  # prefix
+	controller.goNext()  # privacy
+	controller.goNext()  # options
+	assert str(controller.page) == "options"
+
+	# when
+	controller.goNext()
+
+	# then
+	assert str(controller.page) == "path"
+	controller.goBack()
+	assert str(controller.page) == "options"
 
 
 def test_given_non_srxy_prefix_when_starting_reinstall_then_errors(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
@@ -931,6 +1048,7 @@ def test_given_matching_manifest_when_requiring_then_returns_manifest(tmp_path: 
 	assert loaded.prefix == str(tmp_path)
 
 
+@pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
 def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exist(tmp_path: Path):
 	# given
 	prefix = tmp_path / "Applications" / "srxy"
@@ -951,6 +1069,7 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	assert 'exec ">>"$LOG_FILE"' not in content.replace("\n", " ")
 
 
+@pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
 def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_before_tty_check(
 	tmp_path: Path,
 ):
@@ -994,6 +1113,54 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	assert app_exe.is_file()
 	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
 	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
+
+
+def test_given_windows_prefix_when_writing_launcher_then_writes_cmd(
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	# given
+	from srxy.adapters.inbound.installer import install as install_mod
+
+	monkeypatch.setattr(install_mod.platform, "system", lambda: "Windows")
+	monkeypatch.setattr(install_mod, "_write_windows_gui_exe", lambda _prefix: None)
+	prefix = tmp_path / "Programs" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "Scripts").mkdir(parents=True)
+	(prefix / ".venv" / "Scripts" / "srxy.exe").write_bytes(b"")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	cmd = prefix / "bin" / "srxy.cmd"
+	assert cmd.is_file()
+	text = cmd.read_text(encoding="utf-8")
+	assert "SRXY_HOME=" in text
+	assert "srxy.exe" in text
+	assert "TESSDATA_PREFIX" in text
+
+
+@pytest.mark.skipif(platform.system().lower() != "windows", reason="requires csc.exe")
+def test_given_windows_prefix_when_writing_launcher_then_builds_gui_exe(
+	tmp_path: Path,
+):
+	# given
+	prefix = tmp_path / "Programs" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / ".venv" / "Scripts").mkdir(parents=True)
+	(prefix / ".venv" / "Scripts" / "srxy.exe").write_bytes(b"")
+	(prefix / ".venv" / "Scripts" / "pythonw.exe").write_bytes(b"")
+
+	# when
+	write_launcher(prefix)
+
+	# then
+	gui = prefix / "bin" / "Srxy.exe"
+	assert gui.is_file()
+	assert gui.stat().st_size > 0
+	assert (prefix / "share" / "icons" / "srxy.ico").is_file()
+	assert (prefix / "bin" / "srxy.cmd").is_file()
 
 
 def test_given_default_options_when_planning_phases_then_includes_vendor_and_path(tmp_path: Path):

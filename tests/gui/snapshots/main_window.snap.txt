@@ -2,6 +2,7 @@ mainWindow:
   title: srxy
   status: Ready
   progressPercent: 0%
+  progressCount: 
   language: en
   sections: Where to search, What to search, How to search, Search, Search Results, Search progress
   howStack: Options button + summary, Filters button + summary

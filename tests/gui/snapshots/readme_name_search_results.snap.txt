@@ -1,6 +1,7 @@
 resultsPanel:
   status: 1 file matched
   progressPercent: 100%
+  progressCount: 2/2
   simpleQuery: README
   rowCount: 1
   results:

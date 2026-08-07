@@ -3,7 +3,7 @@ from __future__ import annotations
 import asyncio
 
 import pytest
-from tests.tui.helpers import assert_svg_snapshot
+from tests.tui.helpers import assert_svg_snapshot, settled_screenshot
 from textual.app import App, ComposeResult
 from textual.widgets import Button, Input
 
@@ -88,8 +88,12 @@ def test_given_full_tui_when_screenshot_then_shows_advanced_toggle(theme: str):
 
 	async def run():
 		async with app.run_test(size=(100, 30)) as pilot:
-			await pilot.pause()
-			svg = app.export_screenshot(title="srxy-tui-advanced-toggle")
+			svg = await settled_screenshot(
+				app,
+				pilot,
+				title="srxy-tui-advanced-toggle",
+				required_labels=("Advanced", "Ready", "Quit"),
+			)
 			assert_svg_snapshot(f"srxy_app_advanced_toggle_{theme}", svg)
 
 	asyncio.run(run())

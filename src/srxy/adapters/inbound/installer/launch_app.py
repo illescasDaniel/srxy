@@ -18,6 +18,13 @@ def installed_launcher_path(prefix: Path | str) -> Path:
 		app_exe = root / "Srxy.app" / "Contents" / "MacOS" / "srxy"
 		if app_exe.is_file():
 			return app_exe
+	if platform.system().lower() == "windows":
+		gui_exe = root / "bin" / "Srxy.exe"
+		if gui_exe.is_file():
+			return gui_exe
+		cmd = root / "bin" / "srxy.cmd"
+		if cmd.is_file():
+			return cmd
 	return root / "bin" / "srxy"
 
 

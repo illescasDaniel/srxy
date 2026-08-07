@@ -21,7 +21,14 @@ _requires_tesseract = pytest.mark.skipif(
 @_requires_tesseract
 def test_given_ocr_image_fixture_when_searching_with_ocr_then_finds_revenue():
 	# when
-	results = magic_file_search(OCR_FIXTURES_DIR, "revenue", ocr=True, search_names=False, semantic_image=False)
+	results = magic_file_search(
+		OCR_FIXTURES_DIR,
+		"revenue",
+		ocr=True,
+		search_names=False,
+		semantic_image=False,
+		include_subdirectories=False,
+	)
 
 	# then
 	assert len(results) == 1
@@ -33,7 +40,14 @@ def test_given_ocr_image_fixture_when_searching_with_ocr_then_finds_revenue():
 @_requires_tesseract
 def test_given_ocr_pdf_fixture_when_searching_with_ocr_then_finds_classifier():
 	# when
-	results = magic_file_search(OCR_FIXTURES_DIR, "classifier", ocr=True, search_names=False, semantic_image=False)
+	results = magic_file_search(
+		OCR_FIXTURES_DIR,
+		"classifier",
+		ocr=True,
+		search_names=False,
+		semantic_image=False,
+		include_subdirectories=False,
+	)
 
 	# then
 	assert len(results) == 1

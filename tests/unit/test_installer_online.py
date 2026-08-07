@@ -112,7 +112,7 @@ def test_given_darwin_arm64_when_building_online_options_then_vendor_downloads_o
 	assert options.download_ffmpeg is True
 
 
-def test_given_windows_when_building_online_options_then_vendor_downloads_off(
+def test_given_windows_when_building_online_options_then_vendor_downloads_on(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
@@ -128,8 +128,8 @@ def test_given_windows_when_building_online_options_then_vendor_downloads_off(
 	options = options_mod.build_online_install_options(prefix=tmp_path / "app")
 
 	# then
-	assert options.download_tesseract is False
-	assert options.download_ffmpeg is False
+	assert options.download_tesseract is True
+	assert options.download_ffmpeg is True
 
 
 def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version(
@@ -144,7 +144,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 		_ = timeout
 		return {
 			"info": {
-				"version": "1.6.4",
+				"version": "1.6.5",
 				"requires_dist": ["PySide6>=6.6", "cryptography>=44"],
 			}
 		}
@@ -155,7 +155,7 @@ def test_given_mocked_pypi_when_resolving_pypi_spec_then_pins_compatible_version
 	spec = package_spec.resolve_pypi_install_spec()
 
 	# then
-	assert spec == "srxy==1.6.4"
+	assert spec == "srxy==1.6.5"
 
 
 def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
@@ -168,7 +168,7 @@ def test_given_pypi_without_pyside_when_resolving_pypi_spec_then_raises(
 
 	def fake_fetch(*, timeout: float = 15.0) -> dict[str, Any]:
 		_ = timeout
-		return {"info": {"version": "1.6.4", "requires_dist": ["cryptography>=44"]}}
+		return {"info": {"version": "1.6.5", "requires_dist": ["cryptography>=44"]}}
 
 	monkeypatch.setattr(package_spec, "fetch_pypi_srxy_info", fake_fetch)
 

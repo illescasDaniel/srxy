@@ -22,3 +22,5 @@ htmlcov/
 .mypy_cache/
 .basedpyright/
 .DS_Store
+
+*.log

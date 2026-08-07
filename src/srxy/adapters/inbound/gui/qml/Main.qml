@@ -17,6 +17,9 @@ ApplicationWindow {
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
 
+	// Keep platform-native checkbox rendering (especially on macOS).
+	component StyledCheckBox: CheckBox {}
+
 	function t(key) {
 		const _ = root.langRev
 		return controller ? controller.i18nTr(key) : key
@@ -212,8 +215,17 @@ ApplicationWindow {
 	FolderDialog {
 		id: folderDialog
 		onAccepted: {
-			if (controller)
-				controller.path = selectedFolder.toString().replace("file://", "")
+			if (controller) {
+				// QUrl.toString() returns "file:///C:/path" on Windows and
+				// "file:///home/user" on Unix.  Strip the scheme correctly so
+				// the result is always a native absolute path.
+				var raw = selectedFolder.toString()
+				// Windows: file:///C:/... → C:/...
+				var path = raw.replace(/^file:\/\/\/([A-Za-z]:)/, "$1")
+				// Unix absolute: file:///home/... → /home/...
+				path = path.replace(/^file:\/\//, "")
+				controller.path = path
+			}
 		}
 	}
 
@@ -377,6 +389,7 @@ ApplicationWindow {
 				spacing: 8
 
 				RowLayout {
+					Layout.fillWidth: true
 					Button {
 						id: optionsButton
 						objectName: "optionsButton"
@@ -394,6 +407,7 @@ ApplicationWindow {
 					}
 				}
 				RowLayout {
+					Layout.fillWidth: true
 					Button {
 						id: filtersButton
 						objectName: "filtersButton"
@@ -583,7 +597,9 @@ ApplicationWindow {
 										Label {
 											text: matchRow.text
 											textFormat: Text.RichText
-											font.family: "monospace"
+											font.family: Qt.platform.os === "windows"
+												? "Consolas"
+												: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 											Layout.fillWidth: true
 											padding: 6
 											elide: Text.ElideRight
@@ -621,7 +637,9 @@ ApplicationWindow {
 									readOnly: true
 									wrapMode: TextEdit.Wrap
 									textFormat: TextEdit.RichText
-									font.family: "monospace"
+									font.family: Qt.platform.os === "windows"
+										? "Consolas"
+										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 									text: controller ? controller.previewText : ""
 									selectByMouse: true
 								}
@@ -651,6 +669,14 @@ ApplicationWindow {
 					objectName: "progressPercent"
 					text: (controller ? Math.round(controller.progress) : 0) + "%"
 					Layout.preferredWidth: 48
+					horizontalAlignment: Text.AlignRight
+				}
+				Label {
+					objectName: "progressCount"
+					visible: controller && controller.progressCount.length > 0
+					text: controller ? controller.progressCount : ""
+					Layout.preferredWidth: 88
+					elide: Text.ElideRight
 					horizontalAlignment: Text.AlignRight
 				}
 				Label {
@@ -724,24 +750,24 @@ ApplicationWindow {
 					text: root.t("gui.options.where")
 					font.bold: true
 				}
-				RowLayout {
-					CheckBox {
-						id: optNames
-						text: root.t("gui.options.file_names")
-						checked: true
-						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
-					}
-					InfoButton { helpKey: "search_names" }
+			RowLayout {
+				StyledCheckBox {
+					id: optNames
+					text: root.t("gui.options.file_names")
+					checked: true
+					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 				}
-				RowLayout {
-					CheckBox {
-						id: optContents
-						text: root.t("gui.options.file_contents")
-						checked: true
-						onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
-					}
-					InfoButton { helpKey: "search_contents" }
+				InfoButton { helpKey: "search_names" }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optContents
+					text: root.t("gui.options.file_contents")
+					checked: true
+					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 				}
+				InfoButton { helpKey: "search_contents" }
+			}
 
 				Label {
 					text: root.t("gui.options.how")
@@ -754,71 +780,71 @@ ApplicationWindow {
 					wrapMode: Text.WordWrap
 					Layout.fillWidth: true
 				}
-				RowLayout {
-					CheckBox {
-						id: optDocsTags
-						text: root.t("gui.options.docs_tags")
-						checked: true
-					}
-					InfoButton { helpKey: "search_docs_tags" }
+			RowLayout {
+				StyledCheckBox {
+					id: optDocsTags
+					text: root.t("gui.options.docs_tags")
+					checked: true
 				}
-				RowLayout {
-					CheckBox {
-						id: optSemantic
-						text: root.t("gui.options.semantic")
-						enabled: !!(controller && controller.capabilitiesJson)
-							&& controller.isFeatureEnabled("semantic")
-					}
-					WarningButton { featureKey: "semantic" }
-					InfoButton { helpKey: "semantic"; enabled: true }
+				InfoButton { helpKey: "search_docs_tags" }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optSemantic
+					text: root.t("gui.options.semantic")
+					enabled: !!(controller && controller.capabilitiesJson)
+						&& controller.isFeatureEnabled("semantic")
 				}
-				RowLayout {
-					CheckBox {
-						id: optOcr
-						text: root.t("gui.options.ocr")
-						enabled: optContents.checked
-							&& !!(controller && controller.capabilitiesJson)
-							&& controller.isFeatureEnabled("ocr")
-					}
-					WarningButton { featureKey: "ocr" }
-					InfoButton { helpKey: "ocr"; enabled: true }
+				WarningButton { featureKey: "semantic" }
+				InfoButton { helpKey: "semantic"; enabled: true }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optOcr
+					text: root.t("gui.options.ocr")
+					enabled: optContents.checked
+						&& !!(controller && controller.capabilitiesJson)
+						&& controller.isFeatureEnabled("ocr")
 				}
-				RowLayout {
-					CheckBox {
-						id: optTranscribe
-						text: root.t("gui.options.transcribe")
-						enabled: optContents.checked
-							&& !!(controller && controller.capabilitiesJson)
-							&& controller.isFeatureEnabled("transcribe")
-					}
-					WarningButton { featureKey: "transcribe" }
-					InfoButton { helpKey: "transcribe"; enabled: true }
+				WarningButton { featureKey: "ocr" }
+				InfoButton { helpKey: "ocr"; enabled: true }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optTranscribe
+					text: root.t("gui.options.transcribe")
+					enabled: optContents.checked
+						&& !!(controller && controller.capabilitiesJson)
+						&& controller.isFeatureEnabled("transcribe")
 				}
-				RowLayout {
-					CheckBox {
-						id: optSemanticImage
-						text: root.t("gui.options.semantic_image")
-						enabled: optContents.checked
-							&& !!(controller && controller.capabilitiesJson)
-							&& controller.isFeatureEnabled("semantic_image")
-					}
-					WarningButton { featureKey: "semantic_image" }
-					InfoButton { helpKey: "semantic_image"; enabled: true }
+				WarningButton { featureKey: "transcribe" }
+				InfoButton { helpKey: "transcribe"; enabled: true }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optSemanticImage
+					text: root.t("gui.options.semantic_image")
+					enabled: optContents.checked
+						&& !!(controller && controller.capabilitiesJson)
+						&& controller.isFeatureEnabled("semantic_image")
 				}
+				WarningButton { featureKey: "semantic_image" }
+				InfoButton { helpKey: "semantic_image"; enabled: true }
+			}
 
 				Label {
 					text: root.t("gui.options.which_files")
 					font.bold: true
 					Layout.topMargin: 8
 				}
-				RowLayout {
-					CheckBox { id: optSubdirs; text: root.t("gui.options.subdirs"); checked: true }
-					InfoButton { helpKey: "include_subdirectories" }
-				}
-				RowLayout {
-					CheckBox { id: optArchives; text: root.t("gui.options.archives") }
-					InfoButton { helpKey: "include_archives" }
-				}
+			RowLayout {
+				StyledCheckBox { id: optSubdirs; text: root.t("gui.options.subdirs"); checked: true }
+				InfoButton { helpKey: "include_subdirectories" }
+			}
+			RowLayout {
+				StyledCheckBox { id: optArchives; text: root.t("gui.options.archives") }
+				InfoButton { helpKey: "include_archives" }
+			}
 				Label {
 					text: root.t("gui.options.noisy")
 					font.bold: true
@@ -826,26 +852,26 @@ ApplicationWindow {
 					Layout.topMargin: 4
 					opacity: 0.75
 				}
-				RowLayout {
-					Layout.leftMargin: 12
-					CheckBox { id: optHidden; text: root.t("gui.options.hidden") }
-					InfoButton { helpKey: "include_hidden" }
-				}
-				RowLayout {
-					Layout.leftMargin: 12
-					CheckBox { id: optNoise; text: root.t("gui.options.noise") }
-					InfoButton { helpKey: "include_noise" }
-				}
-				RowLayout {
-					Layout.leftMargin: 12
-					CheckBox { id: optNoiseFiles; text: root.t("gui.options.noise_files") }
-					InfoButton { helpKey: "include_noise_files" }
-				}
-				RowLayout {
-					Layout.leftMargin: 12
-					CheckBox { id: optMatchSkippedNames; text: root.t("gui.options.match_skipped") }
-					InfoButton { helpKey: "match_skipped_names" }
-				}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: optHidden; text: root.t("gui.options.hidden") }
+				InfoButton { helpKey: "include_hidden" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: optNoise; text: root.t("gui.options.noise") }
+				InfoButton { helpKey: "include_noise" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: optNoiseFiles; text: root.t("gui.options.noise_files") }
+				InfoButton { helpKey: "include_noise_files" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: optMatchSkippedNames; text: root.t("gui.options.match_skipped") }
+				InfoButton { helpKey: "match_skipped_names" }
+			}
 				Label {
 					text: root.t("gui.options.binary_hint")
 					wrapMode: Text.WordWrap
