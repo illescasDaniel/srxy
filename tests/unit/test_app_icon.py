@@ -56,9 +56,9 @@ def test_given_macos_icons_when_resolving_then_corners_are_transparent():
 	assert isinstance(corner, tuple)
 	assert isinstance(edge_mid, tuple)
 	assert isinstance(center, tuple)
-	assert corner[3] == 0
+	assert corner[3] < 16
 	# Apple grid: ~100 px gutter — top edge midpoint must stay transparent.
-	assert edge_mid[3] == 0
+	assert edge_mid[3] < 16
 	assert center[3] == 255
 	# Solid plate (ignore soft shadow) should sit on the 824 art box (~100 px inset).
 	alpha = img.getchannel("A")

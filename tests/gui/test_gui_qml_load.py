@@ -57,6 +57,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 		"helpDialog",
 		"downloadConfirmDialog",
 		"downloadProgressDialog",
+		"searchWarningsDialog",
 		"errorDialog",
 	):
 		dialog = window.findChild(QObject, name)

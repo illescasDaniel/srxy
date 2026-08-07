@@ -583,6 +583,30 @@ def test_given_ocr_skip_when_formatting_warning_then_shows_ocr_limit(tmp_path: P
 	assert "--max-ocr-file-size" in warning
 
 
+def test_given_transcribe_no_speech_skip_when_formatting_warning_then_shows_no_speech(tmp_path: Path):
+	# given
+	skipped = SkippedFile(path=tmp_path / "silent.mp3", size_bytes=12_345, reason="transcribe_no_speech")
+
+	# when
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	# then
+	assert "skipped transcription" in warning
+	assert "no speech detected" in warning
+
+
+def test_given_transcribe_failed_skip_when_formatting_warning_then_shows_failed(tmp_path: Path):
+	# given
+	skipped = SkippedFile(path=tmp_path / "bad.mp3", size_bytes=12_345, reason="transcribe_failed")
+
+	# when
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	# then
+	assert "skipped transcription" in warning
+	assert "transcription failed" in warning
+
+
 def test_given_ocr_flag_when_parsing_args_then_accepts_flag():
 	# when
 	args = build_parser().parse_args(["invoice", ".", "--ocr"])

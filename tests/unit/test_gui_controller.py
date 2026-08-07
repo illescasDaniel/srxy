@@ -12,8 +12,13 @@ from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
-from srxy.application.search_session import SearchActivityEvent, SearchFinishedEvent, SearchResultEvent
-from srxy.domain.models import FileSearchResult
+from srxy.application.search_session import (
+	SearchActivityEvent,
+	SearchErrorEvent,
+	SearchFinishedEvent,
+	SearchResultEvent,
+)
+from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate
 
 
@@ -114,6 +119,40 @@ def test_given_search_finished_when_handling_event_then_updates_results_model(qa
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
 	assert controller.resultsModel.rowCount() == 1
 	assert controller.status.endswith("matched")
+
+
+def test_given_search_finished_with_skipped_files_when_handling_event_then_sets_search_warnings(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	skipped = SkippedFile(path=tmp_path / "silent.mp3", size_bytes=100, reason="transcribe_no_speech")
+
+	# when
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[], skipped_files=[skipped]))
+
+	# then
+	assert controller.hasSearchWarnings is True
+	assert "silent.mp3" in str(controller.searchWarnings)
+
+
+def test_given_new_search_when_beginning_search_then_clears_search_warnings(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	skipped = SkippedFile(path=tmp_path / "silent.mp3", size_bytes=100, reason="transcribe_no_speech")
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[], skipped_files=[skipped]))
+	assert controller.hasSearchWarnings is True
+	monkeypatch.setattr(controller, "_start_search_worker", lambda _args: None)
+
+	# when
+	controller._begin_search(args)  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert controller.hasSearchWarnings is False
 
 
 def test_given_indeterminate_activity_when_searching_then_status_spinner_animates(
@@ -450,6 +489,27 @@ def test_given_invalid_filters_when_apply_filters_json_then_keeps_previous_state
 	# then
 	assert error
 	assert controller.filtersJson() == before
+
+
+def test_given_cancel_requested_when_search_error_event_then_status_cancelled_without_error_dialog(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	from srxy.i18n import tr
+
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	errors: list[str] = []
+	controller.errorOccurred.connect(errors.append)
+	controller.cancelSearch()
+
+	# when
+	controller.handle_search_event_for_tests(SearchErrorEvent("search worker exited unexpectedly"))
+
+	# then
+	assert errors == []
+	assert controller.status == tr("status.search_cancelled")
+	assert controller.exit_code() == 2
 
 
 def test_given_result_row_when_selecting_then_selected_result_property_updates(qapp: QCoreApplication, tmp_path: Path):

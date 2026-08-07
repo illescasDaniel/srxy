@@ -149,10 +149,18 @@ def _append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None):
 	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes(path), reason="ocr_too_large"))
 
 
-def _append_transcribe_skip(path: Path, skipped_files: list[SkippedFile] | None):
+def _append_transcribe_skip(
+	path: Path, skipped_files: list[SkippedFile] | None, *, reason: str = "transcribe_too_large"
+):
 	if skipped_files is None:
 		return
-	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes(path), reason="transcribe_too_large"))
+	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes(path), reason=reason))
+
+
+def append_transcribe_skip(
+	path: Path, skipped_files: list[SkippedFile] | None, *, reason: str = "transcribe_too_large"
+):
+	_append_transcribe_skip(path, skipped_files, reason=reason)
 
 
 def iter_searchable_lines(
@@ -191,7 +199,9 @@ def iter_searchable_lines(
 			else:
 				emit_activity(on_activity, f"Transcribe · {path.name}")
 				try:
-					for line_number, raw_line in iter_transcript_lines(path, on_activity=on_activity):
+					for line_number, raw_line in iter_transcript_lines(
+						path, on_activity=on_activity, skipped_files=skipped_files
+					):
 						yield line_number, raw_line, "transcript"
 				finally:
 					clear_activity(on_activity)

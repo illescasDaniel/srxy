@@ -18,6 +18,7 @@ from srxy.adapters.outbound.models.device import (
 	warn_if_cpu_device,
 )
 from srxy.application.install_paths import resolve_ffmpeg_binary
+from srxy.domain.models import SkippedFile
 from srxy.domain.progress import ActivityCallback, emit_activity
 
 
@@ -529,6 +530,8 @@ def _cached_transcript_lines(
 			return lines
 
 	backend, segments = transcribe()
+	if not segments:
+		backend, segments = transcribe()
 	variant = _cache_variant(device, backend)
 	if backend != planned_backend:
 		cached = cache_get(CACHE_KIND_TRANSCRIPT, content_hash, variant)
@@ -553,8 +556,14 @@ def _cached_transcript_lines(
 	return segments
 
 
-def iter_transcript_lines(path: Path, *, on_activity: ActivityCallback | None = None):
+def iter_transcript_lines(
+	path: Path,
+	*,
+	on_activity: ActivityCallback | None = None,
+	skipped_files: list[SkippedFile] | None = None,
+):
 	from srxy.adapters.outbound.cache.cache import get_file_content_hash
+	from srxy.adapters.outbound.content.line_sources import append_transcribe_skip
 
 	device = resolve_transcribe_device()
 	active_backend = transcribe_backend_for_device(device)
@@ -583,7 +592,12 @@ def iter_transcript_lines(path: Path, *, on_activity: ActivityCallback | None = 
 				segments.extend(wav_segments)
 			return backend_in_use, segments
 
+		produced = False
 		for timestamp_seconds, text in _cached_transcript_lines(content_hash, transcribe):
+			produced = True
 			yield timestamp_seconds, text
+		if not produced:
+			append_transcribe_skip(path, skipped_files, reason="transcribe_no_speech")
 	except Exception as exc:
 		print(f"warning: transcription failed for {path}: {exc}", file=sys.stderr)
+		append_transcribe_skip(path, skipped_files, reason="transcribe_failed")

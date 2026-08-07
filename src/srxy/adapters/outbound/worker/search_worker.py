@@ -131,6 +131,33 @@ async def _terminate_subprocess(process: asyncio.subprocess.Process):
 		pass
 
 
+async def _drain_stderr(stderr: asyncio.StreamReader, chunks: list[bytes]):
+	try:
+		while True:
+			chunk = await stderr.read(4096)
+			if not chunk:
+				break
+			chunks.append(chunk)
+	except (asyncio.CancelledError, ConnectionResetError):
+		return
+
+
+def stderr_error_message(stderr: bytes) -> str | None:
+	"""Pick a fatal stderr line; ignore warning-only noise from transcription."""
+	if not stderr:
+		return None
+	lines = stderr.decode(errors="replace").strip().splitlines()
+	for line in reversed(lines):
+		text = line.strip()
+		if text and not text.lower().startswith("warning:"):
+			return text
+	return None
+
+
+def _cancelled_finished_payload() -> dict[str, Any]:
+	return {"type": "finished", "cancelled": True, "skipped_files": []}
+
+
 def run_worker_main():
 	bootstrap_worker_env()
 	if sys.platform != "win32":
@@ -248,20 +275,28 @@ async def iter_subprocess_search_events(
 	await process.stdin.drain()
 	process.stdin.close()
 
+	stderr_chunks: list[bytes] = []
+	stderr_task: asyncio.Task[None] | None = None
+	if process.stderr is not None:
+		stderr_task = asyncio.create_task(_drain_stderr(process.stderr, stderr_chunks))
+
 	try:
 		while True:
 			if cancel_check and cancel_check():
 				await _terminate_subprocess(process)
+				yield _cancelled_finished_payload()
 				return
 
 			line = await process.stdout.readline()
 			if not line:
-				stderr = b""
-				if process.stderr is not None:
-					stderr = await process.stderr.read()
-				if stderr:
-					message = stderr.decode(errors="replace").strip().splitlines()[-1]
-					yield {"type": "error", "message": message or "search worker failed"}
+				if stderr_task is not None:
+					await stderr_task
+				if cancel_check and cancel_check():
+					yield _cancelled_finished_payload()
+					return
+				message = stderr_error_message(b"".join(stderr_chunks))
+				if message:
+					yield {"type": "error", "message": message}
 				else:
 					yield {"type": "error", "message": "search worker exited unexpectedly"}
 				break
@@ -275,6 +310,12 @@ async def iter_subprocess_search_events(
 				break
 			yield event
 	finally:
+		if stderr_task is not None and not stderr_task.done():
+			stderr_task.cancel()
+			try:
+				await stderr_task
+			except asyncio.CancelledError:
+				pass
 		await _terminate_subprocess(process)
 
 
@@ -291,4 +332,5 @@ __all__ = [
 	"run_worker_main",
 	"search_uses_subprocess",
 	"skipped_file_from_dict",
+	"stderr_error_message",
 ]

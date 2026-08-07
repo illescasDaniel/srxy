@@ -196,6 +196,18 @@ ApplicationWindow {
 		onClicked: showHelp(helpKey)
 	}
 
+	component SummaryInfoButton: ToolButton {
+		property string summary: ""
+		text: "i"
+		flat: true
+		implicitWidth: 28
+		implicitHeight: 28
+		font.bold: true
+		opacity: summary.length > 0 ? 1.0 : 0.45
+		ToolTip.visible: hovered && summary.length > 0
+		ToolTip.text: summary
+	}
+
 	component WarningButton: ToolButton {
 		property string featureKey: ""
 		text: "!"
@@ -210,6 +222,52 @@ ApplicationWindow {
 		ToolTip.visible: hovered
 		ToolTip.text: root.t("options.unavailable_tooltip")
 		onClicked: showUnavailable(featureKey)
+	}
+
+	component TermRow: RowLayout {
+		property int termIndex: 0
+		readonly property var termRow: termIndex >= 0 && termIndex < termModel.count
+			? termModel.get(termIndex) : null
+		spacing: 4
+		ComboBox {
+			visible: termIndex > 0
+			model: 2
+			currentIndex: termRow && termRow.join === "and" ? 1 : 0
+			displayText: root.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
+			delegate: ItemDelegate {
+				required property int index
+				width: parent ? parent.width : 80
+				text: root.t(index === 1 ? "gui.join.and" : "gui.join.or")
+			}
+			onActivated: {
+				if (!termRow)
+					return
+				termModel.setProperty(termIndex, "join", currentIndex === 1 ? "and" : "or")
+				root.syncTermRows()
+			}
+		}
+		TextField {
+			Layout.fillWidth: true
+			text: termRow ? termRow.term : ""
+			placeholderText: root.t("gui.term_placeholder")
+			onTextChanged: {
+				if (!termRow)
+					return
+				termModel.setProperty(termIndex, "term", text)
+				root.syncTermRows()
+			}
+			Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+		}
+		Button {
+			text: "−"
+			visible: termModel.count > 1
+			onClicked: {
+				if (!termRow)
+					return
+				termModel.remove(termIndex)
+				root.syncTermRows()
+			}
+		}
 	}
 
 	FolderDialog {
@@ -234,234 +292,272 @@ ApplicationWindow {
 		anchors.margins: 8
 		spacing: 8
 
-		GroupBox {
-			title: root.t("gui.section.where")
+		ScrollView {
+			id: mainScroll
 			Layout.fillWidth: true
-			RowLayout {
-				anchors.fill: parent
-				Button {
-					objectName: "browseButton"
-					text: root.t("gui.browse")
-					onClicked: folderDialog.open()
-				}
-				TextField {
-					id: pathField
-					objectName: "pathField"
-					Layout.fillWidth: true
-					placeholderText: root.t("gui.path_placeholder")
-					text: controller ? controller.path : ""
-					onTextChanged: if (controller) controller.path = text
-					Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-				}
-				ToolButton {
-					objectName: "pathIssueButton"
-					text: "⚠"
-					flat: true
-					visible: controller && controller.pathIssue.length > 0
-					implicitWidth: 28
-					implicitHeight: 28
-					ToolTip.visible: hovered
-					ToolTip.text: controller ? controller.pathIssue : ""
-				}
-			}
-		}
+			Layout.fillHeight: true
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			readonly property bool scrollNeeded: contentHeight > height + 1
+			ScrollBar.vertical.policy: scrollNeeded ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
 
-		GroupBox {
-			title: root.t("gui.section.what")
-			Layout.fillWidth: true
 			ColumnLayout {
-				anchors.fill: parent
+				id: mainContent
+				width: mainScroll.availableWidth
+				height: Math.max(implicitHeight, mainScroll.availableHeight)
 				spacing: 8
-				RowLayout {
-					TextField {
-						id: simpleQuery
-						objectName: "simpleQueryField"
-						Layout.fillWidth: true
-						placeholderText: root.t("gui.search_placeholder")
-						visible: modeBox.currentIndex === 0
-						text: controller ? controller.simpleQuery : ""
-						onTextChanged: if (controller) controller.simpleQuery = text
-						Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+
+				GroupBox {
+					title: root.t("gui.section.where")
+					Layout.fillWidth: true
+					RowLayout {
+						anchors.fill: parent
+						Button {
+							objectName: "browseButton"
+							text: root.t("gui.browse")
+							onClicked: folderDialog.open()
+						}
+						TextField {
+							id: pathField
+							objectName: "pathField"
+							Layout.fillWidth: true
+							placeholderText: root.t("gui.path_placeholder")
+							text: controller ? controller.path : ""
+							onTextChanged: if (controller) controller.path = text
+							Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+						}
+						ToolButton {
+							objectName: "pathIssueButton"
+							text: "⚠"
+							flat: true
+							visible: controller && controller.pathIssue.length > 0
+							implicitWidth: 28
+							implicitHeight: 28
+							ToolTip.visible: hovered
+							ToolTip.text: controller ? controller.pathIssue : ""
+						}
 					}
-					ColumnLayout {
+				}
+
+				RowLayout {
+					id: whatHowRow
+					Layout.fillWidth: true
+					Layout.alignment: Qt.AlignTop
+					spacing: 8
+
+					GroupBox {
+						id: whatGroup
+						title: root.t("gui.section.what")
 						Layout.fillWidth: true
-						visible: modeBox.currentIndex === 1
-						spacing: 4
-						Repeater {
-							id: termRepeater
-							model: termModel
-							delegate: RowLayout {
-								required property int index
-								required property string term
-								required property string join
-								ComboBox {
-									visible: index > 0
-									model: 2
-									currentIndex: join === "and" ? 1 : 0
-									displayText: root.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
-									delegate: ItemDelegate {
-										required property int index
-										width: parent ? parent.width : 80
-										text: root.t(index === 1 ? "gui.join.and" : "gui.join.or")
+						Layout.alignment: Qt.AlignTop
+						// Grow with content up to this cap, then scroll inside.
+						readonly property real chromeHeight: topPadding + bottomPadding
+						readonly property real maxBodyHeight: 200
+						Layout.maximumHeight: maxBodyHeight + chromeHeight
+						Layout.preferredHeight: Math.min(
+							maxBodyHeight + chromeHeight,
+							whatBody.implicitHeight + chromeHeight
+						)
+						ScrollView {
+							id: whatScroll
+							anchors.fill: parent
+							clip: true
+							ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+							ScrollBar.vertical.policy: contentHeight > height + 1
+								? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+							contentWidth: availableWidth
+							ColumnLayout {
+								id: whatBody
+								width: whatScroll.availableWidth
+								spacing: 4
+								RowLayout {
+									Layout.fillWidth: true
+									spacing: 4
+									StackLayout {
+										id: queryModeStack
+										Layout.fillWidth: true
+										currentIndex: modeBox.currentIndex
+										Layout.preferredHeight: currentIndex === 0
+											? simpleQuery.implicitHeight
+											: (currentIndex === 1 ? multiTermColumn.implicitHeight : advancedQuery.implicitHeight)
+										TextField {
+											id: simpleQuery
+											objectName: "simpleQueryField"
+											Layout.fillWidth: true
+											Layout.preferredHeight: implicitHeight
+											placeholderText: root.t("gui.search_placeholder")
+											text: controller ? controller.simpleQuery : ""
+											onTextChanged: if (controller) controller.simpleQuery = text
+											Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+										}
+										ColumnLayout {
+											id: multiTermColumn
+											spacing: 2
+											width: parent.width
+											Repeater {
+												model: termModel.count
+												delegate: TermRow {
+													termIndex: index
+													Layout.fillWidth: true
+													width: parent.width
+												}
+											}
+											Button {
+												text: root.t("gui.add_term")
+												onClicked: {
+													termModel.append({ term: "", join: "or" })
+													root.syncTermRows()
+												}
+											}
+										}
+										TextField {
+											id: advancedQuery
+											objectName: "advancedQueryField"
+											Layout.fillWidth: true
+											Layout.preferredHeight: implicitHeight
+											placeholderText: root.t("gui.advanced_placeholder")
+											text: controller ? controller.advancedQuery : ""
+											onTextChanged: if (controller) controller.advancedQuery = text
+											Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+										}
 									}
-									onActivated: {
-										termModel.setProperty(index, "join", currentIndex === 1 ? "and" : "or")
-										syncTermRows()
+									ComboBox {
+										id: modeBox
+										objectName: "queryModeBox"
+										model: 3
+										implicitWidth: 120
+										Layout.alignment: Qt.AlignTop
+										displayText: root.t(
+											["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
+										)
+										delegate: ItemDelegate {
+											required property int index
+											width: modeBox.width
+											text: root.t(
+												["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+											)
+										}
+										onCurrentIndexChanged: {
+											const modes = ["simple", "multi", "advanced"]
+											if (controller)
+												controller.queryMode = modes[currentIndex]
+										}
 									}
 								}
-								TextField {
+								Label {
+									objectName: "queryPreview"
+									visible: modeBox.currentIndex !== 0
+									text: controller ? controller.queryPreview : ""
+									opacity: 0.7
+									wrapMode: Text.Wrap
 									Layout.fillWidth: true
-									text: term
-									placeholderText: root.t("gui.term_placeholder")
-									onTextChanged: {
-										termModel.setProperty(index, "term", text)
-										syncTermRows()
+								}
+							}
+						}
+					}
+
+					GroupBox {
+						id: howGroup
+						title: root.t("gui.section.how")
+						Layout.fillWidth: false
+						Layout.alignment: Qt.AlignTop
+						Layout.preferredWidth: howButtonRow.implicitWidth
+							+ leftPadding + rightPadding
+						ColumnLayout {
+							id: howBody
+							anchors.left: parent.left
+							anchors.right: parent.right
+							spacing: 4
+							RowLayout {
+								id: howButtonRow
+								spacing: 4
+								readonly property real sharedButtonWidth: Math.max(
+									optionsButton.implicitWidth,
+									filtersButton.implicitWidth
+								)
+								Button {
+									id: optionsButton
+									objectName: "optionsButton"
+									text: root.t("gui.options")
+									Layout.preferredWidth: howButtonRow.sharedButtonWidth
+									onClicked: {
+										loadOptionsFromController()
+										optionsDialog.open()
 									}
-									Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+								}
+								SummaryInfoButton {
+									objectName: "optionsSummaryButton"
+									summary: controller ? controller.optionsSummary : ""
 								}
 								Button {
-									text: "−"
-									visible: termModel.count > 1
+									id: filtersButton
+									objectName: "filtersButton"
+									text: root.t("gui.filters")
+									Layout.preferredWidth: howButtonRow.sharedButtonWidth
 									onClicked: {
-										termModel.remove(index)
-										syncTermRows()
+										loadFiltersFromController()
+										filtersDialog.open()
 									}
+								}
+								SummaryInfoButton {
+									objectName: "filtersSummaryButton"
+									summary: controller ? controller.filtersSummary : ""
 								}
 							}
 						}
-						Button {
-							text: root.t("gui.add_term")
-							onClicked: {
-								termModel.append({ term: "", join: "or" })
-								syncTermRows()
-							}
-						}
-					}
-					TextField {
-						id: advancedQuery
-						objectName: "advancedQueryField"
-						Layout.fillWidth: true
-						placeholderText: root.t("gui.advanced_placeholder")
-						visible: modeBox.currentIndex === 2
-						text: controller ? controller.advancedQuery : ""
-						onTextChanged: if (controller) controller.advancedQuery = text
-						Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-					}
-					ComboBox {
-						id: modeBox
-						objectName: "queryModeBox"
-						model: 3
-						implicitWidth: 120
-						Layout.alignment: Qt.AlignTop
-						displayText: root.t(
-							["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
-						)
-						delegate: ItemDelegate {
-							required property int index
-							width: modeBox.width
-							text: root.t(
-								["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
-							)
-						}
-						onCurrentIndexChanged: {
-							const modes = ["simple", "multi", "advanced"]
-							if (controller)
-								controller.queryMode = modes[currentIndex]
-						}
 					}
 				}
-				Label {
-					objectName: "queryPreview"
-					visible: modeBox.currentIndex !== 0
-					text: controller ? controller.queryPreview : ""
-					opacity: 0.7
-					wrapMode: Text.Wrap
-					Layout.fillWidth: true
-				}
-			}
-		}
-
-		GroupBox {
-			title: root.t("gui.section.how")
-			Layout.fillWidth: true
-			ColumnLayout {
-				anchors.fill: parent
-				spacing: 8
-
-				RowLayout {
-					Layout.fillWidth: true
-					Button {
-						id: optionsButton
-						objectName: "optionsButton"
-						text: root.t("gui.options")
-						onClicked: {
-							loadOptionsFromController()
-							optionsDialog.open()
-						}
-					}
-					Label {
-						text: controller ? controller.optionsSummary : ""
-						opacity: 0.7
-						elide: Text.ElideRight
-						Layout.fillWidth: true
-					}
-				}
-				RowLayout {
-					Layout.fillWidth: true
-					Button {
-						id: filtersButton
-						objectName: "filtersButton"
-						text: root.t("gui.filters")
-						onClicked: {
-							loadFiltersFromController()
-							filtersDialog.open()
-						}
-					}
-					Label {
-						text: controller ? controller.filtersSummary : ""
-						opacity: 0.7
-						elide: Text.ElideRight
-						Layout.fillWidth: true
-					}
-				}
-			}
-		}
 
 		GroupBox {
 			title: root.t("gui.section.search")
 			Layout.fillWidth: true
-			RowLayout {
-				Button {
-					id: searchButton
-					objectName: "searchButton"
-					text: root.t("gui.search")
-					highlighted: controller ? controller.stale : true
-					implicitWidth: 160
-					enabled: controller !== null && controller !== undefined && controller.canSearch
-					onClicked: if (controller) controller.startSearch()
-				}
-				ToolButton {
-					objectName: "queryIssueButton"
-					text: "⚠"
-					flat: true
-					visible: controller && controller.queryIssue.length > 0
-					implicitWidth: 28
-					implicitHeight: 28
-					ToolTip.visible: hovered
-					ToolTip.text: controller ? controller.queryIssue : ""
-				}
-			}
-		}
-
-		GroupBox {
-			title: root.t("gui.section.results")
-			Layout.fillWidth: true
 			Layout.fillHeight: true
-			enabled: controller ? controller.hasSearched : false
-			opacity: enabled ? 1.0 : 0.45
-			SplitView {
+			Layout.minimumHeight: 280
+			ColumnLayout {
 				anchors.fill: parent
-				orientation: Qt.Horizontal
+				spacing: 8
+				RowLayout {
+					Layout.fillWidth: true
+					Button {
+						id: searchButton
+						objectName: "searchButton"
+						text: root.t("gui.search")
+						highlighted: controller ? controller.stale : true
+						implicitWidth: 160
+						enabled: controller !== null && controller !== undefined && controller.canSearch
+						onClicked: if (controller) controller.startSearch()
+					}
+					ToolButton {
+						objectName: "queryIssueButton"
+						text: "⚠"
+						flat: true
+						visible: controller && controller.queryIssue.length > 0
+						implicitWidth: 28
+						implicitHeight: 28
+						ToolTip.visible: hovered
+						ToolTip.text: controller ? controller.queryIssue : ""
+					}
+					ToolButton {
+						objectName: "searchWarningsButton"
+						text: "⚠"
+						flat: true
+						visible: controller && controller.hasSearchWarnings
+						implicitWidth: 28
+						implicitHeight: 28
+						ToolTip.visible: hovered
+						ToolTip.text: root.t("gui.search_warnings.tooltip")
+						onClicked: searchWarningsDialog.open()
+					}
+				}
+				Item {
+					Layout.fillWidth: true
+					Layout.fillHeight: true
+					Layout.minimumHeight: 240
+					enabled: controller ? controller.hasSearched : false
+					opacity: enabled ? 1.0 : 0.45
+					SplitView {
+						anchors.fill: parent
+						orientation: Qt.Horizontal
 
 				Frame {
 					SplitView.preferredWidth: 380
@@ -649,6 +745,8 @@ ApplicationWindow {
 				}
 			}
 		}
+		}
+		}
 
 		GroupBox {
 			title: root.t("gui.section.progress")
@@ -692,6 +790,8 @@ ApplicationWindow {
 				}
 			}
 		}
+			}
+		}
 	}
 
 	Dialog {
@@ -702,6 +802,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: 520
 		implicitWidth: 520
+		height: Math.min(560, parent.height - 40)
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
@@ -732,7 +833,9 @@ ApplicationWindow {
 		}
 
 		ScrollView {
+			anchors.fill: parent
 			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 			ColumnLayout {
 				spacing: 6
 				width: optionsDialog.availableWidth - 24
@@ -1165,6 +1268,26 @@ ApplicationWindow {
 			}
 		}
 		onRejected: if (controller) controller.cancelDownload()
+	}
+
+	Dialog {
+		id: searchWarningsDialog
+		objectName: "searchWarningsDialog"
+		title: root.t("gui.search_warnings.title")
+		modal: true
+		standardButtons: Dialog.Ok
+		anchors.centerIn: parent
+		width: Math.min(560, parent.width - 40)
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			Label {
+				wrapMode: Text.Wrap
+				width: searchWarningsDialog.availableWidth - 24
+				text: controller ? controller.searchWarnings : ""
+			}
+		}
 	}
 
 	Dialog {

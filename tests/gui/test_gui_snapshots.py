@@ -39,7 +39,6 @@ def _chrome_tree(controller: SearchController) -> str:
 			t("gui.section.what"),
 			t("gui.section.how"),
 			t("gui.section.search"),
-			t("gui.section.results"),
 			t("gui.section.progress"),
 		]
 	)
@@ -73,7 +72,7 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  progressCount: {controller.progressCount}",
 		f"  language: {controller.language}",
 		f"  sections: {sections}",
-		"  howStack: Options button + summary, Filters button + summary",
+		"  howStack: What + How row (query left, Options/Filters right)",
 		f"  queryMode: {controller.queryMode}",
 		f"  simpleQuery: {controller.simpleQuery}",
 		f"  path: {_display_path(str(controller.path))}",
@@ -91,7 +90,8 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  menus: {menus}",
 		f"  helpMenu: {help_menu}",
 		f"  dialogs: {t('about.title')}, {t('update.title')}, {t('help.dialog_title')}, "
-		f"{t('gui.download_model')}, {t('gui.downloading')}, {t('gui.error')}",
+		f"{t('gui.download_model')}, {t('gui.downloading')}, {t('gui.error')}, "
+		f"{t('gui.search_warnings.title')}",
 		f"  panels: {t('gui.results')}, {t('gui.matches_in_file')}, File preview",
 		f"  resultColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.path')}, {t('gui.col.matched')}",
 		f"  matchColumns: {t('gui.col.hash')}, {t('gui.col.match')}, {t('gui.col.location')}, {t('gui.col.text')}",

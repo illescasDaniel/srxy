@@ -269,6 +269,8 @@
   "gui.download_model": "Download model",
   "gui.downloading": "Downloading…",
   "gui.error": "Error",
+  "gui.search_warnings.title": "Search warnings",
+  "gui.search_warnings.tooltip": "Some files were skipped during search",
   "gui.about_setting": "About this setting",
   "preview.truncated": "Preview truncated (size/line limit reached).",
   "capabilities.detecting": "Detecting GPU capabilities…",

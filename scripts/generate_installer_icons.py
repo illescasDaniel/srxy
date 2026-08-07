@@ -16,8 +16,14 @@ Run from the repo root:
 from __future__ import annotations
 
 import math
+import sys
 from pathlib import Path
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+	sys.path.insert(0, str(_SCRIPTS))
+
+from icon_compress import compress_png
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -141,9 +147,9 @@ def composite(base: Image.Image) -> Image.Image:
 
 
 def save_png(img: Image.Image, path: Path):
-	"""Write a PNG with max zlib compression (Pillow optimize + compress_level 9)."""
-	# PNG has no JPEG-style quality knob; max deflate + optimize is the safe bet.
-	img.save(path, format="PNG", optimize=True, compress_level=9)
+	"""Write a PNG and lossy-compress with pngquant (~40% quality)."""
+	img.save(path, format="PNG")
+	compress_png(path)
 
 
 def main():

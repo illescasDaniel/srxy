@@ -24,8 +24,14 @@ Master output (compress this if desired):
 
 from __future__ import annotations
 
+import sys
 from pathlib import Path
 
+_SCRIPTS = Path(__file__).resolve().parent
+if str(_SCRIPTS) not in sys.path:
+	sys.path.insert(0, str(_SCRIPTS))
+
+from icon_compress import compress_png
 from PIL import Image, ImageDraw, ImageFilter
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -95,6 +101,11 @@ def render_macos_icon(src: Image.Image, *, canvas_size: int = MASTER) -> Image.I
 	return canvas
 
 
+def save_png(img: Image.Image, path: Path):
+	img.save(path, format="PNG")
+	compress_png(path)
+
+
 def main():
 	if not ORIGINAL.is_file():
 		raise SystemExit(f"missing original icon: {ORIGINAL}")
@@ -104,8 +115,7 @@ def main():
 
 	MACOS_DIR.mkdir(parents=True, exist_ok=True)
 	masked_master = render_macos_icon(base)
-	# Keep RGB+alpha; avoid palette quantization so manual recompress stays easy.
-	masked_master.save(MACOS_DIR / "srxy.png", format="PNG", optimize=False)
+	save_png(masked_master, MACOS_DIR / "srxy.png")
 	print(
 		f"wrote {MACOS_DIR / 'srxy.png'} "
 		f"({MASTER}x{MASTER}, {ART_SIZE} art + {MARGIN}px gutter)"
@@ -114,8 +124,9 @@ def main():
 	for size in SIZES:
 		# Re-render per size so gutter/radius stay on-grid (avoid shrinking shadows badly).
 		img = render_macos_icon(base, canvas_size=size)
-		img.save(MACOS_DIR / f"srxy-{size}.png", format="PNG", optimize=False)
-		print(f"wrote {MACOS_DIR / f'srxy-{size}.png'} ({size}x{size})")
+		out = MACOS_DIR / f"srxy-{size}.png"
+		save_png(img, out)
+		print(f"wrote {out} ({size}x{size})")
 
 
 if __name__ == "__main__":

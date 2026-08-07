@@ -126,6 +126,10 @@ def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int | None)
 			f"({skipped.size_bytes:,} bytes > --max-transcribe-file-size {limit_label})\n"
 			f"  hint: increase --max-transcribe-file-size or unset SRXY_TRANSCRIBE_MAX_FILE_SIZE"
 		)
+	if skipped.reason == "transcribe_no_speech":
+		return f"warning: skipped transcription in {skipped.path.as_posix()} (no speech detected after retry)"
+	if skipped.reason == "transcribe_failed":
+		return f"warning: skipped transcription in {skipped.path.as_posix()} (transcription failed)"
 
 	suggested = suggest_max_file_size(skipped.size_bytes)
 	return (

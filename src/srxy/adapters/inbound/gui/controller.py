@@ -10,7 +10,7 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Qt, QThread, QTimer, Signal, Slot
 
-from srxy.adapters.inbound.cli.cli import apply_args_to_env
+from srxy.adapters.inbound.cli.cli import apply_args_to_env, format_skipped_file_warnings
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
 	capabilities_to_dict,
@@ -211,6 +211,7 @@ class SearchController(QObject):
 	searchingChanged = Signal()
 	hasSearchedChanged = Signal()
 	resultsEmptyHintChanged = Signal()
+	searchWarningsChanged = Signal()
 	queryPreviewChanged = Signal()
 	pathChanged = Signal()
 	pathIssueChanged = Signal()
@@ -260,6 +261,7 @@ class SearchController(QObject):
 		self._stale = True
 		self._searching = False
 		self._has_searched = False
+		self._search_warnings = ""
 		self._activity: ActivityUpdate | None = None
 		self._activity_spinner_index = 0
 		self._activity_spinner_timer: QTimer | None = None
@@ -284,6 +286,7 @@ class SearchController(QObject):
 		self._thread: QThread | None = None
 		self._worker: _SearchWorker | None = None
 		self._search_subprocess: object | None = None
+		self._search_cancel_requested = False
 		self._default_result_limit_applied = False
 		self._download_thread: QThread | None = None
 		self._download_worker: _DownloadWorker | None = None
@@ -394,6 +397,21 @@ class SearchController(QObject):
 		return self._has_searched
 
 	hasSearched = Property(bool, _get_has_searched, notify=hasSearchedChanged)
+
+	def _get_search_warnings(self) -> str:
+		return self._search_warnings
+
+	def _get_has_search_warnings(self) -> bool:
+		return bool(self._search_warnings)
+
+	searchWarnings = Property(str, _get_search_warnings, notify=searchWarningsChanged)
+	hasSearchWarnings = Property(bool, _get_has_search_warnings, notify=searchWarningsChanged)
+
+	def _set_search_warnings(self, warnings: str):
+		text = warnings.strip()
+		if self._search_warnings != text:
+			self._search_warnings = text
+			self.searchWarningsChanged.emit()
 
 	def _get_results_empty_hint(self) -> str:
 		from srxy.i18n import tr
@@ -878,6 +896,7 @@ class SearchController(QObject):
 		if not self._has_searched:
 			self._has_searched = True
 			self.hasSearchedChanged.emit()
+		self._search_cancel_requested = False
 		from srxy.application.search_filters import GUI_DEFAULT_RESULT_LIMIT
 
 		self._default_result_limit_applied = args.limit is None
@@ -898,6 +917,7 @@ class SearchController(QObject):
 		self._progress = 0.0
 		self.progressChanged.emit()
 		self._set_scan_progress(0, 0)
+		self._set_search_warnings("")
 		self._notify_results_empty_hint()
 		self._set_status_tr("status.starting")
 		self._set_searching(True)
@@ -1031,6 +1051,7 @@ class SearchController(QObject):
 	def cancelSearch(self):  # noqa: N802
 		if self._worker is not None:
 			self._worker.request_cancel()
+		self._search_cancel_requested = True
 		self._kill_search_subprocess_sync()
 		self._set_status_tr("status.cancelling")
 
@@ -1059,6 +1080,14 @@ class SearchController(QObject):
 			if self._activity is None:
 				self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
 		elif isinstance(event, SearchErrorEvent):
+			if self._search_cancel_requested:
+				self._search_cancel_requested = False
+				self._clear_activity_status()
+				self._exit_code = 2
+				self._progress = 100.0
+				self.progressChanged.emit()
+				self._set_status_tr("status.search_cancelled")
+				return
 			self._clear_activity_status()
 			self.errorOccurred.emit(event.message)
 			self._exit_code = 2
@@ -1069,6 +1098,7 @@ class SearchController(QObject):
 				self._results_model.replace_results(event.results)
 			count = self._results_model.rowCount()
 			self._notify_results_empty_hint()
+			self._set_search_warnings(format_skipped_file_warnings(event.skipped_files, self._args.max_file_size))
 			if event.cancelled:
 				self._exit_code = 2
 				self._progress = 100.0
