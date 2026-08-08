@@ -4,8 +4,8 @@ mainWindow:
   progressPercent: 0%
   progressCount: 
   language: en
-  sections: Where to search, What to search, How to search, Search, Search progress
-  howStack: What + How row (query left, Options/Filters right)
+  sections: Where to search, What to search, How to search, Search Results, Search progress
+  howStack: What + How row (query+Search left; mode/Options/Filters right)
   queryMode: simple
   simpleQuery: 
   path: ~

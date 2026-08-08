@@ -214,6 +214,8 @@ ApplicationWindow {
 
 	component TermRow: RowLayout {
 		property int termIndex: 0
+		property real trailingReserve: 0
+		property real sideInset: 8
 		// Capture ApplicationWindow before Repeater teardown; `root` is
 		// undefined while a removed delegate is destroyed.
 		readonly property var appWindow: root
@@ -238,9 +240,12 @@ ApplicationWindow {
 			}
 		}
 		TextField {
+			id: termField
 			Layout.fillWidth: true
 			text: termRow ? termRow.term : ""
 			placeholderText: appWindow.t("gui.term_placeholder")
+			leftPadding: sideInset
+			rightPadding: sideInset + trailingReserve
 			onTextChanged: {
 				if (!termRow)
 					return
@@ -249,6 +254,7 @@ ApplicationWindow {
 			}
 			Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 		}
+		readonly property real fieldHeight: termField.height
 		Button {
 			text: "−"
 			visible: termModel.count > 1
@@ -391,6 +397,7 @@ ApplicationWindow {
 										StackLayout {
 											id: queryModeStack
 											Layout.fillWidth: true
+											Layout.fillHeight: false
 											currentIndex: modeBox.currentIndex
 											Layout.preferredHeight: currentIndex === 0
 												? simpleQuery.implicitHeight
@@ -399,6 +406,7 @@ ApplicationWindow {
 												id: simpleQuery
 												objectName: "simpleQueryField"
 												Layout.fillWidth: true
+												Layout.fillHeight: false
 												Layout.preferredHeight: implicitHeight
 												placeholderText: root.t("gui.search_placeholder")
 												text: controller ? controller.simpleQuery : ""
@@ -410,6 +418,7 @@ ApplicationWindow {
 												spacing: 2
 												width: parent.width
 												Repeater {
+													id: multiTermRepeater
 													model: termModel.count
 													delegate: TermRow {
 														termIndex: index
@@ -429,6 +438,7 @@ ApplicationWindow {
 												id: advancedQuery
 												objectName: "advancedQueryField"
 												Layout.fillWidth: true
+												Layout.fillHeight: false
 												Layout.preferredHeight: implicitHeight
 												placeholderText: root.t("gui.advanced_placeholder")
 												text: controller ? controller.advancedQuery : ""
@@ -436,27 +446,100 @@ ApplicationWindow {
 												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 											}
 										}
-										ComboBox {
-											id: modeBox
-											objectName: "queryModeBox"
-											model: 3
-											implicitWidth: 120
+										Button {
+											id: searchButton
+											objectName: "searchButton"
 											Layout.alignment: Qt.AlignTop
-											displayText: root.t(
-												["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
-											)
-											delegate: ItemDelegate {
-												required property int index
-												width: modeBox.width
-												text: root.t(
-													["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
-												)
+											readonly property real matchHeight: {
+												if (modeBox.currentIndex === 0)
+													return simpleQuery.implicitHeight
+												if (modeBox.currentIndex === 2)
+													return advancedQuery.implicitHeight
+												const row = multiTermRepeater.itemAt(0)
+												return row && row.fieldHeight > 0 ? row.fieldHeight : simpleQuery.implicitHeight
 											}
-											onCurrentIndexChanged: {
-												const modes = ["simple", "multi", "advanced"]
-												if (controller)
-													controller.queryMode = modes[currentIndex]
+											Layout.preferredHeight: matchHeight
+											Layout.minimumHeight: matchHeight
+											Layout.maximumHeight: matchHeight
+											implicitHeight: matchHeight
+											leftPadding: 12
+											rightPadding: 14
+											topPadding: 0
+											bottomPadding: 0
+											spacing: 8
+											highlighted: controller ? controller.stale : true
+											enabled: controller !== null && controller !== undefined && controller.canSearch
+											focusPolicy: Qt.NoFocus
+											contentItem: Row {
+												spacing: 8
+												leftPadding: 0
+												rightPadding: 0
+												Canvas {
+													id: searchButtonIcon
+													anchors.verticalCenter: parent.verticalCenter
+													width: 16
+													height: 16
+													readonly property color iconColor: {
+														if (!searchButton.enabled)
+															return searchButton.palette.placeholderText
+														if (searchButton.highlighted)
+															return "#ffffff"
+														const face = searchButton.palette.button
+														return face.hslLightness > 0.55 ? "#222222" : "#ffffff"
+													}
+													onPaint: {
+														const ctx = getContext("2d")
+														ctx.clearRect(0, 0, width, height)
+														ctx.strokeStyle = iconColor
+														ctx.lineWidth = 2
+														ctx.lineCap = "round"
+														ctx.beginPath()
+														ctx.arc(6.5, 6.5, 4.5, 0, Math.PI * 2)
+														ctx.stroke()
+														ctx.beginPath()
+														ctx.moveTo(10, 10)
+														ctx.lineTo(14.5, 14.5)
+														ctx.stroke()
+													}
+													Component.onCompleted: requestPaint()
+													onIconColorChanged: requestPaint()
+												}
+												Text {
+													anchors.verticalCenter: parent.verticalCenter
+													text: root.t("gui.search")
+													color: searchButtonIcon.iconColor
+													font: searchButton.font
+												}
+												Connections {
+													target: searchButton
+													function onEnabledChanged() { searchButtonIcon.requestPaint() }
+													function onHighlightedChanged() { searchButtonIcon.requestPaint() }
+												}
 											}
+											onClicked: if (controller) controller.startSearch()
+										}
+										ToolButton {
+											objectName: "queryIssueButton"
+											text: "⚠"
+											flat: true
+											visible: controller && controller.queryIssue.length > 0
+											implicitWidth: 28
+											implicitHeight: 28
+											Layout.alignment: Qt.AlignTop
+											ToolTip.visible: hovered
+											ToolTip.text: controller ? controller.queryIssue : ""
+										}
+										ToolButton {
+											objectName: "searchWarningsButton"
+											text: "⚠"
+											flat: true
+											visible: controller && controller.hasSearchWarnings
+											implicitWidth: 28
+											implicitHeight: 28
+											Layout.alignment: Qt.AlignTop
+											ToolTip.visible: hovered
+											ToolTip.text: root.t("gui.search_warnings.tooltip")
+											onClicked: searchWarningsDialog.open()
 										}
 									}
 									Label {
@@ -482,6 +565,28 @@ ApplicationWindow {
 						ColumnLayout {
 							id: howBody
 							spacing: 4
+							ComboBox {
+								id: modeBox
+								objectName: "queryModeBox"
+								Layout.fillWidth: true
+								implicitWidth: 140
+								model: 3
+								displayText: root.t(
+									["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
+								)
+								delegate: ItemDelegate {
+									required property int index
+									width: modeBox.width
+									text: root.t(
+										["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+									)
+								}
+								onCurrentIndexChanged: {
+									const modes = ["simple", "multi", "advanced"]
+									if (controller)
+										controller.queryMode = modes[currentIndex]
+								}
+							}
 							RowLayout {
 								id: howButtonRow
 								spacing: 4
@@ -519,46 +624,13 @@ ApplicationWindow {
 				}
 
 		GroupBox {
-			title: root.t("gui.section.search")
+			title: root.t("gui.section.results")
 			Layout.fillWidth: true
 			Layout.fillHeight: true
 			Layout.minimumHeight: 280
 			ColumnLayout {
 				anchors.fill: parent
 				spacing: 8
-				RowLayout {
-					Layout.fillWidth: true
-					Button {
-						id: searchButton
-						objectName: "searchButton"
-						text: root.t("gui.search")
-						highlighted: controller ? controller.stale : true
-						implicitWidth: 160
-						enabled: controller !== null && controller !== undefined && controller.canSearch
-						onClicked: if (controller) controller.startSearch()
-					}
-					ToolButton {
-						objectName: "queryIssueButton"
-						text: "⚠"
-						flat: true
-						visible: controller && controller.queryIssue.length > 0
-						implicitWidth: 28
-						implicitHeight: 28
-						ToolTip.visible: hovered
-						ToolTip.text: controller ? controller.queryIssue : ""
-					}
-					ToolButton {
-						objectName: "searchWarningsButton"
-						text: "⚠"
-						flat: true
-						visible: controller && controller.hasSearchWarnings
-						implicitWidth: 28
-						implicitHeight: 28
-						ToolTip.visible: hovered
-						ToolTip.text: root.t("gui.search_warnings.tooltip")
-						onClicked: searchWarningsDialog.open()
-					}
-				}
 				Item {
 					Layout.fillWidth: true
 					Layout.fillHeight: true

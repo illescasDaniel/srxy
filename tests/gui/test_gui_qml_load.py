@@ -50,6 +50,10 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert window.objectName() == "mainWindow"
 	assert window.findChild(QObject, "searchButton") is not None
 	assert window.findChild(QObject, "browseButton") is not None
+	assert window.findChild(QObject, "queryModeBox") is not None
+	assert window.findChild(QObject, "simpleQueryField") is not None
+	assert window.findChild(QObject, "optionsButton") is not None
+	assert window.findChild(QObject, "filtersButton") is not None
 
 	for name in (
 		"optionsDialog",
