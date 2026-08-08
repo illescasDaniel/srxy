@@ -180,3 +180,107 @@ def test_given_portal_command_success_when_reading_portal_then_returns_hex():
 	# then
 	assert result == "#3daee9"
 	run.assert_called_once_with(commands[0])
+
+
+def _windows_theme_app() -> MagicMock:
+	# follow_system_color_scheme / palette patch are mocked in these tests.
+	return MagicMock(spec=QCoreApplication)
+
+
+def test_given_fluent_available_when_applying_windows_theme_then_uses_fluent_only(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_UNIVERSAL_THEME", raising=False)
+	app = _windows_theme_app()
+	set_style = MagicMock(return_value=True)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", set_style),
+		patch.object(qt_theme, "follow_system_color_scheme") as follow,
+		patch.object(qt_theme, "_patch_fusion_selection_palette") as patch_palette,
+	):
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	set_style.assert_called_once_with("FluentWinUI3")
+	assert os.environ["QT_QUICK_CONTROLS_UNIVERSAL_THEME"] == "System"
+	follow.assert_called_once_with(app)
+	patch_palette.assert_called_once_with(app)
+
+
+def test_given_fluent_missing_when_applying_windows_theme_then_falls_back_to_universal(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_UNIVERSAL_THEME", raising=False)
+	app = _windows_theme_app()
+
+	def _set_style(name: str) -> bool:
+		return name == "Universal"
+
+	set_style = MagicMock(side_effect=_set_style)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", set_style),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+	):
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	assert [call.args[0] for call in set_style.call_args_list] == [
+		"FluentWinUI3",
+		"Universal",
+	]
+	assert os.environ["QT_QUICK_CONTROLS_UNIVERSAL_THEME"] == "System"
+
+
+def test_given_fluent_and_universal_missing_when_applying_windows_theme_then_uses_windows(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_UNIVERSAL_THEME", raising=False)
+	app = _windows_theme_app()
+	set_style = MagicMock(return_value=False)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", set_style),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+	):
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	assert [call.args[0] for call in set_style.call_args_list] == [
+		"FluentWinUI3",
+		"Universal",
+		"Windows",
+	]
+	assert os.environ["QT_QUICK_CONTROLS_UNIVERSAL_THEME"] == "System"
+
+
+def test_given_preset_universal_theme_when_applying_windows_theme_then_preserves_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.setenv("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "Dark")
+	app = _windows_theme_app()
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", return_value=True),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+	):
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_UNIVERSAL_THEME"] == "Dark"

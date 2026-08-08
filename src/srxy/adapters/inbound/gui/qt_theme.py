@@ -1,4 +1,8 @@
-"""Qt Quick theme helpers so Windows dark mode stays consistent."""
+"""Qt Quick theme helpers so Windows dark mode stays consistent.
+
+Windows prefers FluentWinUI3 (theme experiment): unsupported controls such as
+SplitView fall back to Fusion until Qt ships Fluent styles for them.
+"""
 
 from __future__ import annotations
 
@@ -236,21 +240,28 @@ def _apply_material_accent(app: QCoreApplication):
 def apply_qt_quick_theme(app: QCoreApplication):
 	"""Pick Qt Quick Controls style per platform.
 
-	- Windows: ``Universal`` (WinUI-like), falling back to ``Windows``.
+	- Windows: ``FluentWinUI3``, then ``Universal``, then ``Windows``.
 	- macOS: ``macOS`` (native Aqua controls).
 	- Linux / other: ``Material`` (Dense), falling back to ``Fusion``.
 
+	FluentWinUI3 follows the OS/palette (no ``*_THEME`` env). It is still a
+	theme experiment: controls Fluent does not style yet (notably ``SplitView``
+	in the GUI results pane) render with Fusion until Qt adds support.
+
 	Universal and Material default to Light unless their ``*_THEME`` env vars are
 	set (or the matching attached property is set in QML). We set those env vars
-	in Python only so shared QML never imports Universal/Material (which would
-	force that style on macOS). Linux also sets Material ``Dense`` so desktop
-	controls fit fixed window heights, and tries to pick a system accent colour
-	for Material (XDG portal, then palette highlight, else ``Blue``).
+	in Python only so shared QML never imports FluentWinUI3/Universal/Material
+	(which would force that style on macOS). Linux also sets Material ``Dense``
+	so desktop controls fit fixed window heights, and tries to pick a system
+	accent colour for Material (XDG portal, then palette highlight, else
+	``Blue``).
 	"""
 	if sys.platform == "win32":
+		# Universal theme env still needed if we fall back to Universal.
 		os.environ.setdefault("QT_QUICK_CONTROLS_UNIVERSAL_THEME", "System")
-		if not _set_quick_style("Universal"):
-			_set_quick_style("Windows")
+		if not _set_quick_style("FluentWinUI3"):
+			if not _set_quick_style("Universal"):
+				_set_quick_style("Windows")
 		follow_system_color_scheme(app)
 		_patch_fusion_selection_palette(app)
 	elif sys.platform == "darwin":

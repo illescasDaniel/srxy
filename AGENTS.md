@@ -62,19 +62,19 @@ Theme/style selection lives in [`src/srxy/adapters/inbound/gui/qt_theme.py`](src
 
 Current intent:
 
-- **Windows:** `Universal` (WinUI-like), fallback `Windows`. Follow OS light/dark.
+- **Windows:** `FluentWinUI3` (WinUI-like), fallback `Universal` then `Windows`. Follow OS light/dark. Theme experiment: Fluent’s unsupported controls (notably `SplitView` in the GUI results pane) fall back to Fusion until Qt styles them.
 - **macOS:** `macOS` (native Aqua). Follow OS light/dark.
 - **Linux / other:** `Material` (Dense variant for desktop), fallback `Fusion`. Follow OS light/dark. Also set `QT_QUICK_CONTROLS_MATERIAL_ACCENT` from the XDG Desktop Portal `accent-color` (session-bus CLI), else `QPalette` Highlight if it looks like a real tint, else Material `"Blue"`.
 
 Hard-won lessons — do not regress these:
 
-1. **Do not `import QtQuick.Controls.Universal` / `Material` (or set `Universal.theme` / `Material.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). Those imports force that chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
-2. **Windows Universal and Linux Material default to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. Set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` (Windows) or `QT_QUICK_CONTROLS_MATERIAL_THEME=System` (Linux) in Python **before** `QQuickStyle.setStyle(...)` / before the QML engine loads. That is the supported equivalent of `*.theme: *.System` without a QML style import. On Linux also set `QT_QUICK_CONTROLS_MATERIAL_VARIANT=Dense` — Normal is touch-sized and overflows fixed window heights. Set `QT_QUICK_CONTROLS_MATERIAL_ACCENT` the same way (portal / palette / `"Blue"`) so Material does not keep Qt’s default pink accent.
+1. **Do not `import QtQuick.Controls.FluentWinUI3` / `Universal` / `Material` (or set `Universal.theme` / `Material.theme`) in shared QML** (`gui/qml/Main.qml`, `installer/qml/Main.qml`). Those imports force that chrome even when Python selected `macOS`, breaking native macOS controls. Style-specific attached properties belong only in platform-private QML, or better: avoid them.
+2. **Windows Universal and Linux Material default to Light** even when the OS is dark. `QStyleHints.setColorScheme(...)` alone is not enough. Set `QT_QUICK_CONTROLS_UNIVERSAL_THEME=System` (Windows, for the Universal fallback) or `QT_QUICK_CONTROLS_MATERIAL_THEME=System` (Linux) in Python **before** `QQuickStyle.setStyle(...)` / before the QML engine loads. That is the supported equivalent of `*.theme: *.System` without a QML style import. FluentWinUI3 has no `*_THEME` env and follows the OS/palette via `follow_system_color_scheme`. On Linux also set `QT_QUICK_CONTROLS_MATERIAL_VARIANT=Dense` — Normal is touch-sized and overflows fixed window heights. Set `QT_QUICK_CONTROLS_MATERIAL_ACCENT` the same way (portal / palette / `"Blue"`) so Material does not keep Qt’s default pink accent.
 3. **`hints.colorScheme` is a method in PySide6** — call `hints.colorScheme()`, do not pass the unbound method into `setColorScheme` (that TypeError crashes GUI launch).
-4. **Plain `Windows` Quick style looks dated** and its dark-mode mix with a dark window palette is often illegible. Prefer `Universal` + system theme on Windows; do not “fix light” as the long-term fix unless Universal is unavailable.
+4. **Plain `Windows` Quick style looks dated** and its dark-mode mix with a dark window palette is often illegible. Prefer `FluentWinUI3`, then `Universal` + system theme on Windows; do not “fix light” as the long-term fix unless both are unavailable. Keep the Fluent→Fusion `SplitView` mismatch in mind until Fluent supports that control.
 5. **macOS packaging prunes Universal/Material frameworks** (`packaging/macos/prune-pyside.sh`). Relying on those QML imports in shipped macOS builds is fragile even beyond the style-forcing issue. Linux AppImage pruning keeps Material (needed at runtime).
 6. **Installer/GUI footers:** Material page chrome (and tall StackLayout implicit heights) can push in-content nav rows below the window. Keep wizard actions in `ApplicationWindow.footer` (see installer `Main.qml`) and give fill-height StackLayouts `Layout.preferredHeight: 0` so they only take leftover space.
-7. When changing themes, **restart the app fully** (no hot-reload assumptions) and visually check Windows dark mode, Linux Material light/dark, and macOS native controls before considering the change done.
+7. When changing themes, **restart the app fully** (no hot-reload assumptions) and visually check Windows dark mode (including results `SplitView` grips), Linux Material light/dark, and macOS native controls before considering the change done.
 
 ## Typing
 
