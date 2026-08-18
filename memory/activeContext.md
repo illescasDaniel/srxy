@@ -5,8 +5,14 @@ _Last updated: 2026-08-18_
 ## Branch
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
-- 4 commits ahead of `origin/feature/fixes_1.6.6` (`95f499e` merge of `feature/preview-highlight-find`, `965f1c3` preview feature, `35adda3` memory, `b4cd2d1` button GUI improvements).
+- 5 commits ahead of `origin/feature/fixes_1.6.6` (`e5b844e` memory bank tracked, `95f499e` merge of `feature/preview-highlight-find`, `965f1c3` preview feature, `35adda3` memory, `b4cd2d1` button GUI improvements).
 - Working tree is **not clean** — uncommitted changes pending (see "Current uncommitted work").
+
+## Done this session: memory bank now tracked in git
+
+- `memory/` is no longer gitignored; tracked as per-branch state (commit `e5b844e`).
+- `decisions.md` append-only (`.gitattributes` `merge=union`); `progress.md`/`activeContext.md` reset at branch start (section 4 of `.cursor/rules/agent-memory.mdc` + `memory/README.md`).
+- Root `README.md` links to `memory/README.md` under Development.
 
 ## Current focus
 
