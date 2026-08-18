@@ -33,6 +33,7 @@ ApplicationWindow {
 		}
 	}
 
+	onLightThemeChanged: if (controller) controller.setPreviewTheme(root.lightTheme)
 	menuBar: MenuBar {
 		objectName: "helpMenuBar"
 		Menu {
@@ -699,6 +700,7 @@ ApplicationWindow {
 									Menu {
 										id: resultMenu
 										MenuItem { text: root.t("gui.menu.open_file"); onTriggered: controller.openResult(resultRow.index) }
+										MenuItem { text: root.t("gui.menu.open_containing_folder"); onTriggered: controller.openResultFolder(resultRow.index) }
 										MenuItem { text: root.t("gui.menu.copy_path"); onTriggered: controller.copyResultPath(resultRow.index) }
 										MenuItem { text: root.t("gui.menu.copy_all_matches"); onTriggered: controller.copyAllMatches(resultRow.index) }
 									}
@@ -750,6 +752,7 @@ ApplicationWindow {
 									required property string score
 									required property string location
 									required property string text
+									required property int lineNumber
 									width: matchesView.width
 									height: matchRowLayout.implicitHeight
 									Rectangle {
@@ -781,8 +784,13 @@ ApplicationWindow {
 									}
 									MouseArea {
 										anchors.fill: parent
-										acceptedButtons: Qt.RightButton
-										onClicked: matchMenu.popup()
+										acceptedButtons: Qt.LeftButton | Qt.RightButton
+										onClicked: (mouse) => {
+											if (mouse.button === Qt.RightButton)
+												matchMenu.popup()
+											else if (matchRow.lineNumber > 0 && controller)
+												controller.revealPreviewLine(matchRow.lineNumber)
+										}
 									}
 									Menu {
 										id: matchMenu
@@ -795,6 +803,39 @@ ApplicationWindow {
 					}
 					Frame {
 						SplitView.fillHeight: true
+						FontMetrics {
+							id: previewFontMetrics
+							font: previewTextArea.font
+						}
+						function scrollPreviewToLine(line) {
+							if (line <= 0)
+								return
+							var flick = previewScroll.contentItem
+							if (!flick)
+								return
+							flick.contentY = Math.max(0, (line - 1) * previewFontMetrics.height)
+						}
+						Connections {
+							target: controller
+							function onPreviewScrollLineChanged() {
+								scrollPreviewToLine(controller.previewScrollLine)
+							}
+						}
+						Shortcut {
+							sequence: StandardKey.Find
+							enabled: controller ? controller.previewHasFile : false
+							onActivated: controller.openPreviewFind()
+						}
+						Shortcut {
+							sequence: "F3"
+							enabled: controller ? controller.previewFindOpen : false
+							onActivated: controller.previewFindNext()
+						}
+						Shortcut {
+							sequence: "Shift+F3"
+							enabled: controller ? controller.previewFindOpen : false
+							onActivated: controller.previewFindPrevious()
+						}
 						ColumnLayout {
 							anchors.fill: parent
 							Label {
@@ -802,20 +843,73 @@ ApplicationWindow {
 								text: controller ? controller.previewHeader : ""
 								wrapMode: Text.Wrap
 							}
+							RowLayout {
+								id: findBar
+								visible: controller ? controller.previewFindOpen : false
+								onVisibleChanged: if (visible) findField.forceActiveFocus()
+								TextField {
+									id: findField
+									Layout.fillWidth: true
+									placeholderText: root.t("gui.preview.find_placeholder")
+									text: controller ? controller.previewFindQuery : ""
+									onTextEdited: if (controller) controller.setPreviewFindQuery(text)
+									onAccepted: if (controller) controller.previewFindNext()
+									Keys.onEscapePressed: if (controller) controller.closePreviewFind()
+								}
+								CheckBox {
+									text: root.t("gui.preview.find_approximate")
+									checked: controller ? controller.previewFindApproximate : false
+									onToggled: if (controller) controller.setPreviewFindApproximate(checked)
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_previous")
+									onClicked: if (controller) controller.previewFindPrevious()
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_next")
+									onClicked: if (controller) controller.previewFindNext()
+								}
+								Label {
+									text: controller ? controller.previewFindStatus : ""
+									Layout.preferredWidth: 70
+									elide: Text.ElideRight
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_close")
+									onClicked: if (controller) controller.closePreviewFind()
+								}
+							}
 							ScrollView {
+								id: previewScroll
 								Layout.fillWidth: true
 								Layout.fillHeight: true
+								clip: true
 								TextArea {
+									id: previewTextArea
 									objectName: "previewText"
 									readOnly: true
-									wrapMode: TextEdit.Wrap
+									wrapMode: TextEdit.NoWrap
 									textFormat: TextEdit.RichText
 									font.family: Qt.platform.os === "windows"
 										? "Consolas"
 										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 									text: controller ? controller.previewText : ""
 									selectByMouse: true
+									MouseArea {
+										anchors.fill: parent
+										acceptedButtons: Qt.RightButton
+										onClicked: previewMenu.popup()
+									}
 								}
+							}
+							Menu {
+								id: previewMenu
+								MenuItem { text: root.t("gui.menu.open_file"); enabled: controller ? controller.previewHasFile : false; onTriggered: controller.openPreviewFile() }
+								MenuItem { text: root.t("gui.menu.open_containing_folder"); enabled: controller ? controller.previewHasFile : false; onTriggered: controller.openPreviewFolder() }
+								MenuSeparator {}
+								MenuItem { text: root.t("gui.menu.copy"); enabled: previewTextArea.selectedText.length > 0; onTriggered: previewTextArea.copy() }
+								MenuItem { text: root.t("gui.menu.select_all"); onTriggered: previewTextArea.selectAll() }
+								MenuItem { text: root.t("gui.menu.find"); onTriggered: controller.openPreviewFind() }
 							}
 						}
 					}
@@ -1408,6 +1502,7 @@ ApplicationWindow {
 		const initialTerm = controller ? controller.simpleQuery : ""
 		termModel.append({ term: initialTerm, join: "" })
 		if (controller) {
+			controller.setPreviewTheme(root.lightTheme)
 			syncTermRows()
 			loadOptionsFromController()
 			loadFiltersFromController()

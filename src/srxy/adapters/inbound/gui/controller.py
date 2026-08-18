@@ -217,6 +217,8 @@ class SearchController(QObject):
 	pathIssueChanged = Signal()
 	canSearchChanged = Signal()
 	previewChanged = Signal()
+	findChanged = Signal()
+	previewScrollLineChanged = Signal()
 	optionsSummaryChanged = Signal()
 	filtersSummaryChanged = Signal()
 	selectedResultChanged = Signal()
@@ -267,6 +269,18 @@ class SearchController(QObject):
 		self._activity_spinner_timer: QTimer | None = None
 		self._preview_text = ""
 		self._preview_header = ""
+		self._preview_plain_text = ""
+		self._preview_path: Path | None = None
+		self._preview_message = ""
+		self._preview_truncated = False
+		self._preview_truncated_footer = ""
+		self._preview_theme = "light"
+		self._find_open = False
+		self._find_query = ""
+		self._find_approximate = False
+		self._find_matches: list[tuple[int, int, int]] = []
+		self._find_index = -1
+		self._preview_scroll_line = -1
 		self._selected_row = -1
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
@@ -571,6 +585,42 @@ class SearchController(QObject):
 		return self._preview_header
 
 	previewHeader = Property(str, _get_preview_header, notify=previewChanged)
+
+	def _get_preview_has_file(self) -> bool:
+		return self._preview_path is not None
+
+	previewHasFile = Property(bool, _get_preview_has_file, notify=previewChanged)
+
+	def _get_preview_find_open(self) -> bool:
+		return self._find_open
+
+	previewFindOpen = Property(bool, _get_preview_find_open, notify=findChanged)
+
+	def _get_preview_find_query(self) -> str:
+		return self._find_query
+
+	previewFindQuery = Property(str, _get_preview_find_query, notify=findChanged)
+
+	def _get_preview_find_approximate(self) -> bool:
+		return self._find_approximate
+
+	previewFindApproximate = Property(bool, _get_preview_find_approximate, notify=findChanged)
+
+	def _get_preview_find_status(self) -> str:
+		if not self._find_query:
+			return ""
+		if not self._find_matches:
+			from srxy.i18n import tr
+
+			return tr("gui.preview.find_no_matches")
+		return f"{self._find_index + 1} / {len(self._find_matches)}"
+
+	previewFindStatus = Property(str, _get_preview_find_status, notify=findChanged)
+
+	def _get_preview_scroll_line(self) -> int:
+		return self._preview_scroll_line
+
+	previewScrollLine = Property(int, _get_preview_scroll_line, notify=previewScrollLineChanged)
 
 	def _get_options_summary(self) -> str:
 		return format_search_options_summary(self._options)
@@ -1127,20 +1177,208 @@ class SearchController(QObject):
 		result = self._results_model.result_at(row)
 		self._selected_row = row
 		self._matches_model.load_from_result(result, query=self._args.query or "")
+		self._reset_find()
+		self._load_preview(result)
+		self.selectedResultChanged.emit()
+
+	def _reset_find(self):
+		self._find_open = False
+		self._find_query = ""
+		self._find_approximate = False
+		self._find_matches = []
+		self._find_index = -1
+		self.findChanged.emit()
+
+	def _load_preview(self, result: FileSearchResult | None):
 		if result is None:
 			self._preview_header = ""
-			self._preview_text = ""
+			self._preview_plain_text = ""
+			self._preview_path = None
+			self._preview_message = ""
+			self._preview_truncated = False
+			self._preview_truncated_footer = ""
+			self._rebuild_preview_html()
+			return
+		labels = self._results_model.data(
+			self._results_model.index(self._selected_row, 0),
+			ResultsModel.LabelsRole,
+		)
+		self._preview_header = (
+			f"{result.path.as_posix()}  ·  {format_score_percent(result.score)}  ·  matched: {labels}"
+		)
+		(
+			self._preview_plain_text,
+			self._preview_path,
+			self._preview_message,
+			self._preview_truncated,
+			self._preview_truncated_footer,
+		) = _resolve_preview_payload(result)
+		self._rebuild_preview_html()
+
+	def _rebuild_preview_html(self):
+		if self._preview_message:
+			self._preview_text = format_preview_message(self._preview_message)
+		elif self._preview_plain_text:
+			self._preview_text = format_preview_for_file(
+				self._preview_path or "",
+				self._preview_plain_text,
+				truncated=self._preview_truncated,
+				truncated_footer=self._preview_truncated_footer,
+				theme=self._preview_theme,
+				find_spans=self._find_overlays(),
+				current_spans=self._current_find_overlay(),
+			)
 		else:
-			labels = self._results_model.data(
-				self._results_model.index(row, 0),
-				ResultsModel.LabelsRole,
-			)
-			self._preview_header = (
-				f"{result.path.as_posix()}  ·  {format_score_percent(result.score)}  ·  matched: {labels}"
-			)
-			self._preview_text = _load_preview_text(result)
+			self._preview_text = ""
 		self.previewChanged.emit()
-		self.selectedResultChanged.emit()
+
+	def _find_overlays(self) -> dict[int, list[tuple[int, int]]]:
+		overlays: dict[int, list[tuple[int, int]]] = {}
+		for line, start, end in self._find_matches:
+			overlays.setdefault(line, []).append((start, end))
+		return overlays
+
+	def _current_find_overlay(self) -> dict[int, list[tuple[int, int]]]:
+		if 0 <= self._find_index < len(self._find_matches):
+			line, start, end = self._find_matches[self._find_index]
+			return {line: [(start, end)]}
+		return {}
+
+	def _compute_find_matches(self):
+		self._find_matches = []
+		if not self._find_query or not self._preview_plain_text or self._preview_message:
+			return
+		if self._find_approximate:
+			self._find_matches = self._compute_approximate_find_matches()
+			return
+		query_lower = self._find_query.lower()
+		lines = self._preview_plain_text.splitlines()
+		for line_number, line in enumerate(lines, start=1):
+			low = line.lower()
+			position = 0
+			while True:
+				found = low.find(query_lower, position)
+				if found < 0:
+					break
+				self._find_matches.append((line_number, found, found + len(self._find_query)))
+				position = found + len(self._find_query)
+
+	def _compute_approximate_find_matches(self) -> list[tuple[int, int, int]]:
+		from rapidfuzz.fuzz import partial_ratio_alignment
+
+		matches: list[tuple[int, int, int]] = []
+		query_lower = self._find_query.lower()
+		lines = self._preview_plain_text.splitlines()
+		cap = 200
+		for line_number, line in enumerate(lines, start=1):
+			if not line:
+				continue
+			alignment = partial_ratio_alignment(query_lower, line.lower(), score_cutoff=60)
+			if alignment is not None and alignment.dest_start < alignment.dest_end:
+				matches.append((line_number, alignment.dest_start, alignment.dest_end))
+				if len(matches) >= cap:
+					break
+		return matches
+
+	def _scroll_to_find(self):
+		if 0 <= self._find_index < len(self._find_matches):
+			line, _start, _end = self._find_matches[self._find_index]
+			self._set_preview_scroll_line(line)
+
+	def _set_preview_scroll_line(self, line: int):
+		if line > 0 and line != self._preview_scroll_line:
+			self._preview_scroll_line = line
+			self.previewScrollLineChanged.emit()
+
+	@Slot(bool)
+	def setPreviewTheme(self, light: bool):  # noqa: N802
+		theme = "light" if light else "dark"
+		if theme != self._preview_theme:
+			self._preview_theme = theme
+			self._rebuild_preview_html()
+
+	@Slot()
+	def openPreviewFind(self):  # noqa: N802
+		self._find_open = True
+		if self._find_matches and self._find_index < 0:
+			self._find_index = 0
+			self._scroll_to_find()
+			self._rebuild_preview_html()
+		self.findChanged.emit()
+
+	@Slot()
+	def closePreviewFind(self):  # noqa: N802
+		self._find_open = False
+		self._find_query = ""
+		self._find_approximate = False
+		self._find_matches = []
+		self._find_index = -1
+		self._rebuild_preview_html()
+		self.findChanged.emit()
+
+	@Slot(str)
+	def setPreviewFindQuery(self, query: str):  # noqa: N802
+		if query == self._find_query:
+			return
+		self._find_query = query
+		self._find_index = -1
+		self._compute_find_matches()
+		if self._find_matches:
+			self._find_index = 0
+			self._scroll_to_find()
+		self._rebuild_preview_html()
+		self.findChanged.emit()
+
+	@Slot(bool)
+	def setPreviewFindApproximate(self, approximate: bool):  # noqa: N802
+		if approximate == self._find_approximate:
+			return
+		self._find_approximate = approximate
+		self._find_index = -1
+		self._compute_find_matches()
+		if self._find_matches:
+			self._find_index = 0
+			self._scroll_to_find()
+		self._rebuild_preview_html()
+		self.findChanged.emit()
+
+	@Slot()
+	def previewFindNext(self):  # noqa: N802
+		if not self._find_matches:
+			return
+		self._find_index = (self._find_index + 1) % len(self._find_matches)
+		self._scroll_to_find()
+		self._rebuild_preview_html()
+
+	@Slot()
+	def previewFindPrevious(self):  # noqa: N802
+		if not self._find_matches:
+			return
+		self._find_index = (self._find_index - 1) % len(self._find_matches)
+		self._scroll_to_find()
+		self._rebuild_preview_html()
+
+	@Slot(int)
+	def revealPreviewLine(self, line: int):  # noqa: N802
+		self._set_preview_scroll_line(line)
+
+	@Slot()
+	def openPreviewFile(self):  # noqa: N802
+		if self._preview_path is None:
+			return
+		try:
+			self._desktop.open_path(self._preview_path)
+		except OSError as error:
+			self.errorOccurred.emit(str(error))
+
+	@Slot()
+	def openPreviewFolder(self):  # noqa: N802
+		if self._preview_path is None:
+			return
+		try:
+			self._desktop.reveal_path(self._preview_path)
+		except OSError as error:
+			self.errorOccurred.emit(str(error))
 
 	@Slot(int)
 	def openResult(self, row: int):  # noqa: N802
@@ -1149,6 +1387,16 @@ class SearchController(QObject):
 			return
 		try:
 			self._desktop.open_path(result.path)
+		except OSError as error:
+			self.errorOccurred.emit(str(error))
+
+	@Slot(int)
+	def openResultFolder(self, row: int):  # noqa: N802
+		result = self._results_model.result_at(row)
+		if result is None:
+			return
+		try:
+			self._desktop.reveal_path(result.path)
 		except OSError as error:
 			self.errorOccurred.emit(str(error))
 
@@ -1517,39 +1765,27 @@ class SearchController(QObject):
 		self._dispose_update_worker(wait_ms=thread_wait_ms)
 
 
-def _load_preview_text(result: FileSearchResult) -> str:
+def _resolve_preview_payload(result: FileSearchResult) -> tuple[str, Path | None, str, bool, str]:
+	"""Resolve preview content into (plain_text, path, message, truncated, footer)."""
 	from srxy.i18n import tr
 
 	path = result.path
 	truncated_footer = tr("preview.truncated")
+	joined_lines = "\n".join(line.text for line in result.lines[:50])
 	try:
 		if not path.is_file():
 			if result.lines:
-				joined = "\n".join(line.text for line in result.lines[:50])
-				return format_preview_for_file(path, joined, truncated_footer=truncated_footer)
-			return format_preview_message("(No file preview available)")
+				return joined_lines, path, "", False, truncated_footer
+			return "", path, "(No file preview available)", False, truncated_footer
 		raw = path.read_bytes()
 		file_truncated = len(raw) > PREVIEW_MAX_BYTES
 		data = raw[:PREVIEW_MAX_BYTES]
 		if b"\x00" in data[:4096]:
 			if result.lines:
-				joined = "\n".join(line.text for line in result.lines[:50])
-				return format_preview_for_file(
-					path,
-					joined,
-					truncated=file_truncated,
-					truncated_footer=truncated_footer,
-				)
-			return format_preview_message("(Binary file — showing matches only)")
-		text = data.decode("utf-8", errors="replace")
-		return format_preview_for_file(
-			path,
-			text,
-			truncated=file_truncated,
-			truncated_footer=truncated_footer,
-		)
+				return joined_lines, path, "", file_truncated, truncated_footer
+			return "", path, "(Binary file — showing matches only)", file_truncated, truncated_footer
+		return data.decode("utf-8", errors="replace"), path, "", file_truncated, truncated_footer
 	except OSError:
 		if result.lines:
-			joined = "\n".join(line.text for line in result.lines[:50])
-			return format_preview_for_file(path, joined, truncated_footer=truncated_footer)
-		return format_preview_message("(Could not read file)")
+			return joined_lines, path, "", False, truncated_footer
+		return "", path, "(Could not read file)", False, truncated_footer

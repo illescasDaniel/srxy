@@ -176,7 +176,7 @@ def iter_grouped_line_displays(
 	*,
 	query: str,
 	highlight: PreviewHighlight = "guillemets",
-) -> list[tuple[str, str, float, str]]:
+) -> list[tuple[str, str, float, str, int]]:
 	groups: dict[tuple[float, str, str], list[LineMatch]] = {}
 	group_order: list[tuple[float, str, str]] = []
 	for line_match in line_matches:
@@ -200,7 +200,7 @@ def iter_grouped_line_displays(
 			group_order.append(key)
 		groups[key].append(line_match)
 
-	displays: list[tuple[str, str, float, str]] = []
+	displays: list[tuple[str, str, float, str, int]] = []
 	for score, kind, plain_preview in group_order:
 		numbers = [line_match.line_number for line_match in groups[(score, kind, plain_preview)]]
 		first = groups[(score, kind, plain_preview)][0]
@@ -211,12 +211,14 @@ def iter_grouped_line_displays(
 			highlight=line_highlight,
 			highlight_term=first.matched_term,
 		)
+		first_number = min(numbers) if kind == "line" else 0
 		displays.append(
 			(
 				_format_match_location(kind, numbers, matched_term=first.matched_term),
 				preview,
 				score,
 				plain_preview,
+				first_number,
 			)
 		)
 	return displays
@@ -230,7 +232,7 @@ def format_grouped_result(result: FileSearchResult, *, query: str = "", separato
 	label_text = match_labels(result)
 	lines.append(f"── {path_text} ──")
 	lines.append(f"   match {format_score_percent(result.score)}  ·  matched: {label_text}")
-	for location, preview, score, _plain in iter_grouped_line_displays(result.lines, query=query):
+	for location, preview, score, _plain, _line in iter_grouped_line_displays(result.lines, query=query):
 		lines.append(f"   {location}  ·  match {format_score_percent(score)}")
 		lines.append(f"   │ {preview}")
 	return "\n".join(lines)

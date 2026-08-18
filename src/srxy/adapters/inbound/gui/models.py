@@ -109,10 +109,11 @@ class MatchesModel(QAbstractListModel):
 	LocationRole = Qt.ItemDataRole.UserRole + 2
 	TextRole = Qt.ItemDataRole.UserRole + 3
 	PlainTextRole = Qt.ItemDataRole.UserRole + 4
+	LineNumberRole = Qt.ItemDataRole.UserRole + 5
 
 	def __init__(self, parent: Any = None):
 		super().__init__(parent)
-		self._rows: list[tuple[str, str, float, str]] = []
+		self._rows: list[tuple[str, str, float, str, int]] = []
 
 	def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _EMPTY_INDEX) -> int:  # noqa: N802
 		if parent.isValid():
@@ -122,7 +123,7 @@ class MatchesModel(QAbstractListModel):
 	def data(self, index: QModelIndex | QPersistentModelIndex, role: int = Qt.ItemDataRole.DisplayRole) -> Any:
 		if not index.isValid() or not (0 <= index.row() < len(self._rows)):
 			return None
-		location, preview, score, plain = self._rows[index.row()]
+		location, preview, score, plain, line_number = self._rows[index.row()]
 		if role == self.ScoreRole:
 			return format_score_percent(score)
 		if role in (Qt.ItemDataRole.DisplayRole, self.LocationRole):
@@ -131,6 +132,8 @@ class MatchesModel(QAbstractListModel):
 			return preview
 		if role == self.PlainTextRole:
 			return plain
+		if role == self.LineNumberRole:
+			return line_number
 		return None
 
 	def roleNames(self) -> dict[int, QByteArray]:  # noqa: N802
@@ -139,6 +142,7 @@ class MatchesModel(QAbstractListModel):
 			self.LocationRole: QByteArray(b"location"),
 			self.TextRole: QByteArray(b"text"),
 			self.PlainTextRole: QByteArray(b"plainText"),
+			self.LineNumberRole: QByteArray(b"lineNumber"),
 		}
 
 	@Slot()
@@ -151,17 +155,19 @@ class MatchesModel(QAbstractListModel):
 		self.beginResetModel()
 		self._rows = []
 		if result is not None:
-			for location, preview, score, plain in iter_grouped_line_displays(
+			for location, preview, score, plain, line_number in iter_grouped_line_displays(
 				result.lines, query=query, highlight="html"
 			):
-				self._rows.append((location, preview, score, plain))
+				self._rows.append((location, preview, score, plain, line_number))
 		self.endResetModel()
 
 	def row_plain(self, row: int) -> tuple[str, str]:
 		if 0 <= row < len(self._rows):
-			location, _preview, _score, plain = self._rows[row]
+			location, _preview, _score, plain, _line = self._rows[row]
 			return location, plain
 		return "", ""
 
 	def all_plain_lines(self) -> list[str]:
-		return [f"{format_score_percent(score)}\t{location}\t{plain}" for location, _p, score, plain in self._rows]
+		return [
+			f"{format_score_percent(score)}\t{location}\t{plain}" for location, _p, score, plain, _line in self._rows
+		]
