@@ -80,3 +80,42 @@ def test_given_large_payload_when_preparing_text_then_truncates_by_bytes_and_lin
 	# then
 	assert truncated is True
 	assert prepared.count("\n") + 1 <= PREVIEW_MAX_LINES
+
+
+def test_given_dark_theme_when_formatting_then_uses_dark_keyword_colors():
+	# given
+	path = Path("sample.py")
+	text = "def hello():\n\treturn 1\n"
+
+	# when
+	html = format_preview_html(path, text, theme="dark")
+
+	# then
+	assert "color:#ff7b72" in html
+	assert "color:#0550ae" not in html
+
+
+def test_given_find_spans_when_formatting_then_paints_background():
+	# given
+	path = Path("sample.py")
+	text = "def hello():"
+
+	# when
+	html = format_preview_html(path, text, find_spans={1: [(4, 9)]})
+
+	# then
+	assert "background-color:#ffe58f" in html
+	assert "hello" in html
+
+
+def test_given_current_find_when_formatting_then_current_wins_over_find():
+	# given
+	path = Path("sample.py")
+	text = "hello hello"
+
+	# when
+	html = format_preview_html(path, text, find_spans={1: [(0, 5), (6, 11)]}, current_spans={1: [(6, 11)]})
+
+	# then
+	assert "background-color:#ffc107" in html
+	assert "background-color:#ffe58f" in html

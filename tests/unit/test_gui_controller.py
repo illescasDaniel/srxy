@@ -717,3 +717,97 @@ def test_given_spanish_when_set_language_then_gui_labels_and_privacy_translate(
 	controller.setLanguage("en")
 	set_language("en")
 	assert controller.i18nTr("gui.search") == "Search"
+
+
+def _make_preview_controller(qapp: QCoreApplication, tmp_path: Path, text: str, query: str = "alpha"):
+	path = tmp_path / "sample.txt"
+	path.write_text(text, encoding="utf-8")
+	args = build_parser().parse_args([query, str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	return controller
+
+
+def test_given_preview_when_find_next_and_previous_then_wraps_and_reports_status(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	controller = _make_preview_controller(qapp, tmp_path, "alpha\nbeta\nalpha\n")
+
+	# when
+	controller.openPreviewFind()
+	controller.setPreviewFindQuery("alpha")
+
+	# then
+	assert controller.previewFindOpen is True
+	assert controller.previewFindStatus == "1 / 2"
+	controller.previewFindNext()
+	assert controller.previewFindStatus == "2 / 2"
+	controller.previewFindNext()
+	assert controller.previewFindStatus == "1 / 2"
+	controller.previewFindPrevious()
+	assert controller.previewFindStatus == "2 / 2"
+
+
+def test_given_preview_when_find_no_match_then_status_reports_no_matches(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	controller = _make_preview_controller(qapp, tmp_path, "alpha\n")
+
+	# when
+	controller.setPreviewFindQuery("zzz")
+
+	# then
+	assert controller.previewFindStatus == "No matches"
+	assert controller.previewFindOpen is False
+
+
+def test_given_preview_when_closing_find_then_clears_query_and_highlights(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	controller = _make_preview_controller(qapp, tmp_path, "alpha\n")
+	controller.setPreviewFindQuery("alpha")
+	assert "background-color" in str(controller.previewText)
+
+	# when
+	controller.closePreviewFind()
+
+	# then
+	assert controller.previewFindQuery == ""
+	assert controller.previewFindOpen is False
+	assert "background-color" not in str(controller.previewText)
+
+
+def test_given_preview_when_theme_changes_then_rebuilds_with_dark_colors(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	path = tmp_path / "sample.py"
+	path.write_text("def x():\n\treturn 1\n", encoding="utf-8")
+	args = build_parser().parse_args(["return", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+
+	# when
+	light = str(controller.previewText)
+	controller.setPreviewTheme(False)
+	dark = str(controller.previewText)
+
+	# then
+	assert "color:#0550ae" in light
+	assert "color:#ff7b72" in dark
+
+
+def test_given_preview_when_open_folder_then_reveals_path(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	path = tmp_path / "note.txt"
+	path.write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	desktop = MagicMock()
+	controller = SearchController(args, desktop=desktop)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+
+	# when
+	controller.openResultFolder(0)
+
+	# then
+	desktop.reveal_path.assert_called_once_with(path)

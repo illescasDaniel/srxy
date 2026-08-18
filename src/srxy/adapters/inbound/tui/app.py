@@ -484,7 +484,7 @@ class SrxyApp(App[int]):
 		path_text = result.path.as_posix()
 		label_text = self._match_labels(result)
 		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
-		for location, preview, score, plain_text in iter_grouped_line_displays(
+		for location, preview, score, plain_text, _line in iter_grouped_line_displays(
 			result.lines, query=query, highlight="bold"
 		):
 			self._preview_rows.append(_PreviewRow(location=location, plain_text=plain_text, score=score))
