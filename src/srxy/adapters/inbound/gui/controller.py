@@ -586,6 +586,13 @@ class SearchController(QObject):
 
 	previewHeader = Property(str, _get_preview_header, notify=previewChanged)
 
+	def _get_preview_file_path(self) -> str:
+		if self._preview_path is None:
+			return ""
+		return self._preview_path.as_posix()
+
+	previewFilePath = Property(str, _get_preview_file_path, notify=previewChanged)
+
 	def _get_preview_has_file(self) -> bool:
 		return self._preview_path is not None
 
@@ -958,11 +965,11 @@ class SearchController(QObject):
 			semantic_image_threshold=args.semantic_image_threshold,
 			transcribe_threshold=args.transcribe_threshold,
 		)
+		# Drop the current selection before resetting the results model so the
+		# QML results ListView does not keep a stale currentIndex while its
+		# model shrinks (that logs "DelegateModel::cancel: index out range").
+		self._clear_selection()
 		self._results_model.clear()
-		self._matches_model.clear()
-		self._preview_text = ""
-		self._preview_header = ""
-		self.previewChanged.emit()
 		self._clear_activity_status()
 		self._progress = 0.0
 		self.progressChanged.emit()
@@ -1145,6 +1152,7 @@ class SearchController(QObject):
 		elif isinstance(event, SearchFinishedEvent):
 			self._clear_activity_status()
 			if event.results:
+				self._clear_selection()
 				self._results_model.replace_results(event.results)
 			count = self._results_model.rowCount()
 			self._notify_results_empty_hint()
@@ -1171,6 +1179,21 @@ class SearchController(QObject):
 		# Keep searching=True until the QThread fully stops (_on_search_thread_finished)
 		# so a new search cannot overwrite workers mid-teardown.
 		self._kill_search_subprocess_sync()
+
+	def _clear_selection(self):
+		"""Drop the current result selection (row, matches, preview, find).
+
+		Called before the results model is reset or cleared.  The QML results
+		ListView binds ``currentIndex`` to ``selectedResult``; if the model
+		shrinks while that index still references a row, ``QQmlDelegateModel``
+		logs ``DelegateModel::cancel: index out range`` while releasing the
+		stale current item.
+		"""
+		self._selected_row = -1
+		self._matches_model.clear()
+		self._reset_find()
+		self._load_preview(None)
+		self.selectedResultChanged.emit()
 
 	@Slot(int)
 	def selectResult(self, row: int):  # noqa: N802
@@ -1203,9 +1226,7 @@ class SearchController(QObject):
 			self._results_model.index(self._selected_row, 0),
 			ResultsModel.LabelsRole,
 		)
-		self._preview_header = (
-			f"{result.path.as_posix()}  ·  {format_score_percent(result.score)}  ·  matched: {labels}"
-		)
+		self._preview_header = f"{format_score_percent(result.score)}  ·  matched: {labels}"
 		(
 			self._preview_plain_text,
 			self._preview_path,

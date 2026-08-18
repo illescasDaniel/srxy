@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-18 — AccentButton uses an `accent` bool, not `highlighted`
+
+- **Context:** In dark mode the Search Options / Filters OK buttons (and update "Yes") rendered dark instead of accent-filled. `AccentButton` chose accent vs. secondary fill by reading the standard `highlighted` property, but `DialogButtonBox` (FluentWinUI3, and Material/Fusion/Universal alike) forcibly overrides `highlighted` on its child buttons from its own delegate, so the `highlighted: true` set inside `AccentButton` was silently dropped and `fillColor`/`foreground` fell back to `palette.button` (5.8%-alpha white in Fluent dark mode). `buttonRole: AcceptRole` and overriding `DialogButtonBox.delegate` did not restore it.
+- **Decision:** Give `AccentButton` its own `property bool accent: true` and drive `fillColor`/`foreground` off that; the Search button's dynamic stale toggle now binds `accent` instead of `highlighted`.
+- **Rationale:** `highlighted` is a container-managed property (`Container`/`DialogButtonBox` re-assign it), so it cannot be trusted to express "is the primary CTA". A dedicated `accent` flag is unambiguous and immune to `DialogButtonBox`. Added `optionsOkButton`/`filtersOkButton` objectNames plus a regression test asserting the OK buttons render `fillColor == accent` / `foreground == onAccent`.
+
 ## 2026-08-18 — Track the memory bank in git (reverses gitignore decision)
 
 - **Context:** The earlier entry gitignored `memory/` to keep agent scratch out of the repo. But worktrees don't share ignored files: each new `git worktree add` got zero context and memory fragmented across worktrees.

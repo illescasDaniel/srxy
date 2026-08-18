@@ -5,9 +5,9 @@ from __future__ import annotations
 import os
 
 import pytest
-from PySide6.QtCore import QCoreApplication, QObject, QtMsgType, QUrl, qInstallMessageHandler
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QtMsgType, QUrl, qInstallMessageHandler
+from PySide6.QtGui import QColor, QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine, QQmlProperty
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
@@ -33,7 +33,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	warnings: list[str] = []
 
 	def _handler(_mode: QtMsgType, _context: object, message: str):
-		if "Binding loop detected" in message:
+		if "Binding loop detected" in message or "in the process of being created" in message:
 			warnings.append(message)
 
 	previous = qInstallMessageHandler(_handler)
@@ -78,11 +78,62 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 		close_fn()
 		qapp.processEvents()
 
-	# then
-	qInstallMessageHandler(previous)
-	assert not warnings, "Qt binding loops:\n" + "\n".join(warnings)
+	# then — destroy the window before the engine (matching run_gui) so any
+	# pending async delegate incubations are cancelled first. Teardown must not
+	# emit "items in the process of being created at engine destruction."
 	controller.shutdown(thread_wait_ms=500)
 	for root in list(roots):
 		root.deleteLater()
 	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+	qInstallMessageHandler(previous)
+	assert not warnings, "Qt warnings:\n" + "\n".join(warnings)
+
+
+def _color_name(value: object) -> str:
+	assert isinstance(value, QColor)
+	return value.name()
+
+
+def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foreground(qapp: QCoreApplication):
+	# given
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	srxy_theme = apply_qt_quick_theme(qapp)
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	qml_path = qml_dir() / "Main.qml"
+
+	# when
+	engine.load(QUrl.fromLocalFile(str(qml_path)))
+	roots = engine.rootObjects()
+	assert roots, f"failed to load {qml_path}"
+	window = roots[0]
+
+	# then — DialogButtonBox must not clobber the accent fill of OK buttons.
+	for dialog_name, button_name in (
+		("optionsDialog", "optionsOkButton"),
+		("filtersDialog", "filtersOkButton"),
+	):
+		dialog = window.findChild(QObject, dialog_name)
+		assert dialog is not None, dialog_name
+		open_fn = getattr(dialog, "open", None)
+		assert callable(open_fn), dialog_name
+		open_fn()
+		qapp.processEvents()
+		button = window.findChild(QObject, button_name)
+		assert button is not None, button_name
+		assert _color_name(QQmlProperty(button, "fillColor").read()) == srxy_theme.accent.name(), button_name
+		assert _color_name(QQmlProperty(button, "foreground").read()) == srxy_theme.onAccent.name(), button_name
+		dialog.close()
+		qapp.processEvents()
+
+	controller.shutdown(thread_wait_ms=500)
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 	qapp.processEvents()

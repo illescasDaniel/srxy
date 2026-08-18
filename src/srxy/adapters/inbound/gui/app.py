@@ -6,7 +6,7 @@ import argparse
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEvent, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -58,6 +58,15 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	if auto_start and (args.query or "").strip():
 		controller.startSearch()
 	code = app.exec()
+	# Tear down the QML scene in a controlled order: destroy the root windows
+	# first (cancelling any pending async object incubations), then the engine.
+	# Deleting the engine while the window is still alive logs "There are still
+	# ... items in the process of being created at engine destruction."
+	for root in engine.rootObjects():
+		root.deleteLater()
+	engine.deleteLater()
+	app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	app.processEvents()
 	return controller.exit_code() if code == 0 else code
 
 

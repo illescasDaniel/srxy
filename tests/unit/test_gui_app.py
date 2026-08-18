@@ -66,6 +66,12 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 				slot()  # type: ignore[operator]
 			return 0
 
+		def sendPostedEvents(self, _receiver: object, _event_type: object):
+			return None
+
+		def processEvents(self):
+			return None
+
 	class FakeEngine:
 		def __init__(self):
 			self.rootContext = MagicMock(return_value=MagicMock(setContextProperty=MagicMock()))
@@ -74,9 +80,12 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 			return None
 
 		def rootObjects(self) -> list[object]:
-			return [object()]
+			return [MagicMock()]
 
 		def load(self, _url: Any):
+			return None
+
+		def deleteLater(self):
 			return None
 
 	with (

@@ -82,6 +82,20 @@ def test_given_large_payload_when_preparing_text_then_truncates_by_bytes_and_lin
 	assert prepared.count("\n") + 1 <= PREVIEW_MAX_LINES
 
 
+def test_given_long_python_file_when_formatting_then_still_highlights():
+	# given — exceeds the old 500-line plain fallback
+	path = Path("sample.py")
+	text = "def hello():\n\treturn 1\n" * 300
+
+	# when
+	html = format_preview_for_file(path, text)
+
+	# then
+	assert "color:#0550ae" in html
+	assert "def" in html
+	assert html.count("<br/>") == 600
+
+
 def test_given_dark_theme_when_formatting_then_uses_dark_keyword_colors():
 	# given
 	path = Path("sample.py")

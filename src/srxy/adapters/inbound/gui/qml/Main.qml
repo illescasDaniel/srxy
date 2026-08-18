@@ -469,7 +469,7 @@ ApplicationWindow {
 											topPadding: 0
 											bottomPadding: 0
 											spacing: 8
-											highlighted: controller ? controller.stale : true
+											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
 											focusPolicy: Qt.NoFocus
 											contentItem: Row {
@@ -508,7 +508,7 @@ ApplicationWindow {
 												Connections {
 													target: searchButton
 													function onEnabledChanged() { searchButtonIcon.requestPaint() }
-													function onHighlightedChanged() { searchButtonIcon.requestPaint() }
+													function onAccentChanged() { searchButtonIcon.requestPaint() }
 													function onForegroundChanged() { searchButtonIcon.requestPaint() }
 												}
 											}
@@ -821,11 +821,11 @@ ApplicationWindow {
 								scrollPreviewToLine(controller.previewScrollLine)
 							}
 						}
-						Shortcut {
-							sequence: StandardKey.Find
-							enabled: controller ? controller.previewHasFile : false
-							onActivated: controller.openPreviewFind()
-						}
+					Shortcut {
+						sequences: [StandardKey.Find]
+						enabled: controller ? controller.previewHasFile : false
+						onActivated: controller.openPreviewFind()
+					}
 						Shortcut {
 							sequence: "F3"
 							enabled: controller ? controller.previewFindOpen : false
@@ -838,10 +838,28 @@ ApplicationWindow {
 						}
 						ColumnLayout {
 							anchors.fill: parent
-							Label {
-								objectName: "previewHeader"
-								text: controller ? controller.previewHeader : ""
-								wrapMode: Text.Wrap
+							RowLayout {
+								Layout.fillWidth: true
+								spacing: 6
+								Label {
+									id: previewFilePathLabel
+									objectName: "previewFilePath"
+									text: controller ? controller.previewFilePath : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+									Layout.fillWidth: true
+									ToolTip.visible: previewFilePathHover.hovered && (controller ? controller.previewFilePath.length > 0 : false)
+									ToolTip.text: controller ? controller.previewFilePath : ""
+									HoverHandler {
+										id: previewFilePathHover
+									}
+								}
+								Label {
+									objectName: "previewHeader"
+									text: controller ? controller.previewHeader : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+								}
 							}
 							RowLayout {
 								id: findBar
@@ -988,6 +1006,7 @@ ApplicationWindow {
 				onClicked: optionsDialog.reject()
 			}
 			AccentButton {
+				objectName: "optionsOkButton"
 				text: root.t("common.ok")
 				onClicked: {
 					const err = pushOptionsToController()
@@ -1176,6 +1195,7 @@ ApplicationWindow {
 				onClicked: filtersDialog.reject()
 			}
 			AccentButton {
+				objectName: "filtersOkButton"
 				text: root.t("common.ok")
 				onClicked: {
 					const err = pushFiltersToController()

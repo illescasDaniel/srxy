@@ -87,12 +87,20 @@ def _contrast_ratio(foreground: QColor, background: QColor) -> float:
 
 
 def contrast_text_on(fill: QColor) -> QColor:
-	"""Pick black or white text for the best WCAG contrast against ``fill``."""
+	"""Pick black or white text for WCAG contrast against ``fill``.
+
+	Prefers white on dark/saturated fills (the CTA convention) whenever white
+	still clears the AA 4.5:1 threshold; otherwise falls back to the
+	higher-contrast colour. This avoids black text on mid-tones such as the
+	Windows accent ``#0078d4``, where black wins by a hair but reads poorly.
+	"""
 	black = QColor("#000000")
 	white = QColor("#ffffff")
-	if _contrast_ratio(black, fill) > _contrast_ratio(white, fill):
-		return black
-	return white
+	white_ratio = _contrast_ratio(white, fill)
+	if white_ratio >= 4.5:
+		return white
+	black_ratio = _contrast_ratio(black, fill)
+	return black if black_ratio > white_ratio else white
 
 
 class SrxyTheme(QObject):

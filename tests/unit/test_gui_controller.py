@@ -155,6 +155,28 @@ def test_given_new_search_when_beginning_search_then_clears_search_warnings(
 	assert controller.hasSearchWarnings is False
 
 
+def test_given_previous_selection_when_beginning_new_search_then_selection_is_cleared(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given — a prior search left a selected row and populated matches
+	path = tmp_path / "note.txt"
+	path.write_text("alpha beta\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	assert controller.selectedResult == 0
+	monkeypatch.setattr(controller, "_start_search_worker", lambda _args: None)
+
+	# when
+	controller._begin_search(args)  # pyright: ignore[reportPrivateUsage]
+
+	# then — stale selection is dropped before the results model is reset, so the
+	# QML results ListView never points currentIndex at a deleted row.
+	assert controller.selectedResult == -1
+	assert controller.matchesModel.rowCount() == 0
+
+
 def test_given_indeterminate_activity_when_searching_then_status_spinner_animates(
 	qapp: QCoreApplication, tmp_path: Path
 ):
@@ -259,6 +281,26 @@ def test_given_python_file_when_selecting_result_then_preview_is_html_with_line_
 	assert "<br/>" in preview
 	assert "def" in preview
 	assert "monospace" in preview
+
+
+def test_given_selected_result_when_reading_header_then_path_and_metadata_split(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	path = tmp_path / "nested" / "sample.py"
+	path.parent.mkdir(parents=True)
+	path.write_text("def hello():\n\treturn 1\n", encoding="utf-8")
+	args = build_parser().parse_args(["hello", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+
+	# when
+	controller.selectResult(0)
+
+	# then
+	assert str(controller.previewFilePath) == path.as_posix()
+	header = str(controller.previewHeader)
+	assert path.as_posix() not in header
+	assert "matched" in header
 
 
 def test_given_no_gpu_capabilities_when_clamping_then_disables_semantic(qapp: QCoreApplication, tmp_path: Path):

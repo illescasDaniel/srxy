@@ -5,7 +5,7 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QUrl
+from PySide6.QtCore import QEvent, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 
@@ -47,7 +47,16 @@ def run_installer() -> int:
 		print("error: failed to load installer UI", file=sys.stderr)
 		return 2
 	apply_icon_to_windows(engine.rootObjects())
-	return app.exec()
+	code = app.exec()
+	# Destroy the root windows before the engine so pending async incubations
+	# are cancelled first, avoiding "items in the process of being created at
+	# engine destruction." at shutdown.
+	for root in engine.rootObjects():
+		root.deleteLater()
+	engine.deleteLater()
+	app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	app.processEvents()
+	return code
 
 
 __all__ = ["run_installer"]

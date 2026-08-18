@@ -73,9 +73,15 @@ A batch of uncommitted edits on top of `95f499e` fixes QML preview/selection war
 - `qml/Main.qml` — preview header/path split to match `previewFilePath`; the path label elides with `Text.ElideRight` (no wrap) and shows a hover `ToolTip` with the full path, while `score · matched` stays visible alongside.
 - `tests/unit/test_gui_controller.py`, `tests/unit/test_gui_preview.py`, `tests/unit/test_qt_theme.py` — updated for the above.
 - `app.py` (gui) + `installer/app.py` — teardown now destroys root windows before the engine and flushes `DeferredDelete` (fixes the engine-destruction warning).
-- `tests/gui/test_gui_qml_load.py` — now also asserts no `in the process of being created` warning during teardown.
+- `tests/gui/test_gui_qml_load.py` — now also asserts no `in the process of being created` warning during teardown, plus a regression test that the options/filters OK buttons render accent fill/foreground.
 - `tests/unit/test_gui_app.py` — fakes extended for the new teardown calls.
+- `shared/qml/SrxyControls/AccentButton.qml` — decoupled accent fill from the standard `highlighted` property (a new `accent` bool) because `DialogButtonBox` clobbers `highlighted` on child buttons.
+- `qml/Main.qml` — Search button now toggles `accent` (was `highlighted`) for the stale state; `optionsOkButton` / `filtersOkButton` objectNames added.
 - `.cursor/rules/agent-memory.mdc` — rewritten (memory file roles + update triggers + hand-off protocol).
+
+### Recently fixed: dialog OK buttons dark in dark mode
+
+`AccentButton` chose accent vs. secondary fill by reading the standard `highlighted` property, which `DialogButtonBox` (FluentWinUI3) forcibly overrides on its child buttons. In dark mode the OK/Yes buttons fell back to `palette.button` (5.8%-alpha white → dark). Fixed by giving `AccentButton` an explicit `accent` bool (default true) and pointing the Search button's dynamic stale toggle at `accent`. Added `optionsOkButton` / `filtersOkButton` objectNames and a regression test asserting the buttons render `fillColor == accent` / `foreground == onAccent`. Quality gate passed (only shell step skipped — no shellcheck/shfmt on PATH). Uncommitted.
 
 ### Recently fixed: options OK button black text
 

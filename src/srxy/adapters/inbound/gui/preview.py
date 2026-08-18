@@ -21,7 +21,6 @@ __all__ = [
 
 PREVIEW_MAX_BYTES = 64 * 1024
 PREVIEW_MAX_LINES = 2000
-_PLAIN_PREVIEW_BYTES = 16 * 1024
 
 
 @dataclass(frozen=True)
@@ -254,10 +253,6 @@ def format_preview_html(
 ) -> str:
 	"""Return HTML with line numbers and basic syntax colors for ``text``."""
 	text, _truncated = prepare_preview_text(text)
-	if len(text.encode("utf-8")) > _PLAIN_PREVIEW_BYTES or text.count("\n") >= 500:
-		return format_preview_plain(
-			path, text, theme=theme, hit_spans=hit_spans, find_spans=find_spans, current_spans=current_spans
-		)
 	lines = text.splitlines() or [""]
 	return _format_lines(
 		path, lines, plain=False, theme=theme, hit_spans=hit_spans, find_spans=find_spans, current_spans=current_spans
@@ -275,25 +270,19 @@ def format_preview_for_file(
 	find_spans: dict[int, list[tuple[int, int]]] | None = None,
 	current_spans: dict[int, list[tuple[int, int]]] | None = None,
 ) -> str:
-	"""Format capped preview text, using plain layout for large payloads."""
+	"""Format capped preview text with line numbers and syntax colors."""
 	text, was_truncated = prepare_preview_text(text)
 	truncated = truncated or was_truncated
-	use_plain = len(text.encode("utf-8")) > _PLAIN_PREVIEW_BYTES or text.count("\n") >= 500
-	if use_plain:
-		body = format_preview_plain(
-			path, text, theme=theme, hit_spans=hit_spans, find_spans=find_spans, current_spans=current_spans
-		)
-	else:
-		lines = text.splitlines() or [""]
-		body = _format_lines(
-			path,
-			lines,
-			plain=False,
-			theme=theme,
-			hit_spans=hit_spans,
-			find_spans=find_spans,
-			current_spans=current_spans,
-		)
+	lines = text.splitlines() or [""]
+	body = _format_lines(
+		path,
+		lines,
+		plain=False,
+		theme=theme,
+		hit_spans=hit_spans,
+		find_spans=find_spans,
+		current_spans=current_spans,
+	)
 	if truncated and truncated_footer:
 		body += format_preview_truncated_footer(truncated_footer, theme=theme)
 	return body

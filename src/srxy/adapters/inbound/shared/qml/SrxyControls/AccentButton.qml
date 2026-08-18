@@ -6,12 +6,15 @@ import QtQuick.Controls
 // Bind custom contentItem colours to ``foreground`` (do not hardcode white/black).
 Button {
 	id: control
-	highlighted: true
+	// ``accent`` is used instead of ``highlighted`` because DialogButtonBox
+	// clobbers ``highlighted`` on its child buttons, which would drop the accent
+	// fill on dialog OK/Yes buttons.
+	property bool accent: true
 
 	readonly property color foreground: {
 		if (!control.enabled)
 			return control.palette.placeholderText
-		if (control.highlighted)
+		if (control.accent)
 			return (typeof srxyTheme !== "undefined" && srxyTheme) ? srxyTheme.onAccent : "#ffffff"
 		const face = control.palette.button
 		if (typeof srxyTheme !== "undefined" && srxyTheme)
@@ -22,7 +25,7 @@ Button {
 	readonly property color fillColor: {
 		if (!control.enabled)
 			return control.palette.button
-		if (control.highlighted)
+		if (control.accent)
 			return (typeof srxyTheme !== "undefined" && srxyTheme) ? srxyTheme.accent : "#1565c0"
 		return control.palette.button
 	}

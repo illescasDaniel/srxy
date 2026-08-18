@@ -300,6 +300,14 @@ def test_given_dark_blue_fill_when_contrast_text_then_returns_white():
 	assert result.name(QColor.NameFormat.HexRgb) == "#ffffff"
 
 
+def test_given_windows_accent_fill_when_contrast_text_then_returns_white():
+	# given / when
+	result = qt_theme.contrast_text_on(QColor("#0078d4"))
+
+	# then
+	assert result.name(QColor.NameFormat.HexRgb) == "#ffffff"
+
+
 def test_given_light_yellow_fill_when_contrast_text_then_returns_black():
 	# given / when
 	result = qt_theme.contrast_text_on(QColor("#ffeb3b"))
