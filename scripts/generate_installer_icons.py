@@ -181,8 +181,10 @@ def main():
 	print(f"wrote {ICON_DIR / 'srxy-installer.png'} ({MASTER}x{MASTER})")
 
 	# Windows .ico companions (Start Menu / Inno SetupIconFile / taskbar).
-	# bitmap_format=bmp avoids PNG-compressed 256px frames that break Inno's
-	# EndUpdateResource (error 110) when embedding SetupIconFile.
+	# Pillow default PNG-in-ICO keeps these small (~17 KB vs ~350 KB BMP).
+	# If Inno EndUpdateResource (110) returns for SetupIconFile, check file
+	# locking first (see packaging/windows/build-offline.ps1); only then
+	# consider a BMP-only setup icon as a fallback.
 	def write_ico(stem: str):
 		sizes = (16, 32, 48, 64, 128, 256)
 		images = [
@@ -193,7 +195,6 @@ def main():
 		images[-1].save(
 			out,
 			format="ICO",
-			bitmap_format="bmp",
 			sizes=[(im.width, im.height) for im in images],
 			append_images=images[:-1],
 		)

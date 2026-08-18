@@ -289,12 +289,12 @@ def _write_windows_ico(path: Path, *, installer: bool = False):
 	for size in sizes:
 		source = installer_icon_path(size=size) if installer else app_icon_path(size=size)
 		images.append(Image.open(source).convert("RGBA"))
-	# Primary must be the largest; bitmap_format=bmp avoids PNG-in-ICO frames that
-	# break Inno Setup EndUpdateResource (110) and some older Win32 icon loaders.
+	# Primary must be the largest. Pillow default PNG-in-ICO keeps size down;
+	# Inno EndUpdateResource (110) is more often file locking on the setup EXE
+	# (see packaging/windows/build-offline.ps1) than PNG frames.
 	images[-1].save(
 		path,
 		format="ICO",
-		bitmap_format="bmp",
 		sizes=[(img.width, img.height) for img in images],
 		append_images=images[:-1],
 	)

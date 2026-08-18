@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import SrxyControls
 
 ApplicationWindow {
 	id: root
@@ -446,7 +447,7 @@ ApplicationWindow {
 												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 											}
 										}
-										Button {
+										AccentButton {
 											id: searchButton
 											objectName: "searchButton"
 											Layout.alignment: Qt.AlignTop
@@ -479,14 +480,7 @@ ApplicationWindow {
 													anchors.verticalCenter: parent.verticalCenter
 													width: 16
 													height: 16
-													readonly property color iconColor: {
-														if (!searchButton.enabled)
-															return searchButton.palette.placeholderText
-														if (searchButton.highlighted)
-															return "#ffffff"
-														const face = searchButton.palette.button
-														return face.hslLightness > 0.55 ? "#222222" : "#ffffff"
-													}
+													readonly property color iconColor: searchButton.foreground
 													onPaint: {
 														const ctx = getContext("2d")
 														ctx.clearRect(0, 0, width, height)
@@ -507,13 +501,14 @@ ApplicationWindow {
 												Text {
 													anchors.verticalCenter: parent.verticalCenter
 													text: root.t("gui.search")
-													color: searchButtonIcon.iconColor
+													color: searchButton.foreground
 													font: searchButton.font
 												}
 												Connections {
 													target: searchButton
 													function onEnabledChanged() { searchButtonIcon.requestPaint() }
 													function onHighlightedChanged() { searchButtonIcon.requestPaint() }
+													function onForegroundChanged() { searchButtonIcon.requestPaint() }
 												}
 											}
 											onClicked: if (controller) controller.startSearch()
@@ -898,9 +893,8 @@ ApplicationWindow {
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: optionsDialog.reject()
 			}
-			Button {
+			AccentButton {
 				text: root.t("common.ok")
-				highlighted: true
 				onClicked: {
 					const err = pushOptionsToController()
 					if (err) {
@@ -1087,9 +1081,8 @@ ApplicationWindow {
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: filtersDialog.reject()
 			}
-			Button {
+			AccentButton {
 				text: root.t("common.ok")
-				highlighted: true
 				onClicked: {
 					const err = pushFiltersToController()
 					if (err) {
@@ -1204,10 +1197,9 @@ ApplicationWindow {
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: updateDialog.reject()
 			}
-			Button {
+			AccentButton {
 				text: root.t("update.yes")
 				visible: controller && controller.updateCanApply
-				highlighted: true
 				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: if (controller) controller.applyUpdate()
 			}

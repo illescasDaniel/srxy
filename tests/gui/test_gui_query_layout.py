@@ -12,7 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
-from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme
+from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.gui]
@@ -31,7 +31,10 @@ def qapp() -> QCoreApplication:
 
 def _load_main(controller: SearchController) -> tuple[QQmlApplicationEngine, QObject]:
 	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	theme = apply_qt_quick_theme(QCoreApplication.instance())  # type: ignore[arg-type]
 	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", theme)
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
 	roots = engine.rootObjects()
 	assert roots, "failed to load Main.qml"

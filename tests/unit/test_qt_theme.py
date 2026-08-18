@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -201,6 +202,7 @@ def test_given_fluent_available_when_applying_windows_theme_then_uses_fluent_onl
 		patch.object(qt_theme, "_set_quick_style", set_style),
 		patch.object(qt_theme, "follow_system_color_scheme") as follow,
 		patch.object(qt_theme, "_patch_fusion_selection_palette") as patch_palette,
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#1565c0")),
 	):
 		qt_theme.apply_qt_quick_theme(app)
 
@@ -229,6 +231,7 @@ def test_given_fluent_missing_when_applying_windows_theme_then_falls_back_to_uni
 		patch.object(qt_theme, "_set_quick_style", set_style),
 		patch.object(qt_theme, "follow_system_color_scheme"),
 		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#1565c0")),
 	):
 		qt_theme.apply_qt_quick_theme(app)
 
@@ -254,6 +257,7 @@ def test_given_fluent_and_universal_missing_when_applying_windows_theme_then_use
 		patch.object(qt_theme, "_set_quick_style", set_style),
 		patch.object(qt_theme, "follow_system_color_scheme"),
 		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#1565c0")),
 	):
 		qt_theme.apply_qt_quick_theme(app)
 
@@ -279,8 +283,82 @@ def test_given_preset_universal_theme_when_applying_windows_theme_then_preserves
 		patch.object(qt_theme, "_set_quick_style", return_value=True),
 		patch.object(qt_theme, "follow_system_color_scheme"),
 		patch.object(qt_theme, "_patch_fusion_selection_palette"),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#1565c0")),
 	):
-		qt_theme.apply_qt_quick_theme(app)
+		theme = qt_theme.apply_qt_quick_theme(app)
 
 	# then
 	assert os.environ["QT_QUICK_CONTROLS_UNIVERSAL_THEME"] == "Dark"
+	assert isinstance(theme, qt_theme.SrxyTheme)
+
+
+def test_given_dark_blue_fill_when_contrast_text_then_returns_white():
+	# given / when
+	result = qt_theme.contrast_text_on(QColor("#1565c0"))
+
+	# then
+	assert result.name(QColor.NameFormat.HexRgb) == "#ffffff"
+
+
+def test_given_light_yellow_fill_when_contrast_text_then_returns_black():
+	# given / when
+	result = qt_theme.contrast_text_on(QColor("#ffeb3b"))
+
+	# then
+	assert result.name(QColor.NameFormat.HexRgb) == "#000000"
+
+
+def test_given_pastel_accent_when_contrast_text_then_returns_black():
+	# given / when
+	result = qt_theme.contrast_text_on(QColor("#90caf9"))
+
+	# then
+	assert result.name(QColor.NameFormat.HexRgb) == "#000000"
+
+
+def test_given_material_named_blue_when_mapping_then_returns_hex_color():
+	# given / when
+	result = qt_theme._material_accent_to_color("Blue")  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert result.name(QColor.NameFormat.HexRgb) == "#2196f6"
+
+
+def test_given_windows_theme_when_applying_then_resolves_accent_before_selection_patch(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_UNIVERSAL_THEME", raising=False)
+	app = _windows_theme_app()
+	order: list[str] = []
+
+	def _resolve(_app: object) -> QColor:
+		order.append("resolve")
+		return QColor("#3daee9")
+
+	def _patch(_app: object):
+		order.append("patch")
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", return_value=True),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "resolve_button_accent", side_effect=_resolve),
+		patch.object(qt_theme, "_patch_fusion_selection_palette", side_effect=_patch),
+	):
+		theme = qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	assert order == ["resolve", "patch"]
+	assert theme.accent.name(QColor.NameFormat.HexRgb) == "#3daee9"
+	assert theme.onAccent.name(QColor.NameFormat.HexRgb) == "#000000"
+
+
+def test_given_shared_qml_path_when_resolved_then_contains_srxy_controls():
+	# given / when
+	path = qt_theme.shared_qml_import_path()
+
+	# then
+	assert (Path(path) / "SrxyControls" / "AccentButton.qml").is_file()
+	assert (Path(path) / "SrxyControls" / "qmldir").is_file()

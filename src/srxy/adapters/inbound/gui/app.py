@@ -18,7 +18,7 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.desktop import QtDesktopAdapter
-from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme
+from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
 from srxy.bootstrap import build_app_services
 
 
@@ -31,7 +31,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	app = QGuiApplication(sys.argv)
 	app.setApplicationName("srxy")
 	app.setOrganizationName("srxy")
-	apply_qt_quick_theme(app)
+	srxy_theme = apply_qt_quick_theme(app)
 	apply_desktop_file_name(app, "srxy")
 	apply_app_icon(app)
 	from srxy.i18n import get_language
@@ -39,6 +39,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 
 	install_qt_translator(app, get_language())
 	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
 	services = build_app_services(desktop=QtDesktopAdapter())
 	controller = SearchController(
 		args,
@@ -47,6 +48,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	)
 	app.aboutToQuit.connect(controller.shutdown)
 	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
 	qml_path = qml_dir() / "Main.qml"
 	engine.load(QUrl.fromLocalFile(str(qml_path)))
 	if not engine.rootObjects():

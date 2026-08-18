@@ -11,9 +11,10 @@ import re
 import shutil
 import subprocess
 import sys
+from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import QCoreApplication, Qt
+from PySide6.QtCore import Property, QCoreApplication, QObject, Qt, Slot
 from PySide6.QtGui import QColor, QGuiApplication, QPalette
 
 
@@ -26,6 +27,29 @@ _SELECTION_HIGHLIGHT_TEXT = QColor("#ffffff")
 
 # Material named blue when no system accent can be detected.
 _MATERIAL_ACCENT_FALLBACK = "Blue"
+
+# Qt Material accent names → approximate Material Design 500 hex (for AccentButton).
+_MATERIAL_NAMED_HEX: dict[str, str] = {
+	"Red": "#f44336",
+	"Pink": "#e91e63",
+	"Purple": "#9c27b0",
+	"DeepPurple": "#673ab7",
+	"Indigo": "#3f51b5",
+	"Blue": "#2196f6",
+	"LightBlue": "#03a9f4",
+	"Cyan": "#00bcd4",
+	"Teal": "#009688",
+	"Green": "#4caf50",
+	"LightGreen": "#8bc34a",
+	"Lime": "#cddc39",
+	"Yellow": "#ffeb3b",
+	"Amber": "#ffc107",
+	"Orange": "#ff9800",
+	"DeepOrange": "#ff5722",
+	"Brown": "#795548",
+	"Grey": "#9e9e9e",
+	"BlueGrey": "#607d8b",
+}
 
 _PORTAL_DEST = "org.freedesktop.portal.Desktop"
 _PORTAL_PATH = "/org/freedesktop/portal/desktop"
@@ -42,6 +66,54 @@ _RGB_FLOATS_RE = re.compile(
 	r"(?:\s*,\s*|\s+)"
 	r"(-?(?:0|[1-9]\d*)(?:\.\d+)?(?:[eE][+-]?\d+)?)"
 )
+
+
+def _relative_luminance(color: QColor) -> float:
+	"""WCAG 2.x relative luminance for an sRGB colour."""
+
+	def _channel(value: int) -> float:
+		s = value / 255.0
+		if s <= 0.03928:
+			return s / 12.92
+		return ((s + 0.055) / 1.055) ** 2.4
+
+	return 0.2126 * _channel(color.red()) + 0.7152 * _channel(color.green()) + 0.0722 * _channel(color.blue())
+
+
+def _contrast_ratio(foreground: QColor, background: QColor) -> float:
+	lighter = max(_relative_luminance(foreground), _relative_luminance(background))
+	darker = min(_relative_luminance(foreground), _relative_luminance(background))
+	return (lighter + 0.05) / (darker + 0.05)
+
+
+def contrast_text_on(fill: QColor) -> QColor:
+	"""Pick black or white text for the best WCAG contrast against ``fill``."""
+	black = QColor("#000000")
+	white = QColor("#ffffff")
+	if _contrast_ratio(black, fill) > _contrast_ratio(white, fill):
+		return black
+	return white
+
+
+class SrxyTheme(QObject):
+	"""QML-facing accent colours for primary CTAs (``AccentButton``)."""
+
+	def __init__(self, accent: QColor, parent: QObject | None = None):
+		super().__init__(parent)
+		self._accent = QColor(accent)
+		self._on_accent = contrast_text_on(self._accent)
+
+	@Property(QColor, constant=True)
+	def accent(self) -> QColor:
+		return QColor(self._accent)
+
+	@Property(QColor, constant=True)
+	def onAccent(self) -> QColor:
+		return QColor(self._on_accent)
+
+	@Slot(QColor, result=QColor)
+	def contrastOn(self, fill: QColor) -> QColor:
+		return contrast_text_on(fill)
 
 
 def _patch_fusion_selection_palette(app: QCoreApplication):
@@ -228,6 +300,19 @@ def _accent_from_palette(app: QCoreApplication) -> str | None:
 	return color.name(QColor.NameFormat.HexRgb)
 
 
+def _material_accent_to_color(value: str) -> QColor:
+	"""Map Material env accent (``#rrggbb`` or named) to a ``QColor``."""
+	stripped = value.strip()
+	if stripped.startswith("#"):
+		color = QColor(stripped)
+		if color.isValid():
+			return color
+	named = _MATERIAL_NAMED_HEX.get(stripped)
+	if named is not None:
+		return QColor(named)
+	return QColor(_SELECTION_HIGHLIGHT)
+
+
 def _resolve_material_accent(app: QCoreApplication) -> str:
 	return _accent_from_xdg_portal() or _accent_from_palette(app) or _MATERIAL_ACCENT_FALLBACK
 
@@ -237,8 +322,28 @@ def _apply_material_accent(app: QCoreApplication):
 	os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_ACCENT", _resolve_material_accent(app))
 
 
-def apply_qt_quick_theme(app: QCoreApplication):
-	"""Pick Qt Quick Controls style per platform.
+def _palette_accent_or_fallback(app: QCoreApplication) -> QColor:
+	hex_color = _accent_from_palette(app)
+	if hex_color is not None:
+		return QColor(hex_color)
+	return QColor(_SELECTION_HIGHLIGHT)
+
+
+def resolve_button_accent(app: QCoreApplication) -> QColor:
+	"""System accent for primary CTAs (before Windows selection-palette patch)."""
+	if sys.platform in {"win32", "darwin"}:
+		return _palette_accent_or_fallback(app)
+	raw = os.environ.get("QT_QUICK_CONTROLS_MATERIAL_ACCENT") or _resolve_material_accent(app)
+	return _material_accent_to_color(raw)
+
+
+def shared_qml_import_path() -> str:
+	"""Directory containing the ``SrxyControls`` QML module (AccentButton, etc.)."""
+	return str(Path(__file__).resolve().parent.parent / "shared" / "qml")
+
+
+def apply_qt_quick_theme(app: QCoreApplication) -> SrxyTheme:
+	"""Pick Qt Quick Controls style per platform and return accent theme for QML.
 
 	- Windows: ``FluentWinUI3``, then ``Universal``, then ``Windows``.
 	- macOS: ``macOS`` (native Aqua controls).
@@ -255,6 +360,10 @@ def apply_qt_quick_theme(app: QCoreApplication):
 	so desktop controls fit fixed window heights, and tries to pick a system
 	accent colour for Material (XDG portal, then palette highlight, else
 	``Blue``).
+
+	Returns a ``SrxyTheme`` with ``accent`` / ``onAccent`` for ``AccentButton``.
+	On Windows, accent is read from the palette *before* the ListView selection
+	highlight is patched to a fixed blue.
 	"""
 	if sys.platform == "win32":
 		# Universal theme env still needed if we fall back to Universal.
@@ -263,10 +372,12 @@ def apply_qt_quick_theme(app: QCoreApplication):
 			if not _set_quick_style("Universal"):
 				_set_quick_style("Windows")
 		follow_system_color_scheme(app)
+		button_accent = resolve_button_accent(app)
 		_patch_fusion_selection_palette(app)
 	elif sys.platform == "darwin":
 		_set_quick_style("macOS")
 		follow_system_color_scheme(app)
+		button_accent = resolve_button_accent(app)
 	else:
 		# Dense: desktop-sized controls (Normal is touch-oriented and overflows our
 		# fixed installer/GUI window heights, clipping footer actions like Next).
@@ -276,6 +387,16 @@ def apply_qt_quick_theme(app: QCoreApplication):
 		if not _set_quick_style("Material"):
 			_set_quick_style("Fusion")
 		follow_system_color_scheme(app)
+		button_accent = resolve_button_accent(app)
+
+	return SrxyTheme(button_accent)
 
 
-__all__ = ["apply_qt_quick_theme", "follow_system_color_scheme"]
+__all__ = [
+	"SrxyTheme",
+	"apply_qt_quick_theme",
+	"contrast_text_on",
+	"follow_system_color_scheme",
+	"resolve_button_accent",
+	"shared_qml_import_path",
+]

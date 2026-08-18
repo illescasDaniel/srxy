@@ -12,6 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.gui]
@@ -38,8 +39,11 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	previous = qInstallMessageHandler(_handler)
 	args = build_parser().parse_args(["", ".", "--cli"])
 	controller = SearchController(args)
+	srxy_theme = apply_qt_quick_theme(qapp)
 	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
 	qml_path = qml_dir() / "Main.qml"
 
 	# when

@@ -56,6 +56,10 @@ When adding or changing GUI QML layout or visible labels, add or update text-tre
 
 Run the full local gate (`./scripts/quality/checks.sh`) so integration, TUI, and GUI tests execute; CI (`CI=true`) runs `unit` tests excluding `semantic` and `transcribe`.
 
+### Primary / accent CTAs
+
+Primary actions (Search, dialog OK/Yes, installer Launch, and similar) must use shared [`AccentButton`](src/srxy/adapters/inbound/shared/qml/SrxyControls/AccentButton.qml) from the `SrxyControls` module — not `Button { highlighted: true }` with hand-picked label colours. `AccentButton` paints the system accent fill and WCAG black/white `foreground` from the `srxyTheme` context property (set in GUI/installer `app.py` after `apply_qt_quick_theme`). Custom icon+text content must bind colours to `foreground`. Ordinary secondary actions stay plain `Button` / `ToolButton`.
+
 ### Qt Quick Controls theming (platform pitfalls)
 
 Theme/style selection lives in [`src/srxy/adapters/inbound/gui/qt_theme.py`](src/srxy/adapters/inbound/gui/qt_theme.py) (`apply_qt_quick_theme`), shared by the main GUI and installer. Keep platform style choice in Python, not in shared QML.

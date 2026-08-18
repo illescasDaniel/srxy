@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import SrxyControls
 
 ApplicationWindow {
 	id: root
@@ -664,10 +665,9 @@ ApplicationWindow {
 				enabled: !c.busy
 				onClicked: c.startUninstall()
 			}
-			Button {
+			AccentButton {
 				text: root.t("installer.button.launch")
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
-				highlighted: true
 				onClicked: c.launchInstalled()
 			}
 			Button {
