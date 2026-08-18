@@ -24,3 +24,6 @@ htmlcov/
 .DS_Store
 
 *.log
+
+# Local agent memory bank (see .cursor/rules/agent-memory.mdc)
+memory/

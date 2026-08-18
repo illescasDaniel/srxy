@@ -1,0 +1,18 @@
+---
+description: Always-on project memory and context protocol
+globs: *
+alwaysApply: true
+---
+# Agent Context & Memory Protocol
+
+## 1. Session Initialization
+- BEFORE taking any actions, read `memory/activeContext.md` and `memory/progress.md` to load current work state and open tasks.
+
+## 2. During Task Execution
+- Consult static guides in `docs/` (e.g., `architecture.md`, `api-reference.md`) for baseline conventions.
+- **Decision Logging:** If you make a significant technical, structural, or dependency choice, append an entry to `memory/decisions.md` explaining the context, decision, and rationale.
+
+## 3. Task Completion Protocol
+- Whenever you complete a requested task or reach a stopping point, BEFORE sending your final response:
+  1. Update `memory/activeContext.md` with current status, modified files, and exact next steps for the next session.
+  2. Update `memory/progress.md` (check off completed items, log newly discovered bugs or sub-tasks).
