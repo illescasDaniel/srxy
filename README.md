@@ -99,6 +99,8 @@ uv run task checks-full-cpu     # + forced-CPU transcribe matrix
 
 CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).
 
+Agent memory bank (per-branch project state): [memory/README.md](memory/README.md).
+
 Try fixtures: `srxy "axolotl" ./tests/fixtures/file_search`
 
 ## License
