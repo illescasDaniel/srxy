@@ -12,7 +12,7 @@ from PySide6.QtQml import QQmlApplicationEngine
 
 from srxy.adapters.inbound.gui.app_icon import (
 	apply_app_icon,
-	apply_desktop_file_name,
+	apply_app_identity,
 	apply_icon_to_windows,
 	ensure_windows_app_user_model_id,
 )
@@ -33,11 +33,9 @@ def qml_dir() -> Path:
 def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	ensure_windows_app_user_model_id()
 	prefer_native_file_dialogs()
+	apply_app_identity("srxy")
 	app = QGuiApplication(sys.argv)
-	app.setApplicationName("srxy")
-	app.setOrganizationName("srxy")
 	srxy_theme = apply_qt_quick_theme(app)
-	apply_desktop_file_name(app, "srxy")
 	apply_app_icon(app)
 	from srxy.i18n import get_language
 	from srxy.i18n.qt import install_qt_translator

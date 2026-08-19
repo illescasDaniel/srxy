@@ -8,6 +8,7 @@ from PySide6.QtGui import QGuiApplication, QIcon
 
 from srxy.adapters.inbound.gui.app_icon import (
 	apply_app_icon,
+	apply_app_identity,
 	apply_desktop_file_name,
 	apply_installer_icon,
 	desktop_file_available,
@@ -134,7 +135,7 @@ def test_given_missing_desktop_file_when_applying_name_then_skips(
 	qapp.setDesktopFileName("")
 
 	# when
-	apply_desktop_file_name(qapp, "srxy-installer")
+	apply_desktop_file_name("srxy-installer")
 
 	# then
 	assert qapp.desktopFileName() == ""
@@ -154,7 +155,48 @@ def test_given_desktop_file_when_applying_name_then_sets_it(
 	qapp.setDesktopFileName("")
 
 	# when
-	apply_desktop_file_name(qapp, "srxy-installer")
+	apply_desktop_file_name("srxy-installer")
 
 	# then
+	assert qapp.desktopFileName() == "srxy-installer"
+
+
+def test_given_app_identity_when_applied_without_desktop_file_then_sets_name_and_org(
+	qapp: QGuiApplication,
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
+	monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "empty"))
+	qapp.setDesktopFileName("")
+
+	# when
+	apply_app_identity("srxy")
+
+	# then
+	assert qapp.applicationName() == "srxy"
+	assert qapp.organizationName() == "srxy"
+	assert qapp.desktopFileName() == ""
+
+
+def test_given_app_identity_with_desktop_file_when_applied_then_sets_desktop_name(
+	qapp: QGuiApplication,
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	apps = tmp_path / "share" / "applications"
+	apps.mkdir(parents=True)
+	(apps / "srxy-installer.desktop").write_text("[Desktop Entry]\nName=srxy\n", encoding="utf-8")
+	monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path / "share"))
+	monkeypatch.setenv("XDG_DATA_DIRS", str(tmp_path / "empty"))
+	qapp.setDesktopFileName("")
+
+	# when
+	apply_app_identity("srxy-installer")
+
+	# then
+	assert qapp.applicationName() == "srxy-installer"
+	assert qapp.organizationName() == "srxy"
 	assert qapp.desktopFileName() == "srxy-installer"

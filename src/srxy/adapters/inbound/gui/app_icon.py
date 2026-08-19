@@ -56,14 +56,32 @@ def desktop_file_available(name: str) -> bool:
 	return False
 
 
-def apply_desktop_file_name(app: QGuiApplication, name: str):
+def apply_desktop_file_name(name: str):
 	"""Set the portal/Wayland app id only when a matching .desktop file exists.
 
 	Avoids: Failed to register with host portal … App info not found for '…'
 	when running via ``uv run`` / PyPI without a desktop entry installed.
+
+	Uses the static setter so it can run before ``QGuiApplication`` is
+	constructed; Qt must know the desktop file name at init time to register
+	with the host portal before any other portal call is made.
 	"""
 	if desktop_file_available(name):
-		app.setDesktopFileName(name)
+		QGuiApplication.setDesktopFileName(name)
+
+
+def apply_app_identity(name: str):
+	"""Set the Qt app name, org name, and desktop file name before construction.
+
+	Qt reads these at ``QGuiApplication`` init to register the app with the
+	xdg-desktop-portal host-app registry. Setting them after construction makes
+	Qt defer registration until after other portal calls, which logs
+	"Failed to register with host portal … Connection already associated with an
+	application ID" on Qt 6.10+/6.11.
+	"""
+	QGuiApplication.setApplicationName(name)
+	QGuiApplication.setOrganizationName("srxy")
+	apply_desktop_file_name(name)
 
 
 def _load_icon(*, path_for_size: Callable[..., Path], sizes: list[int]) -> QIcon:
@@ -148,6 +166,7 @@ def apply_installer_icon(app: QGuiApplication):
 __all__ = [
 	"WINDOWS_APP_USER_MODEL_ID",
 	"apply_app_icon",
+	"apply_app_identity",
 	"apply_desktop_file_name",
 	"apply_icon_to_windows",
 	"apply_installer_icon",
