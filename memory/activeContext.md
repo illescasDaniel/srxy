@@ -6,7 +6,7 @@ _Last updated: 2026-08-19_
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
 - Up to date with `origin/feature/fixes_1.6.6` (latest `a2c2387` "fix ok button and other stuff").
-- Working tree is **not clean** — uncommitted changes pending (see "Current uncommitted work").
+- Working tree clean — the folder-picker batch was committed as `2b9e722`.
 
 ## Done this session: Linux native folder picker for the "Browse" button
 
@@ -71,15 +71,9 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 - **i18n** — en/es string updates.
 - **Tests/docs** — large test expansion (theme, installer, OCR orientation, tessdata, search worker), docs + screenshots.
 
-### Current uncommitted work (not yet committed)
+### Current uncommitted work
 
-Linux native folder picker for the "Browse" button (see "Done this session: Linux native folder picker" above) plus the sandbox-gate docs:
-
-- `gui/qt_theme.py` — new `prefer_native_file_dialogs()` (sets `QT_QPA_PLATFORMTHEME=xdgdesktopportal` on Linux).
-- `gui/app.py` + `installer/app.py` — call `prefer_native_file_dialogs()` before `QGuiApplication`.
-- `tests/unit/test_qt_theme.py`, `tests/unit/test_gui_app.py` — coverage for the new helper.
-- `AGENTS.md` — document running the gate outside the sandbox.
-- `memory/` — this session's updates.
+None — the Linux native folder picker batch (above) and the `AGENTS.md` sandbox-gate note were committed as `2b9e722`.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 
@@ -102,7 +96,6 @@ Linux native folder picker for the "Browse" button (see "Done this session: Linu
 ## Next steps
 
 1. **Resolve the `DelegateModel::cancel: index out range` warning** (pick one of the candidate fixes above; likely avoid the full model reset in `ResultsModel.clear()`/`replace_results()`), add/adjust a test that exercises the model reset, then run the GUI test suite and quality gate.
-2. Commit the Linux native folder picker batch (source + tests + memory); gate passed.
-3. Bump `pyproject.toml` version to `1.6.6` (and any installer meta referencing it).
-4. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
-5. Run the full local quality gate before release: `uv run task checks-full` (Windows: `uv run task checks-win-full`).
+2. Bump `pyproject.toml` version to `1.6.6` (and any installer meta referencing it).
+3. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
+4. Run the full local quality gate before release: `uv run task checks-full` (Windows: `uv run task checks-win-full`).
