@@ -7,7 +7,7 @@
   Ruff, optional ShellCheck/shfmt, basedpyright, pip-audit, wheel build, pytest.
   Use on Windows when bash/flock cannot run ./scripts/quality/checks.sh.
 
-  Flags: -Fix/--fix, -Full/--full, -FullCpu/--full+cpu (same meaning as checks.sh).
+  Flags: -Fix/--fix, -Full/--full, -FullCpu/--full+cpu, -Quiet/--quiet (same meaning as checks.sh).
   Env: CI=true, LIB_PYTEST_WORKERS (same intent as the bash gate).
 
   Shell step: WARN-skip when shellcheck/shfmt are missing (common on Windows).
@@ -24,6 +24,7 @@ param(
 	[switch] $Fix,
 	[switch] $Full,
 	[switch] $FullCpu,
+	[switch] $Quiet,
 	# Internal: run one light step and write status (used for parallel verify).
 	[string] $InternalStep = '',
 	[string] $InternalLog = '',
@@ -40,9 +41,11 @@ foreach ($arg in @($RemainingArgs)) {
 		'^--fix$' { $Fix = $true }
 		'^--full$' { $Full = $true }
 		'^--full\+cpu$' { $Full = $true; $FullCpu = $true }
+		'^--quiet$' { $Quiet = $true }
 	}
 }
 if ($FullCpu) { $Full = $true }
+if ($Quiet) { $env:LIB_GATE_QUIET = 'true' }
 
 $ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $InternalDir = Join-Path $ScriptDir 'internal'
@@ -432,6 +435,17 @@ function Invoke-PytestStep {
 	$env:PYTHONUNBUFFERED = '1'
 	$env:LIB_PYTEST_WORKERS = "$workers"
 
+	$quietArgs = @()
+	if ($env:LIB_GATE_QUIET -eq 'true') {
+		$quietArgs = @('-q', '--no-header', '-ra', '--tb=short', '-p', 'agent_progress')
+		$env:PYTHONPATH = "$InternalDir;$($env:PYTHONPATH)"
+		$env:LIB_PYTEST_PROGRESS_INTERVAL = '25'
+		$env:HF_HUB_DISABLE_PROGRESS_BARS = '1'
+		$env:TRANSFORMERS_VERBOSITY = 'error'
+		$env:TOKENIZERS_PARALLELISM = 'false'
+		$env:TQDM_DISABLE = '1'
+	}
+
 	$safe = @('tests', '-m', (Get-SafeMarker), '-n', "$workers", '--dist=loadgroup', '--max-worker-restart=0')
 	if ($env:CI -ne 'true' -and $env:LIB_PYTEST_FULL -ne 'true') {
 		$safe += @('--testmon-forceselect', '--ff')
@@ -439,6 +453,7 @@ function Invoke-PytestStep {
 	if ($env:LIB_PYTEST_FULL -eq 'true' -and (Test-Path (Join-Path $RepoRoot 'src'))) {
 		$safe += @('--cov=src', '--cov-report=term-missing:skip-covered', '-ra', '--tb=short')
 	}
+	$safe += $quietArgs
 
 	Write-Host "pytest: safe parallel pass (workers=$workers)"
 	Write-Host ("pytest: args: " + ($safe -join ' '))
@@ -458,6 +473,10 @@ function Invoke-PytestStep {
 	if ($env:LIB_PYTEST_FULL_CPU -eq 'true') { $heavy += '--integration-test-cpu' }
 	if ($env:LIB_PYTEST_FULL -eq 'true' -and (Test-Path (Join-Path $RepoRoot 'src'))) {
 		$heavy += @('--cov=src', '--cov-append', '--cov-report=term-missing:skip-covered', '-ra', '--tb=short')
+	}
+	if ($env:LIB_GATE_QUIET -eq 'true') {
+		$heavy += $quietArgs
+		$env:LIB_PYTEST_PROGRESS_INTERVAL = '1'
 	}
 
 	Write-Host ''

@@ -30,6 +30,7 @@ fi
 FIX=false
 FULL=false
 FULL_CPU=false
+QUIET=false
 for arg in "$@"; do
 	case "${arg}" in
 	--fix)
@@ -41,6 +42,9 @@ for arg in "$@"; do
 	--full+cpu)
 		FULL=true
 		FULL_CPU=true
+		;;
+	--quiet)
+		QUIET=true
 		;;
 	esac
 done
@@ -58,6 +62,7 @@ fi
 
 export LIB_PYTEST_FULL="${FULL}"
 export LIB_PYTEST_FULL_CPU="${FULL_CPU}"
+export LIB_GATE_QUIET="${QUIET}"
 
 HAS_PYTEST=false
 if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
@@ -227,11 +232,13 @@ gate_finish_step() {
 	local log_dir="$2"
 
 	gate_step_start "${name}"
-	if [[ -f "${log_dir}/${name}.log" ]]; then
-		cat "${log_dir}/${name}.log"
-	fi
 	unset GATE_STATUS_FILE
 	gate_load_result "${log_dir}/${name}.status"
+	if [[ "${LIB_GATE_QUIET:-false}" != true || "${GATE_STEP_STATUS[GATE_CURRENT_INDEX]}" == "FAIL" ]]; then
+		if [[ -f "${log_dir}/${name}.log" ]]; then
+			cat "${log_dir}/${name}.log"
+		fi
+	fi
 }
 
 if [[ "${FIX}" == true ]]; then

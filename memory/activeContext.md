@@ -8,6 +8,14 @@ _Last updated: 2026-08-19_
 - Ahead of `origin/feature/fixes_1.6.6` by 2 commits: `ce6d367` (host-portal identity) and `41df699` (native-first `AccentButton`). Not pushed.
 - Working tree carries concurrent quality-gate WIP from another agent (`AGENTS.md`, `pyproject.toml`, `scripts/quality/*`) — left untouched.
 
+## Done this session: agent-verbosity quality gate (`--quiet` / `-Quiet`)
+
+- AI-agent runs of the quality gate were burning tokens on pytest's `-v` output (~1 line per test) plus heavy-pass model noise. Added an opt-in quiet flag to both gates (`checks.sh --quiet`, `checks-win.ps1 -Quiet`) that exports `LIB_GATE_QUIET=true`.
+- `pytest.sh` / `checks-win.ps1` append `-q --no-header -ra --tb=short -p agent_progress`; new plugin `scripts/quality/internal/agent_progress.py` prints sparse `[gate] N/total (ok=.. fail=..)` lines (nodeid-set totals — xdist workers each report the full collection). Heavy pass uses `LIB_PYTEST_PROGRESS_INTERVAL=1` + `HF_HUB_DISABLE_PROGRESS_BARS`/`TRANSFORMERS_VERBOSITY=error`/`TOKENIZERS_PARALLELISM=false`/`TQDM_DISABLE=1`.
+- `checks.sh` `gate_finish_step` now suppresses passing light-step logs on the verify path (loads status first; cats only on failure or non-quiet). `-p no:cacheprovider` dropped — it removes pytest's `--ff` option.
+- Day-to-day Taskipy tasks (`checks`/`checks-fix`/`checks-win`/`checks-win-fix`) remain **verbose**; dedicated `*-quiet` tasks added for all gate modes on both platforms (`checks-quiet`, `checks-fix-quiet`, `checks-full-quiet`, `checks-full-cpu-quiet`, `checks-win-quiet`, `checks-win-fix-quiet`, `checks-win-full-quiet`, `checks-win-full-cpu-quiet`). `AGENTS.md` instructs agents to always use the quiet variants. `--full`/`--full+cpu`/CI stay verbose.
+- Verified: `uv run task checks` (verbose) and `uv run task checks-quiet` (quiet) both PASSED (122 heavy tests, ~4.9 min each). Uncommitted.
+
 ## Done this session: fixed host-portal registration warning
 
 - GUI/installer logged `qt.qpa.services: Failed to register with host portal … Connection already associated with an application ID` on Linux (Qt 6.11 + KDE/Wayland). Root cause: identity was set *after* `QGuiApplication` construction, so `desktopFileName()` was empty at init and Qt deferred `org.freedesktop.host.portal.Registry.Register` to a queued callback — by then `follow_system_color_scheme()` (inside `apply_qt_quick_theme`) had already made a portal colour-scheme read that claimed the connection.
@@ -89,7 +97,7 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work
 
-None from this session — the native-first `AccentButton` and host-portal batches are both committed (`41df699`, `ce6d367`). The branch's only uncommitted changes are another agent's concurrent quality-gate WIP (`AGENTS.md`, `pyproject.toml`, `scripts/quality/*`), which must not be staged blindly (use explicit paths).
+The quiet quality-gate flag for agents (`--quiet` / `-Quiet` + `agent_progress.py`, `*-quiet` Taskipy tasks, AGENTS.md guidance) — see "Done this session: agent-verbosity quality gate" above. Verified (`uv run task checks` verbose and `checks-quiet` both PASSED); uncommitted. If staging, use explicit paths: `AGENTS.md`, `pyproject.toml`, `scripts/quality/checks.sh`, `scripts/quality/pytest.sh`, `scripts/quality/checks-win.ps1`, `scripts/quality/internal/agent_progress.py`.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 

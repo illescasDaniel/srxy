@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-19 — Taskipy gate tasks: non-quiet by default, dedicated `*-quiet` variants
+
+- **Context:** The first iteration made the day-to-day Taskipy tasks (`checks`/`checks-fix`/`checks-win`/`checks-win-fix`) default to `--quiet`. The user preferred humans keep the verbose default and agents opt into quiet explicitly.
+- **Decision:** Reverted `checks`/`checks-fix`/`checks-win`/`checks-win-fix` to plain (verbose) commands. Added explicit `*-quiet` variants for every gate mode on both platforms: `checks-quiet`, `checks-fix-quiet`, `checks-full-quiet`, `checks-full-cpu-quiet`, `checks-win-quiet`, `checks-win-fix-quiet`, `checks-win-full-quiet`, `checks-win-full-cpu-quiet`. `AGENTS.md` instructs AI agents to always use the quiet variants (direct `--quiet`/`-Quiet` flags or `*-quiet` tasks); the release line points agents at `checks-full-quiet` / `checks-full-cpu-quiet`.
+- **Rationale:** Keeps the human-facing day-to-day commands unchanged (no silent behavior change) while giving agents an explicit, discoverable low-token path. Verified with `uv run task checks` (verbose, PASSED) and `uv run task checks-quiet` (quiet, PASSED).
+
+## 2026-08-19 — Agent-verbosity `--quiet` flag for the quality gate
+
+- **Context:** AI agents running `checks.sh` consume tens of thousands of tokens just reading the gate's stdout: pytest's `-v` addopts print one line per test (~880+ tests), and the serial heavy pass (semantic/transcribe/gui/tui/integration/ocr) reruns everything every time, streaming model/progress noise. The gate must keep streaming live output (the stall watchdog depends on it), so truncation (`tail`) was ruled out.
+- **Decision:** Add opt-in `--quiet` (`checks.sh`) / `-Quiet` (`checks-win.ps1`) that exports `LIB_GATE_QUIET=true`. Pytest runs with `-q --no-header -ra --tb=short -p agent_progress` (sparse `[gate] N/total (ok=.. fail=..)` lines from the new `scripts/quality/internal/agent_progress.py` plugin; totals use nodeid sets because xdist workers each report the full collection). The heavy pass additionally gets `LIB_PYTEST_PROGRESS_INTERVAL=1` and `HF_HUB_DISABLE_PROGRESS_BARS=1`/`TRANSFORMERS_VERBOSITY=error`/`TOKENIZERS_PARALLELISM=false`/`TQDM_DISABLE=1`. On the parallel-verify path, passing light-step logs are no longer replayed (`gate_finish_step` loads the status first and cats the log only on failure or non-quiet). Taskipy task naming was later revised — see the "Taskipy gate tasks: non-quiet by default, dedicated `*-quiet` variants" entry above. `-p no:cacheprovider` was dropped because disabling the cacheprovider also removes pytest's `--ff` (fail-first) option, which the local gate passes.
+- **Rationale:** Keeps the human-facing verbose default while slashing agent token cost; failures still show full short tracebacks + `-ra` summary; progress lines keep the stall watchdog satisfied during slow heavy tests. Verified with `uv run task checks` and `uv run task checks-fix` (both PASSED, 122 heavy tests).
+
 ## 2026-08-19 — AccentButton is native-first (highlighted via `defaultButton`), no custom background
 
 - **Context:** `AccentButton` replaced the native button `background`/`contentItem` with a plain `Rectangle`+`Text`, losing Material ripple/elevation, Fluent hover/press states, per-style corner radius, and per-style size (hardcoded 80x32, faked pressed state via `opacity: 0.85`). The prior "explicit `accent` bool + custom fill" workaround existed because `DialogButtonBox` appeared to clobber `highlighted`.

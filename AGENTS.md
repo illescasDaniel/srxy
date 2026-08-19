@@ -6,14 +6,14 @@ After writing or changing code, run the quality gate until it passes cleanly.
 
 **Unix / macOS / WSL (preferred where bash works):**
 
-1. **Autofix** — run `./scripts/quality/checks.sh --fix` and address any remaining issues it reports.
-2. **Verify** — run `./scripts/quality/checks.sh` (no `--fix`) and confirm a clean pass.
+1. **Autofix** — run `./scripts/quality/checks.sh --quiet --fix` and address any remaining issues it reports.
+2. **Verify** — run `./scripts/quality/checks.sh --quiet` (no `--fix`) and confirm a clean pass.
 3. **Repeat** — if either step fails, fix the reported problems (rerun `--fix` for Ruff/shell issues; fix basedpyright, pip-audit, and pytest failures in code) and go back to step 1 until both commands succeed.
 
 **Windows (native PowerShell — use when bash/`flock`/CRLF breaks `checks.sh`):**
 
-1. **Autofix** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix` (or `uv run task checks-win-fix`)
-2. **Verify** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1` (or `uv run task checks-win`)
+1. **Autofix** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix -Quiet` (or `uv run task checks-win-fix-quiet`)
+2. **Verify** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Quiet` (or `uv run task checks-win-quiet`)
 
 `checks-win.ps1` mirrors the bash gate (same steps, markers, lock file). Light verify steps run **sequentially** on Windows (bash still parallelizes them). ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Pytest stall/wall watchdogs from `pytest.sh` are not ported; `pytest-timeout` still applies.
 
@@ -29,13 +29,15 @@ The gate takes an exclusive flock on `.srxy-quality-gate.lock` (repo root). A se
 
 `--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `GITHUB_ACTIONS=true`. On Windows, `checks-win.ps1 -Full` still runs the heavy suite even if a leftover local `CI=true` is set.
 
-Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity). Full details: [docs/development.md](docs/development.md).
+`--quiet` (Unix) / `-Quiet` (Windows) is the agent-verbosity mode: passing light-step logs are suppressed and pytest collapses to sparse `[gate] N/total` progress lines, showing failures in full (`-ra --tb=short`). Omit the flag for the full human-facing output. **AI agents must always use the quiet variants** (`--quiet` / `-Quiet`, or the `*-quiet` Taskipy tasks). The non-quiet `checks` / `checks-fix` / `checks-win` / `checks-win-fix` tasks and plain `checks.sh` / `checks-win.ps1` are for humans.
+
+Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity); agents should run the quiet equivalents `checks-full-quiet` / `checks-full-cpu-quiet`. Full details: [docs/development.md](docs/development.md).
 
 ### Running the gate (agent pitfalls)
 
-- Pytest streams live under the gate (including `CI=true`). After `[6/6] pytest` you should see a `pytest: starting (workers=…)` banner and then `[gwN] PASSED` lines. A long blank gap means a real stall — the stall/wall watchdog will kill the run (exit 124) instead of hanging forever.
+- Pytest streams live under the gate (including `CI=true`). After `[6/6] pytest` you should see a `pytest: starting (workers=…)` banner and then `[gwN] PASSED` lines (verbose) or `[gate] N/total` progress lines (`--quiet`). A long blank gap means a real stall — the stall/wall watchdog will kill the run (exit 124) instead of hanging forever.
 - Override limits with `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS` if needed.
-- **Do not** pipe the gate through `tail` (or anything that only prints on EOF). Prefer running `./scripts/quality/checks.sh` / `--fix` directly, or `tee` a log **without** truncating live output. With `| tee … | tail -N`, a healthy but long verify looks hung because nothing appears until the process exits.
+- **Do not** pipe the gate through `tail` (or anything that only prints on EOF). Prefer running `./scripts/quality/checks.sh` / `--quiet` directly, or `tee` a log **without** truncating live output. With `| tee … | tail -N`, a healthy but long verify looks hung because nothing appears until the process exits.
 - If the gate refuses to start because of the lock file, another gate is still running — stop leftover `checks.sh` / `checks-win.ps1` / pytest processes for this repo, then retry. Do not start a second gate in parallel.
 - If verify seems stuck despite the lock: inspect the process tree and the full log. A clean re-run usually finishes in tens of seconds under `CI=true`.
 - Optional when GPU contention is noisy: `CUDA_VISIBLE_DEVICES="" ./scripts/quality/checks.sh` (or the same for `CI=true` local mimic runs). On Windows PowerShell: `$env:CUDA_VISIBLE_DEVICES = ''; $env:CI = 'true'; .\scripts\quality\checks-win.ps1`.
