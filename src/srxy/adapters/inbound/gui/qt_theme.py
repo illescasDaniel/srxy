@@ -177,6 +177,24 @@ def _set_quick_style(name: str) -> bool:
 	return True
 
 
+def prefer_native_file_dialogs():
+	"""Route Qt Quick file/folder dialogs through the XDG desktop portal on Linux.
+
+	Qt Quick's ``FolderDialog``/``FileDialog`` use a native dialog only when the
+	platform theme provides one. On Linux the KDE/GNOME themes that Qt selects by
+	default do not, so those dialogs fall back to the Qt Quick (non-native)
+	implementation. Selecting the ``xdgdesktopportal`` platform theme (bundled
+	with PySide6) serves file dialogs via ``org.freedesktop.portal.FileChooser``,
+	which opens the desktop's native picker (e.g. KDE's).
+
+	Must be called before ``QGuiApplication`` is constructed, since the platform
+	theme is read once at startup. A user-set ``QT_QPA_PLATFORMTHEME`` is
+	preserved, so this only fills in the missing default on Linux.
+	"""
+	if sys.platform.startswith("linux"):
+		os.environ.setdefault("QT_QPA_PLATFORMTHEME", "xdgdesktopportal")
+
+
 def _rgb01_to_hex(r: float, g: float, b: float) -> str | None:
 	"""Convert sRGB [0,1] components to ``#rrggbb``, or ``None`` if unset/out of range."""
 	if not all(0.0 <= c <= 1.0 for c in (r, g, b)):
@@ -405,6 +423,7 @@ __all__ = [
 	"apply_qt_quick_theme",
 	"contrast_text_on",
 	"follow_system_color_scheme",
+	"prefer_native_file_dialogs",
 	"resolve_button_accent",
 	"shared_qml_import_path",
 ]

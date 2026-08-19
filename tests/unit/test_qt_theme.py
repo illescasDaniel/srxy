@@ -370,3 +370,59 @@ def test_given_shared_qml_path_when_resolved_then_contains_srxy_controls():
 	# then
 	assert (Path(path) / "SrxyControls" / "AccentButton.qml").is_file()
 	assert (Path(path) / "SrxyControls" / "qmldir").is_file()
+
+
+def test_given_linux_when_preferring_native_dialogs_then_sets_portal_theme(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	monkeypatch.delenv("QT_QPA_PLATFORMTHEME", raising=False)
+
+	# when
+	qt_theme.prefer_native_file_dialogs()
+
+	# then
+	assert os.environ["QT_QPA_PLATFORMTHEME"] == "xdgdesktopportal"
+
+
+def test_given_preset_platform_theme_when_preferring_native_dialogs_then_preserves_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	monkeypatch.setenv("QT_QPA_PLATFORMTHEME", "gtk3")
+
+	# when
+	qt_theme.prefer_native_file_dialogs()
+
+	# then
+	assert os.environ["QT_QPA_PLATFORMTHEME"] == "gtk3"
+
+
+def test_given_windows_when_preferring_native_dialogs_then_does_not_set_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "win32")
+	monkeypatch.delenv("QT_QPA_PLATFORMTHEME", raising=False)
+
+	# when
+	qt_theme.prefer_native_file_dialogs()
+
+	# then
+	assert "QT_QPA_PLATFORMTHEME" not in os.environ
+
+
+def test_given_darwin_when_preferring_native_dialogs_then_does_not_set_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	monkeypatch.delenv("QT_QPA_PLATFORMTHEME", raising=False)
+
+	# when
+	qt_theme.prefer_native_file_dialogs()
+
+	# then
+	assert "QT_QPA_PLATFORMTHEME" not in os.environ

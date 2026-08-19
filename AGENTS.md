@@ -39,6 +39,7 @@ Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` whe
 - If the gate refuses to start because of the lock file, another gate is still running — stop leftover `checks.sh` / `checks-win.ps1` / pytest processes for this repo, then retry. Do not start a second gate in parallel.
 - If verify seems stuck despite the lock: inspect the process tree and the full log. A clean re-run usually finishes in tens of seconds under `CI=true`.
 - Optional when GPU contention is noisy: `CUDA_VISIBLE_DEVICES="" ./scripts/quality/checks.sh` (or the same for `CI=true` local mimic runs). On Windows PowerShell: `$env:CUDA_VISIBLE_DEVICES = ''; $env:CI = 'true'; .\scripts\quality\checks-win.ps1`.
+- Run the gate **outside the sandbox** (`required_permissions: ["all"]`). The sandbox blocks writes to per-user dirs (`~/.cache/srxy/cache.db`, `~/.local/share/srxy`, `~/.config/srxy/settings.json`) and blocks Hugging Face network checks, so an in-sandbox run fails with `sqlite3.OperationalError: attempt to write a readonly database` and Hugging Face `403` — both environmental, not code bugs. If the light steps pass and pytest only shows those, re-run outside the sandbox. To stay sandboxed (narrow repro only), redirect the writable dirs into the workspace first: `export SRXY_CACHE_DIR="$PWD/.sandbox/cache" XDG_CACHE_HOME="$PWD/.sandbox/cache" XDG_DATA_HOME="$PWD/.sandbox/data" XDG_CONFIG_HOME="$PWD/.sandbox/config" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, then run `./scripts/quality/checks.sh`.
 
 ## TUI changes
 

@@ -18,7 +18,11 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.desktop import QtDesktopAdapter
-from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
+from srxy.adapters.inbound.gui.qt_theme import (
+	apply_qt_quick_theme,
+	prefer_native_file_dialogs,
+	shared_qml_import_path,
+)
 from srxy.bootstrap import build_app_services
 
 
@@ -28,6 +32,7 @@ def qml_dir() -> Path:
 
 def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	ensure_windows_app_user_model_id()
+	prefer_native_file_dialogs()
 	app = QGuiApplication(sys.argv)
 	app.setApplicationName("srxy")
 	app.setOrganizationName("srxy")

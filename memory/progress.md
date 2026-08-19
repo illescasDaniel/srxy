@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-08-18_
+_Last updated: 2026-08-19_
 
 ## v1.6.6 — fixes and improvements
 
@@ -18,10 +18,11 @@ _Last updated: 2026-08-18_
 - [x] Preview syntax highlighting applies to all file sizes (removed the 16 KB / 500-line plain fallback in `gui/preview.py`; added regression test).
 - [x] Preview header file-path elision: long file names in the preview panel now elide with `...` (right) and show the full path on hover (`ToolTip`); metadata `score · matched` stays visible. Added `previewFilePath` property + unit test. Gate passed.
 - [x] Dialog OK buttons render dark in dark mode — `AccentButton` relied on the standard `highlighted` property, which `DialogButtonBox` clobbers on its child buttons (FluentWinUI3 delegate drives it from `buttonRole`). Replaced with an explicit `accent` bool; Search button now toggles `accent` instead of `highlighted`. Regression test asserts OK buttons render accent fill/foreground. Gate passed.
+- [x] Linux "Browse" button now opens the native folder picker — `prefer_native_file_dialogs()` sets `QT_QPA_PLATFORMTHEME=xdgdesktopportal` on Linux before `QGuiApplication` (gui + installer), routing `FolderDialog` through the desktop portal. macOS/Windows untouched. Unit tests added; gate passed.
 
 ### Open
 
-- [ ] Commit the uncommitted batch (preview fallback/header, selection, theme, memory rule), then push the 4 ahead commits.
+- [ ] Commit the Linux native folder picker batch (source + tests + memory).
 - [ ] Bump `pyproject.toml` version `1.6.5` → `1.6.6` (and installer meta).
 - [ ] Final QA — Windows dark mode (incl. `SplitView` grips), macOS native, Linux Material light/dark, Windows/macOS installers.
 - [ ] Full quality gate before release (`checks-full` / `checks-win-full`).

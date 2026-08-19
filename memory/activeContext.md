@@ -1,12 +1,20 @@
 # Active Context
 
-_Last updated: 2026-08-18_
+_Last updated: 2026-08-19_
 
 ## Branch
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
-- 5 commits ahead of `origin/feature/fixes_1.6.6` (`e5b844e` memory bank tracked, `95f499e` merge of `feature/preview-highlight-find`, `965f1c3` preview feature, `35adda3` memory, `b4cd2d1` button GUI improvements).
+- Up to date with `origin/feature/fixes_1.6.6` (latest `a2c2387` "fix ok button and other stuff").
 - Working tree is **not clean** — uncommitted changes pending (see "Current uncommitted work").
+
+## Done this session: Linux native folder picker for the "Browse" button
+
+- The GUI/installer "Browse" button (`FolderDialog`) rendered the Qt Quick non-native dialog on Linux because Qt's auto-selected KDE/GNOME platform theme provides no native folder dialog.
+- Added `prefer_native_file_dialogs()` to `gui/qt_theme.py`: on Linux it `setdefault`s `QT_QPA_PLATFORMTHEME=xdgdesktopportal`, which routes file/folder dialogs through `org.freedesktop.portal.FileChooser` → the native KDE picker. Called in `gui/app.py` (`run_gui`) and `installer/app.py` (`run_installer`) before `QGuiApplication` is constructed.
+- macOS/Windows untouched (their dialogs are already native). User-set `QT_QPA_PLATFORMTHEME` preserved via `setdefault`.
+- Unit tests: `test_qt_theme.py` (linux sets portal theme; preset env preserved; win32/darwin untouched); `test_gui_app.py` now mocks the helper.
+- Quality gate passed.
 
 ## Done this session: memory bank now tracked in git
 
@@ -65,19 +73,13 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work (not yet committed)
 
-A batch of uncommitted edits on top of `95f499e` fixes QML preview/selection warnings and refactors the preview header:
+Linux native folder picker for the "Browse" button (see "Done this session: Linux native folder picker" above) plus the sandbox-gate docs:
 
-- `controller.py` — new `previewFilePath` property; new `_clear_selection()` called before results-model clear/replace (first attempt at the `DelegateModel::cancel: index out range` warning — insufficient, see "Active blocker"); preview header now shows only `score · matched` (path moved to `previewFilePath`).
-- `preview.py` — removed the large-payload plain-preview fallback (`_PLAIN_PREVIEW_BYTES`); preview always renders the numbered/syntax-coloured HTML layout.
-- `qt_theme.py` — `contrast_text_on` now prefers white when it clears AA 4.5:1 (options/filters OK button black-text fix; see "Recently fixed").
-- `qml/Main.qml` — preview header/path split to match `previewFilePath`; the path label elides with `Text.ElideRight` (no wrap) and shows a hover `ToolTip` with the full path, while `score · matched` stays visible alongside.
-- `tests/unit/test_gui_controller.py`, `tests/unit/test_gui_preview.py`, `tests/unit/test_qt_theme.py` — updated for the above.
-- `app.py` (gui) + `installer/app.py` — teardown now destroys root windows before the engine and flushes `DeferredDelete` (fixes the engine-destruction warning).
-- `tests/gui/test_gui_qml_load.py` — now also asserts no `in the process of being created` warning during teardown, plus a regression test that the options/filters OK buttons render accent fill/foreground.
-- `tests/unit/test_gui_app.py` — fakes extended for the new teardown calls.
-- `shared/qml/SrxyControls/AccentButton.qml` — decoupled accent fill from the standard `highlighted` property (a new `accent` bool) because `DialogButtonBox` clobbers `highlighted` on child buttons.
-- `qml/Main.qml` — Search button now toggles `accent` (was `highlighted`) for the stale state; `optionsOkButton` / `filtersOkButton` objectNames added.
-- `.cursor/rules/agent-memory.mdc` — rewritten (memory file roles + update triggers + hand-off protocol).
+- `gui/qt_theme.py` — new `prefer_native_file_dialogs()` (sets `QT_QPA_PLATFORMTHEME=xdgdesktopportal` on Linux).
+- `gui/app.py` + `installer/app.py` — call `prefer_native_file_dialogs()` before `QGuiApplication`.
+- `tests/unit/test_qt_theme.py`, `tests/unit/test_gui_app.py` — coverage for the new helper.
+- `AGENTS.md` — document running the gate outside the sandbox.
+- `memory/` — this session's updates.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 
@@ -99,9 +101,8 @@ A batch of uncommitted edits on top of `95f499e` fixes QML preview/selection war
 
 ## Next steps
 
-1. **Resolve the `DelegateModel::cancel: index out range` warning** (pick one of the candidate fixes above; likely avoid the full model reset in `ResultsModel.clear()`/`replace_results()`), add/adjust a test that exercises the model reset, then run the GUI test suite and quality gate (user will signal when the other process is done).
-2. Finish/verify the uncommitted preview/selection work (the engine-destruction warning is now fixed and its repro script removed), then commit it.
+1. **Resolve the `DelegateModel::cancel: index out range` warning** (pick one of the candidate fixes above; likely avoid the full model reset in `ResultsModel.clear()`/`replace_results()`), add/adjust a test that exercises the model reset, then run the GUI test suite and quality gate.
+2. Commit the Linux native folder picker batch (source + tests + memory); gate passed.
 3. Bump `pyproject.toml` version to `1.6.6` (and any installer meta referencing it).
-4. Push the unpushed commits.
-5. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
-6. Run the full local quality gate before release: `uv run task checks-full` (Windows: `uv run task checks-win-full`).
+4. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
+5. Run the full local quality gate before release: `uv run task checks-full` (Windows: `uv run task checks-win-full`).

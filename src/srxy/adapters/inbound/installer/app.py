@@ -15,7 +15,11 @@ from srxy.adapters.inbound.gui.app_icon import (
 	apply_installer_icon,
 	ensure_windows_app_user_model_id,
 )
-from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
+from srxy.adapters.inbound.gui.qt_theme import (
+	apply_qt_quick_theme,
+	prefer_native_file_dialogs,
+	shared_qml_import_path,
+)
 from srxy.adapters.inbound.installer.controller import InstallerController
 
 
@@ -25,6 +29,7 @@ def qml_dir() -> Path:
 
 def run_installer() -> int:
 	ensure_windows_app_user_model_id("srxy.Installer")
+	prefer_native_file_dialogs()
 	app = QGuiApplication(sys.argv)
 	app.setApplicationName("srxy-installer")
 	app.setOrganizationName("srxy")
