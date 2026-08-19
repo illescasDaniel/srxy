@@ -5,14 +5,14 @@ _Last updated: 2026-08-19_
 ## Branch
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
-- Up to date with `origin/feature/fixes_1.6.6` (latest `a2c2387` "fix ok button and other stuff").
-- Working tree clean — the folder-picker batch was committed as `2b9e722`.
+- Ahead of `origin/feature/fixes_1.6.6` by 2 commits: `ce6d367` (host-portal identity) and `41df699` (native-first `AccentButton`). Not pushed.
+- Working tree carries concurrent quality-gate WIP from another agent (`AGENTS.md`, `pyproject.toml`, `scripts/quality/*`) — left untouched.
 
 ## Done this session: fixed host-portal registration warning
 
 - GUI/installer logged `qt.qpa.services: Failed to register with host portal … Connection already associated with an application ID` on Linux (Qt 6.11 + KDE/Wayland). Root cause: identity was set *after* `QGuiApplication` construction, so `desktopFileName()` was empty at init and Qt deferred `org.freedesktop.host.portal.Registry.Register` to a queued callback — by then `follow_system_color_scheme()` (inside `apply_qt_quick_theme`) had already made a portal colour-scheme read that claimed the connection.
 - Fix: `app_icon.py` gains `apply_app_identity(name)` (static `setApplicationName` / `setOrganizationName` / `setDesktopFileName`); `apply_desktop_file_name` is now static-only (`name`). Both `gui/app.py` (`run_gui`) and `installer/app.py` (`run_installer`) call `apply_app_identity(...)` **before** `QGuiApplication` is constructed.
-- Unit tests updated: `test_app_icon.py` (static signature + `apply_app_identity` cases), `test_gui_app.py` (patch `apply_app_identity`, drop now-unused `FakeApp` name/org setters). Not yet committed.
+- Unit tests updated: `test_app_icon.py` (static signature + `apply_app_identity` cases), `test_gui_app.py` (patch `apply_app_identity`, drop now-unused `FakeApp` name/org setters). Committed (`ce6d367`).
 
 ## Done this session: Linux native folder picker for the "Browse" button
 
@@ -32,7 +32,7 @@ _Last updated: 2026-08-19_
 
 Polishing and fixing the Windows-first GUI/installer release for v1.6.6.
 
-### Done this session: native-first `AccentButton` (uncommitted)
+### Done this session: native-first `AccentButton` (committed, `41df699`)
 
 - `AccentButton` no longer replaces the native `background`/`contentItem` (which dropped Material ripple/elevation, Fluent hover/press, per-style radius/size). It is now a plain `Button` with `highlighted: control.accent` and no custom chrome.
 - Read the Qt 6.11 source to settle why dialog OK buttons lost their accent: `QQuickDialogButtonBoxPrivate::updateLayout()` calls `setHighlighted(button == defaultButton)` on every child each layout pass — so a QML `highlighted` binding is clobbered inside a box and `buttonRole: AcceptRole` alone does NOT highlight.
@@ -89,7 +89,7 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work
 
-Native-first `AccentButton` refactor (this session): `AccentButton.qml`, `gui/qml/Main.qml`, `gui/qt_theme.py`, `tests/gui/test_gui_qml_load.py`, `tests/unit/test_qt_theme.py`. This supersedes the older "explicit `accent` bool + custom `fillColor`/`background`" workaround noted below.
+None from this session — the native-first `AccentButton` and host-portal batches are both committed (`41df699`, `ce6d367`). The branch's only uncommitted changes are another agent's concurrent quality-gate WIP (`AGENTS.md`, `pyproject.toml`, `scripts/quality/*`), which must not be staged blindly (use explicit paths).
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 
