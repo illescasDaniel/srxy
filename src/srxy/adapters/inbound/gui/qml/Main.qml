@@ -1000,14 +1000,17 @@ ApplicationWindow {
 			loadOptionsFromController()
 		}
 		footer: DialogButtonBox {
+			defaultButton: optionsOkButton
 			Button {
 				text: root.t("common.cancel")
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: optionsDialog.reject()
 			}
 			AccentButton {
+				id: optionsOkButton
 				objectName: "optionsOkButton"
 				text: root.t("common.ok")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
 					const err = pushOptionsToController()
 					if (err) {
@@ -1189,14 +1192,17 @@ ApplicationWindow {
 			loadFiltersFromController()
 		}
 		footer: DialogButtonBox {
+			defaultButton: filtersOkButton
 			Button {
 				text: root.t("common.cancel")
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: filtersDialog.reject()
 			}
 			AccentButton {
+				id: filtersOkButton
 				objectName: "filtersOkButton"
 				text: root.t("common.ok")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
 					const err = pushFiltersToController()
 					if (err) {
@@ -1305,6 +1311,7 @@ ApplicationWindow {
 		closePolicy: controller && controller.updateBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
 		onClosed: if (controller) controller.closeUpdateDialog()
 		footer: DialogButtonBox {
+			defaultButton: updateYesButton
 			Button {
 				text: root.t("update.no")
 				visible: controller && controller.updateDialogMode === "prompt"
@@ -1312,6 +1319,7 @@ ApplicationWindow {
 				onClicked: updateDialog.reject()
 			}
 			AccentButton {
+				id: updateYesButton
 				text: root.t("update.yes")
 				visible: controller && controller.updateCanApply
 				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole

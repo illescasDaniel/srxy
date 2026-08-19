@@ -124,6 +124,30 @@ class SrxyTheme(QObject):
 		return contrast_text_on(fill)
 
 
+def _apply_button_accent_palette(app: QCoreApplication, accent: QColor):
+	"""Pin ``QPalette.Accent`` (FluentWinUI3 highlighted-button fill) to ``accent``.
+
+	FluentWinUI3 paints its highlighted/default button with ``palette.accent``
+	rather than a style accent. Qt's platform theme usually populates it from the
+	OS accent, but we set it explicitly so the native accent matches
+	``SrxyTheme.accent`` — the same colour ``AccentButton.foreground`` computes
+	WCAG contrast against. Material/Fusion/macOS ignore this role, so it is
+	harmless there.
+	"""
+	if not isinstance(app, QGuiApplication):
+		return
+	accent_role = getattr(QPalette.ColorRole, "Accent", None)
+	if accent_role is None:
+		return
+	try:
+		palette = app.palette()
+	except AttributeError:
+		return
+	for group in (QPalette.ColorGroup.Active, QPalette.ColorGroup.Inactive):
+		palette.setColor(group, accent_role, accent)
+	app.setPalette(palette)
+
+
 def _patch_fusion_selection_palette(app: QCoreApplication):
 	"""Pin the selection-highlight palette to a reliably accessible dark blue.
 
@@ -415,6 +439,7 @@ def apply_qt_quick_theme(app: QCoreApplication) -> SrxyTheme:
 		follow_system_color_scheme(app)
 		button_accent = resolve_button_accent(app)
 
+	_apply_button_accent_palette(app, button_accent)
 	return SrxyTheme(button_accent)
 
 

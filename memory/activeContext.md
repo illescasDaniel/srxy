@@ -8,6 +8,12 @@ _Last updated: 2026-08-19_
 - Up to date with `origin/feature/fixes_1.6.6` (latest `a2c2387` "fix ok button and other stuff").
 - Working tree clean — the folder-picker batch was committed as `2b9e722`.
 
+## Done this session: fixed host-portal registration warning
+
+- GUI/installer logged `qt.qpa.services: Failed to register with host portal … Connection already associated with an application ID` on Linux (Qt 6.11 + KDE/Wayland). Root cause: identity was set *after* `QGuiApplication` construction, so `desktopFileName()` was empty at init and Qt deferred `org.freedesktop.host.portal.Registry.Register` to a queued callback — by then `follow_system_color_scheme()` (inside `apply_qt_quick_theme`) had already made a portal colour-scheme read that claimed the connection.
+- Fix: `app_icon.py` gains `apply_app_identity(name)` (static `setApplicationName` / `setOrganizationName` / `setDesktopFileName`); `apply_desktop_file_name` is now static-only (`name`). Both `gui/app.py` (`run_gui`) and `installer/app.py` (`run_installer`) call `apply_app_identity(...)` **before** `QGuiApplication` is constructed.
+- Unit tests updated: `test_app_icon.py` (static signature + `apply_app_identity` cases), `test_gui_app.py` (patch `apply_app_identity`, drop now-unused `FakeApp` name/org setters). Not yet committed.
+
 ## Done this session: Linux native folder picker for the "Browse" button
 
 - The GUI/installer "Browse" button (`FolderDialog`) rendered the Qt Quick non-native dialog on Linux because Qt's auto-selected KDE/GNOME platform theme provides no native folder dialog.
@@ -25,6 +31,16 @@ _Last updated: 2026-08-19_
 ## Current focus
 
 Polishing and fixing the Windows-first GUI/installer release for v1.6.6.
+
+### Done this session: native-first `AccentButton` (uncommitted)
+
+- `AccentButton` no longer replaces the native `background`/`contentItem` (which dropped Material ripple/elevation, Fluent hover/press, per-style radius/size). It is now a plain `Button` with `highlighted: control.accent` and no custom chrome.
+- Read the Qt 6.11 source to settle why dialog OK buttons lost their accent: `QQuickDialogButtonBoxPrivate::updateLayout()` calls `setHighlighted(button == defaultButton)` on every child each layout pass — so a QML `highlighted` binding is clobbered inside a box and `buttonRole: AcceptRole` alone does NOT highlight.
+- Fix: set `DialogButtonBox.defaultButton` on the primary dialog buttons — `optionsOkButton`, `filtersOkButton` (GUI), `updateYesButton` (update dialog) — in addition to `AcceptRole`. Search/installer Launch are not in a box, so `highlighted: accent` applies directly.
+- FluentWinUI3 paints its highlighted fill from `palette.accent` (not `palette.button`/custom background), so added `qt_theme._apply_button_accent_palette` to pin `QPalette.Accent` to the resolved button accent (called in `apply_qt_quick_theme`).
+- `foreground` is retained only for the Search button's custom icon+text `contentItem`.
+- Tests: `test_gui_qml_load.py` accent regression now asserts `highlighted is True` + `foreground == onAccent`; `test_qt_theme.py` added `_apply_button_accent_palette` coverage.
+- Full quality gate passed clean (ruff/shell/basedpyright/pip-audit/build/pytest all pass; 0 errors).
 
 ### Active blocker: `DelegateModel::cancel: index out range` still reproduces
 
@@ -73,7 +89,7 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work
 
-None — the Linux native folder picker batch (above) and the `AGENTS.md` sandbox-gate note were committed as `2b9e722`.
+Native-first `AccentButton` refactor (this session): `AccentButton.qml`, `gui/qml/Main.qml`, `gui/qt_theme.py`, `tests/gui/test_gui_qml_load.py`, `tests/unit/test_qt_theme.py`. This supersedes the older "explicit `accent` bool + custom `fillColor`/`background`" workaround noted below.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 

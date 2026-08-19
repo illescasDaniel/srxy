@@ -363,6 +363,20 @@ def test_given_windows_theme_when_applying_then_resolves_accent_before_selection
 	assert theme.onAccent.name(QColor.NameFormat.HexRgb) == "#000000"
 
 
+def test_given_qguiapp_when_applying_button_accent_palette_then_sets_accent_role():
+	# given
+	app = MagicMock(spec=QGuiApplication)
+	palette = QPalette()
+	app.palette.return_value = palette
+
+	# when
+	qt_theme._apply_button_accent_palette(app, QColor("#3daee9"))  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	app.setPalette.assert_called_once()
+	assert palette.color(QPalette.ColorRole.Accent).name(QColor.NameFormat.HexRgb) == "#3daee9"
+
+
 def test_given_shared_qml_path_when_resolved_then_contains_srxy_controls():
 	# given / when
 	path = qt_theme.shared_qml_import_path()

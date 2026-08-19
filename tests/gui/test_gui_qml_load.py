@@ -113,7 +113,8 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	assert roots, f"failed to load {qml_path}"
 	window = roots[0]
 
-	# then — DialogButtonBox must not clobber the accent fill of OK buttons.
+	# then — DialogButtonBox must drive the accent (highlighted) state of the
+	# OK buttons, and their foreground must match the accent contrast colour.
 	for dialog_name, button_name in (
 		("optionsDialog", "optionsOkButton"),
 		("filtersDialog", "filtersOkButton"),
@@ -126,7 +127,7 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 		qapp.processEvents()
 		button = window.findChild(QObject, button_name)
 		assert button is not None, button_name
-		assert _color_name(QQmlProperty(button, "fillColor").read()) == srxy_theme.accent.name(), button_name
+		assert QQmlProperty(button, "highlighted").read() is True, button_name
 		assert _color_name(QQmlProperty(button, "foreground").read()) == srxy_theme.onAccent.name(), button_name
 		dialog.close()
 		qapp.processEvents()
