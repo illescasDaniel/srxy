@@ -1,20 +1,45 @@
 # Active Context
 
-_Last updated: 2026-08-19_
+_Last updated: 2026-08-20_
 
 ## Branch
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
-- Ahead of `origin/feature/fixes_1.6.6` by 2 commits: `ce6d367` (host-portal identity) and `41df699` (native-first `AccentButton`). Not pushed.
-- Working tree carries concurrent quality-gate WIP from another agent (`AGENTS.md`, `pyproject.toml`, `scripts/quality/*`) — left untouched.
+- Up to date with `origin/feature/fixes_1.6.6` (0 ahead), working tree clean.
+- Recent commits: `b40975c` "Fixes and improvements" (quality-gate agent-verbosity `--quiet`/`-Quiet` + `agent_progress.py` + `*-quiet` Taskipy tasks + AGENTS.md guidance), `3effd77` memory note, `41df699` native-first `AccentButton`, `ce6d367` host-portal identity, `2b9e722` Linux native folder picker, `a2c2387` "fix ok button and other stuff".
 
-## Done this session: agent-verbosity quality gate (`--quiet` / `-Quiet`)
+## Done this session (committed + pushed)
+
+### Agent-verbosity quality gate (`--quiet` / `-Quiet`) — `b40975c`
 
 - AI-agent runs of the quality gate were burning tokens on pytest's `-v` output (~1 line per test) plus heavy-pass model noise. Added an opt-in quiet flag to both gates (`checks.sh --quiet`, `checks-win.ps1 -Quiet`) that exports `LIB_GATE_QUIET=true`.
 - `pytest.sh` / `checks-win.ps1` append `-q --no-header -ra --tb=short -p agent_progress`; new plugin `scripts/quality/internal/agent_progress.py` prints sparse `[gate] N/total (ok=.. fail=..)` lines (nodeid-set totals — xdist workers each report the full collection). Heavy pass uses `LIB_PYTEST_PROGRESS_INTERVAL=1` + `HF_HUB_DISABLE_PROGRESS_BARS`/`TRANSFORMERS_VERBOSITY=error`/`TOKENIZERS_PARALLELISM=false`/`TQDM_DISABLE=1`.
 - `checks.sh` `gate_finish_step` now suppresses passing light-step logs on the verify path (loads status first; cats only on failure or non-quiet). `-p no:cacheprovider` dropped — it removes pytest's `--ff` option.
 - Day-to-day Taskipy tasks (`checks`/`checks-fix`/`checks-win`/`checks-win-fix`) remain **verbose**; dedicated `*-quiet` tasks added for all gate modes on both platforms (`checks-quiet`, `checks-fix-quiet`, `checks-full-quiet`, `checks-full-cpu-quiet`, `checks-win-quiet`, `checks-win-fix-quiet`, `checks-win-full-quiet`, `checks-win-full-cpu-quiet`). `AGENTS.md` instructs agents to always use the quiet variants. `--full`/`--full+cpu`/CI stay verbose.
-- Verified: `uv run task checks` (verbose) and `uv run task checks-quiet` (quiet) both PASSED (122 heavy tests, ~4.9 min each). Uncommitted.
+- Verified: `uv run task checks` (verbose) and `uv run task checks-quiet` (quiet) both PASSED (122 heavy tests, ~4.9 min each).
+
+### Host-portal registration warning — `ce6d367`
+
+- GUI/installer logged `qt.qpa.services: Failed to register with host portal … Connection already associated with an application ID` on Linux (Qt 6.11 + KDE/Wayland). Root cause: identity was set *after* `QGuiApplication` construction, so `desktopFileName()` was empty at init and Qt deferred `org.freedesktop.host.portal.Registry.Register` to a queued callback — by then `follow_system_color_scheme()` (inside `apply_qt_quick_theme`) had already made a portal colour-scheme read that claimed the connection.
+- Fix: `app_icon.py` gains `apply_app_identity(name)` (static `setApplicationName` / `setOrganizationName` / `setDesktopFileName`); `apply_desktop_file_name` is now static-only (`name`). Both `gui/app.py` (`run_gui`) and `installer/app.py` (`run_installer`) call `apply_app_identity(...)` **before** `QGuiApplication` is constructed.
+- Unit tests updated: `test_app_icon.py` (static signature + `apply_app_identity` cases), `test_gui_app.py` (patch `apply_app_identity`, drop now-unused `FakeApp` name/org setters).
+
+### Linux native folder picker — `2b9e722`
+
+- The GUI/installer "Browse" button (`FolderDialog`) rendered the Qt Quick non-native dialog on Linux because Qt's auto-selected KDE/GNOME platform theme provides no native folder dialog.
+- Added `prefer_native_file_dialogs()` to `gui/qt_theme.py`: on Linux it `setdefault`s `QT_QPA_PLATFORMTHEME=xdgdesktopportal`, which routes file/folder dialogs through `org.freedesktop.portal.FileChooser` → the native KDE picker. Called in `gui/app.py` (`run_gui`) and `installer/app.py` (`run_installer`) before `QGuiApplication` is constructed.
+- macOS/Windows untouched (their dialogs are already native). User-set `QT_QPA_PLATFORMTHEME` preserved via `setdefault`.
+- Unit tests: `test_qt_theme.py` (linux sets portal theme; preset env preserved; win32/darwin untouched); `test_gui_app.py` now mocks the helper.
+
+### Native-first `AccentButton` — `41df699`
+
+- `AccentButton` no longer replaces the native `background`/`contentItem` (which dropped Material ripple/elevation, Fluent hover/press, per-style radius/size). It is now a plain `Button` with `highlighted: control.accent` and no custom chrome.
+- Read the Qt 6.11 source to settle why dialog OK buttons lost their accent: `QQuickDialogButtonBoxPrivate::updateLayout()` calls `setHighlighted(button == defaultButton)` on every child each layout pass — so a QML `highlighted` binding is clobbered inside a box and `buttonRole: AcceptRole` alone does NOT highlight.
+- Fix: set `DialogButtonBox.defaultButton` on the primary dialog buttons — `optionsOkButton`, `filtersOkButton` (GUI), `updateYesButton` (update dialog) — in addition to `AcceptRole`. Search/installer Launch are not in a box, so `highlighted: accent` applies directly.
+- FluentWinUI3 paints its highlighted fill from `palette.accent` (not `palette.button`/custom background), so added `qt_theme._apply_button_accent_palette` to pin `QPalette.Accent` to the resolved button accent (called in `apply_qt_quick_theme`).
+- `foreground` is retained only for the Search button's custom icon+text `contentItem`.
+- Tests: `test_gui_qml_load.py` accent regression now asserts `highlighted is True` + `foreground == onAccent`; `test_qt_theme.py` added `_apply_button_accent_palette` coverage.
+- Full quality gate passed clean (ruff/shell/basedpyright/pip-audit/build/pytest all pass; 0 errors).
 
 ## Done this session: fixed host-portal registration warning
 
@@ -50,18 +75,14 @@ Polishing and fixing the Windows-first GUI/installer release for v1.6.6.
 - Tests: `test_gui_qml_load.py` accent regression now asserts `highlighted is True` + `foreground == onAccent`; `test_qt_theme.py` added `_apply_button_accent_palette` coverage.
 - Full quality gate passed clean (ruff/shell/basedpyright/pip-audit/build/pytest all pass; 0 errors).
 
-### Active blocker: `DelegateModel::cancel: index out range` still reproduces
+### Active blocker: `DelegateModel::cancel: index out range` — FIXED
 
-The user still sees `DelegateModel::cancel: index out range 6 0` / `10 1` while running searches, even with the uncommitted `_clear_selection()` fix present. Root cause is now pinned down:
+Fixed by option 1 (stop full-reset). `ResultsModel.clear()` and `replace_results()` in `models.py` now emit row-level `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of `beginResetModel`/`endResetModel`, so the QML delegate model cancels in-flight incubations with valid indices.
 
-- The warning is `QQmlDelegateModel::cancel(index)` logging `index` vs `d->m_compositor.count(group)` — i.e. it is asked to cancel a delegate at a stale row `index` when the delegate compositor only holds `count` items. So `6 0` = cancel row 6 with 0 delegates; `10 1` = cancel row 10 with 1 delegate.
-- Trigger: `ResultsModel.clear()` / `replace_results()` both do a full `beginResetModel()`/`endResetModel()`. The reset invalidates rows while the `resultsView` delegate model still has in-flight (async-incubated) delegates, and `resultsView.currentIndex` is bound to `controller.selectedResult` (QML binding re-evaluates **asynchronously**), so it lags the synchronous reset.
-- `_clear_selection()` sets `selectedResult = -1` and emits `selectedResultChanged` before the reset, but that only clears the Python property — it cannot synchronously drive the QML `currentIndex` binding, and it does nothing for the reset's own in-flight delegate cancellation.
-- The existing unit test `test_given_previous_selection_when_beginning_new_search_then_selection_is_cleared` only asserts the Python `selectedResult == -1`, so it cannot catch the QML-side race.
-
-Candidate fixes to evaluate next (not yet chosen):
-
-1. **Stop full-reset**: rewrite `ResultsModel.clear()` / `replace_results()` to use `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows` for replace) instead of `beginResetModel`/`endResetModel`, so the delegate model cancels in-flight items with valid indices.
+- Root cause (kept for reference): the warning is `QQmlDelegateModel::cancel(index)` logging `index` vs `d->m_compositor.count(group)` — asked to cancel a delegate at a stale row `index` when the compositor holds `count` items. `6 0` = cancel row 6 with 0 delegates. The full reset invalidated rows while `resultsView.currentIndex` (async binding, `Main.qml`) and in-flight async-incubated delegates were stale.
+- `_clear_selection()` in `controller.py` remains (clears `selectedResult`, matches, preview before the model mutation).
+- Regression coverage: `tests/unit/test_gui_models.py` (new, deterministic — asserts `clear()` emits `rowsRemoved` (0,N-1) and never `modelReset`; `replace_results()` emits remove+insert pairs; empty-model no-op cases) and `tests/gui/test_gui_qml_load.py::test_given_results_when_running_a_new_search_then_no_delegate_model_warning` (loads Main.qml, feeds `SearchFinishedEvent` results, re-runs `_begin_search`, asserts no `DelegateModel`/`index out range` captured). Both verified: unit tests fail against the old full-reset code; GUI suite passes serially (offscreen).
+- Fallback options 2 (QML `modelAboutToBeReset` → `currentIndex = -1`) and 3 (deferred reset) were not needed.
 2. **QML synchronous clear**: connect to `controller.resultsModel.modelAboutToBeReset` in `Main.qml` and set `resultsView.currentIndex = -1` there (must preserve the `selectedResult` binding via a `Binding` element or a `Connections.onSelectedResultChanged` re-sync).
 3. **Defer the reset** in Python (`QTimer.singleShot(0, ...)`) so the `currentIndex` binding settles first — less deterministic, last resort.
 
@@ -82,7 +103,7 @@ The GUI/installer logged `There are still "1" items in the process of being crea
 
 ### Fixed this session: preview highlighting cutoff
 
-Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/preview.py` that dropped syntax highlighting for previews over 16 KB (`_PLAIN_PREVIEW_BYTES`) or 500 lines. All text previews now get syntax colors; content is still capped at 64 KB / 2000 lines. Added `tests/unit/test_gui_preview.py::test_given_long_python_file_when_formatting_then_still_highlights`. Full quality gate passed (exit 0; shell step skipped — no shellcheck/shfmt on PATH). Not yet committed.
+Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/preview.py` that dropped syntax highlighting for previews over 16 KB (`_PLAIN_PREVIEW_BYTES`) or 500 lines. All text previews now get syntax colors; content is still capped at 64 KB / 2000 lines. Added `tests/unit/test_gui_preview.py::test_given_long_python_file_when_formatting_then_still_highlights`. Full quality gate passed (exit 0; shell step skipped — no shellcheck/shfmt on PATH). Committed in `a2c2387`.
 
 ### Branch theme (vs `main`)
 
@@ -97,15 +118,15 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work
 
-The quiet quality-gate flag for agents (`--quiet` / `-Quiet` + `agent_progress.py`, `*-quiet` Taskipy tasks, AGENTS.md guidance) — see "Done this session: agent-verbosity quality gate" above. Verified (`uv run task checks` verbose and `checks-quiet` both PASSED); uncommitted. If staging, use explicit paths: `AGENTS.md`, `pyproject.toml`, `scripts/quality/checks.sh`, `scripts/quality/pytest.sh`, `scripts/quality/checks-win.ps1`, `scripts/quality/internal/agent_progress.py`.
+None — the working tree is clean. The quality-gate quiet flag (`b40975c`) and all prior batches are committed and pushed.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 
-`AccentButton` chose accent vs. secondary fill by reading the standard `highlighted` property, which `DialogButtonBox` (FluentWinUI3) forcibly overrides on its child buttons. In dark mode the OK/Yes buttons fell back to `palette.button` (5.8%-alpha white → dark). Fixed by giving `AccentButton` an explicit `accent` bool (default true) and pointing the Search button's dynamic stale toggle at `accent`. Added `optionsOkButton` / `filtersOkButton` objectNames and a regression test asserting the buttons render `fillColor == accent` / `foreground == onAccent`. Quality gate passed (only shell step skipped — no shellcheck/shfmt on PATH). Uncommitted.
+`AccentButton` chose accent vs. secondary fill by reading the standard `highlighted` property, which `DialogButtonBox` (FluentWinUI3) forcibly overrides on its child buttons. In dark mode the OK/Yes buttons fell back to `palette.button` (5.8%-alpha white → dark). Fixed by giving `AccentButton` an explicit `accent` bool (default true) and pointing the Search button's dynamic stale toggle at `accent`. Added `optionsOkButton` / `filtersOkButton` objectNames and a regression test asserting the buttons render `fillColor == accent` / `foreground == onAccent`. Quality gate passed (only shell step skipped — no shellcheck/shfmt on PATH). Committed in `a2c2387` (then reworked to native-first `highlighted`+`defaultButton` in `41df699`).
 
 ### Recently fixed: options OK button black text
 
-`contrast_text_on` in `qt_theme.py` used a pure "max contrast wins" rule; for the Windows accent `#0078d4` that picks black (4.637 vs 4.529), so the options/filters dialog OK button (`AccentButton`) showed black text while Cancel stayed white. Fixed to prefer white whenever white still clears AA 4.5:1, falling back to max-contrast otherwise. Added `test_given_windows_accent_fill_when_contrast_text_then_returns_white`. Quality gate passed (only shell step skipped — no shellcheck/shfmt on PATH). Uncommitted.
+`contrast_text_on` in `qt_theme.py` used a pure "max contrast wins" rule; for the Windows accent `#0078d4` that picks black (4.637 vs 4.529), so the options/filters dialog OK button (`AccentButton`) showed black text while Cancel stayed white. Fixed to prefer white whenever white still clears AA 4.5:1, falling back to max-contrast otherwise. Added `test_given_windows_accent_fill_when_contrast_text_then_returns_white`. Quality gate passed (only shell step skipped — no shellcheck/shfmt on PATH). Committed in `a2c2387`.
 
 ### Key files touched
 
@@ -115,11 +136,12 @@ The quiet quality-gate flag for agents (`--quiet` / `-Quiet` + `agent_progress.p
 - `src/srxy/adapters/inbound/installer/*` — catalog, vendor, path_setup, tessdata_langs, privacy, install/uninstall, qml.
 - `packaging/windows/*` (new) — Inno Setup offline installer + smoke script.
 - `src/srxy/adapters/outbound/ocr/ocr_text.py` — orientation handling.
-- `pyproject.toml` — still `1.6.5`.
+- `pyproject.toml` — bumped to `1.6.6` (version bump done).
 
 ## Next steps
 
-1. **Resolve the `DelegateModel::cancel: index out range` warning** (pick one of the candidate fixes above; likely avoid the full model reset in `ResultsModel.clear()`/`replace_results()`), add/adjust a test that exercises the model reset, then run the GUI test suite and quality gate.
-2. Bump `pyproject.toml` version to `1.6.6` (and any installer meta referencing it).
-3. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
-4. Run the full local quality gate before release: `uv run task checks-full` (Windows: `uv run task checks-win-full`).
+1. **Resolved: `DelegateModel::cancel: index out range` warning** — row-based `ResultsModel` mutations + deterministic unit tests + GUI regression test.
+2. **Resolved: version bump 1.6.5 → 1.6.6** — `pyproject.toml`, both `installer_meta.toml` `min_srxy_version`, `uv.lock` regenerated, tests synced.
+3. **Resolved: quality gate** — `checks-fix-quiet` PASSED (all 6 steps clean); cache-free unit pass 791 passed / 2 skipped.
+4. Commit the DelegateModel fix + version bump + memory updates.
+5. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.

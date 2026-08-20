@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import QCoreApplication, QEvent, QObject, QtMsgType, QUrl, qInstallMessageHandler
@@ -13,6 +14,8 @@ from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
+from srxy.application.search_session import SearchFinishedEvent
+from srxy.domain.models import FileSearchResult
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.gui]
@@ -33,7 +36,12 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	warnings: list[str] = []
 
 	def _handler(_mode: QtMsgType, _context: object, message: str):
-		if "Binding loop detected" in message or "in the process of being created" in message:
+		if (
+			"Binding loop detected" in message
+			or "in the process of being created" in message
+			or "DelegateModel" in message
+			or "index out range" in message
+		):
 			warnings.append(message)
 
 	previous = qInstallMessageHandler(_handler)
@@ -138,3 +146,60 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	engine.deleteLater()
 	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
 	qapp.processEvents()
+
+
+def test_given_results_when_running_a_new_search_then_no_delegate_model_warning(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	"""A new search must not log ``DelegateModel::cancel: index out range``.
+
+	Regression guard: `ResultsModel.clear()`/`replace_results()` used to do a
+	full ``beginResetModel()``, invalidating rows while the ListView's async
+	``currentIndex`` binding and in-flight delegate incubations were stale. The
+	model now mutates rows explicitly, so no stale cancel index is requested.
+	"""
+	# given
+	warnings: list[str] = []
+
+	def _handler(_mode: QtMsgType, _context: object, message: str):
+		if "DelegateModel" in message or "index out range" in message:
+			warnings.append(message)
+
+	previous = qInstallMessageHandler(_handler)
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	monkeypatch.setattr(controller, "_start_search_worker", lambda _args: None)
+	srxy_theme = apply_qt_quick_theme(qapp)
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
+	roots = engine.rootObjects()
+	assert roots, "failed to load Main.qml"
+
+	results = [
+		FileSearchResult(path=tmp_path / f"file{i}.txt", score=0.9 - i * 0.01, breakdown={"content": 0.9}, lines=[])
+		for i in range(8)
+	]
+
+	# when — first search populates the model and selects row 0; the second
+	# search clears the selection and the model while delegates are in flight.
+	for _ in range(2):
+		controller.handle_search_event_for_tests(SearchFinishedEvent(results=results, skipped_files=[]))
+		qapp.processEvents()
+		controller._begin_search(args)  # pyright: ignore[reportPrivateUsage]
+		qapp.processEvents()
+
+	controller.shutdown(thread_wait_ms=500)
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+	qInstallMessageHandler(previous)
+
+	# then
+	assert not warnings, "Qt warnings:\n" + "\n".join(warnings)

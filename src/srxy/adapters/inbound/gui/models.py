@@ -71,9 +71,11 @@ class ResultsModel(QAbstractListModel):
 
 	@Slot()
 	def clear(self):
-		self.beginResetModel()
-		self._results = []
-		self.endResetModel()
+		count = len(self._results)
+		if count:
+			self.beginRemoveRows(_EMPTY_INDEX, 0, count - 1)
+			self._results = []
+			self.endRemoveRows()
 
 	def insert_result(self, result: FileSearchResult):
 		path_key = result.path.as_posix()
@@ -97,11 +99,19 @@ class ResultsModel(QAbstractListModel):
 			self.endRemoveRows()
 
 	def replace_results(self, results: list[FileSearchResult]):
-		self.beginResetModel()
-		self._results = sorted(results, key=lambda item: item.score, reverse=True)
+		new_results = sorted(results, key=lambda item: item.score, reverse=True)
 		if self._limit is not None:
-			self._results = self._results[: self._limit]
-		self.endResetModel()
+			new_results = new_results[: self._limit]
+		old_count = len(self._results)
+		new_count = len(new_results)
+		if old_count:
+			self.beginRemoveRows(_EMPTY_INDEX, 0, old_count - 1)
+			self._results = []
+			self.endRemoveRows()
+		if new_count:
+			self.beginInsertRows(_EMPTY_INDEX, 0, new_count - 1)
+			self._results = new_results
+			self.endInsertRows()
 
 
 class MatchesModel(QAbstractListModel):
