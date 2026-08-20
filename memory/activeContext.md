@@ -5,8 +5,8 @@ _Last updated: 2026-08-20_
 ## Branch
 
 - `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
-- Up to date with `origin/feature/fixes_1.6.6` (0 ahead), working tree clean.
-- Recent commits: `b40975c` "Fixes and improvements" (quality-gate agent-verbosity `--quiet`/`-Quiet` + `agent_progress.py` + `*-quiet` Taskipy tasks + AGENTS.md guidance), `3effd77` memory note, `41df699` native-first `AccentButton`, `ce6d367` host-portal identity, `2b9e722` Linux native folder picker, `a2c2387` "fix ok button and other stuff".
+- Ahead of `origin/feature/fixes_1.6.6` by 1 commit: `d54c86c` (row-based `ResultsModel` mutations + v1.6.6 bump). Not pushed.
+- Working tree clean.
 
 ## Done this session (committed + pushed)
 
@@ -118,7 +118,7 @@ Removed the undocumented plain fallback in `src/srxy/adapters/inbound/gui/previe
 
 ### Current uncommitted work
 
-None — the working tree is clean. The quality-gate quiet flag (`b40975c`) and all prior batches are committed and pushed.
+None — committed in `d54c86c` (row-based `ResultsModel` + v1.6.6 bump + memory). Working tree clean; 1 commit ahead of origin.
 
 ### Recently fixed: dialog OK buttons dark in dark mode
 
@@ -143,5 +143,5 @@ None — the working tree is clean. The quality-gate quiet flag (`b40975c`) and 
 1. **Resolved: `DelegateModel::cancel: index out range` warning** — row-based `ResultsModel` mutations + deterministic unit tests + GUI regression test.
 2. **Resolved: version bump 1.6.5 → 1.6.6** — `pyproject.toml`, both `installer_meta.toml` `min_srxy_version`, `uv.lock` regenerated, tests synced.
 3. **Resolved: quality gate** — `checks-fix-quiet` PASSED (all 6 steps clean); cache-free unit pass 791 passed / 2 skipped.
-4. Commit the DelegateModel fix + version bump + memory updates.
-5. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers.
+4. **Committed** `d54c86c` (row-based `ResultsModel` + v1.6.6 bump + memory). Not yet pushed.
+5. Final QA: visually check Windows dark mode (incl. results `SplitView` grips), macOS native controls, Linux Material light/dark, and the Windows/macOS installers; push when ready.
