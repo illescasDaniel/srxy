@@ -472,46 +472,13 @@ ApplicationWindow {
 											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
 											focusPolicy: Qt.NoFocus
-											contentItem: Row {
-												spacing: 8
-												leftPadding: 0
-												rightPadding: 0
-												Canvas {
-													id: searchButtonIcon
-													anchors.verticalCenter: parent.verticalCenter
-													width: 16
-													height: 16
-													readonly property color iconColor: searchButton.foreground
-													onPaint: {
-														const ctx = getContext("2d")
-														ctx.clearRect(0, 0, width, height)
-														ctx.strokeStyle = iconColor
-														ctx.lineWidth = 2
-														ctx.lineCap = "round"
-														ctx.beginPath()
-														ctx.arc(6.5, 6.5, 4.5, 0, Math.PI * 2)
-														ctx.stroke()
-														ctx.beginPath()
-														ctx.moveTo(10, 10)
-														ctx.lineTo(14.5, 14.5)
-														ctx.stroke()
-													}
-													Component.onCompleted: requestPaint()
-													onIconColorChanged: requestPaint()
-												}
-												Text {
-													anchors.verticalCenter: parent.verticalCenter
-													text: root.t("gui.search")
-													color: searchButton.foreground
-													font: searchButton.font
-												}
-												Connections {
-													target: searchButton
-													function onEnabledChanged() { searchButtonIcon.requestPaint() }
-													function onAccentChanged() { searchButtonIcon.requestPaint() }
-													function onForegroundChanged() { searchButtonIcon.requestPaint() }
-												}
-											}
+											// The native macOS style rejects a custom contentItem, so the
+											// icon+label goes through the style's own IconLabel instead.
+											text: root.t("gui.search")
+											icon.source: "images/search.svg"
+											icon.color: searchButton.foreground
+											icon.width: 16
+											icon.height: 16
 											onClicked: if (controller) controller.startSearch()
 										}
 										ToolButton {

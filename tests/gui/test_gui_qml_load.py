@@ -41,6 +41,9 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 			or "in the process of being created" in message
 			or "DelegateModel" in message
 			or "index out range" in message
+			# Native styles (macOS Aqua) reject custom contentItems/backgrounds.
+			# The Search button must use text+icon instead of a custom Row.
+			or "does not support customization of this control" in message
 		):
 			warnings.append(message)
 

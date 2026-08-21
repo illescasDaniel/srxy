@@ -19,9 +19,9 @@ Button {
 
 	highlighted: control.accent
 
-	// Used only by custom contentItems (the Search button's icon+text Row).
-	// Plain dialog/launch buttons render their label through the style's own
-	// highlighted text colour instead.
+	// Used by the Search button's icon tint (``icon.color``) so it matches the
+	// accent contrast colour. Plain dialog/launch buttons render their label
+	// through the style's own highlighted text colour instead.
 	readonly property color foreground: {
 		if (!control.enabled)
 			return control.palette.placeholderText
