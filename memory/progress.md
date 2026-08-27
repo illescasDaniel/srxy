@@ -25,12 +25,12 @@ _Last updated: 2026-08-27_
 - [x] QML results ListView warning (`DelegateModel::cancel: index out range`) — `ResultsModel.clear()`/`replace_results()` now use row-based `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of a full `beginResetModel()`, so the delegate model cancels in-flight items with valid indices. Added `tests/unit/test_gui_models.py` (deterministic signal assertions: rows removed/inserted, never `modelReset`) + a GUI regression test in `test_gui_qml_load.py` (drives two search cycles through loaded QML, asserts no `DelegateModel`/`index out range` warning). Gate passed.
 - [x] Version bump `1.6.5` → `1.6.6` — `pyproject.toml` `1.6.6`, `min_srxy_version` `1.6.6` in both `installer_meta.toml` copies, `uv.lock` regenerated, tests synced (`test_updates_path_i18n.py` assertion → `1.6.6`; `test_installer_online.py` mocked PyPI responses → `1.6.6`).
 - [x] Full quality gate before release — `checks-fix-quiet` PASSED (ruff/shell/basedpyright/pip-audit/build/pytest all clean, 123 heavy tests in ~4:44; first `checks-quiet` run flagged only a Ruff format issue in the new test file, fixed). Clean cache-free unit pass: 791 passed, 2 skipped.
-- [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`).
-- [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added.
+- [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`). Committed (`4f3b8e2`, `a3344ed`); visually tested on macOS.
+- [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added. Committed (`8216a59`); visually tested light/dark on Linux.
 
 ### Open
 
-- [ ] Final QA — Windows dark mode (incl. `SplitView` grips), Linux Material light/dark (background fix applied; visual confirm), Windows/macOS installers (macOS Search/OK visual QA done).
+- [ ] Final QA — Windows dark mode (incl. `SplitView` grips), Windows/macOS installers. (Linux Material + macOS Search/OK visual QA done.)
 
 ## Bugs / sub-tasks discovered
 
