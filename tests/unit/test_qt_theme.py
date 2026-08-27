@@ -138,6 +138,80 @@ def test_given_preset_material_accent_when_applying_then_preserves_env(
 	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_ACCENT"] == "Teal"
 
 
+def test_given_light_scheme_when_applying_material_background_then_sets_white(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — Qt 6.11 M3 default #fffbfe reads pink; light mode must be flat white.
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_BACKGROUND", raising=False)
+	app = MagicMock(spec=QCoreApplication)
+
+	# when
+	with patch.object(qt_theme, "_is_dark_color_scheme", return_value=False):
+		qt_theme._apply_material_background(app)  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_BACKGROUND"] == "#ffffff"
+
+
+def test_given_dark_scheme_when_applying_material_background_then_sets_neutral_dark(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — must not lock dark mode to #ffffff.
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_BACKGROUND", raising=False)
+	app = MagicMock(spec=QCoreApplication)
+
+	# when
+	with patch.object(qt_theme, "_is_dark_color_scheme", return_value=True):
+		qt_theme._apply_material_background(app)  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_BACKGROUND"] == "#303030"
+
+
+def test_given_preset_material_background_when_applying_then_preserves_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_QUICK_CONTROLS_MATERIAL_BACKGROUND", "#fafafa")
+	app = MagicMock(spec=QCoreApplication)
+
+	# when
+	with patch.object(qt_theme, "_is_dark_color_scheme", return_value=True):
+		qt_theme._apply_material_background(app)  # pyright: ignore[reportPrivateUsage]
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_BACKGROUND"] == "#fafafa"
+
+
+def test_given_linux_when_applying_theme_then_sets_material_background(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_THEME", raising=False)
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_VARIANT", raising=False)
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_ACCENT", raising=False)
+	monkeypatch.delenv("QT_QUICK_CONTROLS_MATERIAL_BACKGROUND", raising=False)
+	app = MagicMock(spec=QCoreApplication)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", return_value=True),
+		patch.object(qt_theme, "follow_system_color_scheme") as follow,
+		patch.object(qt_theme, "_is_dark_color_scheme", return_value=False),
+		patch.object(qt_theme, "_accent_from_xdg_portal", return_value=None),
+		patch.object(qt_theme, "_accent_from_palette", return_value=None),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#2196f6")),
+	):
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	follow.assert_called_once_with(app)
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_THEME"] == "System"
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_VARIANT"] == "Dense"
+	assert os.environ["QT_QUICK_CONTROLS_MATERIAL_BACKGROUND"] == "#ffffff"
+
+
 def test_given_gray_highlight_when_reading_palette_then_returns_none():
 	# given
 	app = MagicMock(spec=QGuiApplication)

@@ -26,10 +26,11 @@ _Last updated: 2026-08-27_
 - [x] Version bump `1.6.5` → `1.6.6` — `pyproject.toml` `1.6.6`, `min_srxy_version` `1.6.6` in both `installer_meta.toml` copies, `uv.lock` regenerated, tests synced (`test_updates_path_i18n.py` assertion → `1.6.6`; `test_installer_online.py` mocked PyPI responses → `1.6.6`).
 - [x] Full quality gate before release — `checks-fix-quiet` PASSED (ruff/shell/basedpyright/pip-audit/build/pytest all clean, 123 heavy tests in ~4:44; first `checks-quiet` run flagged only a Ruff format issue in the new test file, fixed). Clean cache-free unit pass: 791 passed, 2 skipped.
 - [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`).
+- [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added.
 
 ### Open
 
-- [ ] Final QA — Windows dark mode (incl. `SplitView` grips), Linux Material light/dark, Windows/macOS installers (macOS Search/OK visual QA done).
+- [ ] Final QA — Windows dark mode (incl. `SplitView` grips), Linux Material light/dark (background fix applied; visual confirm), Windows/macOS installers (macOS Search/OK visual QA done).
 
 ## Bugs / sub-tasks discovered
 

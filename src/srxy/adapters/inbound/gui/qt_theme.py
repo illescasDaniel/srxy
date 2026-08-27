@@ -28,6 +28,12 @@ _SELECTION_HIGHLIGHT_TEXT = QColor("#ffffff")
 # Material named blue when no system accent can be detected.
 _MATERIAL_ACCENT_FALLBACK = "Blue"
 
+# Qt 6.11 Material defaults to M3 tonal surfaces (#fffbfe light / #1c1b1f dark),
+# which read pinkish / purple-grey. Prefer flat neutrals; pick by light/dark so
+# System theme is not locked to white.
+_MATERIAL_BACKGROUND_LIGHT = "#ffffff"
+_MATERIAL_BACKGROUND_DARK = "#303030"
+
 # Qt Material accent names → approximate Material Design 500 hex (for AccentButton).
 _MATERIAL_NAMED_HEX: dict[str, str] = {
 	"Red": "#f44336",
@@ -378,6 +384,47 @@ def _apply_material_accent(app: QCoreApplication):
 	os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_ACCENT", _resolve_material_accent(app))
 
 
+def _is_dark_color_scheme(app: QCoreApplication) -> bool:
+	"""True when the app / desktop colour scheme is dark.
+
+	Prefers ``QStyleHints.colorScheme`` after ``follow_system_color_scheme``;
+	falls back to window-palette lightness when the scheme is unknown (common
+	under offscreen / headless tests).
+	"""
+	hints = app.styleHints()
+	color_scheme = getattr(Qt, "ColorScheme", None)
+	if color_scheme is not None:
+		current_getter = getattr(hints, "colorScheme", None)
+		current = current_getter() if callable(current_getter) else current_getter
+		dark = getattr(color_scheme, "Dark", None)
+		light = getattr(color_scheme, "Light", None)
+		if current is not None and current == dark:
+			return True
+		if current is not None and current == light:
+			return False
+	if not isinstance(app, QGuiApplication):
+		return False
+	try:
+		window = app.palette().color(QPalette.ColorRole.Window)
+	except AttributeError:
+		return False
+	return window.lightnessF() < 0.5
+
+
+def _resolve_material_background(app: QCoreApplication) -> str:
+	if _is_dark_color_scheme(app):
+		return _MATERIAL_BACKGROUND_DARK
+	return _MATERIAL_BACKGROUND_LIGHT
+
+
+def _apply_material_background(app: QCoreApplication):
+	"""Neutralise Material's pinkish M3 surface using the active light/dark scheme."""
+	os.environ.setdefault(
+		"QT_QUICK_CONTROLS_MATERIAL_BACKGROUND",
+		_resolve_material_background(app),
+	)
+
+
 def _palette_accent_or_fallback(app: QCoreApplication) -> QColor:
 	hex_color = _accent_from_palette(app)
 	if hex_color is not None:
@@ -413,9 +460,10 @@ def apply_qt_quick_theme(app: QCoreApplication) -> SrxyTheme:
 	set (or the matching attached property is set in QML). We set those env vars
 	in Python only so shared QML never imports FluentWinUI3/Universal/Material
 	(which would force that style on macOS). Linux also sets Material ``Dense``
-	so desktop controls fit fixed window heights, and tries to pick a system
-	accent colour for Material (XDG portal, then palette highlight, else
-	``Blue``).
+	so desktop controls fit fixed window heights, picks a system accent colour
+	for Material (XDG portal, then palette highlight, else ``Blue``), and
+	overrides Material's pinkish M3 default background with a flat neutral
+	(``#ffffff`` light / ``#303030`` dark) from the active colour scheme.
 
 	Returns a ``SrxyTheme`` with ``accent`` / ``onAccent`` for ``AccentButton``.
 	On Windows, accent is read from the palette *before* the ListView selection
@@ -439,10 +487,13 @@ def apply_qt_quick_theme(app: QCoreApplication) -> SrxyTheme:
 		# fixed installer/GUI window heights, clipping footer actions like Next).
 		os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_THEME", "System")
 		os.environ.setdefault("QT_QUICK_CONTROLS_MATERIAL_VARIANT", "Dense")
+		# Scheme before background: MATERIAL_BACKGROUND is a single colour and
+		# must match light vs dark (a fixed #ffffff would lock dark mode to white).
+		follow_system_color_scheme(app)
 		_apply_material_accent(app)
+		_apply_material_background(app)
 		if not _set_quick_style("Material"):
 			_set_quick_style("Fusion")
-		follow_system_color_scheme(app)
 		button_accent = resolve_button_accent(app)
 
 	_apply_button_accent_palette(app, button_accent)

@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-27 — Linux Material background: flat `#ffffff` / `#303030` from colour scheme
+
+- **Context:** Qt 6.11 Material’s default light surface is M3 tonal `#fffbfe` (pinkish white); dark is `#1c1b1f` (purple-grey). Accent was already overridden (portal / palette / Blue) but `ApplicationWindow` and Panes paint `Material.backgroundColor`, so the window still looked pink. A fixed `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND=#ffffff` would lock dark mode to white (env is a single colour, not theme-aware).
+- **Decision:** On Linux, after `follow_system_color_scheme`, `setdefault` `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) or `#303030` (classic MD2 dark) from `QStyleHints.colorScheme` / window-palette lightness. User-set env is preserved. Shared QML stays free of Material imports.
+- **Rationale:** Neutralises the pink cast on all Material surfaces (window + panes) while still following System light/dark at startup. Env is resolved once (mid-session OS theme toggles still need an app restart for the background role).
+
 ## 2026-08-27 — macOS accent labels force white; Search stretch only on Windows
 
 - **Context:** On macOS the Search button looked misaligned (forced to TextField height ~24px while the native Aqua button is 32px), and accent OK/Search/Launch labels were black on the blue bevel. Qt's macOS `DefaultButton` IconLabel always paints `palette.buttonText` (black by default) even when `highlighted`. Our WCAG `contrast_text_on` also picked black for the system Highlight `#308cc6` (white ratio ≈3.69 < 4.5 AA). Dropping to "native-only" buttons does not fix the black label — the IconLabel still draws black over the native blue chrome.

@@ -63,20 +63,20 @@ _Last updated: 2026-08-20_
 
 ## Current focus
 
-macOS Search button + accent OK text — done (user-verified + tests + gate). Uncommitted; ready to commit when asked.
+Linux Material pinkish background — fixed (uncommitted). Ready to commit when asked.
 
-### Done this session (uncommitted): macOS button alignment + OK text
+### Done this session (uncommitted): Material background neutrals
 
-- `AccentButton.qml`: `palette.buttonText: control.foreground`.
-- `Main.qml`: Search stretch-to-field / padding / `AlignTop` only on Windows (`Binding` + `restoreMode`); macOS/Linux native size + `AlignVCenter`; warning ToolButtons same alignment gate.
-- `qt_theme.py`: darwin `SrxyTheme.onAccent` always white (Aqua; `#308cc6` WCAG would pick black).
-- Tests: platform-aware layout assert (`test_gui_query_layout.py`); OK `palette.buttonText == onAccent` (`test_gui_qml_load.py`); darwin onAccent unit test (`test_qt_theme.py`).
-- Gate: `checks.sh --quiet --fix` + `checks.sh --quiet` PASSED (123 heavy tests).
+- Qt 6.11 Material default light surface `#fffbfe` (pinkish); dark `#1c1b1f`.
+- `qt_theme.py`: after `follow_system_color_scheme` on Linux, `setdefault` `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` / `#303030` from colour scheme.
+- Tests: light/dark/preset/linux-apply coverage in `test_qt_theme.py`.
+- `AGENTS.md` Material bullet + `decisions.md` updated.
+- Gate: `checks.sh --quiet --fix` + `checks.sh --quiet` PASSED (123 heavy tests). Runtime probe: Material BG `#ffffff`.
 
 ### Next steps
 
-1. Commit when asked (macOS button fix + tests + memory).
-2. Remaining Final QA: Windows dark mode / Linux Material / installers.
+1. Commit when asked.
+2. Remaining Final QA: Windows dark mode / Linux Material visual / installers.
 
 ### Done this session: native-first `AccentButton` (committed, `41df699`)
 
