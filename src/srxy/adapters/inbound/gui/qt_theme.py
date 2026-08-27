@@ -109,7 +109,13 @@ class SrxyTheme(QObject):
 	def __init__(self, accent: QColor, parent: QObject | None = None):
 		super().__init__(parent)
 		self._accent = QColor(accent)
-		self._on_accent = contrast_text_on(self._accent)
+		# Aqua default/highlighted push buttons always use white label text.
+		# Qt's palette Highlight (e.g. ``#308cc6``) often fails white AA 4.5:1,
+		# so WCAG contrast_text_on would pick black — wrong for the native bevel.
+		if sys.platform == "darwin":
+			self._on_accent = QColor("#ffffff")
+		else:
+			self._on_accent = contrast_text_on(self._accent)
 
 	@Property(QColor, constant=True)
 	def accent(self) -> QColor:

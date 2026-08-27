@@ -363,6 +363,28 @@ def test_given_windows_theme_when_applying_then_resolves_accent_before_selection
 	assert theme.onAccent.name(QColor.NameFormat.HexRgb) == "#000000"
 
 
+def test_given_macos_theme_when_applying_then_on_accent_is_always_white(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	"""Aqua default buttons always use white labels; ignore WCAG black pick."""
+	# given — palette Highlight ``#308cc6`` fails white AA (≈3.7), so
+	# contrast_text_on would return black. macOS must still force white.
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	app = MagicMock(spec=QGuiApplication)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", return_value=True),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#308cc6")),
+	):
+		theme = qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	assert theme.accent.name(QColor.NameFormat.HexRgb) == "#308cc6"
+	assert theme.onAccent.name(QColor.NameFormat.HexRgb) == "#ffffff"
+
+
 def test_given_qguiapp_when_applying_button_accent_palette_then_sets_accent_role():
 	# given
 	app = MagicMock(spec=QGuiApplication)

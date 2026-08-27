@@ -451,7 +451,10 @@ ApplicationWindow {
 										AccentButton {
 											id: searchButton
 											objectName: "searchButton"
-											Layout.alignment: Qt.AlignTop
+											// Stretch-to-field is a Fluent/Windows look. On macOS (and
+											// Linux Material) the native button is taller than the field;
+											// forcing matchHeight clips the bevel and mis-centres the label.
+											readonly property bool stretchToField: Qt.platform.os === "windows"
 											readonly property real matchHeight: {
 												if (modeBox.currentIndex === 0)
 													return simpleQuery.implicitHeight
@@ -460,14 +463,63 @@ ApplicationWindow {
 												const row = multiTermRepeater.itemAt(0)
 												return row && row.fieldHeight > 0 ? row.fieldHeight : simpleQuery.implicitHeight
 											}
-											Layout.preferredHeight: matchHeight
-											Layout.minimumHeight: matchHeight
-											Layout.maximumHeight: matchHeight
-											implicitHeight: matchHeight
-											leftPadding: 12
-											rightPadding: 14
-											topPadding: 0
-											bottomPadding: 0
+											Layout.alignment: stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Binding {
+												target: searchButton
+												property: "implicitHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.preferredHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.minimumHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.maximumHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "leftPadding"
+												value: 12
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "rightPadding"
+												value: 14
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "topPadding"
+												value: 0
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "bottomPadding"
+												value: 0
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
 											spacing: 8
 											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
@@ -488,7 +540,7 @@ ApplicationWindow {
 											visible: controller && controller.queryIssue.length > 0
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: Qt.AlignTop
+											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: controller ? controller.queryIssue : ""
 										}
@@ -499,7 +551,7 @@ ApplicationWindow {
 											visible: controller && controller.hasSearchWarnings
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: Qt.AlignTop
+											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: root.t("gui.search_warnings.tooltip")
 											onClicked: searchWarningsDialog.open()

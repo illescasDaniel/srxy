@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import sys
 
 import pytest
 from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, Qt, QtMsgType, QUrl, qInstallMessageHandler
@@ -90,8 +91,16 @@ def test_given_main_qml_when_loaded_then_mode_box_lives_in_how_and_search_button
 	assert mode_box.parent() is how_column
 	field_h = float(simple_field.property("implicitHeight") or 0)
 	btn_h = float(search_button.property("height") or 0)
+	btn_implicit_h = float(search_button.property("implicitHeight") or 0)
 	assert field_h > 0
-	assert abs(btn_h - field_h) <= 2.0
+	assert btn_h > 0
+	# Windows Fluent stretches the Search button to the field height; macOS/Linux
+	# keep the native button size (taller than the field) and centre it instead.
+	if sys.platform == "win32":
+		assert abs(btn_h - field_h) <= 2.0
+	else:
+		assert abs(btn_h - btn_implicit_h) <= 2.0
+		assert btn_h + 0.5 >= field_h
 	assert not msgs, "QML errors:\n" + "\n".join(msgs)
 	_shutdown(controller, engine, window, qapp)
 

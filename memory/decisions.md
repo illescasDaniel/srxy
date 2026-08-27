@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-27 — macOS accent labels force white; Search stretch only on Windows
+
+- **Context:** On macOS the Search button looked misaligned (forced to TextField height ~24px while the native Aqua button is 32px), and accent OK/Search/Launch labels were black on the blue bevel. Qt's macOS `DefaultButton` IconLabel always paints `palette.buttonText` (black by default) even when `highlighted`. Our WCAG `contrast_text_on` also picked black for the system Highlight `#308cc6` (white ratio ≈3.69 < 4.5 AA). Dropping to "native-only" buttons does not fix the black label — the IconLabel still draws black over the native blue chrome.
+- **Decision:** (1) `AccentButton` sets `palette.buttonText: control.foreground` so macOS/Fusion labels follow `onAccent`. (2) `SrxyTheme` on darwin always uses white `onAccent` (Aqua convention), bypassing WCAG for that platform. (3) Search-button stretch-to-field / forced padding / `AlignTop` is gated to Windows via `Binding { when }` + `restoreMode`; macOS/Linux keep native size and `AlignVCenter`.
+- **Rationale:** Matches Aqua default-button look (white on blue) without custom chrome; Windows Fluent stretch-to-field look is preserved. Regression: platform-aware layout test, OK-button `palette.buttonText == onAccent`, darwin `onAccent` unit test. Gate passed.
+
 ## 2026-08-20 — `ResultsModel` mutates rows, never full-resets
 
 - **Context:** Searches logged `DelegateModel::cancel: index out range 6 0` / `10 1`. `ResultsModel.clear()` and `replace_results()` did a full `beginResetModel()`/`endResetModel()`, invalidating rows while the `resultsView` ListView's async `currentIndex` binding and in-flight (async-incubated) delegates were stale. `QQmlDelegateModel::cancel(index)` was then asked to cancel a delegate at a row index beyond the delegate compositor's count. `_clear_selection()` (Python-side) cannot synchronously drive the QML `currentIndex` binding, so it did not silence the warning.

@@ -32,4 +32,11 @@ Button {
 			return srxyTheme.contrastOn(face)
 		return face.hslLightness > 0.55 ? "#000000" : "#ffffff"
 	}
+
+	// The macOS DefaultButton and Fusion IconLabels draw the label with
+	// ``palette.buttonText`` even when highlighted (black on the accent bevel).
+	// Overriding it makes the label follow ``foreground`` (onAccent when accent,
+	// contrast on the button face otherwise). Fluent/Material/Universal compute
+	// their own highlighted text colours and ignore this role.
+	palette.buttonText: control.foreground
 }

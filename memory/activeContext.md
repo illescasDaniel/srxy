@@ -63,7 +63,20 @@ _Last updated: 2026-08-20_
 
 ## Current focus
 
-Polishing and fixing the Windows-first GUI/installer release for v1.6.6.
+macOS Search button + accent OK text — done (user-verified + tests + gate). Uncommitted; ready to commit when asked.
+
+### Done this session (uncommitted): macOS button alignment + OK text
+
+- `AccentButton.qml`: `palette.buttonText: control.foreground`.
+- `Main.qml`: Search stretch-to-field / padding / `AlignTop` only on Windows (`Binding` + `restoreMode`); macOS/Linux native size + `AlignVCenter`; warning ToolButtons same alignment gate.
+- `qt_theme.py`: darwin `SrxyTheme.onAccent` always white (Aqua; `#308cc6` WCAG would pick black).
+- Tests: platform-aware layout assert (`test_gui_query_layout.py`); OK `palette.buttonText == onAccent` (`test_gui_qml_load.py`); darwin onAccent unit test (`test_qt_theme.py`).
+- Gate: `checks.sh --quiet --fix` + `checks.sh --quiet` PASSED (123 heavy tests).
+
+### Next steps
+
+1. Commit when asked (macOS button fix + tests + memory).
+2. Remaining Final QA: Windows dark mode / Linux Material / installers.
 
 ### Done this session: native-first `AccentButton` (committed, `41df699`)
 
