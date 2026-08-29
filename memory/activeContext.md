@@ -4,20 +4,18 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — main checkout; ahead of origin by the search overlap + permission-skip commit (`9e5f08b`).
+- `feature/fixes_1.6.6` — main checkout; preview font fix committed after apply-worktree + gate.
 
 ## Current focus
 
-None active. Worktree apply is done; leftover worktree folder cleanup is manual.
+None active — preview HTML font-family fix on parent branch; gate clean.
 
 ## Done this session
 
-- Stream listing into search + permission-denied skips/warn/prune.
-- Committed as `9e5f08b` and fast-forwarded onto this checkout.
-- Windows quality gate passed before commit.
+- Applied worktree `r9oj` preview font fix; `checks-win` fix+verify PASSED; committed on `feature/fixes_1.6.6`.
 
 ## Next steps
 
-1. Final QA: Windows/macOS installers.
-2. Release when Final QA is green.
-3. Push `feature/fixes_1.6.6` when ready (`ahead 1`).
+1. Manual verify: reopen multi-script preview files under `uv run task gui` — expect no `8514oem` / `Fixedsys` / DirectWrite lines.
+2. Final QA: Windows/macOS installers; release when green.
+3. `/delete-worktree` for `r9oj` when finished with the isolated checkout.

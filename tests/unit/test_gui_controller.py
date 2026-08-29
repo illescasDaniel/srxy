@@ -12,6 +12,7 @@ from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.inbound.gui.preview import preview_font_family
 from srxy.application.search_session import (
 	SearchActivityEvent,
 	SearchErrorEvent,
@@ -280,7 +281,7 @@ def test_given_python_file_when_selecting_result_then_preview_is_html_with_line_
 	preview = str(controller.previewText)
 	assert "<br/>" in preview
 	assert "def" in preview
-	assert "monospace" in preview
+	assert f"font-family:{preview_font_family()}" in preview
 
 
 def test_given_selected_result_when_reading_header_then_path_and_metadata_split(qapp: QCoreApplication, tmp_path: Path):

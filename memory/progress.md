@@ -32,6 +32,7 @@ _Last updated: 2026-08-29_
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
 - [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Committed (`9e5f08b`).
 - [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added. Committed (`9e5f08b`).
+- [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj` (uncommitted on main).
 
 ### Open
 
@@ -39,6 +40,7 @@ _Last updated: 2026-08-29_
 
 ## Bugs / sub-tasks discovered
 
+- [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
 - [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.
 - [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.
