@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Windows: CUDA torch must be re-applied after every uv sync
+
+- **Context:** On Windows, `uv sync --extra semantic` installs PyPI's CPU-only `torch…+cpu`. A later `uv sync` also **uninstalls** a previously installed CUDA wheel (`+cu130`) and restores CPU torch. Agents/gates then hit `warning: no GPU found; CLIP image semantic search will use CPU` despite an RTX GPU, making heavy tests far slower.
+- **Decision:** (1) Add `scripts/dev/ensure-windows-cuda-torch.ps1` + `sync-win` task/cmd that sync then reinstall torch/torchvision/torchaudio from `https://download.pytorch.org/whl/cu130`. (2) `checks-win.ps1` runs the ensure script when the `heavy` bucket is selected (skipped in GitHub Actions / `SRXY_SKIP_CUDA_TORCH=1`). (3) Document in `AGENTS.md`, `docs/development.md`, `docs/installation.md`, and `apply-worktree-srxy`.
+- **Rationale:** Cannot pin CUDA torch in the lockfile for all platforms without forcing multi-GiB CUDA wheels onto CI/macOS/CPU-only machines. Post-sync ensure is the durable Windows GPU workflow.
+
 ## 2026-08-29 — Quality gate: path buckets + auto-scope + Windows parallel light steps
 
 - **Context:** Day-to-day `checks` was slow on Windows: every pytest process imported PySide6 via pytest-qt; the "safe" pass still collected Qt/Textual `unit` files; the heavy serial pass (~123 tests / ~4:44) had no change-awareness; Windows light steps ran sequentially and pytest stdout was piped per-line through PowerShell.

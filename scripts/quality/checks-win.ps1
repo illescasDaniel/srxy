@@ -1322,7 +1322,7 @@ if (-not [string]::IsNullOrWhiteSpace($InternalBucket)) {
 
 # --- main gate ---
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot '.venv'))) {
-	Write-Host 'Missing .venv. Create it first: uv sync --extra semantic --extra windows' -ForegroundColor Red
+	Write-Host 'Missing .venv. Create it first: uv run task sync-win  (or: uv sync --extra semantic --extra windows)' -ForegroundColor Red
 	exit 1
 }
 
@@ -1354,6 +1354,24 @@ $env:LIB_GATE_SCOPE = $Scope
 
 Resolve-GateBuckets
 Write-Host ("scope: {0} ({1})" -f ($script:SelectedBuckets -join ' '), $script:ScopeReason)
+
+# Windows uv sync installs CPU-only torch; restore CUDA wheels before heavy work.
+if (
+	$script:SelectedBuckets -contains 'heavy' -and
+	$env:GITHUB_ACTIONS -ne 'true' -and
+	$env:SRXY_SKIP_CUDA_TORCH -ne '1'
+) {
+	$ensureCuda = Join-Path $RepoRoot 'scripts\dev\ensure-windows-cuda-torch.ps1'
+	if (Test-Path -LiteralPath $ensureCuda) {
+		Write-Host 'gate: ensuring CUDA PyTorch for heavy bucket (uv sync leaves CPU-only torch on Windows)...'
+		& $ensureCuda
+		if ($LASTEXITCODE -ne 0) {
+			Write-Host "gate: ensure-windows-cuda-torch failed (exit $LASTEXITCODE). Heavy tests would run on CPU." -ForegroundColor Red
+			Write-Host 'Fix: uv run task sync-win   or set SRXY_SKIP_CUDA_TORCH=1 to bypass.' -ForegroundColor Red
+			exit $LASTEXITCODE
+		}
+	}
+}
 
 $hasPytest = Test-Path -LiteralPath (Join-Path $RepoRoot 'tests')
 if ($hasPytest) {

@@ -46,9 +46,10 @@ Commit any pending work on this worktree branch first, then merge that branch in
 5. **Quality gate (required)**
    - Run the **project’s** quality gate from the main checkout until it passes cleanly.
    - Prefer repo docs / `AGENTS.md` / Taskipy tasks. Typical patterns:
-     - Windows: `uv run task checks-win-fix-quiet` then `uv run task checks-win-quiet` (or the repo’s documented equivalent).
+     - Windows: before the gate, ensure the venv has CUDA torch when an NVIDIA GPU is present (`uv run task sync-win`, or at least `powershell -ExecutionPolicy Bypass -File .\scripts\dev\ensure-windows-cuda-torch.ps1`). Bare `uv sync` installs/restores **CPU-only** PyTorch and makes heavy/semantic tests far slower. Verify with `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` (`+cu*` and `True`). Then: `uv run task checks-win-fix-quiet` then `uv run task checks-win-quiet` (or the repo’s documented equivalent).
      - Unix/macOS: `./scripts/quality/checks.sh --quiet --fix` then `./scripts/quality/checks.sh --quiet`.
    - If the gate fails, fix issues in the **main checkout** and re-run until clean. Do not finish with a red gate.
+   - If you see `warning: no GPU found; … will use CPU` despite a real NVIDIA GPU, stop and fix the venv (run `sync-win` / ensure script) before continuing — do not treat that as a normal gate message.
 
 6. **Commit on the parent branch (if needed)**
    - If the merge already created a merge/ff commit and the tree is clean after the gate, that satisfies this step (report that SHA).

@@ -19,6 +19,14 @@ After writing or changing code, run the quality gate until it passes cleanly.
 
 Use the project env with `uv sync --extra semantic` (default `dev` dependency group); on Windows also `--extra windows`.
 
+**Windows + NVIDIA GPU (required for fast heavy/semantic tests):** bare `uv sync` installs **CPU-only** PyTorch, and a later `uv sync` **replaces** any CUDA torch you already installed. Prefer `uv run task sync-win` (or `cmd /c scripts\dev\sync-win.cmd`), which syncs then runs `scripts/dev/ensure-windows-cuda-torch.ps1`. Before a heavy gate, confirm:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Expect `+cu130` (or `+cu126`) and `True`. `+cpu` / `False` with an RTX GPU present means the venv is wrong — re-run `sync-win` / the ensure script (see [docs/development.md](docs/development.md) and [docs/installation.md](docs/installation.md#windows)). `checks-win.ps1` auto-runs the ensure script when the `heavy` bucket is selected (skipped in GitHub Actions / when `SRXY_SKIP_CUDA_TORCH=1`).
+
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest buckets. Without `--fix`, light steps and pytest **overlap**.
 
 ### Pytest buckets and auto-scope

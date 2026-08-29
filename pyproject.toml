@@ -189,6 +189,7 @@ checks-core-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core", 
 checks-gui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,gui", help = "core+gui, agent-verbosity (Unix)" }
 checks-tui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,tui", help = "core+tui, agent-verbosity (Unix)" }
 checks-all-quiet = { cmd = "./scripts/quality/checks.sh --quiet --all", help = "all buckets, agent-verbosity (Unix)" }
+sync-win = { cmd = "cmd /c scripts\\dev\\sync-win.cmd", help = "Windows: uv sync --extra semantic --extra windows + CUDA torch when NVIDIA GPU present" }
 checks-win = { cmd = "cmd /c scripts\\quality\\checks-win.cmd", help = "run quality gate (day-to-day; Windows; auto-scope)" }
 checks-win-fix = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Fix", help = "autofix then run quality gate (Windows)" }
 checks-win-full = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Full", help = "full local quality gate (pre-release; Windows)" }
