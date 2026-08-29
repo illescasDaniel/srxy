@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path
 
+from srxy.adapters.inbound.installer.cuda_torch import (
+	ensure_windows_cuda_torch,
+	should_ensure_windows_cuda_torch,
+)
 from srxy.adapters.inbound.installer.download import ProgressCallback
 from srxy.adapters.inbound.installer.manifest import (
 	InstallManifest,
@@ -65,6 +69,11 @@ def plan_install_phases(options: InstallOptions) -> list[InstallPhase]:
 		InstallPhase("venv", tr("installer.status.creating_venv")),
 		InstallPhase("package", tr("installer.status.installing_package", spec="srxy")),
 	]
+	if should_ensure_windows_cuda_torch(
+		install_semantic=options.install_semantic,
+		is_windows=_is_windows(),
+	):
+		phases.append(InstallPhase("cuda_torch", tr("installer.status.installing_cuda_torch")))
 	if options.download_tesseract:
 		phases.append(InstallPhase("tesseract", tr("installer.status.downloading_tesseract")))
 	if options.download_ffmpeg:
@@ -582,6 +591,17 @@ def install_srxy(
 		)
 
 	phase_by_key = {phase.key: (i + 1, phase) for i, phase in enumerate(phases)}
+
+	if "cuda_torch" in phase_by_key:
+		local_index, phase = phase_by_key["cuda_torch"]
+		emit_task(local_index, phase.label)
+		ensure_windows_cuda_torch(
+			uv=uv,
+			python=_venv_python(venv),
+			env=env,
+			run=_run,
+		)
+		_complete_phase(progress=progress, label=phase.label)
 
 	vendor_tesseract = False
 	vendor_ffmpeg = False

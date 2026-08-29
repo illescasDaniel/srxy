@@ -39,13 +39,12 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Splash screen + PySide6/QML startup — early `Splash.qml` (`Qt.SplashScreen`), defer controller after splash paint, `Main.qml` hidden until `_reveal_main`, branding (name/author/version) + staged status, `QQuickWindow.setDefaultAlphaBuffer(False)`, `SRXY_NO_SPLASH=1`. Docs: [gui.md](../docs/gui.md#startup-splash) (limits + disable/remove), [development.md](../docs/development.md) timing envs. Offscreen: `splash_shown` ~0.43s, `qml_loaded` ~0.92s. Worktree `b8e0902`.
 - [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED. Committed (`09aac8d`).
 - [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (`c543b19`).
+- [x] Windows CUDA torch ensure — bare `uv sync` leaves/restores CPU-only PyTorch; added `sync-win` task + `ensure-windows-cuda-torch.ps1`, gate auto-runs before `heavy`, docs/AGENTS/`apply-worktree-srxy` updated. Verified `2.13.0+cu130` / `cuda=True` on RTX 4070.
+- [x] Windows installer CUDA PyTorch phase — after semantic package on Windows+NVIDIA, reinstall `cu130` (fallback `cu126`) into prefix `.venv` via `installer/cuda_torch.py`; unit + flow tests; docs. Gate passed.
 
 ### Open
 
-<<<<<<< HEAD
-- [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (applied from `hsfl` / `c543b19`).
-=======
->>>>>>> cursor/943ab584
+- [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 

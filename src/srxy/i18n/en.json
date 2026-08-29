@@ -100,6 +100,7 @@
   "installer.status.installing_uv": "Installing uv…",
   "installer.status.creating_venv": "Creating Python environment…",
   "installer.status.installing_package": "Installing {spec}…",
+  "installer.status.installing_cuda_torch": "Installing CUDA PyTorch for GPU search…",
   "installer.status.downloading_tesseract": "Downloading Tesseract…",
   "installer.status.downloading_ffmpeg": "Downloading ffmpeg…",
   "installer.status.prefetching_models": "Prefetching AI models…",

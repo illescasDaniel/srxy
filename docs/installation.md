@@ -192,20 +192,26 @@ uv tool install 'srxy[semantic]'
    # or: pipx install 'srxy[semantic,windows]'
    ```
 
-   **GPU** (semantic search and transcription): default Windows installs pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first.
+   **GPU** (semantic search and transcription): default Windows installs pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first. **Important for developers:** `uv sync --extra semantic` also reinstalls the CPU wheel and will **undo** a prior CUDA install — use `uv run task sync-win` (or `scripts/dev/ensure-windows-cuda-torch.ps1` after sync) on NVIDIA machines. A stderr line like `warning: no GPU found; CLIP image semantic search will use CPU` with a real GPU almost always means the venv still has `torch…+cpu`.
+
+   The **desktop / offline Windows installer** does this automatically when smarter-search (semantic) is selected and an NVIDIA GPU is detected: after `uv pip install 'srxy[semantic,windows]'` it reinstalls CUDA torch into the prefix `.venv` (same `cu130` index, with `cu126` fallback). Override with `SRXY_SKIP_CUDA_TORCH=1` if needed.
 
    See [pytorch.org/get-started](https://pytorch.org/get-started/locally/) (Windows → Pip → CUDA). Use **CUDA 13.0** (`cu130`) for most recent GPUs; use **CUDA 12.6** (`cu126`) if `cu130` fails or your GPU/driver is older.
 
    **uv / venv** (recommended for GPU):
 
    ```powershell
+   # Dev checkout (preferred):
+   uv run task sync-win
+
+   # Or manually:
    uv venv .venv
    .\.venv\Scripts\Activate.ps1
-   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+   uv pip install --reinstall-package torch torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
    uv pip install 'srxy[semantic,windows]'
    ```
 
-   For CUDA 12.6, replace `cu130` with `cu126`.
+   For CUDA 12.6, replace `cu130` with `cu126` (or pass `-CudaIndex cu126` to the ensure script).
 
    **pipx** (global `srxy` with GPU):
 
