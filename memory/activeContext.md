@@ -4,24 +4,27 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — main checkout; cold-start + splash applied from `cursor/d34ce3c1`.
+- `feature/fixes_1.6.6` — version target is now **1.7.0** (skipped shipping 1.6.6 as a patch; minor bump for UI + feature scope). Cold-start + splash already on this branch.
 
 ## Current focus
 
-None active — apply-worktree complete; gate clean.
+None active — 1.7.0 version bump applied from worktree `entu`; Final QA / release next.
 
 ## Done this session
 
-- Applied worktree `o850` / `cursor/d34ce3c1` (cold-start + splash); resolved conflicts with search overlap / permission-denied / preview fonts; merge `940957e`; `checks-win` fix+verify PASSED.
-- Updated `/apply-worktree` skill to auto-resolve merge conflicts.
+- Applied worktree `entu` / `cursor/47e8aad4`: bump `1.6.6` → `1.7.0` + version-bump checklist in `docs/development.md`.
+- Quality gate: `checks-win` fix + verify PASSED.
+- Prior: cold-start + splash from `o850` / `cursor/d34ce3c1`.
 
 ## Next steps
 
-1. Optional: faster splash experiments.
-2. Final QA: Windows/macOS installers; release when green.
-3. `/delete-worktree` for `o850` when finished with the isolated checkout.
+1. Final QA: Windows/macOS installers (against 1.7.0 artifacts).
+2. Release when Final QA is green.
+3. Push `feature/fixes_1.6.6` when ready.
+4. `/delete-worktree` for leftover worktrees when finished.
 
 ## Key files
 
-- GUI splash/cold-start under `src/srxy/adapters/inbound/gui/` + `application/search_*` / `startup_timing`
-- `docs/gui.md#startup-splash`
+- Version: `pyproject.toml`, both `installer_meta.toml`, `uv.lock`
+- Docs: `docs/development.md` → Bumping the release version
+- GUI splash/cold-start under `src/srxy/adapters/inbound/gui/`

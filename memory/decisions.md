@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Ship as 1.7.0 (skip 1.6.6 patch)
+
+- **Context:** Branch `feature/fixes_1.6.6` accumulated Fluent/Material/macOS UI work, AccentButton, preview find/highlight, installers, search streaming, and permission-denied skips — more than a patch relative to 1.6.5.
+- **Decision:** Bump `project.version` and both `min_srxy_version` values to **1.7.0** instead of releasing 1.6.6. Document the full bump checklist in `docs/development.md` (**Bumping the release version**). Leave `installer_version` at `16` (installer capability stamp unchanged by this renumber alone).
+- **Rationale:** Semver minor for user-visible UI/feature scope; online installers should require ≥1.7.0 once that release is on PyPI.
+
 ## 2026-08-29 — Preview RichText uses concrete monospace faces, not CSS `monospace`
 
 - **Context:** Opening some file previews on Windows logged `DirectWrite: CreateFontFaceFromHDC() failed` for `8514oem` / `Fixedsys` (`styleHint=5` TypeWriter), then cascades of `OpenType support missing` while Qt probed Tahoma/Arial/CJK/emoji fallbacks. Preview HTML forced `font-family:monospace` while QML already set Consolas/Menlo on the `TextArea`.
@@ -13,6 +19,7 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** Searching large trees (e.g. home) could hit `PermissionError` / errno 13 on files or folders and abort the whole search instead of continuing.
 - **Decision:** Treat access-denied as `SkippedFile(reason="permission_denied")`. Walker records unlistable dirs via `os.walk(onerror=…)`. Per-file search catches access-denied and, if the parent directory is not listable, marks that prefix so later paths under it are not opened. Warnings reuse the existing skipped-files ⚠ UI via `format_skipped_file_warning`. Always pass `skipped_files` from `execute_search` (including names-only) so permission skips are retained.
 - **Rationale:** Matches size/OCR skip UX; avoids wasting work on known-denied subtrees without parallelizing the walk or changing QML.
+
 ## 2026-08-29 — Splash shows branding + staged status
 
 - **Context:** Splash only showed icon + name + BusyIndicator. Author was not in `pyproject.toml` (only LICENSE). Users wanted name, author, version, and Loading / progress copy.

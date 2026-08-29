@@ -23,7 +23,21 @@ powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
 
 On **Windows** with an NVIDIA GPU, install CUDA PyTorch in `.venv` before relying on GPU features ([installation.md → Windows](installation.md#windows)).
 
-When bumping AppImage installer compatibility, edit [`packaging/installer_meta.toml`](../packaging/installer_meta.toml) (`installer_version`, `min_srxy_version`) and rebuild the AppImage. Keep a copy in sync under `src/srxy/adapters/inbound/installer/installer_meta.toml` for packaged installs. End-user guide: [installers.md](installers.md). Packaging details: [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md).
+### Bumping the release version
+
+Package builds read the app version from [`pyproject.toml`](../pyproject.toml) (`project.version`). When shipping a new release, update these in lockstep:
+
+| What | Where |
+|------|--------|
+| App / PyPI version | `pyproject.toml` → `project.version` |
+| Lockfile package version | regenerate with `uv lock` (updates the editable `srxy` entry in `uv.lock`) |
+| Installer minimum srxy | both copies of `installer_meta.toml` → `min_srxy_version` ([`packaging/`](../packaging/installer_meta.toml) and [`src/.../installer/`](../src/srxy/adapters/inbound/installer/installer_meta.toml)) — keep them identical |
+| Installer capability stamp | same files → `installer_version` — bump only when the desktop installer itself gains new capabilities (then rebuild AppImages / DMGs / Windows offline) |
+| Unit tests pinned to the current min | `tests/unit/test_updates_path_i18n.py` (`min_srxy_version` floor) and mocked PyPI versions in `tests/unit/test_installer_online.py` |
+
+Windows/macOS packaging scripts take the version from `pyproject.toml` at build time (Inno `MyAppVersion`, DMG names, etc.) — no separate hardcoded app version there. Prefer a **minor** bump (e.g. `1.6.x` → `1.7.0`) when the release includes user-visible UI or feature work, not only patch-level fixes.
+
+When bumping AppImage installer compatibility alone (without a full app release), still edit both `installer_meta.toml` copies and rebuild. End-user guide: [installers.md](installers.md). Packaging details: [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md).
 
 Run tasks without activating the venv:
 
