@@ -1,14 +1,27 @@
 # Active Context
 
-_Last updated: 2026-08-29_
+_Last updated: 2026-08-30_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0**. Applied worktree `9x6r` / `cursor/943ab584` (faster quality gate + Windows CUDA torch for sync-win and desktop installer). Merge `9c1b86a`; parent gate PASSED.
+- `feature/fixes_1.6.6` — version target **1.7.0**.
 
 ## Current focus
 
-None active.
+Just finished: **`semantic-gpu` extra** so Windows `sync-win` no longer uninstalls/reinstalls CUDA torch on every sync.
+
+## Touched files
+
+- `pyproject.toml` — `semantic-gpu` extra; `[[tool.uv.index]]` pytorch-cu130; `[tool.uv.sources]` for torch/torchvision/torchaudio on win32; sync-win task help
+- `uv.lock` — regenerated (`2.13.0+cu130` / torchvision / torchaudio for Windows)
+- `scripts/dev/sync-win.ps1` — GPU-conditional `--extra semantic-gpu` vs `semantic`
+- `scripts/dev/ensure-windows-cuda-torch.ps1` — docstring / missing-venv hint
+- `AGENTS.md`, `docs/development.md`, `docs/installation.md`, `.cursor/skills/apply-worktree-srxy/SKILL.md`
+- `memory/decisions.md`, `memory/progress.md`, `memory/activeContext.md`
+
+## Verified
+
+- `uv run task sync-win` → `Checked 121 packages in 13ms` (no torch uninstall) + `ensure-windows-cuda-torch: OK (2.13.0+cu130, cuda=True)`
 
 ## Manual QA (user)
 
@@ -16,6 +29,7 @@ None active.
 
 ## Next steps
 
-1. User: manual Windows (and other) installer verification for 1.7.0.
-2. `/delete-worktree-srxy` for applied worktrees when ready.
-3. Final QA / release for 1.7.0 when ready.
+1. Commit `semantic-gpu` / lockfile / sync-win / docs when ready.
+2. User: manual Windows (and other) installer verification for 1.7.0.
+3. `/delete-worktree-srxy` for applied worktrees when ready.
+4. Final QA / release for 1.7.0 when ready.

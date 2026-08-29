@@ -4,9 +4,11 @@
   Ensure .venv has a CUDA PyTorch build when an NVIDIA GPU is present.
 
 .DESCRIPTION
-  On Windows, `uv sync --extra semantic` installs the CPU-only torch wheel from PyPI.
-  That silently makes semantic/CLIP/transcribe tests run on CPU. This script detects
-  that mismatch and reinstalls torch/torchvision/torchaudio from the PyTorch CUDA index.
+  On Windows, bare `uv sync --extra semantic` can leave a CPU-only torch wheel from
+  PyPI (or an incomplete stack). Prefer `uv run task sync-win` / `--extra semantic-gpu`
+  so the lockfile installs CUDA builds via [tool.uv.sources]. This script is the safety
+  net: it detects a CPU-only / broken torch with an NVIDIA GPU present and reinstalls
+  torch/torchvision/torchaudio from the PyTorch CUDA index.
 
   Safe to run repeatedly. No-ops when there is no NVIDIA GPU, when CUDA_VISIBLE_DEVICES
   is intentionally empty for CPU-only experiments, when already on a +cu* build, or when
@@ -74,7 +76,7 @@ print("1" if torch.cuda.is_available() else "0")
 $repoRoot = Get-RepoRoot
 $python = Join-Path $repoRoot '.venv\Scripts\python.exe'
 if (-not (Test-Path -LiteralPath $python)) {
-	Write-Host "ensure-windows-cuda-torch: missing $python (run uv sync --extra semantic --extra windows first)" -ForegroundColor Yellow
+	Write-Host "ensure-windows-cuda-torch: missing $python (run uv run task sync-win first)" -ForegroundColor Yellow
 	exit 0
 }
 

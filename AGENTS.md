@@ -17,9 +17,9 @@ After writing or changing code, run the quality gate until it passes cleanly.
 
 `checks-win.ps1` mirrors the bash gate (same steps, buckets, lock file). Light verify steps and pytest buckets run **concurrently** on both platforms. ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Both gates apply a wall-clock watchdog to pytest (exit 124 on timeout); bash also has a stall (no-output) watchdog.
 
-Use the project env with `uv sync --extra semantic` (default `dev` dependency group); on Windows also `--extra windows`.
+Use the project env with `uv sync --extra semantic` (default `dev` dependency group); on Windows also `--extra windows`. On Windows + NVIDIA GPU prefer `uv run task sync-win` (`--extra semantic-gpu`) — see below.
 
-**Windows + NVIDIA GPU (required for fast heavy/semantic tests):** bare `uv sync` installs **CPU-only** PyTorch, and a later `uv sync` **replaces** any CUDA torch you already installed. Prefer `uv run task sync-win` (or `cmd /c scripts\dev\sync-win.cmd`), which syncs then runs `scripts/dev/ensure-windows-cuda-torch.ps1`. Before a heavy gate, confirm:
+**Windows + NVIDIA GPU (required for fast heavy/semantic tests):** prefer `uv run task sync-win` (or `cmd /c scripts\dev\sync-win.cmd`). On NVIDIA machines it runs `uv sync --extra semantic-gpu --extra windows` so CUDA PyTorch (`+cu130`) comes from the lockfile via `[tool.uv.sources]`, then `scripts/dev/ensure-windows-cuda-torch.ps1` as a safety net. Bare `uv sync --extra semantic` without the GPU extra can still leave or restore a mismatched venv — use `sync-win`. Before a heavy gate, confirm:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"

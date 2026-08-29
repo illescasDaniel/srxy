@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-08-29_
+_Last updated: 2026-08-30_
 
 ## v1.7.0 — fixes and improvements
 
@@ -41,6 +41,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (`c543b19`).
 - [x] Windows CUDA torch ensure — bare `uv sync` leaves/restores CPU-only PyTorch; added `sync-win` task + `ensure-windows-cuda-torch.ps1`, gate auto-runs before `heavy`, docs/AGENTS/`apply-worktree-srxy` updated. Verified `2.13.0+cu130` / `cuda=True` on RTX 4070.
 - [x] Windows installer CUDA PyTorch phase — after semantic package on Windows+NVIDIA, reinstall `cu130` (fallback `cu126`) into prefix `.venv` via `installer/cuda_torch.py`; unit + flow tests; docs. Gate passed.
+- [x] `semantic-gpu` extra + uv sources — Windows CUDA torch locked via `[tool.uv.sources]` / pytorch-cu130 index; `sync-win` uses `--extra semantic-gpu` on NVIDIA so sync no longer thrash-reinstalls CUDA wheels. Verified: `Checked 121 packages` + `OK (2.13.0+cu130, cuda=True)`.
 
 ### Open
 

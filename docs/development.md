@@ -13,7 +13,7 @@ uv sync --extra semantic
 On **Windows**, use the PowerShell gate instead of `checks.sh` (bash/`flock` often fail under Git Bash or WSL mounts):
 
 ```powershell
-# Preferred on NVIDIA machines (sync + CUDA torch). Bare uv sync leaves CPU-only torch.
+# Preferred on NVIDIA machines: syncs --extra semantic-gpu (CUDA torch from lockfile).
 uv run task sync-win
 # or: cmd /c scripts\dev\sync-win.cmd
 powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1 -Fix
@@ -23,7 +23,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
 
 `uv sync` creates `.venv`, installs the project editable, and pulls the default **`dev`** dependency group (pytest, ruff, taskipy, …). Add `--extra windows` on Windows for Explorer tags. Upload tooling: `uv sync --group uploader`.
 
-On **Windows** with an NVIDIA GPU, PyTorch from PyPI is **CPU-only**. `uv sync` will also **overwrite** a previously installed CUDA wheel. After every sync on a GPU machine, run `uv run task sync-win` (or `scripts/dev/ensure-windows-cuda-torch.ps1` alone). Verify with `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` — expect `+cu130`/`+cu126` and `True`. Details: [installation.md → Windows](installation.md#windows). The Windows quality gate re-runs the ensure script automatically when the `heavy` bucket is selected.
+On **Windows** with an NVIDIA GPU, use **`[semantic-gpu]`** (via `uv run task sync-win`) instead of bare `--extra semantic`. That extra declares `torch` / `torchvision` / `torchaudio` and `[tool.uv.sources]` pins them to the PyTorch `cu130` index on `win32`, so `uv sync` installs CUDA wheels from the lockfile and does not thrash CPU↔CUDA on every sync. `sync-win` still runs `ensure-windows-cuda-torch.ps1` afterward as a safety net. Verify with `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` — expect `+cu130`/`+cu126` and `True`. Details: [installation.md → Windows](installation.md#windows). The Windows quality gate re-runs the ensure script automatically when the `heavy` bucket is selected.
 
 ### Bumping the release version
 
