@@ -4,11 +4,11 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0**. Applied worktree `9x6r` / `cursor/943ab584` (faster quality gate + Windows CUDA torch for sync-win and desktop installer).
+- `feature/fixes_1.6.6` — version target **1.7.0**. Applied worktree `9x6r` / `cursor/943ab584` (faster quality gate + Windows CUDA torch for sync-win and desktop installer). Merge `9c1b86a`; parent gate PASSED.
 
 ## Current focus
 
-None active — finish parent quality gate after merge; then optional `/delete-worktree-srxy` for `9x6r`.
+None active.
 
 ## Manual QA (user)
 
@@ -16,7 +16,6 @@ None active — finish parent quality gate after merge; then optional `/delete-w
 
 ## Next steps
 
-1. Parent quality gate (`checks-win-fix-quiet` then `checks-win-quiet`).
-2. User: manual Windows (and other) installer verification for 1.7.0.
-3. `/delete-worktree-srxy` for applied worktrees when ready.
-4. Final QA / release for 1.7.0 when ready.
+1. User: manual Windows (and other) installer verification for 1.7.0.
+2. `/delete-worktree-srxy` for applied worktrees when ready.
+3. Final QA / release for 1.7.0 when ready.
