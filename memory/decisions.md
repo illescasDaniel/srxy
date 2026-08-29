@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Splash shows branding + staged status
+
+- **Context:** Splash only showed icon + name + BusyIndicator. Author was not in `pyproject.toml` (only LICENSE). Users wanted name, author, version, and Loading / progress copy.
+- **Decision:** Add `authors` to `pyproject.toml` + `AUTHOR` in `branding.py`. New `SplashBridge` QObject exposes `appName` / `author` / `version` / `status`; `run_gui` updates status between translations → services → controller → Main.qml. App window icon applied after first splash paint.
+- **Rationale:** Metadata-driven author/version stay in sync with packaging; staged status reuses the existing splash window without a second UI path. Further “instant splash” options (native pixmap / pre-Qt child process) deferred — see activeContext notes.
+
+## 2026-08-29 — GUI splash + deferred Main reveal
+
+- **Context:** After import-graph wins, remaining cold-start cost is mostly PySide6 + large `Main.qml`. Users still see a blank gap before the main window. FluentWinUI3 stays; no widgets `QSplashScreen` (app is `QGuiApplication`).
+- **Decision:** (1) Tiny `Splash.qml` `Window` with `Qt.SplashScreen` loaded first; `processEvents` so it can paint. (2) Defer `SearchController` / `build_app_services` / i18n until after splash. (3) `Main.qml` starts `visible: false`; Python `_reveal_main` shows it and closes the splash. (4) `QQuickWindow.setDefaultAlphaBuffer(False)` before any Quick window. (5) `SRXY_NO_SPLASH=1` opt-out.
+- **Rationale:** Improves perceived launch without changing Fluent chrome; keeps splash out of the widget stack; tests that load Main set `visible: true` themselves.
+
 ## 2026-08-29 — AccentButton foreground uses SystemPalette, not control.palette
 
 - **Context:** Launching the GUI logged `QML AccentButton: Binding loop detected for property "foreground"` (Search button). `AccentButton` bound `palette.buttonText: control.foreground` while `foreground` read `control.palette.placeholderText` / `control.palette.button` (disabled / non-accent paths). Any write to a palette role dirties the whole group and re-triggers those reads.

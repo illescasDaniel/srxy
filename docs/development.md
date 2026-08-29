@@ -90,6 +90,16 @@ New or changed TUI elements need snapshot coverage in `tests/tui/` (`assert_svg_
 
 GUI chrome text-tree snapshots live in `tests/gui/snapshots/`. Refresh: `UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen uv run pytest tests/gui/test_gui_snapshots.py`. See [docs/gui.md](gui.md) and [docs/architecture.md](architecture.md).
 
+### GUI cold-start timing
+
+Opt-in marks on stderr while launching the default GUI:
+
+```bash
+SRXY_STARTUP_TIMING=1 SRXY_STARTUP_EXIT=1 QT_QPA_PLATFORM=offscreen uv run python -m srxy
+```
+
+Useful marks: `cli_imported`, `qt_ready`, `splash_shown`, `controller_ready`, `qml_loaded`. `SRXY_STARTUP_EXIT=1` quits after Main is loaded (no interactive loop). `SRXY_NO_SPLASH=1` skips the splash — see [gui.md → Startup splash](gui.md#startup-splash).
+
 ### Public API reference
 
 [`docs/api-reference.md`](api-reference.md) is generated from `srxy.__all__`. After changing public exports or their signatures/docstrings:

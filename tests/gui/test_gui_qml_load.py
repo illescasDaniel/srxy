@@ -62,6 +62,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	roots = engine.rootObjects()
 	assert roots, f"failed to load {qml_path}"
 	window = roots[0]
+	window.setProperty("visible", True)
 	assert window.objectName() == "mainWindow"
 	assert window.findChild(QObject, "searchButton") is not None
 	assert window.findChild(QObject, "browseButton") is not None
@@ -123,6 +124,7 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	roots = engine.rootObjects()
 	assert roots, f"failed to load {qml_path}"
 	window = roots[0]
+	window.setProperty("visible", True)
 
 	# then — DialogButtonBox must drive the accent (highlighted) state of the
 	# OK buttons. ``foreground`` and ``palette.buttonText`` must match onAccent
@@ -185,6 +187,7 @@ def test_given_results_when_running_a_new_search_then_no_delegate_model_warning(
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
 	roots = engine.rootObjects()
 	assert roots, "failed to load Main.qml"
+	roots[0].setProperty("visible", True)
 
 	results = [
 		FileSearchResult(path=tmp_path / f"file{i}.txt", score=0.9 - i * 0.01, breakdown={"content": 0.9}, lines=[])
@@ -208,4 +211,63 @@ def test_given_results_when_running_a_new_search_then_no_delegate_model_warning(
 	qInstallMessageHandler(previous)
 
 	# then
+	assert not warnings, "Qt warnings:\n" + "\n".join(warnings)
+
+
+def test_given_splash_qml_when_engine_loads_then_shows_branding_and_status(qapp: QCoreApplication):
+	# given
+	warnings: list[str] = []
+
+	def _handler(_mode: QtMsgType, _context: object, message: str):
+		if "Binding loop detected" in message or "ReferenceError" in message:
+			warnings.append(message)
+
+	previous = qInstallMessageHandler(_handler)
+	from PySide6.QtQml import QQmlProperty
+
+	from srxy.adapters.inbound.gui.splash import SplashBridge
+	from srxy.application.branding import AUTHOR
+	from srxy.resources.icons import app_icon_path
+
+	srxy_theme = apply_qt_quick_theme(qapp)
+	bridge = SplashBridge()
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("splashBridge", bridge)
+	engine.rootContext().setContextProperty(
+		"splashIconUrl",
+		QUrl.fromLocalFile(str(app_icon_path(size=128))),
+	)
+
+	# when
+	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Splash.qml")))
+	roots = engine.rootObjects()
+	assert roots, "failed to load Splash.qml"
+	window = roots[0]
+	assert window.objectName() == "splashWindow"
+	app_name = window.findChild(QObject, "splashAppName")
+	author = window.findChild(QObject, "splashAuthor")
+	ver = window.findChild(QObject, "splashVersion")
+	status = window.findChild(QObject, "splashStatus")
+	assert app_name is not None
+	assert author is not None
+	assert ver is not None
+	assert status is not None
+	assert QQmlProperty(app_name, "text").read() == "srxy"
+	assert AUTHOR in str(QQmlProperty(author, "text").read())
+	assert str(QQmlProperty(ver, "text").read()).startswith("v")
+	assert "Loading" in str(QQmlProperty(status, "text").read())
+
+	bridge.set_status("Preparing search…")
+	qapp.processEvents()
+	assert QQmlProperty(status, "text").read() == "Preparing search…"
+
+	# then
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+	qInstallMessageHandler(previous)
 	assert not warnings, "Qt warnings:\n" + "\n".join(warnings)

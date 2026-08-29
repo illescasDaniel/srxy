@@ -25,6 +25,22 @@ Power-ups that need optional deps or a GPU (CUDA/MPS) are grayed out when unavai
 
 Tesseract and ffmpeg are system binaries: the GUI does not install them; info text points at package managers and official sites.
 
+## Startup splash
+
+Cold start is still dominated by importing PySide6, applying the Qt Quick theme, and loading `Main.qml`. A small **splash window** (`Splash.qml`, `Qt.SplashScreen`) appears after Qt is ready and before the main window, so users see branding sooner than the full UI — typically a few hundred milliseconds earlier, not an instant native splash.
+
+It shows the app name, version, author (from package metadata / `branding.AUTHOR`), a busy indicator, and a short status line updated while translations, services, the search controller, and `Main.qml` load.
+
+**Limits:** the splash cannot appear before `QGuiApplication` and theme setup. For Start Menu / `Srxy.exe` launches, anything earlier would need a native splash in the C# launcher (installer-only path), which this Python GUI path does not use.
+
+### Disable or remove
+
+| Goal | How |
+|------|-----|
+| **Turn off at runtime** | Set `SRXY_NO_SPLASH=1` (or `true` / `yes` / `on`). `run_gui` skips `Splash.qml` and shows Main when ready. |
+| **Benchmark without splash** | Same env, optionally with `SRXY_STARTUP_TIMING=1` and `SRXY_STARTUP_EXIT=1` (quit after `qml_loaded`; see [development.md](development.md)). |
+| **Remove the feature** | Delete or stop loading `src/srxy/adapters/inbound/gui/qml/Splash.qml` and `splash.py`; in `app.py`, drop the `splash_enabled` / `SplashBridge` path and keep a single `engine.load(Main.qml)` with `visible: true` (or reveal Main immediately). Drop splash assertions in `tests/gui/test_gui_qml_load.py` and `tests/unit/test_gui_splash.py`. |
+
 ## Query modes
 
 | Mode | Use for |

@@ -6,6 +6,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+	{ name = "Daniel Illescas Romero" },
+]
 dependencies = [
 	"cryptography>=44.0",
 	"exifread>=3.5",

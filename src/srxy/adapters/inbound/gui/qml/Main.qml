@@ -8,7 +8,9 @@ ApplicationWindow {
 	id: root
 	width: 1200
 	height: 800
-	visible: true
+	// run_gui shows this after Splash.qml + controller are ready (avoids empty flash).
+	// Direct engine.load in tests should set visible: true after load when needed.
+	visible: false
 	title: "srxy"
 	objectName: "mainWindow"
 
