@@ -4,27 +4,24 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target is now **1.7.0** (skipped shipping 1.6.6 as a patch; minor bump for UI + feature scope). Cold-start + splash already on this branch.
+- Worktree `hsfl` / `cursor/5e55b1ae` — adding project-local apply/delete worktree skills.
+- Parent: `feature/fixes_1.6.6` at `C:/Users/kaumi/Documents/Projects/srxy-related/srxy`
 
 ## Current focus
 
-None active — 1.7.0 version bump applied from worktree `entu`; Final QA / release next.
+Copy personal `apply-worktree` / `delete-worktree` skills into `.cursor/skills/` as `apply-worktree-srxy` and `delete-worktree-srxy`, commit, apply into main checkout, then delete this worktree.
 
 ## Done this session
 
-- Applied worktree `entu` / `cursor/47e8aad4`: bump `1.6.6` → `1.7.0` + version-bump checklist in `docs/development.md`.
-- Quality gate: `checks-win` fix + verify PASSED.
-- Prior: cold-start + splash from `o850` / `cursor/d34ce3c1`.
+- Created `.cursor/skills/apply-worktree-srxy/SKILL.md` and `.cursor/skills/delete-worktree-srxy/SKILL.md` (renamed triggers; same srxy-specific flow).
 
 ## Next steps
 
-1. Final QA: Windows/macOS installers (against 1.7.0 artifacts).
-2. Release when Final QA is green.
-3. Push `feature/fixes_1.6.6` when ready.
-4. `/delete-worktree` for leftover worktrees when finished.
+1. Commit skills on worktree branch.
+2. `/apply-worktree-srxy` into main checkout + quality gate.
+3. `/delete-worktree-srxy` for `hsfl`.
 
 ## Key files
 
-- Version: `pyproject.toml`, both `installer_meta.toml`, `uv.lock`
-- Docs: `docs/development.md` → Bumping the release version
-- GUI splash/cold-start under `src/srxy/adapters/inbound/gui/`
+- `.cursor/skills/apply-worktree-srxy/SKILL.md`
+- `.cursor/skills/delete-worktree-srxy/SKILL.md`
