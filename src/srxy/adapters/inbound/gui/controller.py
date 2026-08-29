@@ -301,6 +301,9 @@ class SearchController(QObject):
 		self._worker: _SearchWorker | None = None
 		self._search_subprocess: object | None = None
 		self._search_cancel_requested = False
+		# True only after a successful (non-cancelled) SearchFinishedEvent for the
+		# in-flight run; used by _on_search_thread_finished to commit the stale baseline.
+		self._search_completed_ok = False
 		self._default_result_limit_applied = False
 		self._download_thread: QThread | None = None
 		self._download_worker: _DownloadWorker | None = None
@@ -954,6 +957,7 @@ class SearchController(QObject):
 			self._has_searched = True
 			self.hasSearchedChanged.emit()
 		self._search_cancel_requested = False
+		self._search_completed_ok = False
 		from srxy.application.search_filters import GUI_DEFAULT_RESULT_LIMIT
 
 		self._default_result_limit_applied = args.limit is None
@@ -1091,7 +1095,14 @@ class SearchController(QObject):
 		self._thread = None
 		self._release_worker_on_main_thread(worker)
 		self._set_searching(False)
-		self._last_snapshot = self._snapshot()
+		# Search accent follows ``stale``. Only a successful finish establishes a
+		# baseline; cancel/error clear it so the button stays accented (results
+		# were wiped at search start, so the user still needs to run Search).
+		if self._search_completed_ok:
+			self._last_snapshot = self._snapshot()
+		else:
+			self._last_snapshot = None
+		self._search_completed_ok = False
 		self._refresh_stale()
 
 	@Slot()
@@ -1163,6 +1174,7 @@ class SearchController(QObject):
 				self.progressChanged.emit()
 				self._set_status_tr("status.search_cancelled")
 				return
+			self._search_completed_ok = True
 			self._exit_code = 0 if count else 1
 			self._progress = 100.0
 			self.progressChanged.emit()

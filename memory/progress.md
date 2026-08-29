@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-08-27_
+_Last updated: 2026-08-29_
 
 ## v1.6.6 — fixes and improvements
 
@@ -27,13 +27,16 @@ _Last updated: 2026-08-27_
 - [x] Full quality gate before release — `checks-fix-quiet` PASSED (ruff/shell/basedpyright/pip-audit/build/pytest all clean, 123 heavy tests in ~4:44; first `checks-quiet` run flagged only a Ruff format issue in the new test file, fixed). Clean cache-free unit pass: 791 passed, 2 skipped.
 - [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`). Committed (`4f3b8e2`, `a3344ed`); visually tested on macOS.
 - [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added. Committed (`8216a59`); visually tested light/dark on Linux.
+- [x] Windows dark-mode GUI visual QA (theme / results `SplitView` grips) — confirmed OK by user (2026-08-29).
+- [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
 
 ### Open
 
-- [ ] Final QA — Windows dark mode (incl. `SplitView` grips), Windows/macOS installers. (Linux Material + macOS Search/OK visual QA done.)
+- [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 
 ## Bugs / sub-tasks discovered
 
+- [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.
 - [x] macOS Search button misaligned / label off-centre + black OK text — forced matchHeight clipped native 32px bevel; WCAG onAccent black for `#308cc6`. Fixed: Windows-only stretch; darwin white onAccent; `palette.buttonText` binding. Gate passed.
 - [x] Options/filters dialog OK button black text (Windows accent `#0078d4` → black via `contrast_text_on` max-contrast rule). Fixed by preferring white at AA 4.5:1; regression test added; gate passed.
 - [x] QML results ListView warning (`DelegateModel::cancel: index out range`) — `ResultsModel.clear()`/`replace_results()` now use row-based `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of a full `beginResetModel()`, so the delegate model cancels in-flight items with valid indices. Added `tests/unit/test_gui_models.py` (deterministic signal assertions: rows removed/inserted, never `modelReset`) + a GUI regression test in `test_gui_qml_load.py` (drives two search cycles through loaded QML, asserts no `DelegateModel`/`index out range` warning). Gate passed.

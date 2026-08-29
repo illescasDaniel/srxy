@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Search stale baseline only after successful finish
+
+- **Context:** After Cancel, the GUI Search button dropped its accent and looked dark (Fluent secondary). Search binds `accent: controller.stale`. `_on_search_thread_finished` always set `_last_snapshot = _snapshot()`, so cancel cleared `stale` even though `_begin_search` had wiped results. Same on every platform; most visible in Windows dark mode.
+- **Decision:** Commit `_last_snapshot` only when a non-cancelled `SearchFinishedEvent` set `_search_completed_ok`. On cancel/error, clear `_last_snapshot` so `stale` stays true and Search stays accented (including cancelled re-runs of an identical prior query).
+- **Rationale:** Accent means “settings differ from last successful search”; a cancelled/failed run must not establish that baseline. Unit + QML regression tests cover cancel and success-then-cancel.
+
 ## 2026-08-27 — Linux Material background: flat `#ffffff` / `#303030` from colour scheme
 
 - **Context:** Qt 6.11 Material’s default light surface is M3 tonal `#fffbfe` (pinkish white); dark is `#1c1b1f` (purple-grey). Accent was already overridden (portal / palette / Blue) but `ApplicationWindow` and Panes paint `Material.backgroundColor`, so the window still looked pink. A fixed `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND=#ffffff` would lock dark mode to white (env is a single colour, not theme-aware).

@@ -621,6 +621,56 @@ def test_given_controller_when_results_empty_then_hint_follows_search_state(qapp
 	controller.shutdown(thread_wait_ms=1000)
 
 
+def test_given_cancelled_search_when_thread_finishes_then_stale_stays_true(qapp: QCoreApplication, tmp_path: Path):
+	# given — cancel must not commit a search baseline (Search accent follows stale)
+	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["zzzz-no-match-token", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	assert controller.stale is True
+
+	# when
+	controller.startSearch()
+	controller.cancelSearch()
+	deadline = time.monotonic() + 30
+	while controller.searching and time.monotonic() < deadline:
+		qapp.processEvents()
+		time.sleep(0.01)
+
+	# then — cancelled run cleared results; keep inviting Search (accent)
+	assert not controller.searching
+	assert controller.stale is True
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_completed_then_cancelled_research_when_finished_then_stale_again(qapp: QCoreApplication, tmp_path: Path):
+	# given — a successful baseline, then cancel a re-run of the same query
+	(tmp_path / "readme.txt").write_text("readme content\n", encoding="utf-8")
+	args = build_parser().parse_args(["readme", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.startSearch()
+	deadline = time.monotonic() + 30
+	while controller.searching and time.monotonic() < deadline:
+		qapp.processEvents()
+		time.sleep(0.01)
+	assert not controller.searching
+	assert controller.stale is False
+
+	# when — re-run clears results at start; cancel must restore stale/accent
+	controller.startSearch()
+	assert controller.searching
+	controller.cancelSearch()
+	deadline = time.monotonic() + 30
+	while controller.searching and time.monotonic() < deadline:
+		qapp.processEvents()
+		time.sleep(0.01)
+
+	# then
+	assert not controller.searching
+	assert controller.stale is True
+	controller.shutdown(thread_wait_ms=1000)
+
+
 def test_given_ampersand_simple_query_when_syncing_then_treats_term_as_literal(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	args = build_parser().parse_args(["", str(tmp_path), "--cli"])

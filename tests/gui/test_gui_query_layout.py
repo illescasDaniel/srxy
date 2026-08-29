@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import os
 import sys
+import time
+from pathlib import Path
 
 import pytest
 from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, Qt, QtMsgType, QUrl, qInstallMessageHandler
 from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQml import QQmlApplicationEngine, QQmlProperty
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.app import qml_dir
@@ -141,4 +143,33 @@ def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp:
 	qInstallMessageHandler(previous)
 	assert not msgs, "QML ReferenceErrors:\n" + "\n".join(msgs)
 	assert controller.queryMode in {"simple", "multi", "advanced"}
+	_shutdown(controller, engine, window, qapp)
+
+
+def test_given_cancelled_search_when_finished_then_search_button_stays_accented(qapp: QCoreApplication, tmp_path: Path):
+	# given — Search accent tracks controller.stale; cancel must not drop it
+	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["zzzz-no-match-token", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	engine, window = _load_main(controller)
+	for _ in range(20):
+		qapp.processEvents()
+	search_button = window.findChild(QObject, "searchButton")
+	assert search_button is not None
+	assert QQmlProperty(search_button, "accent").read() is True
+
+	# when
+	controller.startSearch()
+	controller.cancelSearch()
+	deadline = time.monotonic() + 30
+	while controller.searching and time.monotonic() < deadline:
+		qapp.processEvents()
+		time.sleep(0.01)
+	qapp.processEvents()
+
+	# then
+	assert not controller.searching
+	assert controller.stale is True
+	assert QQmlProperty(search_button, "accent").read() is True
+	assert QQmlProperty(search_button, "highlighted").read() is True
 	_shutdown(controller, engine, window, qapp)
