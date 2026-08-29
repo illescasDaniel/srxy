@@ -29,6 +29,7 @@ _Last updated: 2026-08-29_
 - [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added. Committed (`8216a59`); visually tested light/dark on Linux.
 - [x] Windows dark-mode GUI visual QA (theme / results `SplitView` grips) — confirmed OK by user (2026-08-29).
 - [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
+- [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
 
 ### Open
 
@@ -36,6 +37,7 @@ _Last updated: 2026-08-29_
 
 ## Bugs / sub-tasks discovered
 
+- [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.
 - [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.
 - [x] macOS Search button misaligned / label off-centre + black OK text — forced matchHeight clipped native 32px bevel; WCAG onAccent black for `#308cc6`. Fixed: Windows-only stretch; darwin white onAccent; `palette.buttonText` binding. Gate passed.
 - [x] Options/filters dialog OK button black text (Windows accent `#0078d4` → black via `contrast_text_on` max-contrast rule). Fixed by preferring white at AA 4.5:1; regression test added; gate passed.

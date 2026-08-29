@@ -19,15 +19,24 @@ Button {
 
 	highlighted: control.accent
 
+	// Face / disabled colours must NOT come from ``control.palette``: we assign
+	// ``palette.buttonText`` below, and any write to that group dirties the whole
+	// palette — re-triggering a ``foreground`` binding that reads ``palette.*``
+	// (Binding loop detected for property "foreground").
+	SystemPalette {
+		id: refPalette
+		colorGroup: control.enabled ? SystemPalette.Active : SystemPalette.Disabled
+	}
+
 	// Used by the Search button's icon tint (``icon.color``) so it matches the
 	// accent contrast colour. Plain dialog/launch buttons render their label
 	// through the style's own highlighted text colour instead.
 	readonly property color foreground: {
 		if (!control.enabled)
-			return control.palette.placeholderText
+			return refPalette.placeholderText
 		if (control.accent)
 			return (typeof srxyTheme !== "undefined" && srxyTheme) ? srxyTheme.onAccent : "#ffffff"
-		const face = control.palette.button
+		const face = refPalette.button
 		if (typeof srxyTheme !== "undefined" && srxyTheme)
 			return srxyTheme.contrastOn(face)
 		return face.hslLightness > 0.55 ? "#000000" : "#ffffff"

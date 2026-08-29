@@ -8,13 +8,12 @@ _Last updated: 2026-08-29_
 
 ## Current focus
 
-None active — Search-after-cancel accent fix committed and pushed. Gate clean; visually confirmed on Windows.
+None active — AccentButton binding-loop fix merged; Search-after-cancel accent fix already on branch. Gate clean.
 
 ## Done this session
 
-- Windows dark-mode GUI visual QA confirmed OK by user.
-- Fixed Search button dark tint after cancel: only commit `_last_snapshot` on successful finish; clear baseline on cancel/error so `stale`/accent stay on.
-- Unit + QML regression tests; `checks-win` fix+verify PASSED; user visual re-check OK.
+- Fixed `AccentButton` `foreground` binding loop via sibling `SystemPalette` (no `control.palette` reads while writing `palette.buttonText`).
+- Merged worktree fix into `feature/fixes_1.6.6`; user confirmed binding loop gone.
 
 ## Next steps
 

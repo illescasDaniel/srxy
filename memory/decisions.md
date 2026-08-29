@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — AccentButton foreground uses SystemPalette, not control.palette
+
+- **Context:** Launching the GUI logged `QML AccentButton: Binding loop detected for property "foreground"` (Search button). `AccentButton` bound `palette.buttonText: control.foreground` while `foreground` read `control.palette.placeholderText` / `control.palette.button` (disabled / non-accent paths). Any write to a palette role dirties the whole group and re-triggers those reads.
+- **Decision:** Resolve disabled and non-accent face colours from a sibling `SystemPalette` (`refPalette`) that we never write to; keep writing `palette.buttonText` from `foreground` for macOS/Fusion IconLabels.
+- **Rationale:** Breaks the read/write cycle on the same palette object without dropping the `buttonText` override that fixes black labels on Aqua. Existing GUI load test already asserts no binding-loop warnings.
+
 ## 2026-08-29 — Search stale baseline only after successful finish
 
 - **Context:** After Cancel, the GUI Search button dropped its accent and looked dark (Fluent secondary). Search binds `accent: controller.stale`. `_on_search_thread_finished` always set `_last_snapshot = _snapshot()`, so cancel cleared `stale` even though `_begin_search` had wiped results. Same on every platform; most visible in Windows dark mode.
