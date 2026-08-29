@@ -1,0 +1,169 @@
+#Requires -Version 5.1
+<#
+.SYNOPSIS
+  Copy .venv from the primary srxy checkout into the current worktree.
+
+.DESCRIPTION
+  Mirrors .venv from the primary checkout (the git worktree list entry that is
+  NOT under %USERPROFILE%\.cursor\worktrees\) into the current worktree using
+  robocopy, then runs uv sync to re-stamp activation-script paths for the new
+  location.  No packages are re-downloaded.
+
+  Intended to be run from any linked worktree root.  Devs can call it
+  directly; agents invoke it via the copy-venv-to-worktree-srxy skill.
+
+.PARAMETER Force
+  Overwrite the destination .venv even if it already exists.
+
+.EXAMPLE
+  # From a freshly created worktree:
+  powershell -ExecutionPolicy Bypass -File .cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv-win.ps1
+
+.EXAMPLE
+  # Replace an existing (broken) .venv:
+  powershell -ExecutionPolicy Bypass -File .cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv-win.ps1 -Force
+#>
+[CmdletBinding()]
+param(
+    [switch]$Force
+)
+
+$ErrorActionPreference = 'Stop'
+
+# ---------------------------------------------------------------------------
+# 1. Resolve current worktree root
+# ---------------------------------------------------------------------------
+$destRoot = & git rev-parse --show-toplevel 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Not inside a git repository. Run this script from within a srxy worktree."
+    exit 1
+}
+$destRoot = $destRoot.Trim() -replace '/', '\'
+
+# ---------------------------------------------------------------------------
+# 2. Parse git worktree list to find the primary checkout
+# ---------------------------------------------------------------------------
+$worktreeLines = & git worktree list 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "git worktree list failed: $worktreeLines"
+    exit 1
+}
+
+$cursorWorktreesPattern = [System.IO.Path]::Combine($env:USERPROFILE, '.cursor', 'worktrees')
+
+$primaryRoot = $null
+foreach ($line in $worktreeLines) {
+    $parts = $line -split '\s+'
+    if (-not $parts[0]) { continue }
+    $candidate = $parts[0].Trim() -replace '/', '\'
+    # Primary checkout is never under %USERPROFILE%\.cursor\worktrees\
+    if (-not $candidate.StartsWith($cursorWorktreesPattern, [System.StringComparison]::OrdinalIgnoreCase)) {
+        $primaryRoot = $candidate
+        break
+    }
+}
+
+if (-not $primaryRoot) {
+    Write-Error "Could not find the primary checkout in 'git worktree list'. Output was:`n$($worktreeLines -join "`n")"
+    exit 1
+}
+
+# Normalise both to lowercase for comparison
+if ($destRoot.TrimEnd('\') -ieq $primaryRoot.TrimEnd('\')) {
+    Write-Host "Already in the primary checkout ($primaryRoot). Nothing to copy."
+    exit 0
+}
+
+# ---------------------------------------------------------------------------
+# 3. Validate source and destination
+# ---------------------------------------------------------------------------
+$srcVenv = Join-Path $primaryRoot '.venv'
+$dstVenv = Join-Path $destRoot  '.venv'
+
+if (-not (Test-Path $srcVenv)) {
+    Write-Error @"
+Source .venv not found at: $srcVenv
+Run 'uv run task sync-win' (or 'uv sync --extra semantic --extra windows') in
+the primary checkout first, then re-run this script.
+"@
+    exit 1
+}
+
+if ((Test-Path $dstVenv) -and -not $Force) {
+    Write-Warning @"
+Destination .venv already exists at: $dstVenv
+Pass -Force to overwrite it, or delete it manually and re-run.
+"@
+    exit 1
+}
+
+if ((Test-Path $dstVenv) -and $Force) {
+    Write-Host "copy-venv: removing existing destination .venv (--Force)..."
+    Remove-Item -LiteralPath $dstVenv -Recurse -Force
+}
+
+# ---------------------------------------------------------------------------
+# 4. robocopy mirror
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "copy-venv: copying .venv"
+Write-Host "  from : $srcVenv"
+Write-Host "  to   : $dstVenv"
+Write-Host ""
+
+# robocopy exit codes 0-7 are success (0=no change, 1=copied, etc.)
+robocopy $srcVenv $dstVenv /E /NP /NFL /NDL /NJH /NJS
+$robocopyExit = $LASTEXITCODE
+if ($robocopyExit -ge 8) {
+    Write-Error "robocopy failed with exit code $robocopyExit"
+    exit 1
+}
+
+Write-Host ""
+Write-Host "copy-venv: copy complete (robocopy exit $robocopyExit)"
+
+# ---------------------------------------------------------------------------
+# 5. uv sync — re-stamp activation scripts for the new path
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "copy-venv: running uv sync to fix activation-script paths..."
+Set-Location -LiteralPath $destRoot
+
+function Test-NvidiaGpuPresent {
+    if ($env:SRXY_SKIP_CUDA_TORCH -eq '1') { return $false }
+    if ($null -ne $env:CUDA_VISIBLE_DEVICES -and $env:CUDA_VISIBLE_DEVICES.Trim() -eq '') { return $false }
+    $smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
+    if (-not $smi) { return $false }
+    $tmp = [System.IO.Path]::GetTempFileName()
+    $p = Start-Process -FilePath $smi.Source -ArgumentList '-L' -NoNewWindow -PassThru -Wait `
+        -RedirectStandardOutput $tmp -RedirectStandardError ([System.IO.Path]::GetTempFileName())
+    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
+    return ($p.ExitCode -eq 0)
+}
+
+if (Test-NvidiaGpuPresent) {
+    Write-Host "copy-venv: NVIDIA GPU detected — running 'uv run task sync-win'"
+    & uv run task sync-win
+} else {
+    Write-Host "copy-venv: no NVIDIA GPU — running 'uv sync --extra semantic --extra windows'"
+    & uv sync --extra semantic --extra windows
+}
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "uv sync step failed (exit $LASTEXITCODE)"
+    exit $LASTEXITCODE
+}
+
+# ---------------------------------------------------------------------------
+# 6. Verify
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "copy-venv: verifying torch..."
+$torchCheck = & (Join-Path $dstVenv 'Scripts\python.exe') -c `
+    "import torch; print(torch.__version__, 'cuda=' + str(torch.cuda.is_available()))" `
+    2>&1
+Write-Host "  torch: $torchCheck"
+
+Write-Host ""
+Write-Host "copy-venv: done."
+Write-Host "  source : $srcVenv"
+Write-Host "  dest   : $dstVenv"
