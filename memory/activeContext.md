@@ -4,20 +4,18 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — main checkout; ahead of origin by the search overlap + permission-skip commit (`9e5f08b`).
+- Worktree `9x6r` / `cursor/943ab584` — faster quality gate committed; merging latest `feature/fixes_1.6.6`.
 
 ## Current focus
 
-None active. Worktree apply is done; leftover worktree folder cleanup is manual.
+Merge `feature/fixes_1.6.6` into this branch and resolve conflicts.
 
 ## Done this session
 
-- Stream listing into search + permission-denied skips/warn/prune.
-- Committed as `9e5f08b` and fast-forwarded onto this checkout.
-- Windows quality gate passed before commit.
+- Faster quality gate end-to-end (buckets, auto-scope, Windows parallelization, test reorg, docs/CI/tasks).
+- Verified: `checks-win-fix-quiet` / `checks-win-quiet` / scoped core+gui PASSED.
 
 ## Next steps
 
-1. Final QA: Windows/macOS installers.
-2. Release when Final QA is green.
-3. Push `feature/fixes_1.6.6` when ready (`ahead 1`).
+1. Finish merge from `feature/fixes_1.6.6`; fix conflicts (especially quality scripts / tests / CI / memory).
+2. Re-run quiet gate after merge if scripts or tests conflicted.

@@ -8,7 +8,7 @@ from PIL import Image
 from srxy.adapters.outbound.ocr.ocr_text import ocr_pil_image, tesseract_available
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.ocr]
+pytestmark = [pytest.mark.integration, pytest.mark.ocr]
 
 ORIENTATION_DIR = Path(__file__).resolve().parents[1] / "fixtures" / "file_search" / "ocr" / "orientation"
 

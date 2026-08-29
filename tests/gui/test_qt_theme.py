@@ -11,7 +11,7 @@ from PySide6.QtGui import QColor, QGuiApplication, QPalette
 from srxy.adapters.inbound.gui import qt_theme
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [pytest.mark.unit, pytest.mark.gui]
 
 
 @pytest.fixture

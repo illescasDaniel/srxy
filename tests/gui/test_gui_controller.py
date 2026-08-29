@@ -22,7 +22,7 @@ from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
+pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
 
 
 @pytest.fixture(scope="module")

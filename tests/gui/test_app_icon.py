@@ -23,7 +23,7 @@ from srxy.resources.icons import (
 )
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui_icon")]
+pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui_icon")]
 
 
 def test_given_packaged_icons_when_resolving_then_files_exist():

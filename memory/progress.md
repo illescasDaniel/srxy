@@ -31,7 +31,7 @@ _Last updated: 2026-08-29_
 - [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
 - [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Committed (`9e5f08b`).
-- [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added. Committed (`9e5f08b`).
+- [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED.
 
 ### Open
 
