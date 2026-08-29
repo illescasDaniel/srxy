@@ -1,7 +1,9 @@
 from __future__ import annotations
 
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
+from srxy.application.search_defaults import (
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+)
 from srxy.application.search_formatting import match_labels
 from srxy.domain.models import FileSearchResult
 from srxy.i18n import tr

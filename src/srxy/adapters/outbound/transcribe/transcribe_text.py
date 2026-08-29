@@ -18,14 +18,16 @@ from srxy.adapters.outbound.models.device import (
 	warn_if_cpu_device,
 )
 from srxy.application.install_paths import resolve_ffmpeg_binary
+from srxy.application.search_defaults import (
+	DEFAULT_TRANSCRIBE_MAX_FILE_SIZE,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+)
 from srxy.domain.models import SkippedFile
 from srxy.domain.progress import ActivityCallback, emit_activity
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_TRANSCRIBE_MODEL = "base"
-DEFAULT_TRANSCRIBE_THRESHOLD = 0.25
-DEFAULT_TRANSCRIBE_MAX_FILE_SIZE = 500 * 1024 * 1024
 TRANSCRIBE_SUFFIXES = AUDIO_SUFFIXES | VIDEO_SUFFIXES
 
 
@@ -218,9 +220,9 @@ def _cache_variant(device: str, backend: str) -> str:
 
 
 def format_transcript_timestamp(seconds: int) -> str:
-	total = max(0, int(seconds))
-	minutes, secs = divmod(total, 60)
-	return f"{minutes:02d}:{secs:02d}"
+	from srxy.application.search_formatting import format_transcript_timestamp as _format
+
+	return _format(seconds)
 
 
 def _segment_at(start: float, text: str) -> tuple[int, str] | None:

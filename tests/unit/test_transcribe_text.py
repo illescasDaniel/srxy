@@ -111,6 +111,7 @@ def test_given_mocked_transcription_when_iterating_lines_then_yields_segments(
 	with (
 		patch("srxy.adapters.outbound.transcribe.transcribe_text.transcribe_deps_installed", return_value=True),
 		patch("srxy.adapters.outbound.transcribe.transcribe_text.ffmpeg_available", return_value=True),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.resolve_transcribe_device", return_value="cpu"),
 		patch(
 			"srxy.adapters.outbound.transcribe.transcribe_text._with_normalized_audio",
 			return_value=iter([tmp_path / "audio.wav"]),
@@ -183,6 +184,7 @@ def test_given_cached_transcript_when_iterating_twice_then_transcribes_once(
 		return backend, [(42, "call me maybe")]
 
 	with (
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.resolve_transcribe_device", return_value="cpu"),
 		patch(
 			"srxy.adapters.outbound.transcribe.transcribe_text._with_normalized_audio",
 			return_value=iter([tmp_path / "audio.wav"]),
@@ -216,6 +218,7 @@ def test_given_empty_transcript_when_caching_then_does_not_store_empty_payload(
 		return backend, []
 
 	with (
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.resolve_transcribe_device", return_value="cpu"),
 		patch(
 			"srxy.adapters.outbound.transcribe.transcribe_text._with_normalized_audio",
 			return_value=iter([tmp_path / "audio.wav"]),

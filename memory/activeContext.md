@@ -4,18 +4,25 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — main checkout; preview font fix committed after apply-worktree + gate.
+- `feature/fixes_1.6.6` — applying GUI cold-start + splash from worktree `cursor/d34ce3c1`.
 
 ## Current focus
 
-None active — preview HTML font-family fix on parent branch; gate clean.
+Finish apply-worktree: merge conflicts resolved; quality gate then merge commit.
 
 ## Done this session
 
-- Applied worktree `r9oj` preview font fix; `checks-win` fix+verify PASSED; committed on `feature/fixes_1.6.6`.
+- Merged worktree cold-start + splash into parent (compose with search overlap / permission-denied / preview font fixes).
+- Updated `/apply-worktree` skill to auto-resolve merge conflicts.
 
 ## Next steps
 
-1. Manual verify: reopen multi-script preview files under `uv run task gui` — expect no `8514oem` / `Fixedsys` / DirectWrite lines.
-2. Final QA: Windows/macOS installers; release when green.
-3. `/delete-worktree` for `r9oj` when finished with the isolated checkout.
+1. `checks-win-fix-quiet` → `checks-win-quiet` on main checkout.
+2. Complete merge commit if not already done.
+3. Optional: faster splash; Final QA installers; `/delete-worktree` for `o850` when done.
+
+## Key files
+
+- `src/srxy/adapters/inbound/gui/{app.py,splash.py,qml/Splash.qml}`
+- `src/srxy/application/{search_defaults,skipped_file_warnings,startup_timing}.py`
+- `docs/gui.md` (Startup splash)

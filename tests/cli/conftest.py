@@ -20,9 +20,18 @@ def isolated_cli_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	# Force plain CLI for these tests even on a graphical session.
 	monkeypatch.setenv("CI", "true")
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "srxy-cache"))
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_text_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_image_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_transcribe_model", lambda **_kwargs: True)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_semantic_text_model",
+		lambda **_kwargs: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_semantic_image_model",
+		lambda **_kwargs: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_transcribe_model",
+		lambda **_kwargs: True,
+	)
 	reset_cache_connection()
 	reset_run_file_hashes()
 	yield

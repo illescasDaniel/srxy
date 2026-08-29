@@ -32,10 +32,13 @@ _Last updated: 2026-08-29_
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
 - [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Committed (`9e5f08b`).
 - [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added. Committed (`9e5f08b`).
-- [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj` (uncommitted on main).
+- [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj`.
+- [x] Faster GUI launch — application-layer shared helpers (GUI stops importing CLI); deferred capability probe; lazy OCR/transcribe/cryptography/rapidfuzz on cold path; `SRXY_STARTUP_TIMING=1`. Offscreen: `cli_imported` ~0.30s→~0.10s, `qml_loaded` ~1.06s→~0.73–0.92s. Worktree `78e5153`.
+- [x] Splash screen + PySide6/QML startup — early `Splash.qml` (`Qt.SplashScreen`), defer controller after splash paint, `Main.qml` hidden until `_reveal_main`, branding (name/author/version) + staged status, `QQuickWindow.setDefaultAlphaBuffer(False)`, `SRXY_NO_SPLASH=1`. Docs: [gui.md](../docs/gui.md#startup-splash) (limits + disable/remove), [development.md](../docs/development.md) timing envs. Offscreen: `splash_shown` ~0.43s, `qml_loaded` ~0.92s. Worktree `b8e0902`.
 
 ### Open
 
+- [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 
 ## Bugs / sub-tasks discovered

@@ -7,10 +7,13 @@ import sys
 import threading
 import time
 from pathlib import Path
-
-from cryptography.fernet import Fernet, InvalidToken
+from typing import TYPE_CHECKING
 
 from srxy.application.install_paths import default_cache_root
+
+
+if TYPE_CHECKING:
+	from cryptography.fernet import Fernet
 
 
 CACHE_KIND_OCR_IMAGE = "ocr_image"
@@ -106,6 +109,8 @@ def _cache_key(kind: str, content_hash: str, variant: str) -> str:
 
 
 def _load_or_create_fernet() -> Fernet:
+	from cryptography.fernet import Fernet
+
 	global _fernet
 	if _fernet is not None:
 		return _fernet
@@ -137,6 +142,8 @@ def _encrypt_payload(payload: bytes) -> bytes:
 
 
 def _decrypt_payload(stored: bytes) -> bytes | None:
+	from cryptography.fernet import InvalidToken
+
 	if not stored.startswith(_ENCRYPTED_PREFIX):
 		return None
 	try:

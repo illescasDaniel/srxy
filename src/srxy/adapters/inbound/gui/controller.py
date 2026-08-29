@@ -10,10 +10,10 @@ from pathlib import Path
 
 from PySide6.QtCore import Property, QObject, Qt, QThread, QTimer, Signal, Slot
 
-from srxy.adapters.inbound.cli.cli import apply_args_to_env, format_skipped_file_warnings
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
 	capabilities_to_dict,
+	default_capabilities,
 	probe_capabilities,
 	unavailable_reason,
 )
@@ -47,6 +47,7 @@ from srxy.application.search_options import (
 	search_options_from_args,
 	search_source_required_message,
 )
+from srxy.application.search_runner import apply_args_to_env
 from srxy.application.search_session import (
 	SearchActivityEvent,
 	SearchErrorEvent,
@@ -54,6 +55,7 @@ from srxy.application.search_session import (
 	SearchProgressEvent,
 	SearchResultEvent,
 )
+from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import (
@@ -285,8 +287,9 @@ class SearchController(QObject):
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
-		self._capabilities = probe_capabilities()
-		self._capabilities_probing = False
+		# Fast snapshot first; full GPU probe runs after the window can paint.
+		self._capabilities = default_capabilities()
+		self._capabilities_probing = True
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		apply_search_filters_to_args(self._args, self._filters)
@@ -342,9 +345,14 @@ class SearchController(QObject):
 		self.canSearchChanged.emit()
 		import os
 
+		# Defer the GPU capability probe until after first paint. Tests probe
+		# synchronously so capability assertions stay deterministic without a loop.
+		if os.environ.get("PYTEST_CURRENT_TEST"):
+			self.refreshCapabilities()
+		else:
+			QTimer.singleShot(0, self.refreshCapabilities)
 		if os.environ.get("PYTEST_CURRENT_TEST") or os.environ.get("SRXY_SKIP_UPDATE_CHECK"):
 			return
-		from PySide6.QtCore import QTimer
 
 		QTimer.singleShot(800, lambda: self.checkForUpdates(silent=True))
 
