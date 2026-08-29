@@ -4,22 +4,22 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- Worktree `hsfl` / `cursor/5e55b1ae` — adding project-local apply/delete worktree skills.
-- Parent: `feature/fixes_1.6.6` at `C:/Users/kaumi/Documents/Projects/srxy-related/srxy`
+- `feature/fixes_1.6.6` — version target **1.7.0**. Project skills for apply/delete worktree just landed from `hsfl` / `cursor/5e55b1ae`.
 
 ## Current focus
 
-Copy personal `apply-worktree` / `delete-worktree` skills into `.cursor/skills/` as `apply-worktree-srxy` and `delete-worktree-srxy`, commit, apply into main checkout, then delete this worktree.
+Finish apply-worktree-srxy (quality gate), then delete-worktree-srxy for `hsfl`.
 
 ## Done this session
 
-- Created `.cursor/skills/apply-worktree-srxy/SKILL.md` and `.cursor/skills/delete-worktree-srxy/SKILL.md` (renamed triggers; same srxy-specific flow).
+- Applied worktree `hsfl` / `cursor/5e55b1ae` (`c543b19`): project skills `.cursor/skills/apply-worktree-srxy` and `delete-worktree-srxy`.
+- Fast-forward merge into `feature/fixes_1.6.6`.
 
 ## Next steps
 
-1. Commit skills on worktree branch.
-2. `/apply-worktree-srxy` into main checkout + quality gate.
-3. `/delete-worktree-srxy` for `hsfl`.
+1. Quality gate on main checkout (`checks-win-fix-quiet` then `checks-win-quiet`).
+2. `/delete-worktree-srxy` for `hsfl`.
+3. Final QA / release for 1.7.0 when ready.
 
 ## Key files
 

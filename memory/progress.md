@@ -40,7 +40,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Open
 
-- [ ] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (in progress on worktree `hsfl`).
+- [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (applied from `hsfl` / `c543b19`).
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 
