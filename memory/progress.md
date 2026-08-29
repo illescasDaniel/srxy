@@ -37,10 +37,15 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj`.
 - [x] Faster GUI launch — application-layer shared helpers (GUI stops importing CLI); deferred capability probe; lazy OCR/transcribe/cryptography/rapidfuzz on cold path; `SRXY_STARTUP_TIMING=1`. Offscreen: `cli_imported` ~0.30s→~0.10s, `qml_loaded` ~1.06s→~0.73–0.92s. Worktree `78e5153`.
 - [x] Splash screen + PySide6/QML startup — early `Splash.qml` (`Qt.SplashScreen`), defer controller after splash paint, `Main.qml` hidden until `_reveal_main`, branding (name/author/version) + staged status, `QQuickWindow.setDefaultAlphaBuffer(False)`, `SRXY_NO_SPLASH=1`. Docs: [gui.md](../docs/gui.md#startup-splash) (limits + disable/remove), [development.md](../docs/development.md) timing envs. Offscreen: `splash_shown` ~0.43s, `qml_loaded` ~0.92s. Worktree `b8e0902`.
+- [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED. Committed (`09aac8d`).
+- [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (`c543b19`).
 
 ### Open
 
+<<<<<<< HEAD
 - [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (applied from `hsfl` / `c543b19`).
+=======
+>>>>>>> cursor/943ab584
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 

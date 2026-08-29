@@ -19,6 +19,8 @@ from __future__ import annotations
 import os
 import sys
 
+import pytest
+
 
 INTERVAL = int(os.environ.get("LIB_PYTEST_PROGRESS_INTERVAL", "25"))
 
@@ -48,6 +50,7 @@ def pytest_collection_finish(session: object) -> None:
 		_state["total"].update(item.nodeid for item in session.items)
 
 
+@pytest.hookimpl(optionalhook=True)
 def pytest_xdist_node_collection_finished(node: object, ids: list[str]) -> None:
 	if not _state["worker"]:
 		_state["total"].update(ids)

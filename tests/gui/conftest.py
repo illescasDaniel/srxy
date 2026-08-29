@@ -3,11 +3,17 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.isolation import apply_isolated_cache_environment
 
 from srxy.adapters.inbound.gui import capabilities
 
 
 _GUI_ROOT = Path(__file__).resolve().parent
+
+
+@pytest.fixture(autouse=True)
+def isolated_gui_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	yield from apply_isolated_cache_environment(tmp_path, monkeypatch)
 
 
 @pytest.fixture(autouse=True)

@@ -15,15 +15,31 @@ After writing or changing code, run the quality gate until it passes cleanly.
 1. **Autofix** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix -Quiet` (or `uv run task checks-win-fix-quiet`)
 2. **Verify** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Quiet` (or `uv run task checks-win-quiet`)
 
-`checks-win.ps1` mirrors the bash gate (same steps, markers, lock file). Light verify steps run **sequentially** on Windows (bash still parallelizes them). ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Pytest stall/wall watchdogs from `pytest.sh` are not ported; `pytest-timeout` still applies.
+`checks-win.ps1` mirrors the bash gate (same steps, buckets, lock file). Light verify steps and pytest buckets run **concurrently** on both platforms. ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Both gates apply a wall-clock watchdog to pytest (exit 124 on timeout); bash also has a stall (no-output) watchdog.
 
 Use the project env with `uv sync --extra semantic` (default `dev` dependency group); on Windows also `--extra windows`.
 
-The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest.
+The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest buckets. Without `--fix`, light steps and pytest **overlap**.
 
-Locally, pytest runs in two passes: a **safe parallel** pass (`unit and not semantic and not transcribe and not gui and not tui and not integration and not ocr`, workers capped at `min(4, nproc)` unless `LIB_PYTEST_WORKERS` is set) then a **serial heavy** pass (`-n 0`, `QT_QPA_PLATFORM=offscreen`) for `semantic` / `transcribe` / `gui` / `tui` / `integration` / `ocr` (plus `integration_full` / `transcribe_device_matrix` on `--full`). Day-to-day local runs also use `--testmon-forceselect --ff` on the safe pass only (change-aware; `.testmondata` is gitignored). Coverage is enabled only for `--full` / `--full+cpu` (serial pass uses `--cov-append`). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed. CI runs a single parallel pass: `(unit or gui) and not integration and not semantic and not transcribe` (`CI=true`); no testmon, no coverage, no serial follow-up. OCR orientation tests stay in the CI parallel pass (they carry a 300s timeout).
+### Pytest buckets and auto-scope
 
-Local verify (no `--fix`) runs light steps (Ruff, shell, basedpyright, pip-audit, build) **in parallel**, then **pytest alone** (safe parallel + serial heavy). CI skips the serial follow-up (`CI=true`).
+Day-to-day default is **auto-scope** from `git diff` / `git status`:
+
+| Bucket | Paths | How it runs |
+|--------|-------|-------------|
+| `core` | `tests/unit`, `tests/cli` | xdist (`-n` up to 8), `-p no:pytest-qt` |
+| `gui` | `tests/gui` | `-n 0`, `QT_QPA_PLATFORM=offscreen`, pytest-qt on |
+| `tui` | `tests/tui` | `-n 0`, `-p no:pytest-qt` |
+| `heavy` | `tests/integration` | `-n 0`, models/GPU, `-p no:pytest-qt` |
+
+- `core` always runs. Touching `inbound/gui/` / `shared/qml/` / `installer/` → `gui`; `inbound/tui/` → `tui`; semantic/transcribe/ocr/models/fixtures → `heavy`. Ambiguous paths (`pyproject.toml`, `tests/conftest.py`, `scripts/quality/`, …) or no git → all buckets.
+- Override with `--scope=core,gui` / `--gui` / `--tui` / `--cli` / `--all` (Windows: `-Scope`, `-Gui`, `-Tui`, `-Cli`, `-All`). `--full` implies `--all` and adds `integration_full` / `transcribe_device_matrix` plus coverage.
+- Per-bucket testmon (`.testmondata-core` etc.) + `--ff` on day-to-day only (not CI / not `--full`).
+- `pip-audit` / wheel build skip via `.gate-cache/` when inputs are unchanged (force with `--no-cache`).
+- Prefer scoped tasks when you know the surface: `checks-gui-quiet`, `checks-tui-quiet`, `checks-core-quiet`, `checks-win-gui-quiet`, …
+- Use `--all` / `checks-all-quiet` before a commit that touches shared code, and `--full` / `checks-full-quiet` before release.
+
+CI (`CI=true`) selects `core+gui+tui` (no heavy). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed.
 
 The gate takes an exclusive flock on `.srxy-quality-gate.lock` (repo root). A second overlapping `checks.sh` exits immediately with an error instead of spawning another pytest tree.
 
@@ -35,11 +51,11 @@ Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` whe
 
 ### Running the gate (agent pitfalls)
 
-- Pytest streams live under the gate (including `CI=true`). After `[6/6] pytest` you should see a `pytest: starting (workers=…)` banner and then `[gwN] PASSED` lines (verbose) or `[gate] N/total` progress lines (`--quiet`). A long blank gap means a real stall — the stall/wall watchdog will kill the run (exit 124) instead of hanging forever.
-- Override limits with `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS` if needed.
+- Pytest streams live under the gate (including `CI=true`). After the pytest step you should see `pytest buckets: …` and then `[gate] N/total` progress lines (`--quiet`) or per-test lines. A long blank gap means a real stall — the wall/stall watchdog will kill the run (exit 124) instead of hanging forever.
+- Override limits with `LIB_PYTEST_WALL_SECONDS` / `LIB_PYTEST_STALL_SECONDS` if needed. Serialize buckets with `LIB_GATE_BUCKET_CONCURRENCY=1` when debugging flakiness.
 - **Do not** pipe the gate through `tail` (or anything that only prints on EOF). Prefer running `./scripts/quality/checks.sh` / `--quiet` directly, or `tee` a log **without** truncating live output. With `| tee … | tail -N`, a healthy but long verify looks hung because nothing appears until the process exits.
 - If the gate refuses to start because of the lock file, another gate is still running — stop leftover `checks.sh` / `checks-win.ps1` / pytest processes for this repo, then retry. Do not start a second gate in parallel.
-- If verify seems stuck despite the lock: inspect the process tree and the full log. A clean re-run usually finishes in tens of seconds under `CI=true`.
+- If verify seems stuck despite the lock: inspect the process tree and the full log. A clean scoped re-run usually finishes in tens of seconds under `CI=true`.
 - Optional when GPU contention is noisy: `CUDA_VISIBLE_DEVICES="" ./scripts/quality/checks.sh` (or the same for `CI=true` local mimic runs). On Windows PowerShell: `$env:CUDA_VISIBLE_DEVICES = ''; $env:CI = 'true'; .\scripts\quality\checks-win.ps1`.
 - Run the gate **outside the sandbox** (`required_permissions: ["all"]`). The sandbox blocks writes to per-user dirs (`~/.cache/srxy/cache.db`, `~/.local/share/srxy`, `~/.config/srxy/settings.json`) and blocks Hugging Face network checks, so an in-sandbox run fails with `sqlite3.OperationalError: attempt to write a readonly database` and Hugging Face `403` — both environmental, not code bugs. If the light steps pass and pytest only shows those, re-run outside the sandbox. To stay sandboxed (narrow repro only), redirect the writable dirs into the workspace first: `export SRXY_CACHE_DIR="$PWD/.sandbox/cache" XDG_CACHE_HOME="$PWD/.sandbox/cache" XDG_DATA_HOME="$PWD/.sandbox/data" XDG_CONFIG_HOME="$PWD/.sandbox/config" HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`, then run `./scripts/quality/checks.sh`.
 

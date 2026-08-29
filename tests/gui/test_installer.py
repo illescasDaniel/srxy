@@ -23,7 +23,7 @@ from srxy.adapters.inbound.installer.uninstall import discover_default_prefix, u
 from srxy.application.install_paths import MANIFEST_NAME
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
+pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
 
 
 def test_given_manifest_when_writing_and_reading_then_round_trips(tmp_path: Path):

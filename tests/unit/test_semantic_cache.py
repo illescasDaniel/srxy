@@ -17,7 +17,7 @@ from srxy.application.matching.semantic import SemanticMatcher, reset_semantic_m
 from srxy.domain.progress import ActivityCallback
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.semantic, pytest.mark.usefixtures("mock_semantic_model")]
+pytestmark = [pytest.mark.unit, pytest.mark.usefixtures("mock_semantic_model")]
 
 
 def setup_function():
@@ -102,7 +102,6 @@ def test_given_pdf_lines_when_iterating_twice_then_extracts_once(tmp_path: Path,
 	assert cache_get(CACHE_KIND_DOCUMENT_TEXT, content_hash, ".pdf:ocr=1") is not None
 
 
-@pytest.mark.transcribe
 def test_given_empty_transcript_cache_when_iterating_then_skips_transcription(
 	tmp_path: Path,
 	monkeypatch: pytest.MonkeyPatch,

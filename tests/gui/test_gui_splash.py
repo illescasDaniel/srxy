@@ -15,7 +15,7 @@ from srxy.adapters.inbound.gui.splash import (
 from srxy.application.branding import AUTHOR
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
+pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
 
 
 @pytest.fixture(scope="module")

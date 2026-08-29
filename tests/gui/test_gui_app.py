@@ -12,7 +12,7 @@ from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
 
 
-pytestmark = [pytest.mark.unit, pytest.mark.xdist_group("gui")]
+pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
 
 
 @pytest.fixture(scope="module")

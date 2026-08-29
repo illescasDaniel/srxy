@@ -92,12 +92,13 @@ Requires [uv](https://docs.astral.sh/uv/).
 ```bash
 uv sync --extra semantic
 uv run task checks-fix
-uv run task checks              # day-to-day
+uv run task checks              # day-to-day (auto-scope)
+uv run task checks-gui          # core+gui when working on the GUI
 uv run task checks-full         # before release
 uv run task checks-full-cpu     # + forced-CPU transcribe matrix
 ```
 
-CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).
+CI runs `core+gui+tui` buckets (no heavy/real-model suite). Details: [docs/development.md](docs/development.md).
 
 Agent memory bank (per-branch project state): [memory/README.md](memory/README.md).
 
