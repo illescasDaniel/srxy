@@ -30,9 +30,11 @@ _Last updated: 2026-08-29_
 - [x] Windows dark-mode GUI visual QA (theme / results `SplitView` grips) — confirmed OK by user (2026-08-29).
 - [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
+- [x] Faster GUI launch — application-layer shared helpers (GUI stops importing CLI); deferred capability probe; lazy OCR/transcribe/cryptography/rapidfuzz on cold path; `SRXY_STARTUP_TIMING=1`. Offscreen: `cli_imported` ~0.30s→~0.10s, `qml_loaded` ~1.06s→~0.73–0.92s. Merged `feature/fixes_1.6.6`; `checks-win-quiet` PASSED.
 
 ### Open
 
+- [ ] Splash screen + PySide6/QML startup improvements (next on this worktree).
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 
 ## Bugs / sub-tasks discovered

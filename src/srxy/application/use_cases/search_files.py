@@ -6,10 +6,14 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from srxy.adapters.outbound.content.file_walker import is_names_only_path
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.matching.composite import CompositeMatcher
 from srxy.application.search_control import SearchCancelled
+from srxy.application.search_defaults import (
+	DEFAULT_MAX_FILE_SIZE as DEFAULT_MAX_FILE_SIZE,
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+	suggest_max_file_size as suggest_max_file_size,
+)
 from srxy.application.search_options import search_source_required_message
 from srxy.application.utils import normalize_text, query_words, word_pair_match_allowed
 from srxy.domain.file_query import (
@@ -151,14 +155,6 @@ def content_location_kind(path: Path) -> str:
 	if suffix == ".pptx":
 		return "slide"
 	return "line"
-
-
-DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
-
-
-def suggest_max_file_size(file_size_bytes: int) -> int:
-	chunk = 1_048_576
-	return max(file_size_bytes + 1, ((file_size_bytes // chunk) + 1) * chunk)
 
 
 # Thin wrappers kept for unit-test patch targets.

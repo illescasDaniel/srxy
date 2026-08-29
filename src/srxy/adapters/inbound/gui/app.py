@@ -23,6 +23,7 @@ from srxy.adapters.inbound.gui.qt_theme import (
 	prefer_native_file_dialogs,
 	shared_qml_import_path,
 )
+from srxy.application.startup_timing import exit_after_qml, mark
 from srxy.bootstrap import build_app_services
 
 
@@ -41,6 +42,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	from srxy.i18n.qt import install_qt_translator
 
 	install_qt_translator(app, get_language())
+	mark("qt_ready")
 	engine = QQmlApplicationEngine()
 	engine.addImportPath(shared_qml_import_path())
 	services = build_app_services(desktop=QtDesktopAdapter())
@@ -49,6 +51,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 		search_runner=services.search_runner,
 		desktop=services.desktop,
 	)
+	mark("controller_ready")
 	app.aboutToQuit.connect(controller.shutdown)
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
@@ -57,7 +60,16 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	if not engine.rootObjects():
 		print("error: failed to load GUI", file=sys.stderr)
 		return 2
+	mark("qml_loaded")
 	apply_icon_to_windows(engine.rootObjects())
+	if exit_after_qml():
+		# Benchmark path: tear down without entering the interactive event loop.
+		for root in engine.rootObjects():
+			root.deleteLater()
+		engine.deleteLater()
+		app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+		app.processEvents()
+		return 0
 	if auto_start and (args.query or "").strip():
 		controller.startSearch()
 	code = app.exec()

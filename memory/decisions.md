@@ -7,6 +7,11 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** Launching the GUI logged `QML AccentButton: Binding loop detected for property "foreground"` (Search button). `AccentButton` bound `palette.buttonText: control.foreground` while `foreground` read `control.palette.placeholderText` / `control.palette.button` (disabled / non-accent paths). Any write to a palette role dirties the whole group and re-triggers those reads.
 - **Decision:** Resolve disabled and non-accent face colours from a sibling `SystemPalette` (`refPalette`) that we never write to; keep writing `palette.buttonText` from `foreground` for macOS/Fusion IconLabels.
 - **Rationale:** Breaks the read/write cycle on the same palette object without dropping the `buttonText` override that fixes black labels on Aqua. Existing GUI load test already asserts no binding-loop warnings.
+## 2026-08-29 — GUI cold-start: application-layer boundary + deferred probe
+
+- **Context:** GUI launch was ~1.0–1.1s to `Main.qml` (offscreen Windows), dominated by eager CLI/search imports (OCR/semantic/transcribe/cache/rapidfuzz) before first paint. FluentWinUI3 stays; SrxyLauncher is installer-only; splash deferred.
+- **Decision:** (1) Shared light modules under `application/` (`search_defaults`, `skipped_file_warnings`, `search_messages`, `startup_timing`); GUI/TUI/deps_preflight no longer import `adapters.inbound.cli` for helpers. (2) CLI/`search_runner`/capability/bootstrap adapters use function-local imports for heavy outbound stacks; `cryptography.fernet` deferred inside cache encrypt/decrypt. (3) `SearchController` starts with `default_capabilities()` + `_capabilities_probing`, then `QTimer.singleShot(0, refreshCapabilities)`. (4) Opt-in `SRXY_STARTUP_TIMING=1` (+ `SRXY_STARTUP_EXIT=1` for benchmark quit after QML).
+- **Rationale:** Measured wins — `cli_imported` ~0.30s → ~0.10s; `qml_loaded` ~1.06s → ~0.73–0.92s depending on env warmth. Keeps first paint free of OCR/transcribe/search_files/cryptography/rapidfuzz. Regression: `tests/unit/test_gui_startup_imports.py`. Gate: `checks-win-quiet` PASSED.
 
 ## 2026-08-29 — Search stale baseline only after successful finish
 

@@ -9,30 +9,10 @@ from importlib.metadata import PackageNotFoundError, version
 from pathlib import Path
 from typing import IO, Callable, TextIO
 
-from srxy.adapters.outbound.models.model_store import (
-	ensure_semantic_image_model,
-	ensure_semantic_text_model,
-	ensure_transcribe_model,
-	semantic_image_model_missing_message,
-	semantic_text_model_missing_message,
-	transcribe_model_missing_message,
-)
-from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
-from srxy.adapters.outbound.semantic.semantic_image import (
+from srxy.application.search_defaults import (
+	DEFAULT_MAX_FILE_SIZE,
 	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
-	is_semantic_image_available,
-	semantic_image_unavailable_message,
-)
-from srxy.adapters.outbound.transcribe.transcribe_text import (
 	DEFAULT_TRANSCRIBE_THRESHOLD,
-	ffmpeg_available,
-	ffmpeg_unavailable_message,
-	transcribe_deps_installed,
-	transcribe_unavailable_message,
-)
-from srxy.application.matching.semantic import (
-	semantic_deps_unavailable_message,
-	sentence_transformers_installed,
 )
 from srxy.application.search_formatting import (
 	format_flat,
@@ -45,7 +25,11 @@ from srxy.application.search_formatting import (
 	iter_grouped_line_displays,
 	match_labels,
 )
-from srxy.application.use_cases.search_files import DEFAULT_MAX_FILE_SIZE, suggest_max_file_size
+from srxy.application.search_messages import format_no_matches_message
+from srxy.application.skipped_file_warnings import (
+	format_skipped_file_warning,
+	format_skipped_file_warnings,
+)
 from srxy.application.utils import format_match_preview
 from srxy.domain.file_query import FileQ, FileQueryParseError
 from srxy.domain.models import FileSearchResult, SkippedFile
@@ -97,56 +81,6 @@ def normalize_max_file_size(value: int | None) -> int | None:
 	if value is not None and value <= 0:
 		return None
 	return value
-
-
-def format_no_matches_message(query: str, path: Path | str) -> str:
-	from srxy.domain.file_query import format_query_for_display
-
-	return f'No matches for "{format_query_for_display(query)}" in {Path(path).expanduser()}'
-
-
-def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int | None) -> str:
-	if skipped.reason == "ocr_too_large":
-		from srxy.adapters.outbound.ocr.ocr_text import ocr_max_file_size
-
-		limit = ocr_max_file_size()
-		limit_label = f"{limit:,}" if limit is not None else "limit"
-		return (
-			f"warning: skipped OCR in {skipped.path.as_posix()} "
-			f"({skipped.size_bytes:,} bytes > --max-ocr-file-size {limit_label})\n"
-			f"  hint: increase --max-ocr-file-size or unset SRXY_OCR_MAX_FILE_SIZE"
-		)
-	if skipped.reason == "transcribe_too_large":
-		from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_max_file_size
-
-		limit = transcribe_max_file_size()
-		limit_label = f"{limit:,}" if limit is not None else "limit"
-		return (
-			f"warning: skipped transcription in {skipped.path.as_posix()} "
-			f"({skipped.size_bytes:,} bytes > --max-transcribe-file-size {limit_label})\n"
-			f"  hint: increase --max-transcribe-file-size or unset SRXY_TRANSCRIBE_MAX_FILE_SIZE"
-		)
-	if skipped.reason == "transcribe_no_speech":
-		return f"warning: skipped transcription in {skipped.path.as_posix()} (no speech detected after retry)"
-	if skipped.reason == "transcribe_failed":
-		return f"warning: skipped transcription in {skipped.path.as_posix()} (transcription failed)"
-
-	suggested = suggest_max_file_size(skipped.size_bytes)
-	return (
-		f"warning: skipped content search in {skipped.path.as_posix()} "
-		f"({skipped.size_bytes:,} bytes > --max-file-size {max_file_size:,})\n"
-		f"  hint: rerun with --max-file-size {suggested}"
-	)
-
-
-def format_skipped_file_warnings(skipped_files: list[SkippedFile], max_file_size: int | None) -> str:
-	if not skipped_files:
-		return ""
-
-	lines: list[str] = []
-	for skipped in skipped_files:
-		lines.append(format_skipped_file_warning(skipped, max_file_size))
-	return "\n".join(lines)
 
 
 def _terminal_size(stream: TextIO) -> tuple[int, int]:
@@ -720,6 +654,30 @@ def run_preflight(
 	interactive: bool,
 	prompt_yes: Callable[[str], bool] | None = None,
 ) -> str | None:
+	from srxy.adapters.outbound.models.model_store import (
+		ensure_semantic_image_model,
+		ensure_semantic_text_model,
+		ensure_transcribe_model,
+		semantic_image_model_missing_message,
+		semantic_text_model_missing_message,
+		transcribe_model_missing_message,
+	)
+	from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
+	from srxy.adapters.outbound.semantic.semantic_image import (
+		is_semantic_image_available,
+		semantic_image_unavailable_message,
+	)
+	from srxy.adapters.outbound.transcribe.transcribe_text import (
+		ffmpeg_available,
+		ffmpeg_unavailable_message,
+		transcribe_deps_installed,
+		transcribe_unavailable_message,
+	)
+	from srxy.application.matching.semantic import (
+		semantic_deps_unavailable_message,
+		sentence_transformers_installed,
+	)
+
 	apply_args_to_env(args)
 
 	if _args_want_ocr(args) and not is_ocr_available():
@@ -875,6 +833,7 @@ def main(argv: list[str] | None = None) -> int:
 	parser = build_parser()
 	args = parser.parse_args(argv)
 	from srxy.application.settings import set_language_setting
+	from srxy.application.startup_timing import mark
 	from srxy.i18n import resolve_language, set_language
 
 	if getattr(args, "language", None):
@@ -887,6 +846,7 @@ def main(argv: list[str] | None = None) -> int:
 	if should_use_gui(args):
 		from srxy.adapters.inbound.gui import run_gui
 
+		mark("gui_selected")
 		return run_gui(args, auto_start=auto_start)
 
 	if should_use_tui(args):
