@@ -194,6 +194,8 @@ uv tool install 'srxy[semantic]'
 
    **GPU** (semantic search and transcription): default Windows installs pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first. **Important for developers:** `uv sync --extra semantic` also reinstalls the CPU wheel and will **undo** a prior CUDA install — use `uv run task sync-win` (or `scripts/dev/ensure-windows-cuda-torch.ps1` after sync) on NVIDIA machines. A stderr line like `warning: no GPU found; CLIP image semantic search will use CPU` with a real GPU almost always means the venv still has `torch…+cpu`.
 
+   The **desktop / offline Windows installer** does this automatically when smarter-search (semantic) is selected and an NVIDIA GPU is detected: after `uv pip install 'srxy[semantic,windows]'` it reinstalls CUDA torch into the prefix `.venv` (same `cu130` index, with `cu126` fallback). Override with `SRXY_SKIP_CUDA_TORCH=1` if needed.
+
    See [pytorch.org/get-started](https://pytorch.org/get-started/locally/) (Windows → Pip → CUDA). Use **CUDA 13.0** (`cu130`) for most recent GPUs; use **CUDA 12.6** (`cu126`) if `cu130` fails or your GPU/driver is older.
 
    **uv / venv** (recommended for GPU):

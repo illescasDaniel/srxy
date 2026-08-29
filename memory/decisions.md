@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Windows installer installs CUDA PyTorch after semantic
+
+- **Context:** Desktop/offline Windows installs used `uv pip install 'srxy[semantic,windows]'`, which resolves CPU-only torch from PyPI. GPU-recommended installs then ran CLIP/semantic on CPU despite NVIDIA detection for the setup type.
+- **Decision:** Add `installer/cuda_torch.py` and a `cuda_torch` install phase (after package) when semantic is selected on Windows and `has_nvidia_gpu()` is true. Reinstall torch/torchvision/torchaudio from the PyTorch `cu130` index (`cu126` fallback). Dev checkouts keep `scripts/dev/ensure-windows-cuda-torch.ps1` / `sync-win`; the installer uses the Python helper (no PowerShell dependency for end users).
+- **Rationale:** Same root cause as the agent/dev venv trap; end users cannot be expected to run a manual `uv pip` after Setup.
+
 ## 2026-08-29 — Windows: CUDA torch must be re-applied after every uv sync
 
 - **Context:** On Windows, `uv sync --extra semantic` installs PyPI's CPU-only `torch…+cpu`. A later `uv sync` also **uninstalls** a previously installed CUDA wheel (`+cu130`) and restores CPU torch. Agents/gates then hit `warning: no GPU found; CLIP image semantic search will use CPU` despite an RTX GPU, making heavy tests far slower.

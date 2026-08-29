@@ -71,7 +71,7 @@ Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/
 
 - Choose **Install or update**, **Reinstall**, or **Uninstall**.
 - Acknowledge the privacy notice, then pick a setup type:
-  - **Recommended (GPU)** — Tesseract, ffmpeg, and smarter-search packages (no model prefetch)
+  - **Recommended (GPU)** — Tesseract, ffmpeg, and smarter-search packages (no model prefetch); on Windows this also installs CUDA PyTorch into the prefix venv when an NVIDIA GPU is detected
   - **Recommended (no GPU)** — Tesseract and ffmpeg only
   - **Simple** — app only (not recommended)
   - **Complete** — recommended GPU set plus AI model download

@@ -4,20 +4,17 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- Worktree `9x6r` / `cursor/943ab584` — quality-gate speedup + Windows CUDA-torch ensure (apply-worktree paused).
+- Worktree `9x6r` / `cursor/943ab584` — applying into `feature/fixes_1.6.6` (CUDA torch for Windows installer + prior gate/sync-win work).
 
 ## Current focus
 
-- Fixed CPU-only torch in this worktree's `.venv` (`2.13.0+cu130`, cuda=True on RTX 4070).
-- Docs/skills/gate hook added so `uv sync` cannot silently leave heavy tests on CPU again.
-- `/apply-worktree-srxy` was interrupted for this GPU fix — resume when asked.
+- `/apply-worktree-srxy` into main checkout.
 
-## Done this session
+## Manual QA (user)
 
-- Diagnosed `torch 2.13.0+cpu` despite NVIDIA GPU; `uv sync` proven to wipe CUDA wheels.
-- Installed CUDA torch; added `scripts/dev/ensure-windows-cuda-torch.ps1`, `sync-win.ps1`/`.cmd`, Taskipy `sync-win`, gate auto-ensure on `heavy`, AGENTS/docs/skill updates.
+- **Verify installers after 1.7.0 changes**, especially the **Windows offline installer**: Recommended (GPU) should install CUDA PyTorch into the prefix `.venv` (`+cu130` / `torch.cuda.is_available()` True on NVIDIA). Also smoke macOS/Linux installers for 1.7.0 regressions (splash, theme, semantic option).
 
 ## Next steps
 
-1. Resume `/apply-worktree-srxy` when user asks (commit this GPU-fix work on the worktree branch first if dirty).
-2. Optional: push branch / open PR into `feature/fixes_1.6.6` when asked.
+1. Finish apply-worktree (merge + parent gate).
+2. User: manual Windows (and other) installer verification for 1.7.0.
