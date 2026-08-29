@@ -32,7 +32,7 @@ def test_given_installer_meta_when_loaded_then_has_version_and_min_srxy():
 
 	# then
 	assert meta.installer_version == "16"
-	assert version_at_least(meta.min_srxy_version, "1.6.6")
+	assert version_at_least(meta.min_srxy_version, "1.7.0")
 
 
 def test_given_versions_when_comparing_then_orders_correctly():

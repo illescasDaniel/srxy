@@ -1,11 +1,14 @@
 [project]
 name = "srxy"
-version = "1.6.6"
+version = "1.7.0"
 description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+	{ name = "Daniel Illescas Romero" },
+]
 dependencies = [
 	"cryptography>=44.0",
 	"exifread>=3.5",

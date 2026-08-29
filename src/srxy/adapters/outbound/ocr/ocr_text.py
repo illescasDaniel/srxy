@@ -16,11 +16,11 @@ if TYPE_CHECKING:
 
 from srxy.adapters.outbound.documents.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
 from srxy.application.install_paths import resolve_tessdata_prefix, resolve_tesseract_binary
+from srxy.application.search_defaults import DEFAULT_OCR_MAX_FILE_SIZE
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
 DEFAULT_MAX_IMAGE_DIMENSION = 4000
-DEFAULT_OCR_MAX_FILE_SIZE = 50 * 1024 * 1024
 MIN_OCR_QUALITY_SCORE = 80.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
 SPARSE_TEXT_THRESHOLD = 20

@@ -22,7 +22,6 @@ def mock_semantic_model(monkeypatch: pytest.MonkeyPatch):
 		return True
 
 	monkeypatch.setattr("srxy.application.matching.semantic.sentence_transformers_installed", always_installed)
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.sentence_transformers_installed", always_installed)
 	monkeypatch.setattr(
 		"srxy.adapters.outbound.semantic.semantic_image.sentence_transformers_installed", always_installed
 	)

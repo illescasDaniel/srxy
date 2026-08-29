@@ -43,6 +43,8 @@ def _load_main(controller: SearchController) -> tuple[QQmlApplicationEngine, QOb
 	assert roots, "failed to load Main.qml"
 	window = roots[0]
 	assert isinstance(window, QObject)
+	# Main.qml stays hidden until run_gui reveals it; tests need a visible window for layout.
+	window.setProperty("visible", True)
 	return engine, window
 
 

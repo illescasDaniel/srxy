@@ -4,18 +4,19 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- Worktree `9x6r` / `cursor/943ab584` — faster quality gate committed; merging latest `feature/fixes_1.6.6`.
+- Worktree `9x6r` / `cursor/943ab584` — quality-gate speedup + merge from `feature/fixes_1.6.6` (1.7.0 / splash / cold-start / skills).
 
 ## Current focus
 
-Merge `feature/fixes_1.6.6` into this branch and resolve conflicts.
+Finish merge conflict resolution and verify the quiet gate.
 
 ## Done this session
 
-- Faster quality gate end-to-end (buckets, auto-scope, Windows parallelization, test reorg, docs/CI/tasks).
-- Verified: `checks-win-fix-quiet` / `checks-win-quiet` / scoped core+gui PASSED.
+- Committed faster quality gate (`09aac8d`).
+- Merging `feature/fixes_1.6.6` (version 1.7.0, splash, cold-start, preview fonts, worktree skills).
+- Kept shared `tests/isolation.py`; retargeted model stubs to `model_store` after cold-start move.
 
 ## Next steps
 
-1. Finish merge from `feature/fixes_1.6.6`; fix conflicts (especially quality scripts / tests / CI / memory).
-2. Re-run quiet gate after merge if scripts or tests conflicted.
+1. Complete merge commit after resolving memory + conftest conflicts.
+2. Run `checks-win-quiet` (or scoped quiet gate) and fix any post-merge fallout.

@@ -27,7 +27,6 @@ from textual.widgets import (
 	Static,
 )
 
-from srxy.adapters.inbound.cli.cli import format_no_matches_message, format_skipped_file_warnings
 from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 from srxy.adapters.inbound.tui.labels import format_tui_match_labels
 from srxy.adapters.inbound.tui.messages import (
@@ -57,6 +56,7 @@ from srxy.application.search_formatting import (
 	format_score_percent,
 	iter_grouped_line_displays,
 )
+from srxy.application.search_messages import format_no_matches_message
 from srxy.application.search_options import (
 	SearchOptions,
 	apply_search_options_to_args,
@@ -64,6 +64,7 @@ from srxy.application.search_options import (
 	search_options_from_args,
 )
 from srxy.application.search_runner_adapter import AdaptiveSearchRunner
+from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import file_q_to_dict

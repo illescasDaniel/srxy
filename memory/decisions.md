@@ -7,6 +7,17 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** Day-to-day `checks` was slow on Windows: every pytest process imported PySide6 via pytest-qt; the "safe" pass still collected Qt/Textual `unit` files; the heavy serial pass (~123 tests / ~4:44) had no change-awareness; Windows light steps ran sequentially and pytest stdout was piped per-line through PowerShell.
 - **Decision:** (1) Path-based pytest buckets (`core`/`gui`/`tui`/`heavy`) as separate processes, longest-job-first, overlapping light steps. (2) Auto-scope from `git diff`/`status` with `--scope`/`--gui`/`--tui`/`--all` overrides; `--full` ⇒ all. (3) Move Qt/Textual/real-backend tests under `tests/gui|tui|integration`; shared isolation in `tests/isolation.py` (not root conftest). (4) `-p no:pytest-qt` everywhere except `gui`; per-bucket testmon via `TESTMON_DATAFILE`; `.gate-cache` for pip-audit/build. (5) Windows: parallel light steps via `Start-Process` (not `Start-Job`), inherited pytest stdout, targeted shell-script walk, direct `.venv\Scripts` exes, wall watchdog, `checks-win.cmd` prefers `pwsh`.
 - **Rationale:** Marker deselection happens after import, so only path selection removes Qt/torch cost from workers. Process-level buckets avoid the historical xdist shared-state mess while still overlapping wall clock. Auto-scope keeps the default correct rather than merely fast.
+## 2026-08-29 — Ship as 1.7.0 (skip 1.6.6 patch)
+
+- **Context:** Branch `feature/fixes_1.6.6` accumulated Fluent/Material/macOS UI work, AccentButton, preview find/highlight, installers, search streaming, and permission-denied skips — more than a patch relative to 1.6.5.
+- **Decision:** Bump `project.version` and both `min_srxy_version` values to **1.7.0** instead of releasing 1.6.6. Document the full bump checklist in `docs/development.md` (**Bumping the release version**). Leave `installer_version` at `16` (installer capability stamp unchanged by this renumber alone).
+- **Rationale:** Semver minor for user-visible UI/feature scope; online installers should require ≥1.7.0 once that release is on PyPI.
+
+## 2026-08-29 — Preview RichText uses concrete monospace faces, not CSS `monospace`
+
+- **Context:** Opening some file previews on Windows logged `DirectWrite: CreateFontFaceFromHDC() failed` for `8514oem` / `Fixedsys` (`styleHint=5` TypeWriter), then cascades of `OpenType support missing` while Qt probed Tahoma/Arial/CJK/emoji fallbacks. Preview HTML forced `font-family:monospace` while QML already set Consolas/Menlo on the `TextArea`.
+- **Decision:** Emit platform-specific faces from `preview_font_family()` in preview HTML (Windows `Consolas`, macOS `Menlo`, else `monospace`), matching QML. Do not suppress `qt.qpa.fonts` / `qt.text.font.db`, and do not switch to FreeType/`nodirectwrite`.
+- **Rationale:** Bare CSS `monospace` on Windows maps to legacy bitmap fonts DirectWrite cannot load; naming a real TrueType face stops that cascade. Log filtering would hide real font issues; FreeType would change global text rendering.
 
 ## 2026-08-29 — Permission denied (Error 13) → skip + warn, prune unlistable dirs
 
@@ -14,11 +25,28 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Decision:** Treat access-denied as `SkippedFile(reason="permission_denied")`. Walker records unlistable dirs via `os.walk(onerror=…)`. Per-file search catches access-denied and, if the parent directory is not listable, marks that prefix so later paths under it are not opened. Warnings reuse the existing skipped-files ⚠ UI via `format_skipped_file_warning`. Always pass `skipped_files` from `execute_search` (including names-only) so permission skips are retained.
 - **Rationale:** Matches size/OCR skip UX; avoids wasting work on known-denied subtrees without parallelizing the walk or changing QML.
 
+## 2026-08-29 — Splash shows branding + staged status
+
+- **Context:** Splash only showed icon + name + BusyIndicator. Author was not in `pyproject.toml` (only LICENSE). Users wanted name, author, version, and Loading / progress copy.
+- **Decision:** Add `authors` to `pyproject.toml` + `AUTHOR` in `branding.py`. New `SplashBridge` QObject exposes `appName` / `author` / `version` / `status`; `run_gui` updates status between translations → services → controller → Main.qml. App window icon applied after first splash paint.
+- **Rationale:** Metadata-driven author/version stay in sync with packaging; staged status reuses the existing splash window without a second UI path. Further “instant splash” options (native pixmap / pre-Qt child process) deferred — see activeContext notes.
+
+## 2026-08-29 — GUI splash + deferred Main reveal
+
+- **Context:** After import-graph wins, remaining cold-start cost is mostly PySide6 + large `Main.qml`. Users still see a blank gap before the main window. FluentWinUI3 stays; no widgets `QSplashScreen` (app is `QGuiApplication`).
+- **Decision:** (1) Tiny `Splash.qml` `Window` with `Qt.SplashScreen` loaded first; `processEvents` so it can paint. (2) Defer `SearchController` / `build_app_services` / i18n until after splash. (3) `Main.qml` starts `visible: false`; Python `_reveal_main` shows it and closes the splash. (4) `QQuickWindow.setDefaultAlphaBuffer(False)` before any Quick window. (5) `SRXY_NO_SPLASH=1` opt-out.
+- **Rationale:** Improves perceived launch without changing Fluent chrome; keeps splash out of the widget stack; tests that load Main set `visible: true` themselves.
+
 ## 2026-08-29 — AccentButton foreground uses SystemPalette, not control.palette
 
 - **Context:** Launching the GUI logged `QML AccentButton: Binding loop detected for property "foreground"` (Search button). `AccentButton` bound `palette.buttonText: control.foreground` while `foreground` read `control.palette.placeholderText` / `control.palette.button` (disabled / non-accent paths). Any write to a palette role dirties the whole group and re-triggers those reads.
 - **Decision:** Resolve disabled and non-accent face colours from a sibling `SystemPalette` (`refPalette`) that we never write to; keep writing `palette.buttonText` from `foreground` for macOS/Fusion IconLabels.
 - **Rationale:** Breaks the read/write cycle on the same palette object without dropping the `buttonText` override that fixes black labels on Aqua. Existing GUI load test already asserts no binding-loop warnings.
+## 2026-08-29 — GUI cold-start: application-layer boundary + deferred probe
+
+- **Context:** GUI launch was ~1.0–1.1s to `Main.qml` (offscreen Windows), dominated by eager CLI/search imports (OCR/semantic/transcribe/cache/rapidfuzz) before first paint. FluentWinUI3 stays; SrxyLauncher is installer-only; splash deferred.
+- **Decision:** (1) Shared light modules under `application/` (`search_defaults`, `skipped_file_warnings`, `search_messages`, `startup_timing`); GUI/TUI/deps_preflight no longer import `adapters.inbound.cli` for helpers. (2) CLI/`search_runner`/capability/bootstrap adapters use function-local imports for heavy outbound stacks; `cryptography.fernet` deferred inside cache encrypt/decrypt. (3) `SearchController` starts with `default_capabilities()` + `_capabilities_probing`, then `QTimer.singleShot(0, refreshCapabilities)`. (4) Opt-in `SRXY_STARTUP_TIMING=1` (+ `SRXY_STARTUP_EXIT=1` for benchmark quit after QML).
+- **Rationale:** Measured wins — `cli_imported` ~0.30s → ~0.10s; `qml_loaded` ~1.06s → ~0.73–0.92s depending on env warmth. Keeps first paint free of OCR/transcribe/search_files/cryptography/rapidfuzz. Regression: `tests/unit/test_gui_startup_imports.py`. Gate: `checks-win-quiet` PASSED.
 
 ## 2026-08-29 — Stream file listing into search (overlap walk + match)
 

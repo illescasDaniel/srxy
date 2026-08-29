@@ -2,10 +2,9 @@
 
 from __future__ import annotations
 
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import (
+from srxy.application.search_defaults import (
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
 	DEFAULT_TRANSCRIBE_THRESHOLD,
-	format_transcript_timestamp,
 )
 from srxy.application.utils import PreviewHighlight, format_match_preview
 from srxy.domain.models import FileSearchResult, LineMatch
@@ -24,6 +23,12 @@ _LOCATION_LABELS = {
 }
 
 _CONTENT_LOCATION_KINDS = frozenset({"line", "page", "paragraph", "row", "slide"})
+
+
+def format_transcript_timestamp(seconds: int) -> str:
+	total = max(0, int(seconds))
+	minutes, secs = divmod(total, 60)
+	return f"{minutes:02d}:{secs:02d}"
 
 
 def format_location_label(kind: str, number: int) -> str:

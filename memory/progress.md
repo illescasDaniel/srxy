@@ -2,7 +2,9 @@
 
 _Last updated: 2026-08-29_
 
-## v1.6.6 — fixes and improvements
+## v1.7.0 — fixes and improvements
+
+_(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope beyond a patch.)_
 
 ### Done
 
@@ -23,7 +25,7 @@ _Last updated: 2026-08-29_
 - [x] Agent-verbosity quality gate — `--quiet` (Unix) / `-Quiet` (Windows) on `checks.sh`/`checks-win.ps1`: pytest collapses to sparse `[gate] N/total` progress lines (new `scripts/quality/internal/agent_progress.py` plugin), passing light-step logs are suppressed on the verify path, and the heavy pass silences HF/transformers/tqdm noise. Failures still print short tracebacks + `-ra` summary; `--full`/CI unchanged. Day-to-day Taskipy tasks stay verbose; dedicated `*-quiet` tasks (`checks-quiet`/`checks-fix-quiet`/`checks-full-quiet`/`checks-full-cpu-quiet`/`checks-win-quiet`/`checks-win-fix-quiet`/`checks-win-full-quiet`/`checks-win-full-cpu-quiet`) exist for agents, and `AGENTS.md` instructs agents to always use them. Verified: `uv run task checks` (verbose) and `uv run task checks-quiet` (quiet) both PASSED.
 - [x] Native-first `AccentButton` — dropped the custom `Rectangle`/`Text` background+contentItem (and hardcoded 80x32 size) in favour of native chrome recoloured via `highlighted`. Qt 6.11 `DialogButtonBox` calls `setHighlighted(button == defaultButton)` on all children every layout pass, so dialog OK/Yes buttons now set `DialogButtonBox.defaultButton` (plus `AcceptRole`) instead of relying on a `highlighted` binding. `qt_theme.py` pins `QPalette.Accent` to the button accent so FluentWinUI3's highlighted fill matches `SrxyTheme.accent`. Regression test now asserts `highlighted`/`foreground`. Gate passed.
 - [x] QML results ListView warning (`DelegateModel::cancel: index out range`) — `ResultsModel.clear()`/`replace_results()` now use row-based `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of a full `beginResetModel()`, so the delegate model cancels in-flight items with valid indices. Added `tests/unit/test_gui_models.py` (deterministic signal assertions: rows removed/inserted, never `modelReset`) + a GUI regression test in `test_gui_qml_load.py` (drives two search cycles through loaded QML, asserts no `DelegateModel`/`index out range` warning). Gate passed.
-- [x] Version bump `1.6.5` → `1.6.6` — `pyproject.toml` `1.6.6`, `min_srxy_version` `1.6.6` in both `installer_meta.toml` copies, `uv.lock` regenerated, tests synced (`test_updates_path_i18n.py` assertion → `1.6.6`; `test_installer_online.py` mocked PyPI responses → `1.6.6`).
+- [x] Version bump `1.6.5` → `1.6.6` (interim) then **`1.6.6` → `1.7.0`** — skip shipping 1.6.6; `pyproject.toml` `1.7.0`, `min_srxy_version` `1.7.0` in both `installer_meta.toml` copies, `uv.lock` regenerated, tests synced (`test_updates_path_i18n.py` / `test_installer_online.py` → `1.7.0`). Checklist documented in `docs/development.md` → **Bumping the release version**.
 - [x] Full quality gate before release — `checks-fix-quiet` PASSED (ruff/shell/basedpyright/pip-audit/build/pytest all clean, 123 heavy tests in ~4:44; first `checks-quiet` run flagged only a Ruff format issue in the new test file, fixed). Clean cache-free unit pass: 791 passed, 2 skipped.
 - [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`). Committed (`4f3b8e2`, `a3344ed`); visually tested on macOS.
 - [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added. Committed (`8216a59`); visually tested light/dark on Linux.
@@ -31,14 +33,21 @@ _Last updated: 2026-08-29_
 - [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
 - [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Committed (`9e5f08b`).
-- [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED.
+- [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added. Committed (`9e5f08b`).
+- [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj`.
+- [x] Faster GUI launch — application-layer shared helpers (GUI stops importing CLI); deferred capability probe; lazy OCR/transcribe/cryptography/rapidfuzz on cold path; `SRXY_STARTUP_TIMING=1`. Offscreen: `cli_imported` ~0.30s→~0.10s, `qml_loaded` ~1.06s→~0.73–0.92s. Worktree `78e5153`.
+- [x] Splash screen + PySide6/QML startup — early `Splash.qml` (`Qt.SplashScreen`), defer controller after splash paint, `Main.qml` hidden until `_reveal_main`, branding (name/author/version) + staged status, `QQuickWindow.setDefaultAlphaBuffer(False)`, `SRXY_NO_SPLASH=1`. Docs: [gui.md](../docs/gui.md#startup-splash) (limits + disable/remove), [development.md](../docs/development.md) timing envs. Offscreen: `splash_shown` ~0.43s, `qml_loaded` ~0.92s. Worktree `b8e0902`.
+- [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED. Committed (`09aac8d`).
+- [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (`c543b19`).
 
 ### Open
 
+- [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
 
 ## Bugs / sub-tasks discovered
 
+- [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
 - [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.
 - [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.

@@ -3,14 +3,16 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.labels import (
 	filter_label_hits_per_file,
 	filter_label_max_results,
 	filter_label_min_match,
 	filter_label_speech_min,
 	filter_label_visual_min,
+)
+from srxy.application.search_defaults import (
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
 )
 from srxy.application.size_limits import (
 	SizeLimits,

@@ -33,9 +33,18 @@ def apply_isolated_cache_environment(
 	else:
 		monkeypatch.delenv("CI", raising=False)
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "srxy-cache"))
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_text_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_semantic_image_model", lambda **_kwargs: True)
-	monkeypatch.setattr("srxy.adapters.inbound.cli.cli.ensure_transcribe_model", lambda **_kwargs: True)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_semantic_text_model",
+		lambda **_kwargs: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_semantic_image_model",
+		lambda **_kwargs: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.model_store.ensure_transcribe_model",
+		lambda **_kwargs: True,
+	)
 	reset_cache_connection()
 	reset_run_file_hashes()
 	yield

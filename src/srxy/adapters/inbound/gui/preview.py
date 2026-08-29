@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import html
 import re
+import sys
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -17,10 +18,22 @@ __all__ = [
 	"format_preview_message",
 	"format_preview_plain",
 	"prepare_preview_text",
+	"preview_font_family",
 ]
 
 PREVIEW_MAX_BYTES = 64 * 1024
 PREVIEW_MAX_LINES = 2000
+
+
+def preview_font_family() -> str:
+	"""Return the monospace face used in preview RichText HTML (matches QML)."""
+	# Bare CSS "monospace" maps to TypeWriter bitmap fonts on Windows (8514oem /
+	# Fixedsys); DirectWrite then fails and Qt spam-logs OpenType fallbacks.
+	if sys.platform == "win32":
+		return "Consolas"
+	if sys.platform == "darwin":
+		return "Menlo"
+	return "monospace"
 
 
 @dataclass(frozen=True)
@@ -217,13 +230,14 @@ def prepare_preview_text(text: str) -> tuple[str, bool]:
 
 def format_preview_message(message: str) -> str:
 	"""Escape a non-code status line for RichText preview."""
-	return f'<span style="font-family:monospace">{html.escape(message)}</span>'
+	return f'<span style="font-family:{preview_font_family()}">{html.escape(message)}</span>'
 
 
 def format_preview_truncated_footer(message: str, *, theme: str = "light") -> str:
 	"""Append a muted footer when preview content was capped."""
 	body = html.escape(message)
-	return f'<div style="font-family:monospace; margin-top:8px; color:{_palette(theme).footer}">{body}</div>'
+	family = preview_font_family()
+	return f'<div style="font-family:{family}; margin-top:8px; color:{_palette(theme).footer}">{body}</div>'
 
 
 def format_preview_plain(
@@ -305,7 +319,7 @@ def _format_lines(
 	suffix = Path(path).suffix.lower()
 	width = max(3, len(str(len(lines))))
 	parts = [
-		'<div style="font-family:monospace; white-space:pre-wrap;">',
+		f'<div style="font-family:{preview_font_family()}; white-space:pre-wrap;">',
 	]
 	for number, line in enumerate(lines, start=1):
 		gutter = html.escape(f"{number:>{width}}")

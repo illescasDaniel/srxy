@@ -4,6 +4,7 @@ from pathlib import Path
 
 import pytest
 
+from srxy.adapters.inbound.gui import preview as preview_module
 from srxy.adapters.inbound.gui.preview import (
 	PREVIEW_MAX_BYTES,
 	PREVIEW_MAX_LINES,
@@ -11,10 +12,41 @@ from srxy.adapters.inbound.gui.preview import (
 	format_preview_html,
 	format_preview_message,
 	prepare_preview_text,
+	preview_font_family,
 )
 
 
 pytestmark = pytest.mark.unit
+
+
+@pytest.mark.parametrize(
+	("platform", "expected"),
+	[
+		("win32", "Consolas"),
+		("darwin", "Menlo"),
+		("linux", "monospace"),
+	],
+)
+def test_given_platform_when_preview_font_family_then_matches_qml(
+	monkeypatch: pytest.MonkeyPatch, platform: str, expected: str
+):
+	# given
+	monkeypatch.setattr(preview_module.sys, "platform", platform)
+
+	# when / then
+	assert preview_font_family() == expected
+
+
+def test_given_status_message_when_formatting_then_uses_platform_font(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setattr(preview_module.sys, "platform", "win32")
+
+	# when
+	html = format_preview_message("ready")
+
+	# then
+	assert "font-family:Consolas" in html
+	assert "ready" in html
 
 
 def test_given_python_snippet_when_formatting_preview_then_includes_line_numbers_and_keywords():
