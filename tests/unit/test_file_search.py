@@ -695,8 +695,9 @@ def test_given_directory_when_searching_with_callbacks_then_streams_progress_and
 		on_result=on_result,
 	)
 
-	# then
-	assert progress_calls == [(1, 3), (2, 3), (3, 3)]
+	# then — determinate progress is emitted only after the walk finishes (catch-up
+	# once for sequential search-as-you-list; all work already completed during listing).
+	assert progress_calls == [(3, 3)]
 	assert streamed_paths == ["beta.txt"]
 	assert len(results) == 1
 	assert results[0].path.name == "beta.txt"
@@ -1328,14 +1329,17 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.198)
 
 
-def test_given_text_only_path_when_searching_with_semantic_image_then_skips_query_encoding(tmp_path: Path):
-	# given
+def test_given_text_only_path_when_searching_with_semantic_image_then_encodes_query_up_front(tmp_path: Path):
+	# given — CLIP encoding runs before the walk when semantic image is active so
+	# image hits can score as soon as they are discovered (no post-list scan).
 	text_path = tmp_path / "things.txt"
 	text_path.write_text("recents\n", encoding="utf-8")
 
 	with (
 		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
-		patch("srxy.application.use_cases.search_files.encode_semantic_image_query") as encode_query,
+		patch(
+			"srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]
+		) as encode_query,
 	):
 		# when
 		results = magic_file_search(
@@ -1347,7 +1351,7 @@ def test_given_text_only_path_when_searching_with_semantic_image_then_skips_quer
 		)
 
 	# then
-	encode_query.assert_not_called()
+	encode_query.assert_called_once()
 	assert len(results) == 1
 	assert results[0].path == text_path
 

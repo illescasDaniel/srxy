@@ -4,18 +4,18 @@ _Last updated: 2026-08-29_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — fixes and improvements for v1.6.6.
+- `feature/fixes_1.6.6` (main checkout) — applying worktree `cursor/9961e24b` then deleting it.
 
 ## Current focus
 
-None active — AccentButton binding-loop fix merged; Search-after-cancel accent fix already on branch. Gate clean.
+None — stream-as-you-list + permission-denied skips committed and applied from worktree.
 
 ## Done this session
 
-- Fixed `AccentButton` `foreground` binding loop via sibling `SystemPalette` (no `control.palette` reads while writing `palette.buttonText`).
-- Merged worktree fix into `feature/fixes_1.6.6`; user confirmed binding loop gone.
+- Overlap listing with search; permission denied → skip/warn/prune.
+- Merged parent; Windows gate passed; commit + apply-worktree + delete-worktree.
 
 ## Next steps
 
-1. Remaining Final QA: Windows/macOS installers.
+1. Final QA: Windows/macOS installers.
 2. Release when Final QA is green.

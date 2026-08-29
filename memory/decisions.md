@@ -2,11 +2,23 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-29 — Permission denied (Error 13) → skip + warn, prune unlistable dirs
+
+- **Context:** Searching large trees (e.g. home) could hit `PermissionError` / errno 13 on files or folders and abort the whole search instead of continuing.
+- **Decision:** Treat access-denied as `SkippedFile(reason="permission_denied")`. Walker records unlistable dirs via `os.walk(onerror=…)`. Per-file search catches access-denied and, if the parent directory is not listable, marks that prefix so later paths under it are not opened. Warnings reuse the existing skipped-files ⚠ UI via `format_skipped_file_warning`. Always pass `skipped_files` from `execute_search` (including names-only) so permission skips are retained.
+- **Rationale:** Matches size/OCR skip UX; avoids wasting work on known-denied subtrees without parallelizing the walk or changing QML.
+
 ## 2026-08-29 — AccentButton foreground uses SystemPalette, not control.palette
 
 - **Context:** Launching the GUI logged `QML AccentButton: Binding loop detected for property "foreground"` (Search button). `AccentButton` bound `palette.buttonText: control.foreground` while `foreground` read `control.palette.placeholderText` / `control.palette.button` (disabled / non-accent paths). Any write to a palette role dirties the whole group and re-triggers those reads.
 - **Decision:** Resolve disabled and non-accent face colours from a sibling `SystemPalette` (`refPalette`) that we never write to; keep writing `palette.buttonText` from `foreground` for macOS/Fusion IconLabels.
 - **Rationale:** Breaks the read/write cycle on the same palette object without dropping the `buttonText` override that fixes black labels on Aqua. Existing GUI load test already asserts no binding-loop warnings.
+
+## 2026-08-29 — Stream file listing into search (overlap walk + match)
+
+- **Context:** On large roots (e.g. home), `_execute_file_search` fully materialized `list[Path]` under “Listing files…” before any matching, so users waited with no results.
+- **Decision:** Search paths as `FileWalkerPort.iter_files` yields them. Threads/processes use a bounded in-flight future set; process pool still waits until 50 paths (or walk end under 50 → sequential). When semantic image is active, encode the CLIP query before the walk. Activity is “Searching…” (no exclusive listing gate). Determinate `on_progress(completed, total)` only after the walk finishes (catch-up + remaining completions); UIs already treat unknown totals as indeterminate.
+- **Rationale:** Time-to-first-result shrinks on huge trees without parallelizing `os.walk` itself; progress stays compatible with existing GUI/TUI/CLI bars; process-pool startup heuristic is preserved.
 
 ## 2026-08-29 — Search stale baseline only after successful finish
 

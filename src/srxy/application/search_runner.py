@@ -108,7 +108,7 @@ def execute_search(
 			match_skipped_names=bool(getattr(args, "match_skipped_names", False)) and search_names,
 			include_archives=bool(getattr(args, "include_archives", False)),
 			include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
-			skipped_files=effective_skipped if search_contents or ocr or transcribe else None,
+			skipped_files=effective_skipped,
 			ocr=ocr,
 			transcribe=transcribe,
 			on_progress=on_progress,

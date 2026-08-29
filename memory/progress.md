@@ -30,6 +30,8 @@ _Last updated: 2026-08-29_
 - [x] Windows dark-mode GUI visual QA (theme / results `SplitView` grips) — confirmed OK by user (2026-08-29).
 - [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
 - [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
+- [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Windows gate passed (uncommitted on this worktree).
+- [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added.
 
 ### Open
 
@@ -37,9 +39,9 @@ _Last updated: 2026-08-29_
 
 ## Bugs / sub-tasks discovered
 
+- [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.
-- [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.
-- [x] macOS Search button misaligned / label off-centre + black OK text — forced matchHeight clipped native 32px bevel; WCAG onAccent black for `#308cc6`. Fixed: Windows-only stretch; darwin white onAccent; `palette.buttonText` binding. Gate passed.
+- [x] Search button stays dark (non-accent) after cancel — `_on_search_thread_finished` always set `_last_snapshot`, clearing `stale`; Search binds `accent: controller.stale`. Not Windows-only. Fixed: commit baseline only on successful finish; clear baseline on cancel/error. Gate passed.- [x] macOS Search button misaligned / label off-centre + black OK text — forced matchHeight clipped native 32px bevel; WCAG onAccent black for `#308cc6`. Fixed: Windows-only stretch; darwin white onAccent; `palette.buttonText` binding. Gate passed.
 - [x] Options/filters dialog OK button black text (Windows accent `#0078d4` → black via `contrast_text_on` max-contrast rule). Fixed by preferring white at AA 4.5:1; regression test added; gate passed.
 - [x] QML results ListView warning (`DelegateModel::cancel: index out range`) — `ResultsModel.clear()`/`replace_results()` now use row-based `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of a full `beginResetModel()`, so the delegate model cancels in-flight items with valid indices. Added `tests/unit/test_gui_models.py` (deterministic signal assertions: rows removed/inserted, never `modelReset`) + a GUI regression test in `test_gui_qml_load.py` (drives two search cycles through loaded QML, asserts no `DelegateModel`/`index out range` warning). Gate passed.
 - [x] Qt engine-destruction warning (`in the process of being created`) — root cause was teardown order: `QQmlEngine` was destroyed (via interpreter shutdown) while the `QQuickWindow` was still alive, so pending async delegate incubations kept `inProgressCreations > 0`. Fixed by destroying root windows before the engine in `gui/app.py` and `installer/app.py` (then flushing `DeferredDelete`); added a regression assertion in `test_gui_qml_load.py`. Gate passed.

@@ -23,6 +23,7 @@ class FileWalkerPort(Protocol):
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 		cancel_check: Callable[[], bool] | None = None,
+		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]: ...
 
 	def collect_files(
@@ -36,6 +37,7 @@ class FileWalkerPort(Protocol):
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 		cancel_check: Callable[[], bool] | None = None,
+		skipped_files: list[SkippedFile] | None = None,
 	) -> list[Path]: ...
 
 	def is_searchable(self, path: Path) -> bool: ...
