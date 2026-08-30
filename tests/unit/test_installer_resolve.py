@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import io
+import urllib.error
 import urllib.request
 
 import pytest
@@ -55,6 +56,40 @@ def test_given_http_url_when_probing_then_rejects(monkeypatch: pytest.MonkeyPatc
 	monkeypatch.setattr(urllib.request, "urlopen", fail_urlopen)
 	with pytest.raises(RuntimeError, match="non-https"):
 		probe_url("http://example.invalid/x")
+
+
+def test_given_transient_urlerror_when_fetching_json_then_retries(monkeypatch: pytest.MonkeyPatch):
+	calls = {"n": 0}
+	payload = [{"tag_name": "ok", "draft": False, "assets": []}]
+
+	def flaky_urlopen(_request: urllib.request.Request, timeout: float = 0.0) -> _FakeResponse:
+		_ = timeout
+		calls["n"] += 1
+		if calls["n"] < 3:
+			raise urllib.error.URLError(ConnectionResetError(104, "Connection reset by peer"))
+		return _FakeResponse(b'[{"tag_name":"ok","draft":false,"assets":[]}]', url=_request.full_url)
+
+	monkeypatch.setattr(urllib.request, "urlopen", flaky_urlopen)
+	monkeypatch.setattr(resolve_mod.time, "sleep", lambda _s: None)
+	assert resolve_mod._http_json("https://example.invalid/api.json") == payload  # pyright: ignore[reportPrivateUsage]
+	assert calls["n"] == 3
+
+
+def test_given_transient_urlerror_when_probing_then_retries(monkeypatch: pytest.MonkeyPatch):
+	calls = {"n": 0}
+	final = "https://cdn.example.invalid/ok.bin"
+
+	def flaky_urlopen(_request: urllib.request.Request, timeout: float = 0.0) -> _FakeResponse:
+		_ = timeout
+		calls["n"] += 1
+		if calls["n"] < 2:
+			raise urllib.error.URLError(ConnectionResetError(104, "Connection reset by peer"))
+		return _FakeResponse(b"P", url=final, status=206)
+
+	monkeypatch.setattr(urllib.request, "urlopen", flaky_urlopen)
+	monkeypatch.setattr("srxy.adapters.inbound.installer.download.time.sleep", lambda _s: None)
+	assert probe_url("https://example.invalid/artifact.bin") == final
+	assert calls["n"] == 2
 
 
 def test_given_btbn_releases_when_resolving_linux_then_picks_lgpl_shared(monkeypatch: pytest.MonkeyPatch):

@@ -7,6 +7,7 @@ import os
 import shutil
 import tarfile
 import tempfile
+import time
 import urllib.error
 import urllib.request
 import zipfile
@@ -21,6 +22,8 @@ ALLOW_UNVERIFIED_ENV = "SRXY_INSTALLER_ALLOW_UNVERIFIED"
 
 _CHUNK_SIZE = 1024 * 256
 _TIMEOUT_SECONDS = 120
+_PROBE_RETRIES = 4
+_PROBE_RETRY_BACKOFF_SECONDS = 1.5
 
 
 def _report(progress: ProgressCallback | None, downloaded: int, total: int, label: str):
@@ -87,7 +90,7 @@ def probe_url(
 	"""Check that ``url`` is reachable over HTTPS without downloading the full body.
 
 	Uses a ranged GET (``bytes=0-0``). Returns the final URL after redirects.
-	Accepts 2xx and 206 responses.
+	Accepts 2xx and 206 responses. Retries transient network / 5xx failures.
 	"""
 	if not url.startswith("https://"):
 		raise RuntimeError(f"refusing non-https probe URL: {url}")
@@ -95,18 +98,26 @@ def probe_url(
 	if headers:
 		request_headers.update(headers)
 	request = urllib.request.Request(url, headers=request_headers)  # noqa: S310
-	try:
-		with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
-			status = getattr(response, "status", None) or response.getcode()
-			if status not in {200, 206}:
-				raise RuntimeError(f"probe failed for {url}: HTTP {status}")
-			# Drain at most one byte so the connection can close cleanly.
-			response.read(1)
-			return response.geturl()
-	except urllib.error.HTTPError as exc:
-		raise RuntimeError(f"probe failed for {url}: HTTP {exc.code}") from exc
-	except urllib.error.URLError as exc:
-		raise RuntimeError(f"probe failed for {url}: {exc}") from exc
+	last: BaseException | None = None
+	for attempt in range(_PROBE_RETRIES):
+		try:
+			with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+				status = getattr(response, "status", None) or response.getcode()
+				if status not in {200, 206}:
+					raise RuntimeError(f"probe failed for {url}: HTTP {status}")
+				# Drain at most one byte so the connection can close cleanly.
+				response.read(1)
+				return response.geturl()
+		except urllib.error.HTTPError as exc:
+			last = exc
+			if exc.code < 500 or attempt + 1 >= _PROBE_RETRIES:
+				raise RuntimeError(f"probe failed for {url}: HTTP {exc.code}") from exc
+		except (urllib.error.URLError, TimeoutError, OSError) as exc:
+			last = exc
+			if attempt + 1 >= _PROBE_RETRIES:
+				raise RuntimeError(f"probe failed for {url}: {exc}") from exc
+		time.sleep(_PROBE_RETRY_BACKOFF_SECONDS * (attempt + 1))
+	raise RuntimeError(f"probe failed for {url}: {last}") from last
 
 
 def download_file(

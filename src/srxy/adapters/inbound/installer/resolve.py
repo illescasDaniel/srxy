@@ -9,10 +9,12 @@ from __future__ import annotations
 import json
 import platform
 import re
+import time
 import urllib.error
 import urllib.request
+from collections.abc import Callable
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeVar
 
 from srxy.adapters.inbound.installer.catalog import (
 	DARWIN_ARM64_TESSERACT_BOTTLES,
@@ -26,6 +28,10 @@ from srxy.adapters.inbound.installer.catalog import (
 
 _USER_AGENT = "srxy-installer"
 _API_TIMEOUT = 45.0
+_HTTP_RETRIES = 4
+_HTTP_RETRY_BACKOFF_SECONDS = 1.5
+
+_T = TypeVar("_T")
 
 _BTBN_RELEASES = "https://api.github.com/repos/BtbN/FFmpeg-Builds/releases?per_page=15"
 _TESSERACT_STATIC_RELEASES = "https://api.github.com/repos/DanielMYT/tesseract-static/releases?per_page=10"
@@ -51,6 +57,29 @@ class ResolvedArtifact:
 	notes: str = ""
 
 
+def _transient_http_error(exc: BaseException) -> bool:
+	if isinstance(exc, TimeoutError):
+		return True
+	if isinstance(exc, urllib.error.HTTPError):
+		return exc.code >= 500
+	if isinstance(exc, urllib.error.URLError):
+		return True
+	return isinstance(exc, OSError)
+
+
+def _with_http_retries(action: Callable[[], _T], *, what: str) -> _T:
+	last: BaseException | None = None
+	for attempt in range(_HTTP_RETRIES):
+		try:
+			return action()
+		except (urllib.error.URLError, TimeoutError, OSError) as exc:
+			last = exc
+			if not _transient_http_error(exc) or attempt + 1 >= _HTTP_RETRIES:
+				break
+			time.sleep(_HTTP_RETRY_BACKOFF_SECONDS * (attempt + 1))
+	raise RuntimeError(f"{what}: {last}") from last
+
+
 def _http_json(url: str) -> Any:
 	if not url.startswith("https://"):
 		raise RuntimeError(f"refusing non-https URL: {url}")
@@ -61,11 +90,12 @@ def _http_json(url: str) -> Any:
 			"Accept": "application/vnd.github+json, application/json",
 		},
 	)
-	try:
+
+	def _once() -> Any:
 		with urllib.request.urlopen(request, timeout=_API_TIMEOUT) as response:  # noqa: S310
 			return json.loads(response.read().decode("utf-8"))
-	except urllib.error.URLError as exc:
-		raise RuntimeError(f"failed to fetch {url}: {exc}") from exc
+
+	return _with_http_retries(_once, what=f"failed to fetch {url}")
 
 
 def _follow_redirect_url(url: str) -> str:
@@ -76,12 +106,13 @@ def _follow_redirect_url(url: str) -> str:
 		url,
 		headers={"User-Agent": _USER_AGENT, "Range": "bytes=0-0"},
 	)
-	try:
+
+	def _once() -> str:
 		with urllib.request.urlopen(request, timeout=_API_TIMEOUT) as response:  # noqa: S310
 			response.read(1)
-			final = response.geturl()
-	except urllib.error.URLError as exc:
-		raise RuntimeError(f"failed to resolve redirect for {url}: {exc}") from exc
+			return response.geturl()
+
+	final = _with_http_retries(_once, what=f"failed to resolve redirect for {url}")
 	if not final.startswith("https://"):
 		raise RuntimeError(f"redirect landed on non-https URL: {final}")
 	return final
