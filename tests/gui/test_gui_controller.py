@@ -598,6 +598,72 @@ def test_given_invalid_filters_when_apply_filters_json_then_keeps_previous_state
 	assert controller.filtersJson() == before
 
 
+def test_given_invalid_filters_when_validate_filters_json_then_returns_error_without_applying(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	before = controller.filtersJson()
+	payload = json.dumps(
+		{
+			"top_files": "",
+			"max_matches": "50",
+			"threshold": "abc",
+			"semantic_image_threshold": "18",
+			"transcribe_threshold": "25",
+			"size_limits": {"text_mib": "100", "ocr_mib": "50", "transcribe_mib": "500"},
+		}
+	)
+
+	# when
+	error = controller.validateFiltersJson(payload)
+
+	# then
+	assert error
+	assert (
+		"must be a number" in error.lower()
+		or "between" in error.lower()
+		or "required" in error.lower()
+		or "number" in error.lower()
+	)
+	assert controller.filtersJson() == before
+
+
+def test_given_negative_threshold_when_validate_filters_json_then_returns_error(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	payload = json.dumps(
+		{
+			"top_files": "",
+			"max_matches": "50",
+			"threshold": "-5",
+			"semantic_image_threshold": "18",
+			"transcribe_threshold": "25",
+			"size_limits": {"text_mib": "100", "ocr_mib": "50", "transcribe_mib": "500"},
+		}
+	)
+
+	# when / then
+	assert controller.validateFiltersJson(payload)
+	assert (
+		controller.validateFiltersJson(
+			json.dumps(
+				{
+					"top_files": "",
+					"max_matches": "50",
+					"threshold": "35",
+					"semantic_image_threshold": "18",
+					"transcribe_threshold": "25",
+					"size_limits": {"text_mib": "100", "ocr_mib": "50", "transcribe_mib": "500"},
+				}
+			)
+		)
+		== ""
+	)
+
+
 def test_given_cancel_requested_when_search_error_event_then_status_cancelled_without_error_dialog(
 	qapp: QCoreApplication, tmp_path: Path
 ):

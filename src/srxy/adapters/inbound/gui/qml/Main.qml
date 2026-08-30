@@ -16,6 +16,7 @@ ApplicationWindow {
 
 	property bool syncingOptions: false
 	property bool syncingFilters: false
+	property bool filtersDraftValid: true
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
@@ -180,6 +181,7 @@ ApplicationWindow {
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
 		fltPersist.checked = !!draft.persist_filters
 		syncingFilters = false
+		validateFiltersDraft()
 	}
 
 	function resetFiltersDraft() {
@@ -196,12 +198,11 @@ ApplicationWindow {
 		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
 		syncingFilters = false
+		validateFiltersDraft()
 	}
 
-	function pushFiltersToController() {
-		if (!controller || syncingFilters)
-			return ""
-		return controller.applyFiltersJson(JSON.stringify({
+	function filtersDraftPayload() {
+		return JSON.stringify({
 			top_files: fltTopFiles.text,
 			max_matches: fltMaxMatches.text,
 			threshold: fltThreshold.text,
@@ -213,7 +214,28 @@ ApplicationWindow {
 				transcribe_mib: fltMediaSize.text
 			},
 			persist_filters: fltPersist.checked
-		}))
+		})
+	}
+
+	function validateFiltersDraft() {
+		if (!controller || syncingFilters || !filtersError)
+			return
+		const err = controller.validateFiltersJson(filtersDraftPayload())
+		if (err) {
+			filtersError.text = err
+			filtersError.visible = true
+			filtersDraftValid = false
+		} else {
+			filtersError.text = ""
+			filtersError.visible = false
+			filtersDraftValid = true
+		}
+	}
+
+	function pushFiltersToController() {
+		if (!controller || syncingFilters)
+			return ""
+		return controller.applyFiltersJson(filtersDraftPayload())
 	}
 
 	function showHelp(key) {
@@ -1405,12 +1427,16 @@ ApplicationWindow {
 				id: filtersOkButton
 				objectName: "filtersOkButton"
 				text: root.t("common.ok")
+				enabled: root.filtersDraftValid
 				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
+					if (!root.filtersDraftValid)
+						return
 					const err = pushFiltersToController()
 					if (err) {
 						filtersError.text = err
 						filtersError.visible = true
+						root.filtersDraftValid = false
 						return
 					}
 					filtersError.visible = false
@@ -1439,35 +1465,83 @@ ApplicationWindow {
 			Layout.fillWidth: true
 
 			Label { text: root.t("gui.filters.max_results") }
-			TextField { id: fltTopFiles; placeholderText: root.t("gui.filters.max_results_ph"); Layout.fillWidth: true }
+			TextField {
+				id: fltTopFiles
+				objectName: "fltTopFiles"
+				placeholderText: root.t("gui.filters.max_results_ph")
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "top_files" }
 
 			Label { text: root.t("gui.filters.hits_per_file") }
-			TextField { id: fltMaxMatches; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltMaxMatches
+				objectName: "fltMaxMatches"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "max_matches" }
 
 			Label { text: root.t("gui.filters.min_match") }
-			TextField { id: fltThreshold; text: "35"; Layout.fillWidth: true }
+			TextField {
+				id: fltThreshold
+				objectName: "fltThreshold"
+				text: "35"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "threshold" }
 
 			Label { text: root.t("gui.filters.visual_min") }
-			TextField { id: fltVisualMin; text: "18"; Layout.fillWidth: true }
+			TextField {
+				id: fltVisualMin
+				objectName: "fltVisualMin"
+				text: "18"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "semantic_image_threshold" }
 
 			Label { text: root.t("gui.filters.speech_min") }
-			TextField { id: fltSpeechMin; text: "25"; Layout.fillWidth: true }
+			TextField {
+				id: fltSpeechMin
+				objectName: "fltSpeechMin"
+				text: "25"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_threshold" }
 
 			Label { text: root.t("gui.filters.doc_mib") }
-			TextField { id: fltDocSize; text: "100"; Layout.fillWidth: true }
+			TextField {
+				id: fltDocSize
+				objectName: "fltDocSize"
+				text: "100"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "text_mib" }
 
 			Label { text: root.t("gui.filters.ocr_mib") }
-			TextField { id: fltOcrSize; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltOcrSize
+				objectName: "fltOcrSize"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "ocr_mib" }
 
 			Label { text: root.t("gui.filters.media_mib") }
-			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
+			TextField {
+				id: fltMediaSize
+				objectName: "fltMediaSize"
+				text: "500"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_mib" }
 		}
 			StyledCheckBox {

@@ -57,6 +57,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Collapse extras: single GPU-oriented `[semantic]` (former `semantic-gpu`); drop CPU semantic + `semantic-gpu` name; README no “Fast CPU, no GPU”.
 - [x] Search progress UX — emit `0/N` when listing finishes; thread-pool fan-in for per-file OCR/CLIP/transcribe activity; GUI/TUI sticky Searching yields to Scanning N/M. Applied from worktree `cursor/5ebdc811`.
 - [x] GUI persist options/filters — opt-in checkboxes + Reset; `settings.json` (`$SRXY_HOME` or `~/.config/srxy`); flag on OK, payload on exit; restore on next GUI launch. Unit + GUI tests; docs.
+- [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`).
 
 ### Open
 

@@ -1978,7 +1978,25 @@ class SearchController(QObject):
 		return ""
 
 	@Slot(str, result=str)
+	def validateFiltersJson(self, payload: str) -> str:  # noqa: N802
+		"""Return validation error for a filters JSON draft, or empty if valid."""
+		error, _draft, _persist = self._parse_filters_payload(payload)
+		return error
+
+	@Slot(str, result=str)
 	def applyFiltersJson(self, payload: str) -> str:  # noqa: N802
+		error, draft, persist = self._parse_filters_payload(payload)
+		if error or draft is None:
+			return error or "Invalid filters"
+		self._filters = draft
+		self._persist_filters = persist
+		apply_search_filters_to_args(self._args, self._filters)
+		self.filtersSummaryChanged.emit()
+		self._refresh_stale()
+		self._write_persisted_search_prefs()
+		return ""
+
+	def _parse_filters_payload(self, payload: str) -> tuple[str, SearchFilters | None, bool]:
 		from srxy.application.size_limits import SizeLimits
 
 		try:
@@ -1988,14 +2006,8 @@ class SearchController(QObject):
 			draft = SearchFilters(size_limits=SizeLimits(**size), **data)
 			validate_search_filters(draft)
 		except (ValueError, json.JSONDecodeError, TypeError, KeyError) as error:
-			return str(error)
-		self._filters = draft
-		self._persist_filters = persist
-		apply_search_filters_to_args(self._args, self._filters)
-		self.filtersSummaryChanged.emit()
-		self._refresh_stale()
-		self._write_persisted_search_prefs()
-		return ""
+			return str(error), None, self._persist_filters
+		return "", draft, persist
 
 	@Slot(result=str)
 	def optionsJson(self) -> str:  # noqa: N802

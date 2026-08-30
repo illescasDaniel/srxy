@@ -171,6 +171,57 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	qapp.processEvents()
 
 
+def test_given_invalid_filter_input_when_typing_then_ok_disabled_and_error_shown(qapp: QCoreApplication):
+	# given
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	srxy_theme = apply_qt_quick_theme(qapp)
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
+	roots = engine.rootObjects()
+	assert roots
+	window = roots[0]
+	window.setProperty("visible", True)
+	dialog = window.findChild(QObject, "filtersDialog")
+	assert dialog is not None
+	dialog.open()
+	qapp.processEvents()
+	ok_button = window.findChild(QObject, "filtersOkButton")
+	threshold = window.findChild(QObject, "fltThreshold")
+	error_label = window.findChild(QObject, "filtersError")
+	assert ok_button is not None and threshold is not None and error_label is not None
+	assert QQmlProperty(ok_button, "enabled").read() is True
+
+	# when — alphanumeric garbage while typing
+	QQmlProperty(threshold, "text").write("nope")
+	qapp.processEvents()
+
+	# then
+	assert QQmlProperty(ok_button, "enabled").read() is False
+	assert QQmlProperty(error_label, "visible").read() is True
+	assert str(QQmlProperty(error_label, "text").read())
+
+	# when — restore a valid value
+	QQmlProperty(threshold, "text").write("35")
+	qapp.processEvents()
+
+	# then
+	assert QQmlProperty(ok_button, "enabled").read() is True
+	assert QQmlProperty(error_label, "visible").read() is False
+
+	dialog.close()
+	qapp.processEvents()
+	controller.shutdown(thread_wait_ms=500)
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+
+
 def _icon_image_colors(content_item: QObject) -> list[str]:
 	return [
 		_color_name(QQmlProperty(child, "color").read())
