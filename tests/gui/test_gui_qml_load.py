@@ -81,6 +81,8 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert window.findChild(QObject, "matchesScrollBar").property("visible") is False
 
 	for name in (
+		"settingsDialog",
+		"settingsConfirmDialog",
 		"optionsDialog",
 		"filtersDialog",
 		"helpDialog",
@@ -98,6 +100,24 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 		qapp.processEvents()
 		close_fn()
 		qapp.processEvents()
+
+	assert window.findChild(QObject, "settingsMenu") is not None
+	assert window.findChild(QObject, "settingsAction") is not None
+	assert window.findChild(QObject, "downloadAllModelsAction") is not None
+	assert window.findChild(QObject, "resetCacheAction") is not None
+	assert window.findChild(QObject, "resetPreferencesAction") is not None
+	controller.openSettings()
+	qapp.processEvents()
+	assert controller.settingsOpen is True
+	settings_dialog = window.findChild(QObject, "settingsDialog")
+	assert settings_dialog is not None
+	assert settings_dialog.findChild(QObject, "settingsClear_semantic_text") is not None
+	assert settings_dialog.findChild(QObject, "settingsRedownload_all") is not None
+	assert settings_dialog.findChild(QObject, "settingsClearCache") is not None
+	assert settings_dialog.findChild(QObject, "settingsResetPreferences") is not None
+	controller.closeSettings()
+	qapp.processEvents()
+	assert controller.settingsOpen is False
 
 	# then — destroy the window before the engine (matching run_gui) so any
 	# pending async delegate incubations are cancelled first. Teardown must not

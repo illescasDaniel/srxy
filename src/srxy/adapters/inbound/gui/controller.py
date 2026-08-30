@@ -249,6 +249,8 @@ class SearchController(QObject):
 	errorOccurred = Signal(str)
 	updateUiChanged = Signal()
 	aboutUiChanged = Signal()
+	settingsUiChanged = Signal()
+	settingsConfirmChanged = Signal()
 	languageChanged = Signal()
 
 	def __init__(
@@ -366,6 +368,12 @@ class SearchController(QObject):
 		self._update_busy = False
 		self._update_silent = False
 		self._about_open = False
+		self._settings_open = False
+		self._settings_json = "{}"
+		self._settings_confirm_open = False
+		self._settings_confirm_message = ""
+		self._settings_confirm_action: str | None = None  # clear_model:<kind> | clear_cache
+		self._settings_redownload = False
 		self._update_thread: QThread | None = None
 		self._update_worker: _UpdateWorker | None = None
 		from srxy.i18n import get_language, resolve_language
@@ -1058,9 +1066,11 @@ class SearchController(QObject):
 	def rejectDownloadConfirm(self):  # noqa: N802
 		self._download_queue = []
 		self._pending_search_args = None
+		self._settings_redownload = False
 		self._set_download_confirm(False)
 		self._set_status_tr("status.download_cancelled")
 		self._exit_code = 2
+		self._emit_settings_snapshot()
 
 	@Slot()
 	def cancelDownload(self):  # noqa: N802
@@ -1085,12 +1095,17 @@ class SearchController(QObject):
 		if not ok:
 			self._download_queue = []
 			self._pending_search_args = None
+			self._settings_redownload = False
 			self.errorOccurred.emit(error_message or "Download failed")
 			self._exit_code = 2
 			self._set_status_tr("status.download_failed")
+			self._emit_settings_snapshot()
 			return
 		if self._download_queue:
 			self._download_queue.pop(0)
+		if self._settings_redownload:
+			self._start_settings_download_next()
+			return
 		self._prompt_next_download()
 
 	def _begin_search(self, args: argparse.Namespace):
@@ -1988,11 +2003,14 @@ class SearchController(QObject):
 		self.languageChanged.emit()
 		self.updateUiChanged.emit()
 		self.aboutUiChanged.emit()
+		self.settingsUiChanged.emit()
 		self.optionsSummaryChanged.emit()
 		self.filtersSummaryChanged.emit()
 		self.resultsEmptyHintChanged.emit()
 		if not self._searching:
 			self._set_status_tr("status.ready")
+		if self._settings_open:
+			self._emit_settings_snapshot()
 
 	@Property(str, constant=True)
 	def appVersion(self) -> str:  # noqa: N802
@@ -2037,6 +2055,230 @@ class SearchController(QObject):
 	def closeAbout(self):  # noqa: N802
 		self._about_open = False
 		self.aboutUiChanged.emit()
+
+	def _settings_maintenance_busy(self) -> bool:
+		return bool(
+			self._searching or self._download_progress_open or self._download_queue or self._download_worker is not None
+		)
+
+	def _emit_settings_snapshot(self):
+		from srxy.application.settings_maintenance import build_settings_snapshot
+
+		self._settings_json = json.dumps(
+			build_settings_snapshot(busy=self._settings_maintenance_busy()),
+			sort_keys=True,
+		)
+		self.settingsUiChanged.emit()
+
+	@Property(bool, notify=settingsUiChanged)
+	def settingsOpen(self) -> bool:  # noqa: N802
+		return self._settings_open
+
+	@Property(str, notify=settingsUiChanged)
+	def settingsJson(self) -> str:  # noqa: N802
+		return self._settings_json
+
+	@Property(bool, notify=settingsConfirmChanged)
+	def settingsConfirmOpen(self) -> bool:  # noqa: N802
+		return self._settings_confirm_open
+
+	@Property(str, notify=settingsConfirmChanged)
+	def settingsConfirmMessage(self) -> str:  # noqa: N802
+		return self._settings_confirm_message
+
+	@Slot()
+	def openSettings(self):  # noqa: N802
+		self._settings_open = True
+		self._emit_settings_snapshot()
+		self.settingsUiChanged.emit()
+
+	@Slot()
+	def closeSettings(self):  # noqa: N802
+		self._settings_open = False
+		self.settingsUiChanged.emit()
+
+	@Slot()
+	def refreshSettings(self):  # noqa: N802
+		self._emit_settings_snapshot()
+
+	def _set_settings_confirm(self, open_: bool, message: str = "", action: str | None = None):
+		self._settings_confirm_open = open_
+		self._settings_confirm_message = message
+		self._settings_confirm_action = action if open_ else None
+		self.settingsConfirmChanged.emit()
+
+	@Slot(str)
+	def confirmClearModel(self, kind: str):  # noqa: N802
+		from srxy.application.settings_maintenance import SETTINGS_MODEL_KINDS, clear_confirm_message
+		from srxy.i18n import tr as translate
+
+		if kind not in SETTINGS_MODEL_KINDS:
+			self.errorOccurred.emit(f"Unknown model kind: {kind}")
+			return
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		self._set_settings_confirm(True, clear_confirm_message(kind), f"clear_model:{kind}")
+
+	@Slot()
+	def confirmClearCache(self):  # noqa: N802
+		from srxy.application.settings_maintenance import cache_clear_confirm_message
+		from srxy.i18n import tr as translate
+
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		self._set_settings_confirm(True, cache_clear_confirm_message(), "clear_cache")
+
+	@Slot()
+	def confirmDownloadAllModels(self):  # noqa: N802
+		from srxy.application.settings_maintenance import download_all_confirm_message
+		from srxy.i18n import tr as translate
+
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		self._set_settings_confirm(True, download_all_confirm_message(), "download_all")
+
+	@Slot()
+	def confirmResetPreferences(self):  # noqa: N802
+		from srxy.application.settings_maintenance import preferences_reset_confirm_message
+
+		self._set_settings_confirm(True, preferences_reset_confirm_message(), "reset_preferences")
+
+	@Slot()
+	def acceptSettingsConfirm(self):  # noqa: N802
+		action = self._settings_confirm_action
+		self._set_settings_confirm(False)
+		if not action:
+			return
+		if action == "clear_cache":
+			self.clearResultsCache()
+			return
+		if action == "download_all":
+			self.redownloadModel("all")
+			return
+		if action == "reset_preferences":
+			self.resetPreferences()
+			return
+		if action.startswith("clear_model:"):
+			self.clearModel(action.split(":", 1)[1])
+
+	@Slot()
+	def rejectSettingsConfirm(self):  # noqa: N802
+		self._set_settings_confirm(False)
+
+	@Slot()
+	def resetPreferences(self):  # noqa: N802
+		from PySide6.QtCore import QCoreApplication, QLocale
+
+		from srxy.application.settings import reset_settings
+		from srxy.i18n import get_language, resolve_language, set_language
+		from srxy.i18n.qt import install_qt_translator
+
+		try:
+			reset_settings()
+		except Exception as error:  # noqa: BLE001
+			self.errorOccurred.emit(str(error))
+			return
+		# Re-resolve from system locale without rewriting settings.json.
+		set_language(resolve_language())
+		self._language = get_language()
+		QLocale.setDefault(QLocale(self._language))
+		app = QCoreApplication.instance()
+		if app is not None:
+			install_qt_translator(app, self._language)
+		self.languageChanged.emit()
+		self.updateUiChanged.emit()
+		self.aboutUiChanged.emit()
+		self.optionsSummaryChanged.emit()
+		self.filtersSummaryChanged.emit()
+		self.resultsEmptyHintChanged.emit()
+		self._emit_settings_snapshot()
+		self._set_status_tr("settings.status.reset_preferences")
+
+	@Slot(str)
+	def clearModel(self, kind: str):  # noqa: N802
+		from srxy.application.settings_maintenance import (
+			SETTINGS_MODEL_KINDS,
+			build_settings_snapshot,
+			clear_model_kind,
+		)
+		from srxy.i18n import tr as translate
+
+		if kind not in SETTINGS_MODEL_KINDS:
+			self.errorOccurred.emit(f"Unknown model kind: {kind}")
+			return
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		label = kind
+		for row in build_settings_snapshot(busy=False)["models"]:
+			if row["kind"] == kind:
+				label = row["label"]
+				break
+		try:
+			clear_model_kind(kind)
+		except Exception as error:  # noqa: BLE001
+			self.errorOccurred.emit(str(error))
+			return
+		self._emit_settings_snapshot()
+		if kind == "all":
+			self._set_status_tr("settings.status.cleared_all_models")
+		else:
+			self._set_status_tr("settings.status.cleared_model", label=label)
+
+	@Slot()
+	def clearResultsCache(self):  # noqa: N802
+		from srxy.adapters.outbound.cache.cache import clear_results_cache
+		from srxy.i18n import tr as translate
+
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		try:
+			clear_results_cache()
+		except Exception as error:  # noqa: BLE001
+			self.errorOccurred.emit(str(error))
+			return
+		self._emit_settings_snapshot()
+		self._set_status_tr("settings.status.cleared_cache")
+
+	@Slot(str)
+	def redownloadModel(self, kind: str):  # noqa: N802
+		from srxy.application.settings_maintenance import (
+			SETTINGS_MODEL_KINDS,
+			pending_downloads_for_kind,
+		)
+		from srxy.i18n import tr as translate
+
+		if kind not in SETTINGS_MODEL_KINDS:
+			self.errorOccurred.emit(f"Unknown model kind: {kind}")
+			return
+		if self._settings_maintenance_busy():
+			self.errorOccurred.emit(translate("settings.error.busy"))
+			return
+		items = pending_downloads_for_kind(kind)
+		if not items:
+			return
+		self._download_queue = items
+		self._pending_search_args = None
+		self._settings_redownload = True
+		self._emit_settings_snapshot()
+		self._start_settings_download_next()
+
+	def _start_settings_download_next(self):
+		if not self._download_queue:
+			self._settings_redownload = False
+			self._emit_settings_snapshot()
+			self._set_status_tr("settings.status.redownload_done")
+			return
+		item = self._download_queue[0]
+		from srxy.i18n import tr as translate
+
+		self._set_download_progress_ui(True, 0.0, "")
+		self._set_download_status_message(translate("status.downloading", label=item.label))
+		self._start_download_worker(item.kind)
 
 	@Property(bool, notify=updateUiChanged)
 	def updateDialogOpen(self) -> bool:  # noqa: N802

@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — GUI Settings dialog via JSON snapshot property
+
+- **Context:** Need a Settings menu for clearing/re-downloading AI models and clearing the encrypted results cache, with per-kind rows and live size/status.
+- **Decision:** (1) Top menu **Settings** has shortcut Actions (**Download All Models**, **Reset Cache**, **Reset All Settings**) plus **All Settings…** for the full dialog. (2) `SearchController.settingsJson` holds a refreshed snapshot (`models[]` + `cache` + `preferences` + `busy`); QML parses it and binds rows. (3) Clears / resets / download-all go through a Yes/No confirm; re-downloads reuse `_DownloadWorker` / progress UI with `_settings_redownload` skipping the search-time download confirm and chaining kinds for `all`. (4) **Reset All Settings** deletes `settings.json` via `reset_settings()` and re-applies system language without rewriting the file. (5) Helpers live in `application/disk_usage.py` + `application/settings_maintenance.py` over existing `model_store` / `cache` / `settings` APIs.
+- **Rationale:** Common maintenance stays one click away; the full dialog covers per-model detail. Avoids duplicating download UX; keeps OCR/vendor wipe out of scope until dedicated clear APIs exist.
+
 ## 2026-08-30 — Concurrent search activity fan-in + early `0/N` progress
 
 - **Context:** OCR searches on small folders (e.g. 2 files in Downloads) left the GUI stuck on “Searching…” with no `1/2` counts and no `OCR · filename` labels. Sticky `activity.searching` blocked `status.scanning`; `_catch_up_progress` skipped `completed == 0`; heavy GUI/TUI searches use a thread pool that omitted `on_activity` to avoid overlapping labels.

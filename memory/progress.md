@@ -56,10 +56,13 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] `pywin32` core Windows dependency (`platform_system == 'Windows'`); dropped `[windows]` extra; installer/sync/CI/docs simplified.
 - [x] Collapse extras: single GPU-oriented `[semantic]` (former `semantic-gpu`); drop CPU semantic + `semantic-gpu` name; README no “Fast CPU, no GPU”.
 - [x] Search progress UX — emit `0/N` when listing finishes; thread-pool fan-in for per-file OCR/CLIP/transcribe activity; GUI/TUI sticky Searching yields to Scanning N/M. Applied from worktree `cursor/5ebdc811`.
+- [x] GUI Settings menu + maintenance dialog — Settings → Settings… with per-model Clear/Re-download (text/image/transcribe/all) and Clear results cache; confirm dialogs; reuses download progress worker.
+- [x] Settings menu shortcuts — Download All Models / Reset Cache / Reset All Settings (deletes `settings.json`); **All Settings…** opens full dialog including preferences reset.
 
 ### Open
 
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
+- [ ] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download.
 - [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)

@@ -1269,3 +1269,180 @@ def test_given_selected_result_when_opening_folder_then_desktop_reveal_is_called
 
 	# then
 	desktop.reveal_path.assert_called_once_with(path)
+
+
+def test_given_settings_when_opening_then_snapshot_is_available(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# when
+	controller.openSettings()
+
+	# then
+	assert controller.settingsOpen is True
+	payload = json.loads(str(controller.settingsJson))
+	assert [row["kind"] for row in payload["models"]] == [
+		"semantic_text",
+		"semantic_image",
+		"transcribe",
+		"all",
+	]
+	controller.closeSettings()
+	assert controller.settingsOpen is False
+
+
+def test_given_clear_confirm_when_accepted_then_clears_model(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	from unittest.mock import patch
+
+	import srxy.application.settings_maintenance as maintenance
+
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.openSettings()
+	controller.confirmClearModel("semantic_image")
+	assert controller.settingsConfirmOpen is True
+
+	# when
+	with patch.object(maintenance, "clear_model_kind") as clear_kind:
+		controller.acceptSettingsConfirm()
+
+	# then
+	assert controller.settingsConfirmOpen is False
+	clear_kind.assert_called_once_with("semantic_image")
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_searching_when_redownload_requested_then_emits_busy_error(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._searching = True  # pyright: ignore[reportPrivateUsage]
+	errors: list[str] = []
+	controller.errorOccurred.connect(errors.append)
+
+	# when
+	controller.redownloadModel("semantic_text")
+
+	# then
+	assert errors
+	assert "search" in errors[0].lower() or "download" in errors[0].lower()
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_idle_controller_when_redownload_then_queues_and_starts_worker(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	started: list[str] = []
+
+	def _fake_start(kind: str):
+		started.append(kind)
+
+	controller._start_download_worker = _fake_start  # pyright: ignore[reportPrivateUsage]
+
+	# when
+	controller.redownloadModel("all")
+
+	# then
+	queue = controller._download_queue  # pyright: ignore[reportPrivateUsage]
+	assert [item.kind for item in queue] == ["semantic_text", "semantic_image", "transcribe"]
+	assert started == ["semantic_text"]
+	assert controller._settings_redownload is True  # pyright: ignore[reportPrivateUsage]
+	controller._download_queue = []  # pyright: ignore[reportPrivateUsage]
+	controller._settings_redownload = False  # pyright: ignore[reportPrivateUsage]
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_cache_present_when_clearing_then_removes_db(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	from srxy.adapters.outbound.cache.cache import cache_db_path, cache_key_path
+
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	cache_root = tmp_path / "cache"
+	cache_root.mkdir()
+	db = cache_db_path()
+	key = cache_key_path()
+	db.write_bytes(b"db")
+	key.write_bytes(b"key")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# when
+	controller.clearResultsCache()
+
+	# then
+	assert not db.exists()
+	assert not key.exists()
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_download_all_confirm_when_accepted_then_queues_all_models(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	started: list[str] = []
+	controller._start_download_worker = started.append  # pyright: ignore[reportPrivateUsage]
+
+	# when
+	controller.confirmDownloadAllModels()
+	assert controller.settingsConfirmOpen is True
+	controller.acceptSettingsConfirm()
+
+	# then
+	queue = controller._download_queue  # pyright: ignore[reportPrivateUsage]
+	assert [item.kind for item in queue] == ["semantic_text", "semantic_image", "transcribe"]
+	assert started == ["semantic_text"]
+	controller._download_queue = []  # pyright: ignore[reportPrivateUsage]
+	controller._settings_redownload = False  # pyright: ignore[reportPrivateUsage]
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_preferences_file_when_reset_then_deletes_and_refreshes_language(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	from srxy.application.settings import set_language_setting, settings_path
+	from srxy.i18n import set_language
+
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	set_language("es")
+	set_language_setting("es")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	assert controller.language == "es"
+	assert settings_path().is_file()
+
+	# when
+	controller.confirmResetPreferences()
+	controller.acceptSettingsConfirm()
+
+	# then
+	assert not settings_path().exists()
+	assert "SRXY_LANGUAGE" not in os.environ
+	payload = json.loads(str(controller.settingsJson))
+	assert payload["preferences"]["present"] is False
+	controller.shutdown(thread_wait_ms=100)
+	set_language("en")

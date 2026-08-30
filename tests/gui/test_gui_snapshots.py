@@ -64,6 +64,10 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"{t('menu.about')}, {t('menu.check_updates')}, "
 		f"{t('menu.language')} ({t('menu.language.en')} / {t('menu.language.es')})"
 	)
+	settings_menu = (
+		f"{t('menu.settings.download_all')}, {t('menu.settings.reset_cache')}, "
+		f"{t('menu.settings.reset_preferences')}, {t('menu.settings.open')}"
+	)
 	lines = [
 		"mainWindow:",
 		"  title: srxy",
@@ -88,8 +92,9 @@ def _chrome_tree(controller: SearchController) -> str:
 		f"  canSearch: {controller.canSearch}",
 		f"  buttons: {buttons}",
 		f"  menus: {menus}",
+		f"  settingsMenu: {settings_menu}",
 		f"  helpMenu: {help_menu}",
-		f"  dialogs: {t('about.title')}, {t('update.title')}, {t('help.dialog_title')}, "
+		f"  dialogs: {t('settings.title')}, {t('about.title')}, {t('update.title')}, {t('help.dialog_title')}, "
 		f"{t('gui.download_model')}, {t('gui.downloading')}, {t('gui.error')}, "
 		f"{t('gui.search_warnings.title')}",
 		f"  panels: {t('gui.results')}, {t('gui.matches_in_file')}, File preview",
