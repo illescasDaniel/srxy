@@ -27,7 +27,6 @@ from textual.widgets import (
 	Static,
 )
 
-from srxy.adapters.inbound.cli.cli import format_no_matches_message, format_skipped_file_warnings
 from srxy.adapters.inbound.tui.desktop import TextualDesktopAdapter
 from srxy.adapters.inbound.tui.labels import format_tui_match_labels
 from srxy.adapters.inbound.tui.messages import (
@@ -57,6 +56,7 @@ from srxy.application.search_formatting import (
 	format_score_percent,
 	iter_grouped_line_displays,
 )
+from srxy.application.search_messages import format_no_matches_message
 from srxy.application.search_options import (
 	SearchOptions,
 	apply_search_options_to_args,
@@ -64,11 +64,17 @@ from srxy.application.search_options import (
 	search_options_from_args,
 )
 from srxy.application.search_runner_adapter import AdaptiveSearchRunner
+from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import file_q_to_dict
 from srxy.domain.models import FileSearchResult
-from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.domain.progress import (
+	ACTIVITY_SPINNER_FRAMES,
+	ActivityUpdate,
+	format_activity_status,
+	is_generic_searching_activity,
+)
 from srxy.i18n import tr
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
@@ -484,7 +490,7 @@ class SrxyApp(App[int]):
 		path_text = result.path.as_posix()
 		label_text = self._match_labels(result)
 		header.update(f"{path_text}  ·  {format_score_percent(result.score)}  ·  matched: {label_text}")
-		for location, preview, score, plain_text in iter_grouped_line_displays(
+		for location, preview, score, plain_text, _line in iter_grouped_line_displays(
 			result.lines, query=query, highlight="bold"
 		):
 			self._preview_rows.append(_PreviewRow(location=location, plain_text=plain_text, score=score))
@@ -825,7 +831,8 @@ class SrxyApp(App[int]):
 			return
 		percent = int((message.current / message.total) * 100)
 		progress.update(total=100, progress=percent)
-		if self._activity is None:
+		# Sticky "Searching…" must not block determinate Scanning N/M text.
+		if is_generic_searching_activity(self._activity, searching_label=tr("activity.searching")):
 			self._set_status(tr("tui.status.scanning_files", current=message.current, total=message.total))
 
 	def _clear_activity_status(self):

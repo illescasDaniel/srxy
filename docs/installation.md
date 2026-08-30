@@ -4,26 +4,31 @@ Requires **Python 3.11+**.
 
 ## Recommended
 
-```bash
-uv tool install 'srxy[semantic]'
-```
+Pick the extras for your machine (same table as the [README](../README.md#installation)):
 
-`uv tool install` puts srxy in an isolated environment and adds the `srxy` command to your `PATH`. If the tool bin directory is not on `PATH`, run `uv tool update-shell`.
+| Hardware | Command |
+|----------|---------|
+| **Linux + NVIDIA GPU** | `uv tool install 'srxy[semantic]'` |
+| **macOS Apple Silicon** | `uv tool install 'srxy[semantic]'` |
+| **Windows + NVIDIA GPU** | `uv tool install 'srxy[semantic]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130` |
+| **No GPU / core-only** | `uv tool install srxy` |
+
+`uv tool install` puts srxy in an isolated environment and adds the `srxy` command to your `PATH`. If the tool bin directory is not on `PATH`, run `uv tool update-shell`. On Windows, `pywin32` (Explorer tags) is a core dependency; PyPI’s torch is still **CPU-only**, so the GPU line uses `--with`/`--index` for CUDA wheels (`[tool.uv.sources]` only applies to checkout `uv sync` / `sync-dev`). Or use the [desktop installer](installers.md); details under [Windows](#windows).
 
 ### pipx (alternate)
 
 ```bash
-pipx install 'srxy[semantic]'
+pipx install 'srxy[semantic]'   # GPU machines only
 ```
 
 ### Library / project install
 
 ```bash
-pip install 'srxy[semantic]'   # inside a venv or project
+pip install 'srxy[semantic]'   # GPU machines; inside a venv or project
 pip install srxy                 # core only (no PyTorch / semantic / transcription)
 ```
 
-`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch first if you have an NVIDIA GPU ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
+`[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, explicit torch/torchaudio/torchvision, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. Use it only when you have a GPU (NVIDIA CUDA or Apple Silicon MPS) — CPU-only semantic is too slow for most users. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch via the GPU line above ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
 ## Desktop installers (optional)
 
@@ -48,7 +53,7 @@ PyPI / `uv tool install` remain the primary install paths. On Linux you can also
 2. Decompress (`xz -d …`), then run it — it opens your default browser. First launch may download `uv`, Python, and the srxy installer package from PyPI into `~/.cache/srxy/online-bootstrap/` (needs network), then shows the install page on localhost only. Acknowledge privacy, click **Install**. Installs **from PyPI** into your chosen prefix. Always vendors uv/tesseract/ffmpeg and adds PATH; enables smarter-search packages only when a GPU/MPS is detected. AI model weights are **not** prefetched (downloaded on first smarter search).
 3. No reinstall/uninstall UI in this artifact — use the offline wizard or remove the prefix manually. Closing the browser tab stops the installer process.
 
-Language defaults to the system locale (English or Spanish). Override with the installer language combo (offline wizard), GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings persist in `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`.
+Language defaults to the system locale (English or Spanish). Override with the installer language combo (offline wizard), GUI **Help → Language**, TUI help dialog, `--language es`, or `SRXY_LANGUAGE=es`. Settings live in `$SRXY_HOME/settings.json` (desktop/prefix install) or `~/.config/srxy/settings.json` (PyPI / uv / pipx / dev). Besides language, the GUI can opt in to persist search **options** and **filters** there (checkboxes at the bottom of those dialogs; values written on exit).
 
 The GUI checks PyPI for updates on startup and under **Help → Check for updates…**. Updates use your install method (prefix `uv pip`, `uv tool upgrade`, `pipx upgrade`, or pip). After an update completes, restart srxy to load the new version.
 
@@ -128,6 +133,8 @@ macOS `python3` often **3.9–3.10** or missing. srxy needs **3.11+**. Install n
 
 4. Install srxy:
 
+   **Apple Silicon** (MPS):
+
    ```bash
    uv tool install --python 3.12 'srxy[semantic]'
    ```
@@ -137,6 +144,8 @@ macOS `python3` often **3.9–3.10** or missing. srxy needs **3.11+**. Install n
    ```bash
    pipx install --python "$(which python3)" 'srxy[semantic]'
    ```
+
+   **Intel Mac / no GPU** — install core only (`uv tool install srxy`); semantic on CPU is not recommended.
 
 ### Linux
 
@@ -149,8 +158,12 @@ Install ffmpeg and tesseract with your package manager, then install srxy:
 | Fedora | `sudo dnf install ffmpeg` | `sudo dnf install tesseract` |
 
 ```bash
+# NVIDIA GPU:
 uv tool install 'srxy[semantic]'
 # or: pipx install 'srxy[semantic]'
+
+# No GPU (core only):
+uv tool install srxy
 ```
 
 ### Windows
@@ -183,34 +196,42 @@ uv tool install 'srxy[semantic]'
 
 4. Install srxy:
 
-   `[windows]` adds `pywin32` for `System.Keywords` tag search ([CLI reference](cli.md)).
+   `pywin32` ships as a core Windows dependency for `System.Keywords` tag search ([CLI reference](cli.md)).
 
-   **CPU only** (no NVIDIA GPU, or GPU not needed):
+   **No GPU** (core only — semantic on CPU is not recommended):
 
    ```powershell
-   uv tool install 'srxy[semantic,windows]'
-   # or: pipx install 'srxy[semantic,windows]'
+   uv tool install srxy
+   # or: pipx install srxy
    ```
 
-   **GPU** (semantic search and transcription): default Windows installs pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first.
+   **GPU** (semantic search and transcription): default Windows **tool**/pip installs of `[semantic]` pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first. **Developers:** use `uv run task sync-dev` ([development.md → Sync](development.md#sync)) — on NVIDIA machines it syncs `--extra semantic` (CUDA `torch`/`torchvision`/`torchaudio` from the lockfile via `[tool.uv.sources]` + the pytorch-cu130 index) and then runs `ensure-windows-cuda-torch.ps1` as a safety net. A stderr line like `warning: no GPU found; CLIP image semantic search will use CPU` with a real GPU almost always means the venv still has `torch…+cpu`.
+
+   The **desktop / offline Windows installer** does this automatically when smarter-search (semantic) is selected and an NVIDIA GPU is detected: after `uv pip install 'srxy[semantic]'` it reinstalls CUDA torch into the prefix `.venv` (same `cu130` index, with `cu126` fallback). Override with `SRXY_SKIP_CUDA_TORCH=1` if needed.
 
    See [pytorch.org/get-started](https://pytorch.org/get-started/locally/) (Windows → Pip → CUDA). Use **CUDA 13.0** (`cu130`) for most recent GPUs; use **CUDA 12.6** (`cu126`) if `cu130` fails or your GPU/driver is older.
 
    **uv / venv** (recommended for GPU):
 
    ```powershell
+   # Dev checkout (preferred — platform-aware extras; CUDA ensure on Windows NVIDIA):
+   uv run task sync-dev
+
+   # Or manually:
+   uv sync --extra semantic
+   # or pip-style:
    uv venv .venv
    .\.venv\Scripts\Activate.ps1
-   uv pip install torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
-   uv pip install 'srxy[semantic,windows]'
+   uv pip install --reinstall-package torch torch torchvision torchaudio --index-url https://download.pytorch.org/whl/cu130
+   uv pip install 'srxy[semantic]'
    ```
 
-   For CUDA 12.6, replace `cu130` with `cu126`.
+   For CUDA 12.6, replace `cu130` with `cu126` (or pass `-CudaIndex cu126` to the ensure script).
 
    **pipx** (global `srxy` with GPU):
 
    ```powershell
-   pipx install 'srxy[semantic,windows]'
+   pipx install 'srxy[semantic]'
    pipx inject srxy torch torchvision torchaudio --pip-args="--index-url https://download.pytorch.org/whl/cu130"
    ```
 
@@ -219,7 +240,7 @@ uv tool install 'srxy[semantic]'
    **uv tool** with CUDA torch via `--with` (same idea as inject):
 
    ```powershell
-   uv tool install 'srxy[semantic,windows]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130
+   uv tool install 'srxy[semantic]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130
    ```
 
    If index mixing fails, prefer the venv path above.

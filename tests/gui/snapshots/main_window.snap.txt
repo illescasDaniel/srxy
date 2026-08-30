@@ -4,8 +4,8 @@ mainWindow:
   progressPercent: 0%
   progressCount: 
   language: en
-  sections: Where to search, What to search, How to search, Search, Search Results, Search progress
-  howStack: Options button + summary, Filters button + summary
+  sections: Where to search, What to search, How to search, Search Results, Search progress
+  howStack: What + How row (query+Search left; mode/Options/Filters right)
   queryMode: simple
   simpleQuery: 
   path: ~
@@ -21,8 +21,9 @@ mainWindow:
   canSearch: False
   buttons: Browse…, Search, Options, Filters, Cancel
   menus: Open file, Copy path, Copy all matches, Copy line, Copy location
+  settingsMenu: Download All Models…, Reset Cache…, Reset All Settings…, All Settings…
   helpMenu: About srxy…, Check for updates…, Language (English / Español)
-  dialogs: About srxy, Update srxy, About this setting, Download model, Downloading…, Error
+  dialogs: All Settings, About srxy, Update srxy, About this setting, Download model, Downloading…, Error, Search warnings
   panels: Results, Matches in file, File preview
   resultColumns: #, Match, Path, Matched
   matchColumns: #, Match, Location, Text

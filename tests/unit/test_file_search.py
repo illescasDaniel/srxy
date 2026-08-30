@@ -695,8 +695,9 @@ def test_given_directory_when_searching_with_callbacks_then_streams_progress_and
 		on_result=on_result,
 	)
 
-	# then
-	assert progress_calls == [(1, 3), (2, 3), (3, 3)]
+	# then — determinate progress is emitted only after the walk finishes (catch-up
+	# once for sequential search-as-you-list; all work already completed during listing).
+	assert progress_calls == [(3, 3)]
 	assert streamed_paths == ["beta.txt"]
 	assert len(results) == 1
 	assert results[0].path.name == "beta.txt"
@@ -762,7 +763,6 @@ def test_given_mp3_with_artist_tag_when_searching_contents_then_returns_file(tmp
 	assert "Beatles" in results[0].lines[0].text
 
 
-@pytest.mark.transcribe
 def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcript_line(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
@@ -1328,14 +1328,17 @@ def test_given_semantic_image_below_text_threshold_when_searching_then_uses_imag
 	assert results[0].breakdown["semantic_image"] == pytest.approx(0.198)
 
 
-def test_given_text_only_path_when_searching_with_semantic_image_then_skips_query_encoding(tmp_path: Path):
-	# given
+def test_given_text_only_path_when_searching_with_semantic_image_then_encodes_query_up_front(tmp_path: Path):
+	# given — CLIP encoding runs before the walk when semantic image is active so
+	# image hits can score as soon as they are discovered (no post-list scan).
 	text_path = tmp_path / "things.txt"
 	text_path.write_text("recents\n", encoding="utf-8")
 
 	with (
 		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
-		patch("srxy.application.use_cases.search_files.encode_semantic_image_query") as encode_query,
+		patch(
+			"srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]
+		) as encode_query,
 	):
 		# when
 		results = magic_file_search(
@@ -1347,7 +1350,7 @@ def test_given_text_only_path_when_searching_with_semantic_image_then_skips_quer
 		)
 
 	# then
-	encode_query.assert_not_called()
+	encode_query.assert_called_once()
 	assert len(results) == 1
 	assert results[0].path == text_path
 
@@ -1374,11 +1377,11 @@ def test_given_semantic_image_when_searching_with_on_activity_then_reports_phase
 			on_activity=activities.append,
 		)
 
-	# then — query encoding and the generic "Searching…" phase are still reported;
-	# per-file messages (CLIP ·, OCR ·, …) are no longer emitted because workers run
-	# concurrently and simultaneous messages would conflict in the TUI.
+	# then — query encoding, generic Searching…, and per-file CLIP labels (via the
+	# concurrent activity fan-in) are all reported.
 	assert any(activity is not None and activity.label == "Encoding image query…" for activity in activities)
 	assert any(activity is not None and activity.label == "Searching…" for activity in activities)
+	assert any(activity is not None and activity.label == "CLIP · beach.png" for activity in activities)
 	assert activities[-1] is None
 
 

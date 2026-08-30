@@ -15,7 +15,9 @@ gate_init() {
 	GATE_STEP_STATUS=()
 	GATE_STEP_ERRORS=()
 	GATE_STEP_WARNINGS=()
+	GATE_STEP_SECONDS=()
 	GATE_DETAIL_LINES=()
+	GATE_STEP_START_EPOCH=0
 }
 
 gate_step_start() {
@@ -26,6 +28,8 @@ gate_step_start() {
 	GATE_STEP_STATUS+=("pending")
 	GATE_STEP_ERRORS+=(0)
 	GATE_STEP_WARNINGS+=(0)
+	GATE_STEP_SECONDS+=("0")
+	GATE_STEP_START_EPOCH="$(date +%s)"
 	echo ""
 	echo "[$((GATE_CURRENT_INDEX + 1))/${GATE_PLANNED_STEPS:-?}] ${name}"
 	echo "────────────────────────────────────────"
@@ -35,9 +39,14 @@ gate_record_step() {
 	local status="$1"
 	local errors="$2"
 	local warnings="$3"
+	local elapsed=0
+	if [[ "${GATE_STEP_START_EPOCH:-0}" -gt 0 ]]; then
+		elapsed=$(($(date +%s) - GATE_STEP_START_EPOCH))
+	fi
 	GATE_STEP_STATUS[GATE_CURRENT_INDEX]="${status}"
 	GATE_STEP_ERRORS[GATE_CURRENT_INDEX]="${errors}"
 	GATE_STEP_WARNINGS[GATE_CURRENT_INDEX]="${warnings}"
+	GATE_STEP_SECONDS[GATE_CURRENT_INDEX]="${elapsed}"
 	GATE_TOTAL_ERRORS=$((GATE_TOTAL_ERRORS + errors))
 	GATE_TOTAL_WARNINGS=$((GATE_TOTAL_WARNINGS + warnings))
 }
@@ -168,30 +177,32 @@ gate_record_fail() {
 }
 
 gate_print_report() {
-	local i name status errors warnings status_label
+	local i name status errors warnings status_label seconds
 
 	echo ""
 	echo "═══════════════════════════════════════"
 	echo " Quality gate report"
 	echo "═══════════════════════════════════════"
-	printf " %-17s %-8s %7s %9s\n" "Step" "Status" "Errors" "Warnings"
-	echo " ─────────────────────────────────────────────"
+	printf " %-17s %-8s %7s %9s %8s\n" "Step" "Status" "Errors" "Warnings" "Seconds"
+	echo " ──────────────────────────────────────────────────────"
 
 	for i in "${!GATE_STEPS[@]}"; do
 		name="${GATE_STEPS[i]}"
 		status="${GATE_STEP_STATUS[i]}"
 		errors="${GATE_STEP_ERRORS[i]}"
 		warnings="${GATE_STEP_WARNINGS[i]}"
+		seconds="${GATE_STEP_SECONDS[i]:-0}"
 		case "${status}" in
 		pass) status_label="pass" ;;
 		warn) status_label="WARN" ;;
 		FAIL) status_label="FAIL" ;;
+		skip) status_label="skip" ;;
 		*) status_label="${status}" ;;
 		esac
-		printf " [%d] %-14s %-8s %7s %9s\n" "$((i + 1))" "${name}" "${status_label}" "${errors}" "${warnings}"
+		printf " [%d] %-14s %-8s %7s %9s %8s\n" "$((i + 1))" "${name}" "${status_label}" "${errors}" "${warnings}" "${seconds}"
 	done
 
-	echo " ─────────────────────────────────────────────"
+	echo " ──────────────────────────────────────────────────────"
 	printf " %-17s %-8s %7s %9s\n" "TOTAL" "" "${GATE_TOTAL_ERRORS}" "${GATE_TOTAL_WARNINGS}"
 	echo ""
 

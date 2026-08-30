@@ -8,7 +8,7 @@ import subprocess
 from collections.abc import Callable
 from pathlib import Path
 
-from srxy.adapters.outbound.os.desktop import open_path
+from srxy.adapters.outbound.os.desktop import open_path, reveal_path
 
 
 class TextualDesktopAdapter:
@@ -19,6 +19,9 @@ class TextualDesktopAdapter:
 
 	def open_path(self, path: Path):
 		open_path(path)
+
+	def reveal_path(self, path: Path):
+		reveal_path(path)
 
 	def copy_text(self, text: str):
 		if platform.system() == "Darwin":

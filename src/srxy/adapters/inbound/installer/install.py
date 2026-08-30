@@ -14,6 +14,10 @@ from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path
 
+from srxy.adapters.inbound.installer.cuda_torch import (
+	ensure_windows_cuda_torch,
+	should_ensure_windows_cuda_torch,
+)
 from srxy.adapters.inbound.installer.download import ProgressCallback
 from srxy.adapters.inbound.installer.manifest import (
 	InstallManifest,
@@ -65,6 +69,11 @@ def plan_install_phases(options: InstallOptions) -> list[InstallPhase]:
 		InstallPhase("venv", tr("installer.status.creating_venv")),
 		InstallPhase("package", tr("installer.status.installing_package", spec="srxy")),
 	]
+	if should_ensure_windows_cuda_torch(
+		install_semantic=options.install_semantic,
+		is_windows=_is_windows(),
+	):
+		phases.append(InstallPhase("cuda_torch", tr("installer.status.installing_cuda_torch")))
 	if options.download_tesseract:
 		phases.append(InstallPhase("tesseract", tr("installer.status.downloading_tesseract")))
 	if options.download_ffmpeg:
@@ -289,12 +298,12 @@ def _write_windows_ico(path: Path, *, installer: bool = False):
 	for size in sizes:
 		source = installer_icon_path(size=size) if installer else app_icon_path(size=size)
 		images.append(Image.open(source).convert("RGBA"))
-	# Primary must be the largest; bitmap_format=bmp avoids PNG-in-ICO frames that
-	# break Inno Setup EndUpdateResource (110) and some older Win32 icon loaders.
+	# Primary must be the largest. Pillow default PNG-in-ICO keeps size down;
+	# Inno EndUpdateResource (110) is more often file locking on the setup EXE
+	# (see packaging/windows/build-offline.ps1) than PNG frames.
 	images[-1].save(
 		path,
 		format="ICO",
-		bitmap_format="bmp",
 		sizes=[(img.width, img.height) for img in images],
 		append_images=images[:-1],
 	)
@@ -450,13 +459,14 @@ def _is_windows() -> bool:
 
 
 def package_extras_for_host(*, install_semantic: bool) -> list[str]:
-	"""Extras required for a prefix install on the current host OS."""
-	extras: list[str] = []
+	"""Extras required for a prefix install on the current host OS.
+
+	``pywin32`` is a core Windows dependency (platform marker), so there is no
+	``[windows]`` extra to add here.
+	"""
 	if install_semantic:
-		extras.append("semantic")
-	if _is_windows():
-		extras.append("windows")
-	return extras
+		return ["semantic"]
+	return []
 
 
 def _venv_python(venv: Path) -> Path:
@@ -556,7 +566,7 @@ def install_srxy(
 	env["PATH"] = f"{venv_bin}{_path_sep()}{env.get('PATH', '')}"
 
 	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
-	# Windows installs always need pywin32 ([windows]); semantic is optional.
+	# semantic is optional; pywin32 is a core Windows dependency (no [windows] extra).
 	extra_names = package_extras_for_host(install_semantic=options.install_semantic)
 	if extra_names:
 		spec = with_extras(spec, *extra_names)
@@ -582,6 +592,17 @@ def install_srxy(
 		)
 
 	phase_by_key = {phase.key: (i + 1, phase) for i, phase in enumerate(phases)}
+
+	if "cuda_torch" in phase_by_key:
+		local_index, phase = phase_by_key["cuda_torch"]
+		emit_task(local_index, phase.label)
+		ensure_windows_cuda_torch(
+			uv=uv,
+			python=_venv_python(venv),
+			env=env,
+			run=_run,
+		)
+		_complete_phase(progress=progress, label=phase.label)
 
 	vendor_tesseract = False
 	vendor_ffmpeg = False

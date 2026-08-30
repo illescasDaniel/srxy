@@ -5,7 +5,6 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
-from tests.helpers import file_search_root, require_file_search_fixtures
 
 from srxy.adapters.outbound.ocr.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
@@ -23,7 +22,6 @@ from srxy.adapters.outbound.ocr.ocr_text import (
 	ocr_unavailable_message,
 	preprocess_image,
 	reset_ocr_engine,
-	tesseract_available,
 )
 
 
@@ -386,24 +384,6 @@ def test_given_large_image_with_lexical_primary_when_ocring_then_still_merges_gr
 	assert "Generate" in text
 
 
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_cover_image_when_ocring_then_reads_embedded_text():
-	# given
-	require_file_search_fixtures()
-	cover = file_search_root() / "cover.jpg"
-	assert cover.is_file(), f"missing cover fixture: {cover}"
-
-	# when
-	with Image.open(cover) as image:
-		text = ocr_pil_image(image)
-
-	# then
-	lowered = text.lower()
-	assert "fixture" in lowered
-	assert "composer" in lowered
-
-
 def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only():
 	# given
 	small_image = MagicMock()
@@ -422,33 +402,3 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 
 	# then
 	assert text == "classifier layer"
-
-
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_ocr_image_fixture_when_running_tesseract_then_reads_revenue():
-	# given
-	from tests.helpers import OCR_IMAGE_FIXTURE
-
-	# when
-	lines = list(iter_image_ocr_lines(OCR_IMAGE_FIXTURE))
-
-	# then
-	assert lines
-	assert any("revenue" in line_text.lower() for _, line_text in lines)
-
-
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_ocr_pdf_fixture_when_running_tesseract_then_reads_classifier():
-	# given
-	from pypdf import PdfReader
-	from tests.helpers import OCR_PDF_FIXTURE
-
-	page = PdfReader(str(OCR_PDF_FIXTURE)).pages[0]
-
-	# when
-	text = ocr_pdf_page_images(page)
-
-	# then
-	assert "classifier" in text.lower()

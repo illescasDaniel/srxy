@@ -10,7 +10,15 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 ## Installation
 
-Needs **Python 3.11+**. `uv tool install 'srxy[semantic]'` recommended; `pipx install 'srxy[semantic]'` also works; `pipx install srxy` for core-only in a venv. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
+Needs **Python 3.11+**. Prefer [uv](https://docs.astral.sh/uv/) (`pipx install …` is fine too).
+
+| Hardware | Command |
+|----------|---------|
+| **Linux + NVIDIA GPU** /<br>**macOS Apple Silicon** | `uv tool install 'srxy[semantic]'` |
+| **Windows + NVIDIA GPU** | `uv tool install 'srxy[semantic]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130` |
+| **No GPU / core-only** | `uv tool install srxy` |
+
+`[semantic]` adds smarter search (PyTorch, CLIP, Whisper) and is intended for machines with a GPU — CPU-only semantic is too slow for most users. On Windows, `pywin32` (Explorer tags) is included automatically. PyPI’s Windows torch is **CPU-only**, so the GPU line uses `--with`/`--index` to pull CUDA wheels (dev checkouts use `uv run task sync-dev` instead, which applies `[tool.uv.sources]`). Or use the [desktop installer](docs/installers.md). macOS system `python3` may be too old — [Installation](docs/installation.md#macos).
 
 **Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
@@ -83,21 +91,26 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |
 | [Python API](docs/python-api.md) | `magic_file_search`, `search`, `Q`, match types |
 | [API reference](docs/api-reference.md) | Generated signatures from `srxy.__all__` |
-| [Development](docs/development.md) | Quality gate, `--full`, fixtures, pytest |
+| [Development](docs/development.md) | Sync tasks, quality gate, `--full`, fixtures, pytest |
 
 ## Development
 
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --extra semantic
+uv run task sync-dev           # GPU-aware: NVIDIA / Apple Silicon → semantic; else core+dev
 uv run task checks-fix
-uv run task checks              # day-to-day
+uv run task checks              # day-to-day (auto-scope)
+uv run task checks-gui          # core+gui when working on the GUI
 uv run task checks-full         # before release
 uv run task checks-full-cpu     # + forced-CPU transcribe matrix
 ```
 
-CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).
+CI runs `core+gui+tui` buckets (no heavy/real-model suite). Details: [docs/development.md](docs/development.md).
+
+`sync` (runtime only, no pytest) and `sync-uploader` (dev + twine) are documented there too.
+
+Agent memory bank (per-branch project state): [memory/README.md](memory/README.md).
 
 Try fixtures: `srxy "axolotl" ./tests/fixtures/file_search`
 

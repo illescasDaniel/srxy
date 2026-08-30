@@ -3,9 +3,15 @@ from __future__ import annotations
 from pathlib import Path
 
 import pytest
+from tests.isolation import apply_isolated_cache_environment
 
 
 _TUI_ROOT = Path(__file__).resolve().parent
+
+
+@pytest.fixture(autouse=True)
+def isolated_tui_environment(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
+	yield from apply_isolated_cache_environment(tmp_path, monkeypatch)
 
 
 def pytest_collection_modifyitems(items: list[pytest.Item]):

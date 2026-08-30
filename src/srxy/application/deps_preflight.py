@@ -4,25 +4,26 @@ from __future__ import annotations
 
 import argparse
 
-from srxy.adapters.inbound.cli.cli import apply_args_to_env
-from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
-from srxy.adapters.outbound.semantic.semantic_image import (
-	is_semantic_image_available,
-	semantic_image_unavailable_message,
-)
-from srxy.adapters.outbound.transcribe.transcribe_text import (
-	ffmpeg_available,
-	ffmpeg_unavailable_message,
-	transcribe_deps_installed,
-	transcribe_unavailable_message,
-)
-from srxy.application.matching.semantic import (
-	semantic_deps_unavailable_message,
-	sentence_transformers_installed,
-)
+from srxy.application.search_runner import apply_args_to_env
 
 
 def deps_only_preflight(args: argparse.Namespace) -> str | None:
+	from srxy.adapters.outbound.ocr.ocr_text import is_ocr_available, ocr_unavailable_message
+	from srxy.adapters.outbound.semantic.semantic_image import (
+		is_semantic_image_available,
+		semantic_image_unavailable_message,
+	)
+	from srxy.adapters.outbound.transcribe.transcribe_text import (
+		ffmpeg_available,
+		ffmpeg_unavailable_message,
+		transcribe_deps_installed,
+		transcribe_unavailable_message,
+	)
+	from srxy.application.matching.semantic import (
+		semantic_deps_unavailable_message,
+		sentence_transformers_installed,
+	)
+
 	apply_args_to_env(args)
 	if bool(args.ocr or args.semantic_all) and not is_ocr_available():
 		return ocr_unavailable_message()

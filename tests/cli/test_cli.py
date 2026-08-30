@@ -583,6 +583,30 @@ def test_given_ocr_skip_when_formatting_warning_then_shows_ocr_limit(tmp_path: P
 	assert "--max-ocr-file-size" in warning
 
 
+def test_given_transcribe_no_speech_skip_when_formatting_warning_then_shows_no_speech(tmp_path: Path):
+	# given
+	skipped = SkippedFile(path=tmp_path / "silent.mp3", size_bytes=12_345, reason="transcribe_no_speech")
+
+	# when
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	# then
+	assert "skipped transcription" in warning
+	assert "no speech detected" in warning
+
+
+def test_given_transcribe_failed_skip_when_formatting_warning_then_shows_failed(tmp_path: Path):
+	# given
+	skipped = SkippedFile(path=tmp_path / "bad.mp3", size_bytes=12_345, reason="transcribe_failed")
+
+	# when
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	# then
+	assert "skipped transcription" in warning
+	assert "transcription failed" in warning
+
+
 def test_given_ocr_flag_when_parsing_args_then_accepts_flag():
 	# when
 	args = build_parser().parse_args(["invoice", ".", "--ocr"])
@@ -632,9 +656,9 @@ def test_given_semantic_all_without_ffmpeg_when_running_cli_then_exits_two_with_
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
 	with (
-		patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=True),
-		patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=True),
-		patch("srxy.adapters.inbound.cli.cli.ffmpeg_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.transcribe_deps_installed", return_value=True),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.ffmpeg_available", return_value=False),
 	):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--semantic-all", "--content-only", "--no-progress"])
@@ -660,7 +684,7 @@ def test_given_semantic_image_flag_without_dependency_when_running_cli_then_exit
 	(tmp_path / "photo.png").write_bytes(b"png")
 	monkeypatch.delenv("SRXY_SEMANTIC_IMAGE", raising=False)
 
-	with patch("srxy.adapters.inbound.cli.cli.is_semantic_image_available", return_value=False):
+	with patch("srxy.adapters.outbound.semantic.semantic_image.is_semantic_image_available", return_value=False):
 		# when
 		exit_code = main(["sunset", str(tmp_path), "--semantic-image", "--content-only", "--no-progress"])
 
@@ -677,7 +701,7 @@ def test_given_semantic_flag_without_dependency_when_running_cli_then_exits_two_
 	(tmp_path / "notes.txt").write_text("hello", encoding="utf-8")
 	monkeypatch.delenv("SRXY_SEMANTIC", raising=False)
 
-	with patch("srxy.adapters.inbound.cli.cli.sentence_transformers_installed", return_value=False):
+	with patch("srxy.application.matching.semantic.sentence_transformers_installed", return_value=False):
 		# when
 		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
 
@@ -697,8 +721,8 @@ def test_given_semantic_flag_without_cached_model_when_user_declines_then_exits_
 	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path))
 
 	with (
-		patch("srxy.adapters.inbound.cli.cli.sentence_transformers_installed", return_value=True),
-		patch("srxy.adapters.inbound.cli.cli.ensure_semantic_text_model", return_value=False),
+		patch("srxy.application.matching.semantic.sentence_transformers_installed", return_value=True),
+		patch("srxy.adapters.outbound.models.model_store.ensure_semantic_text_model", return_value=False),
 	):
 		# when
 		exit_code = main(["hello", str(tmp_path), "--semantic", "--content-only", "--no-progress"])
@@ -724,7 +748,7 @@ def test_given_ocr_flag_without_tesseract_when_running_cli_then_exits_two_with_m
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.delenv("SRXY_OCR", raising=False)
 
-	with patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=False):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -743,7 +767,7 @@ def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_me
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.setenv("SRXY_OCR", "1")
 
-	with patch("srxy.adapters.inbound.cli.cli.is_ocr_available", return_value=False):
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -761,7 +785,7 @@ def test_given_transcribe_flag_without_deps_when_running_cli_then_exits_two_with
 	(tmp_path / "notes.txt").write_text("quarterly earnings", encoding="utf-8")
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
-	with patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=False):
+	with patch("srxy.adapters.outbound.transcribe.transcribe_text.transcribe_deps_installed", return_value=False):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])
 
@@ -780,8 +804,8 @@ def test_given_transcribe_flag_without_ffmpeg_when_running_cli_then_exits_two_wi
 	monkeypatch.delenv("SRXY_TRANSCRIBE", raising=False)
 
 	with (
-		patch("srxy.adapters.inbound.cli.cli.transcribe_deps_installed", return_value=True),
-		patch("srxy.adapters.inbound.cli.cli.ffmpeg_available", return_value=False),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.transcribe_deps_installed", return_value=True),
+		patch("srxy.adapters.outbound.transcribe.transcribe_text.ffmpeg_available", return_value=False),
 	):
 		# when
 		exit_code = main(["earnings", str(tmp_path), "--transcribe", "--content-only", "--no-progress"])

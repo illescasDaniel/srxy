@@ -28,6 +28,15 @@ def test_given_os_adapter_when_copying_text_then_delegates_to_copy_text():
 	copy_text.assert_called_once_with("hello")
 
 
+def test_given_os_adapter_when_revealing_path_then_delegates_to_reveal_path(tmp_path: Path):
+	target = tmp_path / "note.txt"
+	target.write_text("hi", encoding="utf-8")
+	adapter = OsDesktopAdapter()
+	with patch("srxy.adapters.outbound.os.desktop.reveal_path") as reveal_path:
+		adapter.reveal_path(target)
+	reveal_path.assert_called_once_with(target)
+
+
 def test_given_textual_adapter_when_fallback_needed_then_calls_fallback():
 	fallback = MagicMock()
 	adapter = TextualDesktopAdapter(copy_fallback=fallback)

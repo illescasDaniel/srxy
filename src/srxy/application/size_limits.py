@@ -3,9 +3,11 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
-from srxy.adapters.outbound.ocr.ocr_text import DEFAULT_OCR_MAX_FILE_SIZE
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_MAX_FILE_SIZE
-from srxy.application.use_cases.search_files import DEFAULT_MAX_FILE_SIZE
+from srxy.application.search_defaults import (
+	DEFAULT_MAX_FILE_SIZE,
+	DEFAULT_OCR_MAX_FILE_SIZE,
+	DEFAULT_TRANSCRIBE_MAX_FILE_SIZE,
+)
 
 
 _MIB = 1024 * 1024

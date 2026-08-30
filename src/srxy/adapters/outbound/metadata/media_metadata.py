@@ -94,8 +94,8 @@ def is_media_path(path: Path) -> bool:
 	return path.suffix.lower() in MEDIA_SUFFIXES
 
 
-def iter_media_metadata_lines(path: Path) -> Iterator[tuple[int, str]]:
-	suffix = path.suffix.lower()
+def iter_media_metadata_lines(path: Path, *, logical_suffix: str | None = None) -> Iterator[tuple[int, str]]:
+	suffix = (logical_suffix or path.suffix).lower()
 	extractors: dict[str, Callable[[Path], Iterator[tuple[int, str]]]] = {}
 	for image_suffix in ALL_IMAGE_SUFFIXES:
 		extractors[image_suffix] = _iter_image_metadata_lines

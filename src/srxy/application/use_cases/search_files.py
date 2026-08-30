@@ -1,15 +1,26 @@
 from __future__ import annotations
 
 import re
+import threading
 import warnings
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
 from srxy.adapters.outbound.content.file_walker import is_names_only_path
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
+from srxy.adapters.outbound.content.path_access import (
+	PERMISSION_DENIED_REASON,
+	directory_is_listable,
+	is_access_denied,
+	permission_skip,
+)
 from srxy.application.matching.composite import CompositeMatcher
 from srxy.application.search_control import SearchCancelled
+from srxy.application.search_defaults import (
+	DEFAULT_MAX_FILE_SIZE as DEFAULT_MAX_FILE_SIZE,
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+	suggest_max_file_size as suggest_max_file_size,
+)
 from srxy.application.search_options import search_source_required_message
 from srxy.application.utils import normalize_text, query_words, word_pair_match_allowed
 from srxy.domain.file_query import (
@@ -22,7 +33,12 @@ from srxy.domain.file_query import (
 	score_file_query_on_text,
 )
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
-from srxy.domain.progress import ActivityCallback, clear_activity, emit_activity
+from srxy.domain.progress import (
+	ActivityCallback,
+	clear_activity,
+	concurrent_activity_fan_in,
+	emit_activity,
+)
 from srxy.ports.outbound.content import (
 	ContentCachePort,
 	FileWalkerPort,
@@ -36,11 +52,23 @@ _SHORT_QUERY_PHONETIC_SKIP_LENGTH = 3
 # Minimum file count before the process pool is activated for text-only searches.
 # Below this threshold the process startup cost outweighs the parallelism benefit.
 _MIN_PROCESS_FILES = 50
+# Cap in-flight pool futures relative to max_workers so huge trees do not enqueue
+# millions of Future objects while the walk continues.
+_POOL_PENDING_FACTOR = 4
+_LISTING_ACTIVITY_INTERVAL = 256
 _SEMANTIC_WORD_MATCH_GATE = 0.5
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _TOKEN_SCORING_LOCATION_KINDS = frozenset({"ocr", "tag", "transcript"})
 _TEXT_MATCH_LOCATION_KINDS = frozenset({"ocr", "transcript", "line", "page", "paragraph", "row", "slide"})
 _VISUAL_MATCH_PREVIEW = "(visual match)"
+
+
+def _pool_pending_limit(max_workers: int | None) -> int:
+	import os
+
+	workers = max_workers if max_workers is not None else min(32, (os.cpu_count() or 1) + 4)
+	return max(workers * _POOL_PENDING_FACTOR, workers)
+
 
 _default_text_extractor: TextExtractorPort | None = None
 _default_file_walker: FileWalkerPort | None = None
@@ -151,14 +179,6 @@ def content_location_kind(path: Path) -> str:
 	if suffix == ".pptx":
 		return "slide"
 	return "line"
-
-
-DEFAULT_MAX_FILE_SIZE = 100 * 1024 * 1024
-
-
-def suggest_max_file_size(file_size_bytes: int) -> int:
-	chunk = 1_048_576
-	return max(file_size_bytes + 1, ((file_size_bytes // chunk) + 1) * chunk)
 
 
 # Thin wrappers kept for unit-test patch targets.
@@ -686,24 +706,29 @@ def _proc_worker_task(
 	matcher = _proc_worker_matcher
 	if matcher is None:
 		raise RuntimeError("_init_proc_worker was not called for this worker")
-	return _search_single_file(
-		file_path,
-		matcher=matcher,
-		query_expr=query_expr,
-		search_root=search_root,
-		search_names=search_names,
-		search_contents=search_contents,
-		search_docs_tags=search_docs_tags,
-		threshold=threshold,
-		max_file_size=max_file_size,
-		effective_line_threshold=effective_line_threshold,
-		max_matches=max_matches,
-		ocr=None,
-		transcribe=None,
-		semantic_image=None,
-		semantic_image_threshold=semantic_image_threshold,
-		transcribe_threshold=transcribe_threshold,
-	)
+	try:
+		return _search_single_file(
+			file_path,
+			matcher=matcher,
+			query_expr=query_expr,
+			search_root=search_root,
+			search_names=search_names,
+			search_contents=search_contents,
+			search_docs_tags=search_docs_tags,
+			threshold=threshold,
+			max_file_size=max_file_size,
+			effective_line_threshold=effective_line_threshold,
+			max_matches=max_matches,
+			ocr=None,
+			transcribe=None,
+			semantic_image=None,
+			semantic_image_threshold=semantic_image_threshold,
+			transcribe_threshold=transcribe_threshold,
+		)
+	except OSError as exc:
+		if is_access_denied(exc):
+			return None, [permission_skip(file_path)]
+		raise
 
 
 def _execute_file_search(
@@ -778,90 +803,23 @@ def _execute_file_search(
 	results: list[FileSearchResult] = []
 	query_image_embedding: object | None = None
 	clip_query = " ".join(iter_terms(query_expr)) or format_file_query(query_expr)
-	from srxy.i18n import tr
-
-	_listing_progress_interval = 256
-	emit_activity(on_activity, tr("activity.listing_files"))
-	files: list[Path] = []
-	listed = 0
-	try:
-		for file_path in walker.iter_files(
-			root,
-			skip_hidden_folders=skip_hidden_folders,
-			skip_noise_folders=skip_noise_folders,
-			skip_noise_files=skip_noise_files,
-			match_skipped_names=match_skipped_names,
-			include_archives=include_archives,
-			include_subdirectories=include_subdirectories,
-			cancel_check=cancel_check,
-		):
-			files.append(file_path)
-			listed += 1
-			if listed % _listing_progress_interval == 0:
-				emit_activity(on_activity, tr("activity.listing_files"), current=listed)
-	except SearchCancelled as error:
-		raise SearchCancelled(results=results, skipped_files=skipped_files or error.skipped_files) from error
-	finally:
-		clear_activity(on_activity)
-	if images.is_active(effective_semantic_image) and any(images.is_image_path(file_path) for file_path in files):
-		emit_activity(on_activity, tr("activity.encoding_image_query"))
-		try:
-			query_image_embedding = encode_semantic_image_query(clip_query)
-		finally:
-			clear_activity(on_activity)
-	total_files = len(files)
-
-	from concurrent.futures import ProcessPoolExecutor, ThreadPoolExecutor, as_completed
+	from concurrent.futures import FIRST_COMPLETED, Future, ProcessPoolExecutor, ThreadPoolExecutor, wait
 
 	from srxy.application.matching.registry import is_matcher_available
 	from srxy.domain.models import MatchType
+	from srxy.i18n import tr
 
-	def _submit_file(
-		file_path: Path,
-		*,
-		activity: ActivityCallback | None = None,
-	) -> tuple[FileSearchResult | None, list[SkippedFile]]:
-		# Captures all search parameters from the enclosing scope. Each call is
-		# self-contained so no shared mutable state is touched inside the worker.
-		# Activity is passed only for sequential search; concurrent pools omit it
-		# because overlapping OCR/transcribe labels would conflict in the TUI.
-		names_only = is_names_only_path(
-			file_path,
-			search_root=search_root,
-			skip_hidden_folders=skip_hidden_folders,
-			skip_noise_folders=skip_noise_folders,
-			skip_noise_files=skip_noise_files,
-			match_skipped_names=match_skipped_names,
-			resolved_search_root=resolved_search_root,
-		)
-		file_search_contents = search_contents and not names_only
-		return _search_single_file(
-			file_path,
-			matcher=matcher,
-			query_expr=query_expr,
-			search_root=search_root,
-			search_names=search_names,
-			search_contents=file_search_contents,
-			search_docs_tags=effective_docs_tags if file_search_contents else False,
-			threshold=threshold,
-			max_file_size=max_file_size,
-			effective_line_threshold=effective_line_threshold,
-			max_matches=max_matches,
-			ocr=effective_ocr if file_search_contents else False,
-			transcribe=effective_transcribe if file_search_contents else False,
-			semantic_image=effective_semantic_image if file_search_contents else False,
-			query_image_embedding=query_image_embedding if file_search_contents else None,
-			semantic_image_threshold=semantic_image_threshold,
-			transcribe_threshold=transcribe_threshold,
-			on_activity=activity,
-		)
-
-	# Execution strategy selection:
+	# Execution strategy selection (known before the walk — do not wait for a full list):
 	#
-	# THREAD pool — OCR / transcribe / CLIP inference
-	#   Per-file work runs outside Python for extended periods (Tesseract subprocess,
-	#   Whisper inference, CLIP inference), so the GIL is fully released and threads
-	#   give near-linear speedup.
+	# THREAD pool (heavy files only) — OCR / transcribe / CLIP inference
+	#   When any heavy mode is active, files that actually need OCR / transcribe / CLIP
+	#   are submitted to a ThreadPoolExecutor. Per-file work runs outside Python for
+	#   extended periods (Tesseract subprocess, Whisper, CLIP), so the GIL is released
+	#   and threads give near-linear speedup. Plain text / name / doc files are scored
+	#   inline on the walking thread so they are never FIFO-queued behind slow media
+	#   and keep streaming results / progress while OCR runs in the background.
+	#   Documents stay inline even with OCR on (most extract embedded text quickly;
+	#   scanned-page OCR inside a document may briefly block the walker for that file).
 	#
 	# PROCESS pool — large pure-text searches (no OCR / transcribe / CLIP)
 	#   Text-only matching (rapidfuzz, jellyfish, exact/partial string ops) is a mix
@@ -877,6 +835,10 @@ def _execute_file_search(
 	#   fork() does not race Qt (or inherit Textual raw-mode handles in the TUI).
 	#   CLI callers set the flag explicitly.
 	#
+	#   Paths are buffered until ``_MIN_PROCESS_FILES`` (or the walk ends). Under the
+	#   threshold the buffer is searched sequentially; at/above it the pool opens and
+	#   further paths are submitted while listing continues.
+	#
 	# SEQUENTIAL — everything else (small dirs, semantic-text, background-thread callers)
 	_heavy = (
 		extractor.ocr_active(effective_ocr)
@@ -884,109 +846,322 @@ def _execute_file_search(
 		or images.is_active(effective_semantic_image)
 	)
 	_semantic_text = is_matcher_available(MatchType.SEMANTIC)
-	_use_threads = len(files) > 1 and max_workers != 1 and _heavy
-	_use_processes = (
-		allow_process_pool
-		and not _use_threads
-		and len(files) >= _MIN_PROCESS_FILES
-		and max_workers != 1
-		and not _heavy
-		and not _semantic_text
+	_use_threads = max_workers != 1 and _heavy
+	_may_use_processes = (
+		allow_process_pool and not _use_threads and max_workers != 1 and not _heavy and not _semantic_text
 	)
 
-	emit_activity(on_activity, tr("activity.searching"))
+	def _is_heavy_file(file_path: Path) -> bool:
+		if extractor.ocr_active(effective_ocr) and extractor.ocr_candidate_path(file_path):
+			return True
+		if extractor.transcribe_active(effective_transcribe) and extractor.transcribe_candidate_path(file_path):
+			return True
+		if images.is_active(effective_semantic_image) and images.is_image_path(file_path):
+			return True
+		return False
+
+	# Encode CLIP once up front when semantic image search is active so image hits can
+	# score as soon as they are discovered (no post-list scan for image paths).
+	if images.is_active(effective_semantic_image):
+		emit_activity(on_activity, tr("activity.encoding_image_query"))
+		try:
+			query_image_embedding = encode_semantic_image_query(clip_query)
+		finally:
+			clear_activity(on_activity)
+
+	def _submit_file(
+		file_path: Path,
+		*,
+		activity: ActivityCallback | None = None,
+	) -> tuple[FileSearchResult | None, list[SkippedFile]]:
+		# Captures all search parameters from the enclosing scope. Each call is
+		# self-contained so no shared mutable state is touched inside the worker.
+		# Concurrent thread pools pass a fan-in activity callback so per-file
+		# OCR/transcribe/CLIP labels still reach the UI without stomping each other.
+		names_only = is_names_only_path(
+			file_path,
+			search_root=search_root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			skip_noise_files=skip_noise_files,
+			match_skipped_names=match_skipped_names,
+			resolved_search_root=resolved_search_root,
+		)
+		file_search_contents = search_contents and not names_only
+		try:
+			return _search_single_file(
+				file_path,
+				matcher=matcher,
+				query_expr=query_expr,
+				search_root=search_root,
+				search_names=search_names,
+				search_contents=file_search_contents,
+				search_docs_tags=effective_docs_tags if file_search_contents else False,
+				threshold=threshold,
+				max_file_size=max_file_size,
+				effective_line_threshold=effective_line_threshold,
+				max_matches=max_matches,
+				ocr=effective_ocr if file_search_contents else False,
+				transcribe=effective_transcribe if file_search_contents else False,
+				semantic_image=effective_semantic_image if file_search_contents else False,
+				query_image_embedding=query_image_embedding if file_search_contents else None,
+				semantic_image_threshold=semantic_image_threshold,
+				transcribe_threshold=transcribe_threshold,
+				on_activity=activity,
+			)
+		except OSError as exc:
+			if is_access_denied(exc):
+				return None, _skips_for_access_denied(file_path)
+			raise
+
+	def _proc_submit(
+		pool: ProcessPoolExecutor, file_path: Path
+	) -> Future[tuple[FileSearchResult | None, list[SkippedFile]]]:
+		names_only = is_names_only_path(
+			file_path,
+			search_root=search_root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			skip_noise_files=skip_noise_files,
+			match_skipped_names=match_skipped_names,
+			resolved_search_root=resolved_search_root,
+		)
+		file_search_contents = search_contents and not names_only
+		return pool.submit(
+			_proc_worker_task,
+			file_path,
+			query_expr,
+			search_root,
+			search_names,
+			file_search_contents,
+			effective_docs_tags if file_search_contents else False,
+			threshold,
+			max_file_size,
+			effective_line_threshold,
+			max_matches,
+			semantic_image_threshold,
+			transcribe_threshold,
+		)
+
+	# Thread-pool heavy search: merge per-worker activity into one status line.
+	file_activity = on_activity
+	if _use_threads and on_activity is not None:
+		file_activity = concurrent_activity_fan_in(on_activity)
+
+	emit_activity(file_activity, tr("activity.searching"))
 	completed = 0
+	listed = 0
+	listing_done = False
 	cancelled = False
+	pending_limit = _pool_pending_limit(max_workers)
+	denied_dir_prefixes: set[Path] = set()
+	denied_lock = threading.Lock()
+
+	def _resolve_path(path: Path) -> Path:
+		try:
+			return path.resolve()
+		except OSError:
+			return path
+
+	def _is_under_denied(path: Path) -> bool:
+		resolved = _resolve_path(path)
+		with denied_lock:
+			prefixes = tuple(denied_dir_prefixes)
+		for prefix in prefixes:
+			if resolved == prefix or prefix in resolved.parents:
+				return True
+		return False
+
+	def _mark_denied_dir(directory: Path):
+		resolved = _resolve_path(directory)
+		with denied_lock:
+			denied_dir_prefixes.add(resolved)
+
+	def _skips_for_access_denied(path: Path) -> list[SkippedFile]:
+		"""Skip the path; if its parent folder is not listable, prune that tree."""
+		skips = [permission_skip(path)]
+		parent = path.parent
+		if parent == path:
+			return skips
+		if directory_is_listable(parent):
+			return skips
+		_mark_denied_dir(parent)
+		skips.append(permission_skip(parent))
+		return skips
+
+	def _note_permission_skips(file_skipped: list[SkippedFile]):
+		for skipped in file_skipped:
+			if skipped.reason != PERMISSION_DENIED_REASON:
+				continue
+			path = skipped.path
+			try:
+				is_dir = path.is_dir()
+			except OSError:
+				is_dir = False
+			if is_dir:
+				_mark_denied_dir(path)
+			else:
+				parent = path.parent
+				if not directory_is_listable(parent):
+					_mark_denied_dir(parent)
+
+	def _check_cancel():
+		if cancel_check is not None and cancel_check():
+			raise SearchCancelled()
+
+	def _record_outcome(result: FileSearchResult | None, file_skipped: list[SkippedFile]):
+		nonlocal completed
+		completed += 1
+		_note_permission_skips(file_skipped)
+		if skipped_files is not None:
+			skipped_files.extend(file_skipped)
+		if listing_done and on_progress is not None:
+			on_progress(completed, listed)
+		if result is None:
+			return
+		results.append(result)
+		if on_result is not None:
+			on_result(result)
+
+	def _emit_listing_activity():
+		if listed % _LISTING_ACTIVITY_INTERVAL == 0:
+			emit_activity(file_activity, tr("activity.searching"), current=listed)
+
+	def _catch_up_progress():
+		# Emit as soon as the walk finishes — including 0/N — so the UI can show
+		# determinate file counts while slow OCR/transcribe workers are still running.
+		if on_progress is not None and listed > 0:
+			on_progress(completed, listed)
+
+	def _drain_done(
+		pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]],
+		*,
+		pool: ThreadPoolExecutor | ProcessPoolExecutor | None = None,
+	) -> set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]]:
+		if not pending:
+			return pending
+		_check_cancel()
+		done, still_pending = wait(pending, return_when=FIRST_COMPLETED)
+		for future in done:
+			if cancel_check is not None and cancel_check():
+				if pool is not None:
+					pool.shutdown(wait=False, cancel_futures=True)
+				raise SearchCancelled()
+			_record_outcome(*future.result())
+		return still_pending
+
+	def _drain_completed_nonblocking(
+		pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]],
+		*,
+		pool: ThreadPoolExecutor | ProcessPoolExecutor | None = None,
+	) -> set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]]:
+		"""Collect finished heavy futures without waiting — keeps light-file throughput up."""
+		if not pending:
+			return pending
+		_check_cancel()
+		still_pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]] = set()
+		for future in pending:
+			if not future.done():
+				still_pending.add(future)
+				continue
+			if cancel_check is not None and cancel_check():
+				if pool is not None:
+					pool.shutdown(wait=False, cancel_futures=True)
+				raise SearchCancelled()
+			_record_outcome(*future.result())
+		return still_pending
+
+	def _iter_listed_paths() -> Iterator[Path]:
+		nonlocal listed
+		for file_path in walker.iter_files(
+			root,
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			skip_noise_files=skip_noise_files,
+			match_skipped_names=match_skipped_names,
+			include_archives=include_archives,
+			include_subdirectories=include_subdirectories,
+			cancel_check=cancel_check,
+			skipped_files=skipped_files,
+		):
+			if _is_under_denied(file_path):
+				continue
+			listed += 1
+			_emit_listing_activity()
+			yield file_path
 
 	try:
 		if _use_threads:
-			pool = ThreadPoolExecutor(max_workers=max_workers)
+			heavy_pool = ThreadPoolExecutor(max_workers=max_workers)
+			heavy_pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]] = set()
 			try:
-				future_to_path = {pool.submit(_submit_file, file_path): file_path for file_path in files}
-				for future in as_completed(future_to_path):
-					if cancel_check is not None and cancel_check():
-						pool.shutdown(wait=False, cancel_futures=True)
-						raise SearchCancelled()
-					result, file_skipped = future.result()
-					completed += 1
-					if skipped_files is not None:
-						skipped_files.extend(file_skipped)
-					if on_progress is not None:
-						on_progress(completed, total_files)
-					if result is None:
-						continue
-					results.append(result)
-					if on_result is not None:
-						on_result(result)
+				for file_path in _iter_listed_paths():
+					_check_cancel()
+					if _is_heavy_file(file_path):
+						while len(heavy_pending) >= pending_limit:
+							heavy_pending = _drain_done(heavy_pending, pool=heavy_pool)
+						heavy_pending.add(heavy_pool.submit(_submit_file, file_path, activity=file_activity))
+					else:
+						_record_outcome(*_submit_file(file_path, activity=file_activity))
+						heavy_pending = _drain_completed_nonblocking(heavy_pending, pool=heavy_pool)
+				listing_done = True
+				_catch_up_progress()
+				while heavy_pending:
+					heavy_pending = _drain_done(heavy_pending, pool=heavy_pool)
 			finally:
-				pool.shutdown(wait=True)
-		elif _use_processes:
-			pool = ProcessPoolExecutor(max_workers=max_workers, initializer=_init_proc_worker)
+				heavy_pool.shutdown(wait=True)
+		elif _may_use_processes:
+			buffer: list[Path] = []
+			proc_pool: ProcessPoolExecutor | None = None
+			pending = set()
 			try:
-				futures = {}
-				for file_path in files:
-					names_only = is_names_only_path(
-						file_path,
-						search_root=search_root,
-						skip_hidden_folders=skip_hidden_folders,
-						skip_noise_folders=skip_noise_folders,
-						skip_noise_files=skip_noise_files,
-						match_skipped_names=match_skipped_names,
-						resolved_search_root=resolved_search_root,
-					)
-					file_search_contents = search_contents and not names_only
-					futures[
-						pool.submit(
-							_proc_worker_task,
-							file_path,
-							query_expr,
-							search_root,
-							search_names,
-							file_search_contents,
-							effective_docs_tags if file_search_contents else False,
-							threshold,
-							max_file_size,
-							effective_line_threshold,
-							max_matches,
-							semantic_image_threshold,
-							transcribe_threshold,
-						)
-					] = file_path
-				for future in as_completed(futures):
-					if cancel_check is not None and cancel_check():
-						pool.shutdown(wait=False, cancel_futures=True)
-						raise SearchCancelled()
-					result, file_skipped = future.result()
-					completed += 1
-					if skipped_files is not None:
-						skipped_files.extend(file_skipped)
-					if on_progress is not None:
-						on_progress(completed, total_files)
-					if result is None:
+				for file_path in _iter_listed_paths():
+					_check_cancel()
+					if proc_pool is None:
+						buffer.append(file_path)
+						if len(buffer) >= _MIN_PROCESS_FILES:
+							proc_pool = ProcessPoolExecutor(
+								max_workers=max_workers,
+								initializer=_init_proc_worker,
+							)
+							for buffered in buffer:
+								while len(pending) >= pending_limit:
+									pending = _drain_done(pending, pool=proc_pool)
+								pending.add(_proc_submit(proc_pool, buffered))
+							buffer.clear()
 						continue
-					results.append(result)
-					if on_result is not None:
-						on_result(result)
+					while len(pending) >= pending_limit:
+						pending = _drain_done(pending, pool=proc_pool)
+					pending.add(_proc_submit(proc_pool, file_path))
+				listing_done = True
+				if proc_pool is None:
+					for buffered in buffer:
+						_check_cancel()
+						_record_outcome(*_submit_file(buffered, activity=file_activity))
+				else:
+					_catch_up_progress()
+					while pending:
+						pending = _drain_done(pending, pool=proc_pool)
 			finally:
-				pool.shutdown(wait=True)
+				if proc_pool is not None:
+					proc_pool.shutdown(wait=True)
 		else:
-			for file_path in files:
-				if cancel_check is not None and cancel_check():
-					raise SearchCancelled()
-				result, file_skipped = _submit_file(file_path, activity=on_activity)
-				completed += 1
-				if skipped_files is not None:
-					skipped_files.extend(file_skipped)
-				if on_progress is not None:
-					on_progress(completed, total_files)
-				if result is None:
-					continue
-				results.append(result)
-				if on_result is not None:
-					on_result(result)
-	except SearchCancelled:
+			for file_path in _iter_listed_paths():
+				_check_cancel()
+				_record_outcome(*_submit_file(file_path, activity=file_activity))
+			listing_done = True
+			_catch_up_progress()
+	except SearchCancelled as error:
 		cancelled = True
+		if error.results or error.skipped_files:
+			# Preserve any results already attached by the walker cancel path.
+			if error.results and not results:
+				results.extend(error.results)
+			if skipped_files is not None and error.skipped_files:
+				skipped_files.extend(error.skipped_files)
 	finally:
+		# Clear the downstream callback directly so leftover fan-in slots cannot
+		# leave a stale spinner after the search ends.
 		clear_activity(on_activity)
 
 	if cancelled:

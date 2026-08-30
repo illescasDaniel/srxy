@@ -22,7 +22,7 @@ Credentials are read from ~/.pypirc (recommended) or TWINE_USERNAME /
 TWINE_PASSWORD. Create a PyPI API token and store it in ~/.pypirc with
 chmod 600 before uploading.
 
-Install upload tools: uv sync --group uploader
+Install upload tools: uv run task sync-uploader
 EOF
 }
 
@@ -59,7 +59,7 @@ done
 lib_require_venv
 
 if ! lib_uv_run python -c "import twine" 2>/dev/null; then
-	echo "error: missing upload dependencies; run: uv sync --group uploader" >&2
+	echo "error: missing upload dependencies; run: uv run task sync-uploader" >&2
 	exit 1
 fi
 

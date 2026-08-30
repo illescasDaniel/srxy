@@ -1,0 +1,53 @@
+---
+description: Always-on project memory and context protocol
+globs: *
+alwaysApply: true
+---
+# Agent Context & Memory Protocol
+
+## Memory File Roles
+- `memory/progress.md`: The macro checklist (what is done, what is pending, open bugs).
+- `memory/activeContext.md`: The micro scratchpad (current focus, active blockers, touched files, immediate next steps).
+- `memory/decisions.md`: The technical log (significant technical, structural, or dependency decisions along with their rationale).
+
+---
+
+## 1. Session Initialization
+1. Read `memory/activeContext.md` to load immediate state and focus.
+2. Read `memory/progress.md` to review broader pending tasks.
+
+## 2. When to Update Specific Files (Triggers)
+
+### Update `memory/progress.md` ONLY when:
+- **Task Completed:** Checking off a task (`[ ]` -> `[x]`).
+- **New Task/Bug Discovered:** Adding a new item to the task checklist or backlog.
+
+### Update `memory/activeContext.md` ONLY when:
+- **Switching Focus:** Changing the immediate goal or sub-task you are working on.
+- **Hitting a Blocker:** Recording an unexpected issue or failed test that needs attention.
+- **Concluding Work / Step Completion:** Logging modified files, current state, and the exact step the next session should execute.
+
+### Append to `memory/decisions.md` ONLY when:
+- **Making Significant Choices:** You make a significant technical, structural, or dependency decision. You MUST explicitly record the context, the decision made, and the rationale behind it.
+
+---
+
+## 3. Hand-off Protocol
+Before finishing any response where progress was made:
+1. Ensure `progress.md` reflects the true checkbox state of the project.
+2. Ensure `activeContext.md` accurately describes the exact starting point for the next prompt or session.
+
+---
+
+## 4. Version Control (memory is tracked in git)
+
+`memory/` is tracked, per-branch — each worktree/checkout carries its branch's version. Not scratch; treat edits as project state.
+
+- **Commit memory updates at milestones** (with feature commits or a `memory:` commit); don't leave the tree permanently dirty.
+- **`decisions.md`: append-only, never cleaned.** Auto-unions on merge (`.gitattributes` `merge=union`); newest first.
+- **Branch start:** when the user starts a new feature branch/worktree and asks to initialize memory:
+  1. `progress.md` — new section header for the feature/version; empty Done; carry forward only relevant Open items.
+  2. `activeContext.md` — rewrite: branch name, focus = new feature, no blockers, only relevant next steps.
+  3. `decisions.md` — untouched.
+  Commit the initialization in the branch's first commit.
+- **On merge:** keep the feature branch's `progress.md`/`activeContext.md` (superset); `decisions.md` unions itself.

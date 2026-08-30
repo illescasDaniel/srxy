@@ -1,73 +1,83 @@
 from __future__ import annotations
 
-from pathlib import Path
-
 import pytest
 
+from srxy.adapters.inbound.gui import preview as preview_module
 from srxy.adapters.inbound.gui.preview import (
 	PREVIEW_MAX_BYTES,
 	PREVIEW_MAX_LINES,
-	format_preview_for_file,
-	format_preview_html,
-	format_preview_message,
+	PREVIEW_PALETTES,
 	prepare_preview_text,
+	preview_font_family,
+	preview_gutter_text,
+	segments_for_line,
 )
 
 
 pytestmark = pytest.mark.unit
 
 
-def test_given_python_snippet_when_formatting_preview_then_includes_line_numbers_and_keywords():
+@pytest.mark.parametrize(
+	("platform", "expected"),
+	[
+		("win32", "Consolas"),
+		("darwin", "Menlo"),
+		("linux", "monospace"),
+	],
+)
+def test_given_platform_when_preview_font_family_then_matches_qml(
+	monkeypatch: pytest.MonkeyPatch, platform: str, expected: str
+):
 	# given
-	path = Path("sample.py")
-	text = "def hello():\n\treturn 1\n"
+	monkeypatch.setattr(preview_module.sys, "platform", platform)
+
+	# when / then
+	assert preview_font_family() == expected
+
+
+def test_given_python_line_when_segmenting_then_marks_keywords_and_comments():
+	# given
+	line = "def hello():  # note"
 
 	# when
-	html = format_preview_html(path, text)
+	segments = segments_for_line(line, ".py")
 
 	# then
-	assert ">  1</span>" in html or ">1</span>" in html or "  1" in html
-	assert "def" in html
-	assert "color:#0550ae" in html
-	assert "hello" in html
+	kinds = {line[start:end]: kind for start, end, kind in segments if kind}
+	assert kinds.get("def") == "keyword"
+	assert any(kind == "comment" for _s, _e, kind in segments)
 
 
-def test_given_plain_text_when_formatting_preview_then_escapes_and_numbers_lines():
+def test_given_plain_text_when_segmenting_then_returns_single_plain_span():
 	# given
-	path = Path("notes.txt")
-	text = "a <b> tag\nsecond"
+	line = "a <b> tag"
 
 	# when
-	html = format_preview_html(path, text)
+	segments = segments_for_line(line, ".txt")
 
 	# then
-	assert "&lt;b&gt;" in html
-	assert "second" in html
-	assert html.count("<br/>") == 2
+	assert segments == [(0, len(line), None)]
 
 
-def test_given_status_message_when_formatting_then_escapes_without_line_gutter():
+def test_given_markdown_heading_when_segmenting_then_marks_heading():
 	# given / when
-	html = format_preview_message("(No file preview available)")
+	segments = segments_for_line("# Title", ".md")
 
 	# then
-	assert "(No file preview available)" in html
-	assert "<br/>" not in html
+	assert segments == [(0, 7, "heading")]
 
 
-def test_given_large_text_when_formatting_preview_then_caps_html_size_and_shows_footer():
+def test_given_json_line_when_segmenting_then_marks_strings_and_literals():
 	# given
-	line = "x" * 80 + "\n"
-	text = line * (PREVIEW_MAX_LINES + 500)
-	footer = "Preview truncated (size/line limit reached)."
+	line = '{"ok": true, "n": null}'
 
 	# when
-	html = format_preview_for_file("big.txt", text, truncated_footer=footer)
+	segments = segments_for_line(line, ".json")
 
 	# then
-	assert len(html.encode("utf-8")) < PREVIEW_MAX_BYTES * 4
-	assert footer in html
-	assert html.count("<br/>") <= PREVIEW_MAX_LINES + 1
+	kinds = [kind for _s, _e, kind in segments if kind]
+	assert "string" in kinds
+	assert "keyword" in kinds
 
 
 def test_given_large_payload_when_preparing_text_then_truncates_by_bytes_and_lines():
@@ -80,3 +90,40 @@ def test_given_large_payload_when_preparing_text_then_truncates_by_bytes_and_lin
 	# then
 	assert truncated is True
 	assert prepared.count("\n") + 1 <= PREVIEW_MAX_LINES
+	assert len(prepared.encode("utf-8")) <= PREVIEW_MAX_BYTES
+
+
+def test_given_line_count_when_building_gutter_then_right_aligns_numbers():
+	# given / when
+	gutter = preview_gutter_text(12)
+
+	# then
+	assert gutter.splitlines()[0].endswith("1")
+	assert gutter.splitlines()[-1].endswith("12")
+	assert len(gutter.splitlines()) == 12
+
+
+def test_given_zero_lines_when_building_gutter_then_empty():
+	# given / when / then
+	assert preview_gutter_text(0) == ""
+
+
+def test_given_long_python_file_when_preparing_then_still_returns_capped_plain_text():
+	# given — exceeds the old 500-line plain fallback
+	text = "def hello():\n\treturn 1\n" * 300
+
+	# when
+	prepared, truncated = prepare_preview_text(text)
+
+	# then
+	assert "def hello" in prepared
+	assert "\n" in prepared
+	assert "<" not in prepared  # no HTML markup in the document
+	assert truncated is False or prepared.count("\n") + 1 <= PREVIEW_MAX_LINES
+
+
+def test_given_themes_when_reading_palettes_then_keyword_colors_differ():
+	# given / when / then
+	assert PREVIEW_PALETTES["light"].keyword == "#0550ae"
+	assert PREVIEW_PALETTES["dark"].keyword == "#ff7b72"
+	assert PREVIEW_PALETTES["light"].gutter != PREVIEW_PALETTES["dark"].gutter

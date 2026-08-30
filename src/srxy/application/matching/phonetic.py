@@ -2,9 +2,6 @@ from __future__ import annotations
 
 from functools import lru_cache
 
-import jellyfish
-from rapidfuzz import fuzz
-
 from srxy.application.matching.base import Matcher
 
 
@@ -14,11 +11,15 @@ _PHONETIC_PARTIAL_SCORE_CAP = 0.5
 
 
 def _phonetic_code(text: str) -> str | None:
+	import jellyfish
+
 	code = jellyfish.metaphone(text)
 	return code or None
 
 
 def _metaphone_partial_score(query_code: str, value_code: str) -> float:
+	from rapidfuzz import fuzz
+
 	ratio = fuzz.ratio(query_code, value_code) / 100.0
 	if ratio < _PHONETIC_PARTIAL_RATIO_THRESHOLD:
 		return 0.0
@@ -34,6 +35,8 @@ def _phonetic_codes(text: str) -> tuple[str | None, str, str]:
 	cache also benefits repeated values such as short common words appearing
 	across many files.
 	"""
+	import jellyfish
+
 	return _phonetic_code(text), jellyfish.soundex(text), jellyfish.nysiis(text)
 
 

@@ -40,7 +40,8 @@ jobs:
           CI: true
           GITHUB_ACTIONS: true
           QT_QPA_PLATFORM: offscreen
-        run: ./scripts/quality/checks.sh
+        # Explicit scope: core+gui+tui (no heavy/real-model suite under CI=true).
+        run: ./scripts/quality/checks.sh --scope=core,gui,tui
 
   test-macos:
     runs-on: macos-latest
@@ -55,13 +56,17 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Unit tests
+      - name: Unit + GUI + TUI buckets
         env:
           CI: true
           QT_QPA_PLATFORM: offscreen
+          LIB_GATE_SCOPE: core,gui,tui
         # max-worker-restart=0: a crashed Qt/xdist worker fails fast instead of
         # hanging while trying to replace the node ("Not properly terminated").
-        run: uv run pytest tests -n auto --dist=loadgroup --max-worker-restart=0 -m "unit and not semantic and not transcribe"
+        run: |
+          uv run pytest tests/unit tests/cli -n auto --dist=loadgroup --max-worker-restart=0 -p no:pytest-qt
+          QT_QPA_PLATFORM=offscreen uv run pytest tests/gui
+          uv run pytest tests/tui -p no:pytest-qt
 
   test-windows:
     runs-on: windows-latest
@@ -74,12 +79,16 @@ jobs:
       - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Sync dependencies
-        run: uv sync --frozen --extra windows
+        run: uv sync --frozen
 
-      - name: Unit tests
+      - name: Unit + GUI + TUI buckets
         env:
           CI: true
           QT_QPA_PLATFORM: offscreen
+          LIB_GATE_SCOPE: core,gui,tui
         # max-worker-restart=0: a crashed Qt/xdist worker fails fast instead of
         # hanging while trying to replace the node ("Not properly terminated").
-        run: uv run pytest tests -n auto --dist=loadgroup --max-worker-restart=0 -m "unit and not semantic and not transcribe"
+        run: |
+          uv run pytest tests/unit tests/cli -n auto --dist=loadgroup --max-worker-restart=0 -p no:pytest-qt
+          $env:QT_QPA_PLATFORM='offscreen'; uv run pytest tests/gui
+          uv run pytest tests/tui -p no:pytest-qt

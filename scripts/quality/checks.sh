@@ -2,10 +2,10 @@
 
 set -u
 
-# Quality gate — ruff, shell, basedpyright, pip-audit, build, and optionally pytest.
+# Quality gate — ruff, shell, ty, pip-audit, build, and optionally pytest.
 # --fix: ruff autofix+format and shfmt write; sequential (writers first).
-# Without --fix: light verify steps run in parallel, then pytest alone (safe
-# parallel unit subset, then serial heavy semantic/transcribe/gui/tui/integration).
+# Without --fix: light verify steps run in parallel, overlapping pytest buckets
+# (core/gui/tui/heavy) selected via --scope / auto git-diff scope.
 # Only one gate at a time (flock).
 
 quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -30,6 +30,12 @@ fi
 FIX=false
 FULL=false
 FULL_CPU=false
+QUIET=false
+TIMINGS=false
+NO_CACHE=false
+SCOPE="auto"
+SCOPE_SET=false
+
 for arg in "$@"; do
 	case "${arg}" in
 	--fix)
@@ -41,6 +47,55 @@ for arg in "$@"; do
 	--full+cpu)
 		FULL=true
 		FULL_CPU=true
+		;;
+	--quiet)
+		QUIET=true
+		;;
+	--timings)
+		TIMINGS=true
+		;;
+	--no-cache)
+		NO_CACHE=true
+		;;
+	--all)
+		SCOPE="all"
+		SCOPE_SET=true
+		;;
+	--core)
+		if [[ "${SCOPE_SET}" == true && "${SCOPE}" != "auto" ]]; then
+			SCOPE="${SCOPE},core"
+		else
+			SCOPE="core"
+			SCOPE_SET=true
+		fi
+		;;
+	--cli)
+		if [[ "${SCOPE_SET}" == true && "${SCOPE}" != "auto" ]]; then
+			SCOPE="${SCOPE},cli"
+		else
+			SCOPE="cli"
+			SCOPE_SET=true
+		fi
+		;;
+	--tui)
+		if [[ "${SCOPE_SET}" == true && "${SCOPE}" != "auto" ]]; then
+			SCOPE="${SCOPE},tui"
+		else
+			SCOPE="tui"
+			SCOPE_SET=true
+		fi
+		;;
+	--gui)
+		if [[ "${SCOPE_SET}" == true && "${SCOPE}" != "auto" ]]; then
+			SCOPE="${SCOPE},gui"
+		else
+			SCOPE="gui"
+			SCOPE_SET=true
+		fi
+		;;
+	--scope=*)
+		SCOPE="${arg#--scope=}"
+		SCOPE_SET=true
 		;;
 	esac
 done
@@ -56,8 +111,19 @@ if [[ "${CI:-}" == "true" && ("${FULL}" == true || "${FULL_CPU}" == true) ]]; th
 	FULL_CPU=false
 fi
 
+if [[ "${FULL}" == true && "${SCOPE_SET}" != true ]]; then
+	SCOPE="all"
+fi
+
 export LIB_PYTEST_FULL="${FULL}"
 export LIB_PYTEST_FULL_CPU="${FULL_CPU}"
+export LIB_GATE_QUIET="${QUIET}"
+export LIB_GATE_TIMINGS="${TIMINGS}"
+export LIB_GATE_NO_CACHE="${NO_CACHE}"
+export LIB_GATE_SCOPE="${SCOPE}"
+
+lib_resolve_buckets
+echo "scope: ${LIB_SELECTED_BUCKETS[*]} (${LIB_SCOPE_REASON})"
 
 HAS_PYTEST=false
 if lib_has_pytest_tests "${LIB_REPO_ROOT}"; then
@@ -67,7 +133,7 @@ fi
 GATE_PLANNED_STEPS=5
 if [[ "${HAS_PYTEST}" == true ]]; then
 	# shellcheck disable=SC2034
-	GATE_PLANNED_STEPS=6
+	GATE_PLANNED_STEPS=$((5 + ${#LIB_SELECTED_BUCKETS[@]}))
 fi
 gate_init
 lib_require_venv
@@ -142,40 +208,52 @@ gate_step_shell() {
 	fi
 }
 
-gate_step_pyright() {
-	pyright_stderr="$(mktemp)"
-	pyright_json="$("${quality_dir}/pyright.sh" --outputjson 2>"${pyright_stderr}")"
-	pyright_exit=$?
-	emit_out="$(printf '%s' "${pyright_json}" | lib_uv_run python "${internal_dir}/gate_emit.py" pyright 2>&1)"
+gate_step_ty() {
+	ty_stderr="$(mktemp)"
+	ty_out="$("${quality_dir}/ty.sh" --github 2>"${ty_stderr}")"
+	ty_exit=$?
+	emit_out="$(printf '%s' "${ty_out}" | lib_uv_run python "${internal_dir}/gate_emit.py" ty 2>&1)"
 	summary=""
 	while IFS= read -r line; do
 		if [[ "${line}" == GATE_SUMMARY* ]]; then
 			summary="${line}"
 		elif [[ "${line}" == ::* ]]; then
 			echo "${line}"
-			if [[ "${line}" == *"basedpyright returned invalid JSON"* ]] && [[ -s "${pyright_stderr}" ]]; then
-				cat "${pyright_stderr}" >&2
-			fi
 		fi
 	done <<<"${emit_out}"
-	rm -f "${pyright_stderr}"
+	if [[ -s "${ty_stderr}" ]] && [[ "${ty_exit}" -ne 0 ]] && [[ -z "${summary}" ]]; then
+		cat "${ty_stderr}" >&2
+	fi
+	rm -f "${ty_stderr}"
 	if [[ -n "${summary}" ]]; then
 		gate_apply_emit_summary "${summary}"
 	else
-		if [[ "${pyright_exit}" -eq 0 ]]; then
+		if [[ "${ty_exit}" -eq 0 ]]; then
 			gate_record_pass
 		else
-			gate_gha_error "" "" "" "basedpyright" "type check failed (exit ${pyright_exit})"
+			gate_gha_error "" "" "" "ty" "type check failed (exit ${ty_exit})"
 			gate_record_fail 1 0
 		fi
 	fi
 }
 
 gate_step_pip_audit() {
+	local lock_hash=""
+	if [[ -f "${LIB_REPO_ROOT}/uv.lock" ]]; then
+		lock_hash="$(lib_hash_file "${LIB_REPO_ROOT}/uv.lock")"
+		if lib_cache_hit "pip-audit" "${lock_hash}" 7; then
+			echo "note: skipping pip-audit (uv.lock unchanged, cache hit)"
+			gate_emit_result "skip" 0 0
+			return 0
+		fi
+	fi
 	audit_output="$("${internal_dir}/audit_deps.sh" 2>&1)"
 	audit_exit=$?
 	printf '%s\n' "${audit_output}"
 	if [[ "${audit_exit}" -eq 0 ]]; then
+		if [[ -n "${lock_hash}" ]]; then
+			lib_cache_store "pip-audit" "${lock_hash}"
+		fi
 		gate_record_pass
 	else
 		gate_gha_error "" "" "" "pip-audit" "dependency audit failed (exit ${audit_exit})"
@@ -185,10 +263,29 @@ gate_step_pip_audit() {
 }
 
 gate_step_build() {
+	local build_hash=""
+	if [[ -f "${LIB_REPO_ROOT}/pyproject.toml" ]]; then
+		# Hash packaging inputs (pyproject + tracked src file list).
+		build_hash="$({
+			lib_hash_file "${LIB_REPO_ROOT}/pyproject.toml"
+			find "${LIB_REPO_ROOT}/src" -type f 2>/dev/null | sort | while read -r f; do
+				lib_hash_file "${f}"
+			done
+		} | "$(lib_python)" -c 'import hashlib,sys; print(hashlib.sha256(sys.stdin.buffer.read()).hexdigest())')"
+		if lib_cache_hit "build" "${build_hash}" 7; then
+			echo "note: skipping wheel build (packaging inputs unchanged, cache hit)"
+			gate_emit_result "skip" 0 0
+			return 0
+		fi
+	fi
+	export UV_NO_SYNC=1
 	build_output="$("${quality_dir}/build.sh" 2>&1)"
 	build_exit=$?
 	printf '%s\n' "${build_output}"
 	if [[ "${build_exit}" -eq 0 ]]; then
+		if [[ -n "${build_hash}" ]]; then
+			lib_cache_store "build" "${build_hash}"
+		fi
 		gate_record_pass
 	else
 		gate_gha_error "" "" "" "build" "package build failed (exit ${build_exit})"
@@ -227,11 +324,13 @@ gate_finish_step() {
 	local log_dir="$2"
 
 	gate_step_start "${name}"
-	if [[ -f "${log_dir}/${name}.log" ]]; then
-		cat "${log_dir}/${name}.log"
-	fi
 	unset GATE_STATUS_FILE
 	gate_load_result "${log_dir}/${name}.status"
+	if [[ "${LIB_GATE_QUIET:-false}" != true || "${GATE_STEP_STATUS[GATE_CURRENT_INDEX]}" == "FAIL" ]]; then
+		if [[ -f "${log_dir}/${name}.log" ]]; then
+			cat "${log_dir}/${name}.log"
+		fi
+	fi
 }
 
 if [[ "${FIX}" == true ]]; then
@@ -241,8 +340,8 @@ if [[ "${FIX}" == true ]]; then
 	gate_step_start "shell"
 	gate_step_shell
 
-	gate_step_start "basedpyright"
-	gate_step_pyright
+	gate_step_start "ty"
+	gate_step_ty
 
 	gate_step_start "pip-audit"
 	gate_step_pip_audit
@@ -256,38 +355,40 @@ if [[ "${FIX}" == true ]]; then
 	fi
 else
 	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
-	# Cap xdist fan-out (torch/Qt-heavy work runs serially in pytest.sh).
-	# Respect an explicit LIB_PYTEST_WORKERS override from the environment.
 	if [[ -z "${LIB_PYTEST_WORKERS:-}" ]]; then
-		workers="$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)"
-		if [[ "${workers}" -lt 1 ]]; then
-			workers=1
-		fi
-		if [[ "${workers}" -gt 4 ]]; then
-			workers=4
-		fi
-		export LIB_PYTEST_WORKERS="${workers}"
+		LIB_PYTEST_WORKERS="$(_lib_pytest_worker_count)"
+		export LIB_PYTEST_WORKERS
 	fi
 
-	echo "Parallel verify (light steps; then pytest -n ${LIB_PYTEST_WORKERS}, heavy serial)"
+	echo "Parallel verify (light steps overlapping pytest buckets; workers=${LIB_PYTEST_WORKERS})"
+
+	# Start pytest buckets early (longest-job-first) so they overlap light steps.
+	pytest_pid=""
+	if [[ "${HAS_PYTEST}" == true ]]; then
+		(
+			export GATE_STATUS_FILE="${parallel_dir}/pytest.status"
+			rm -f "${GATE_STATUS_FILE}" "${GATE_STATUS_FILE}.details"
+			gate_step_pytest >"${parallel_dir}/pytest.log" 2>&1
+		) &
+		pytest_pid=$!
+	fi
 
 	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
 	gate_run_step_logged "shell" gate_step_shell "${parallel_dir}"
-	gate_run_step_logged "basedpyright" gate_step_pyright "${parallel_dir}"
+	gate_run_step_logged "ty" gate_step_ty "${parallel_dir}"
 	gate_run_step_logged "pip-audit" gate_step_pip_audit "${parallel_dir}"
 	gate_run_step_logged "build" gate_step_build "${parallel_dir}"
 	wait
 
 	gate_finish_step "ruff" "${parallel_dir}"
 	gate_finish_step "shell" "${parallel_dir}"
-	gate_finish_step "basedpyright" "${parallel_dir}"
+	gate_finish_step "ty" "${parallel_dir}"
 	gate_finish_step "pip-audit" "${parallel_dir}"
 	gate_finish_step "build" "${parallel_dir}"
 
-	# Pytest after the light steps so xdist workers are not fighting torch/pyright.
-	if [[ "${HAS_PYTEST}" == true ]]; then
-		gate_step_start "pytest"
-		gate_step_pytest
+	if [[ -n "${pytest_pid}" ]]; then
+		wait "${pytest_pid}" 2>/dev/null || true
+		gate_finish_step "pytest" "${parallel_dir}"
 	fi
 	rm -rf "${parallel_dir}"
 fi

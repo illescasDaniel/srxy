@@ -14,6 +14,12 @@ from srxy.domain.progress import ActivityCallback, emit_activity
 
 DOCUMENT_SUFFIXES = frozenset({".pdf", ".docx", ".xlsx", ".pptx"})
 _OFFICE_SUFFIXES = frozenset({".docx", ".xlsx", ".pptx"})
+
+
+class DocumentExtractError(Exception):
+	"""Raised when a document extractor cannot open/parse the file."""
+
+
 _DC_NS = "http://purl.org/dc/elements/1.1/"
 _CP_NS = "http://schemas.openxmlformats.org/package/2006/metadata/core-properties"
 _APP_NS = "http://schemas.openxmlformats.org/officeDocument/2006/extended-properties"
@@ -155,8 +161,9 @@ def iter_document_lines(
 	*,
 	ocr: bool | None = None,
 	on_activity: ActivityCallback | None = None,
+	logical_suffix: str | None = None,
 ) -> Iterator[tuple[int, str, str]]:
-	suffix = path.suffix.lower()
+	suffix = (logical_suffix or path.suffix).lower()
 	extractors: dict[str, Callable[..., Iterator[tuple[int, str, str]]]] = {
 		".pdf": _iter_pdf_lines,
 		".docx": _iter_docx_lines,
@@ -180,10 +187,12 @@ def iter_document_lines(
 		lines = list(extractor(path, ocr=ocr, on_activity=on_activity))
 		cache_put(CACHE_KIND_DOCUMENT_TEXT, content_hash, variant, _encode_document_lines(lines))
 		yield from lines
-	except ArchiveGuardError:
-		return
-	except Exception:
-		return
+	except ArchiveGuardError as exc:
+		raise DocumentExtractError(str(exc)) from exc
+	except DocumentExtractError:
+		raise
+	except Exception as exc:
+		raise DocumentExtractError(str(exc)) from exc
 
 
 def _iter_pdf_lines(

@@ -302,11 +302,6 @@ def with_semantic_extra(spec: str) -> str:
 	return with_extras(spec, "semantic")
 
 
-def with_windows_extra(spec: str) -> str:
-	"""Insert ``[windows]`` into a PEP 508 requirement (before any version pin)."""
-	return with_extras(spec, "windows")
-
-
 __all__ = [
 	"fetch_pypi_srxy_info",
 	"local_source_version",
@@ -322,5 +317,4 @@ __all__ = [
 	"wheel_version_from_path",
 	"with_extras",
 	"with_semantic_extra",
-	"with_windows_extra",
 ]

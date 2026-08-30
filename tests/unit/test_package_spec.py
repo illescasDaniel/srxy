@@ -10,7 +10,6 @@ from srxy.adapters.inbound.installer.package_spec import (
 	resolve_srxy_install_spec,
 	with_extras,
 	with_semantic_extra,
-	with_windows_extra,
 )
 
 
@@ -62,64 +61,42 @@ def test_given_versioned_spec_when_adding_semantic_then_inserts_extra_before_pin
 	assert with_semantic_extra("srxy>=1.6.0,<2") == "srxy[semantic]>=1.6.0,<2"
 
 
-def test_given_spec_when_adding_windows_then_inserts_extra():
-	assert with_windows_extra("srxy") == "srxy[windows]"
-	assert with_windows_extra("srxy==1.6.4") == "srxy[windows]==1.6.4"
-
-
-def test_given_semantic_spec_when_adding_windows_then_merges_extras():
-	assert with_extras("srxy", "semantic", "windows") == "srxy[semantic,windows]"
-	assert with_extras("srxy[semantic]", "windows") == "srxy[semantic,windows]"
-	assert with_extras("srxy[semantic,windows]", "windows") == "srxy[semantic,windows]"
-
-
-def test_given_host_when_resolving_package_extras_then_includes_windows_on_windows(
+def test_given_host_when_resolving_package_extras_then_only_semantic_when_requested(
 	monkeypatch: pytest.MonkeyPatch,
 ):
+	# given
 	from srxy.adapters.inbound.installer import install as install_mod
 
 	monkeypatch.setattr(install_mod, "_is_windows", lambda: True)
-	assert install_mod.package_extras_for_host(install_semantic=False) == ["windows"]
-	assert install_mod.package_extras_for_host(install_semantic=True) == ["semantic", "windows"]
+
+	# when / then — pywin32 is core on Windows; no [windows] extra
+	assert install_mod.package_extras_for_host(install_semantic=False) == []
+	assert install_mod.package_extras_for_host(install_semantic=True) == ["semantic"]
 
 	monkeypatch.setattr(install_mod, "_is_windows", lambda: False)
 	assert install_mod.package_extras_for_host(install_semantic=True) == ["semantic"]
 	assert install_mod.package_extras_for_host(install_semantic=False) == []
 
 
-def test_given_local_path_when_adding_windows_then_uses_pep508_url(tmp_path: Path):
-	root = tmp_path / "srxy"
-	root.mkdir()
-
-	result = with_windows_extra(str(root))
-
-	assert result == f"srxy[windows] @ {root.resolve().as_uri()}"
-
-
-def test_given_wheel_path_when_adding_windows_then_uses_pep508_url(tmp_path: Path):
-	wheel = tmp_path / "srxy-1.6.4-py3-none-any.whl"
-	wheel.write_bytes(b"PK")
-
-	result = with_windows_extra(str(wheel))
-
-	assert result == f"srxy[windows] @ {wheel.resolve().as_uri()}"
-
-
-def test_given_windows_host_when_composing_install_spec_then_applies_windows_extra(
+def test_given_windows_host_when_composing_install_spec_then_applies_semantic_only(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
+	# given
 	from srxy.adapters.inbound.installer import install as install_mod
 
 	monkeypatch.setattr(install_mod, "_is_windows", lambda: True)
 	wheel = tmp_path / "srxy-1.6.4-py3-none-any.whl"
 	wheel.write_bytes(b"PK")
 	spec = str(wheel)
+
+	# when
 	extras = install_mod.package_extras_for_host(install_semantic=True)
 	composed = with_extras(spec, *extras)
 
-	assert extras == ["semantic", "windows"]
-	assert composed == f"srxy[semantic,windows] @ {wheel.resolve().as_uri()}"
+	# then
+	assert extras == ["semantic"]
+	assert composed == f"srxy[semantic] @ {wheel.resolve().as_uri()}"
 
 
 def test_given_env_override_when_resolving_spec_then_uses_override(monkeypatch: pytest.MonkeyPatch):

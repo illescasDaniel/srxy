@@ -1,11 +1,14 @@
 [project]
 name = "srxy"
-version = "1.6.5"
+version = "1.7.0"
 description = "Find files by what you mean — from the terminal or Python."
 readme = "README.md"
 requires-python = ">=3.11"
 license = "MIT"
 license-files = ["LICENSE"]
+authors = [
+	{ name = "Daniel Illescas Romero" },
+]
 dependencies = [
 	"cryptography>=44.0",
 	"exifread>=3.5",
@@ -14,7 +17,7 @@ dependencies = [
 	"openpyxl>=3.1",
 	"pillow>=12.3",
 	"pillow-heif>=1.4",
-	"pypdf>=6.14",
+	"pypdf>=6.15",
 	"pytesseract>=0.3",
 	"PySide6>=6.6",
 	"python-docx>=1.2",
@@ -22,23 +25,29 @@ dependencies = [
 	"rapidfuzz>=3.14",
 	"textual>=3.0",
 	"wordfreq>=3.1",
+	"magika>=1.0.3",
+	# Explorer tags (System.Keywords). Marker keeps Linux/macOS installs lean.
+	"pywin32>=312; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
-# Text + image semantic search (sentence-transformers → PyTorch, CLIP, MiniLM).
+# Smarter search (sentence-transformers, CLIP, Whisper) + explicit torch stack.
+# Intended for machines with a GPU (CUDA on Linux/Windows, MPS on Apple Silicon).
+# On Windows, [tool.uv.sources] pulls torch*/cu130 from the PyTorch index for
+# checkout ``uv sync``; ``uv tool install`` still needs --with/--index for CUDA.
+# CI does not install this extra.
 semantic = [
 	"faster-whisper>=1.2",
 	"nvidia-cublas-cu12; platform_system == 'Linux' or platform_system == 'Windows'",
 	"rawpy>=0.27",
 	"sentence-transformers>=5.6",
-]
-windows = [
-	"pywin32>=312",
+	"torch>=2.13",
+	"torchaudio>=2.11",
+	"torchvision>=0.28",
 ]
 
 [dependency-groups]
 dev = [
-	"basedpyright>=1.39",
 	"pip-audit>=2.10",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
@@ -48,6 +57,8 @@ dev = [
 	"pytest-xdist>=3.6",
 	"ruff>=0.15",
 	"taskipy>=1.14",
+	"pngquant-cli>=3.0.3",
+	"ty>=0.0.75",
 ]
 uploader = [
 	"twine>=6.2",
@@ -67,9 +78,19 @@ srxy-installer-online = "srxy.adapters.inbound.installer_online.__main__:main"
 [tool.uv]
 default-groups = ["dev"]
 
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchvision = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+torchaudio = [{ index = "pytorch-cu130", marker = "sys_platform == 'win32'" }]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
-addopts = "-v --tb=short -rs"
+addopts = "--tb=short -rs"
 pythonpath = ["."]
 qt_api = "pyside6"
 # Fail hung tests instead of blocking the gate forever.
@@ -117,37 +138,61 @@ lines-after-imports = 2
 "tests/integration/test_file_search_fixtures.py" = ["S603", "S607"]
 "tests/tui/test_qa_integration.py" = ["S108"]
 
-[tool.basedpyright]
-typeCheckingMode = "strict"
-include = ["src", "tests"]
-pythonVersion = "3.11"
-venvPath = "."
-venv = ".venv"
-extraPaths = ["src"]
-reportMissingTypeStubs = false
-reportMissingModuleSource = false
-reportUnknownMemberType = false
-reportUnknownLambdaType = false
-reportUnknownVariableType = false
-reportUnknownArgumentType = false
-reportUnknownParameterType = false
-reportAttributeAccessIssue = false
-executionEnvironments = [
-	{ root = "src/srxy/adapters/outbound/metadata/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
-	{ root = "src/srxy/adapters/outbound/models/device.py", reportMissingImports = "none" },
-	{ root = "src/srxy/adapters/outbound/semantic/semantic_image.py", reportMissingImports = "none" },
-	{ root = "src/srxy/application/matching/semantic.py", reportMissingImports = "none" },
-	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
-	{ root = "tests/unit/test_windows_metadata.py", reportPrivateUsage = "none" },
-	{ root = "src" },
-	{ root = "tests", extraPaths = ["src", "."] },
+[tool.ty.environment]
+python-version = "3.11"
+python = ".venv"
+# Cross-platform codebase (winreg/startfile/etc. behind platform guards).
+python-platform = "all"
+# `src` for the installed package layout; `.` so `tests.*` resolve like basedpyright's tests env.
+root = ["./src", "."]
+
+[tool.ty.src]
+# Match former basedpyright include = ["src", "tests"] (skip benches/docs/quality scripts).
+exclude = ["scripts/**", "packaging/**", "examples/**"]
+
+[tool.ty.rules]
+# Parity with former basedpyright: reportAttributeAccessIssue=false and reportUnknown*=false.
+# Those mostly surface in ty as unresolved-attribute / object-typed invalid-argument-type.
+unresolved-attribute = "ignore"
+
+# Optional / platform-specific imports (parity with former basedpyright executionEnvironments).
+[[tool.ty.overrides]]
+include = [
+	"src/srxy/adapters/outbound/metadata/windows_metadata.py",
+	"src/srxy/adapters/outbound/models/device.py",
+	"src/srxy/adapters/outbound/semantic/semantic_image.py",
+	"src/srxy/application/matching/semantic.py",
+	"tests/unit/test_semantic_cache.py",
 ]
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
+invalid-argument-type = "ignore"
+no-matching-overload = "ignore"
+
+# Qt/Textual stubs + MagicMock-heavy tests.
+[[tool.ty.overrides]]
+include = ["tests/**"]
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+invalid-assignment = "ignore"
+call-top-callable = "ignore"
+call-non-callable = "ignore"
+no-matching-overload = "ignore"
+not-iterable = "ignore"
+unsupported-operator = "ignore"
+missing-argument = "ignore"
+too-many-positional-arguments = "ignore"
+missing-slot = "ignore"
+
 
 [tool.coverage.run]
 source = ["srxy"]
 omit = ["tests/*"]
 
 [tool.taskipy.tasks]
+sync = { cmd = "python scripts/dev/sync.py", help = "platform-aware uv sync: runtime extras, no pytest/ruff/dev tools" }
+sync-dev = { cmd = "python scripts/dev/sync.py --dev", help = "platform-aware uv sync with the default dev group (GPU → semantic; else core+dev only)" }
+sync-uploader = { cmd = "python scripts/dev/sync.py --uploader", help = "platform-aware uv sync with dev + uploader (twine) groups" }
 cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
 tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
@@ -168,14 +213,41 @@ build-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -F
 smoke-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline.ps1", help = "smoke headless Windows install engine (or pass -InstallerExe)" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate packaged square + installer icons from assets/icons/srxy.png" }
 generate-macos-icons = { cmd = "uv run python scripts/generate_macos_icons.py", help = "regenerate squircle-masked macOS icons from assets/icons/srxy.png" }
-checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day; Unix)" }
+checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day; Unix; auto-scope)" }
 checks-fix = { cmd = "./scripts/quality/checks.sh --fix", help = "autofix then run quality gate (Unix)" }
 checks-full = { cmd = "./scripts/quality/checks.sh --full", help = "full local quality gate (pre-release; Unix)" }
 checks-full-cpu = { cmd = "./scripts/quality/checks.sh --full+cpu", help = "full gate + forced-CPU transcribe matrix (Unix)" }
-checks-win = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1", help = "run quality gate (day-to-day; Windows)" }
-checks-win-fix = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix", help = "autofix then run quality gate (Windows)" }
-checks-win-full = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Full", help = "full local quality gate (pre-release; Windows)" }
-checks-win-full-cpu = { cmd = "powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -FullCpu", help = "full gate + forced-CPU transcribe matrix (Windows)" }
+checks-quiet = { cmd = "./scripts/quality/checks.sh --quiet", help = "run quality gate in agent-verbosity mode (Unix)" }
+checks-fix-quiet = { cmd = "./scripts/quality/checks.sh --quiet --fix", help = "autofix then run quality gate, agent-verbosity (Unix)" }
+checks-full-quiet = { cmd = "./scripts/quality/checks.sh --quiet --full", help = "full local quality gate, agent-verbosity (Unix)" }
+checks-full-cpu-quiet = { cmd = "./scripts/quality/checks.sh --quiet --full+cpu", help = "full gate + forced-CPU matrix, agent-verbosity (Unix)" }
+checks-core = { cmd = "./scripts/quality/checks.sh --scope=core", help = "quality gate: core bucket only (Unix)" }
+checks-cli = { cmd = "./scripts/quality/checks.sh --scope=core", help = "quality gate: core/cli bucket (Unix)" }
+checks-gui = { cmd = "./scripts/quality/checks.sh --scope=core,gui", help = "quality gate: core+gui (Unix)" }
+checks-tui = { cmd = "./scripts/quality/checks.sh --scope=core,tui", help = "quality gate: core+tui (Unix)" }
+checks-all = { cmd = "./scripts/quality/checks.sh --all", help = "quality gate: all buckets (Unix)" }
+checks-core-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core", help = "core bucket, agent-verbosity (Unix)" }
+checks-gui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,gui", help = "core+gui, agent-verbosity (Unix)" }
+checks-tui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,tui", help = "core+tui, agent-verbosity (Unix)" }
+checks-all-quiet = { cmd = "./scripts/quality/checks.sh --quiet --all", help = "all buckets, agent-verbosity (Unix)" }
+sync-win = { cmd = "python scripts/dev/sync.py --dev", help = "alias of sync-dev (kept for older docs / Windows muscle memory)" }
+checks-win = { cmd = "cmd /c scripts\\quality\\checks-win.cmd", help = "run quality gate (day-to-day; Windows; auto-scope)" }
+checks-win-fix = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Fix", help = "autofix then run quality gate (Windows)" }
+checks-win-full = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Full", help = "full local quality gate (pre-release; Windows)" }
+checks-win-full-cpu = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -FullCpu", help = "full gate + forced-CPU transcribe matrix (Windows)" }
+checks-win-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet", help = "run quality gate in agent-verbosity mode (Windows)" }
+checks-win-fix-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Fix -Quiet", help = "autofix then run quality gate, agent-verbosity (Windows)" }
+checks-win-full-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Full -Quiet", help = "full local quality gate, agent-verbosity (Windows)" }
+checks-win-full-cpu-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -FullCpu -Quiet", help = "full gate + forced-CPU matrix, agent-verbosity (Windows)" }
+checks-win-core = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Scope core", help = "quality gate: core bucket only (Windows)" }
+checks-win-cli = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Scope core", help = "quality gate: core/cli bucket (Windows)" }
+checks-win-gui = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Scope core,gui", help = "quality gate: core+gui (Windows)" }
+checks-win-tui = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Scope core,tui", help = "quality gate: core+tui (Windows)" }
+checks-win-all = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -All", help = "quality gate: all buckets (Windows)" }
+checks-win-core-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet -Scope core", help = "core bucket, agent-verbosity (Windows)" }
+checks-win-gui-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet -Scope core,gui", help = "core+gui, agent-verbosity (Windows)" }
+checks-win-tui-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet -Scope core,tui", help = "core+tui, agent-verbosity (Windows)" }
+checks-win-all-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet -All", help = "all buckets, agent-verbosity (Windows)" }
 clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
 clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
 bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
