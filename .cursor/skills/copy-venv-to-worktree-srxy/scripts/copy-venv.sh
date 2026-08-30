@@ -3,7 +3,8 @@
 #
 # Mirrors .venv from the primary checkout (the git worktree list entry that is
 # NOT under $HOME/.cursor/worktrees/) into the current worktree using rsync,
-# then runs uv sync to re-stamp activation-script paths for the new location.
+# rewrites shebangs / editable .pth / direct_url.json for the new location,
+# then runs a cheap offline uv sync to re-register the editable install.
 # No packages are re-downloaded.
 #
 # Intended to be run from any linked worktree root. Devs can call it directly;
@@ -15,6 +16,8 @@
 
 set -euo pipefail
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
 FORCE=false
 for arg in "$@"; do
 	case "${arg}" in
@@ -25,8 +28,8 @@ for arg in "$@"; do
 		cat <<'EOF'
 Usage: copy-venv.sh [--force|-f]
 
-Copy .venv from the primary srxy checkout into this worktree, then run
-uv sync --extra semantic to re-stamp activation-script paths.
+Copy .venv from the primary srxy checkout into this worktree, rewrite
+shebangs and editable paths, then uv sync --offline --reinstall-package srxy.
 EOF
 		exit 0
 		;;
@@ -126,16 +129,55 @@ echo ""
 echo "copy-venv: copy complete"
 
 # ---------------------------------------------------------------------------
-# 5. uv sync — re-stamp activation scripts for the new path
+# 5. Rewrite shebangs / .pth / direct_url for the new location
 # ---------------------------------------------------------------------------
 echo ""
-echo "copy-venv: running 'uv sync --extra semantic' to fix activation-script paths..."
-cd "${dest_root}"
-uv sync --extra semantic
+echo "copy-venv: rewriting venv paths (shebangs, editable .pth, direct_url)..."
+"${dst_venv}/bin/python" "${SCRIPT_DIR}/rewrite_venv_paths.py" \
+	--old-root "${primary_root}" \
+	--new-root "${dest_root}"
 
 # ---------------------------------------------------------------------------
-# 6. Verify
+# 6. uv sync — re-register editable install (offline; no downloads)
 # ---------------------------------------------------------------------------
+echo ""
+echo "copy-venv: running 'uv sync --extra semantic --offline --reinstall-package srxy'..."
+cd "${dest_root}"
+uv sync --extra semantic --offline --reinstall-package srxy
+
+# ---------------------------------------------------------------------------
+# 7. Verify shebang, editable import, torch
+# ---------------------------------------------------------------------------
+echo ""
+echo "copy-venv: verifying paths..."
+pytest_shebang="$(head -1 "${dst_venv}/bin/pytest" 2>/dev/null || true)"
+if [[ "${pytest_shebang}" != "#!${dst_venv}/bin/python"* && "${pytest_shebang}" != "#!${dst_venv}/bin/python3"* ]]; then
+	echo "error: pytest shebang still wrong: ${pytest_shebang}" >&2
+	echo "  expected prefix: #!${dst_venv}/bin/python" >&2
+	exit 1
+fi
+case "${pytest_shebang}" in
+*"${primary_root}"*)
+	echo "error: pytest shebang still references primary checkout: ${pytest_shebang}" >&2
+	exit 1
+	;;
+esac
+echo "  pytest shebang: ${pytest_shebang}"
+
+srxy_file="$("${dst_venv}/bin/python" -c "import srxy; print(srxy.__file__)" 2>&1)" || {
+	echo "error: failed to import srxy from destination venv: ${srxy_file}" >&2
+	exit 1
+}
+case "${srxy_file}" in
+"${dest_root}/src/"*)
+	echo "  srxy.__file__: ${srxy_file}"
+	;;
+*)
+	echo "error: srxy.__file__ is not under worktree src/: ${srxy_file}" >&2
+	exit 1
+	;;
+esac
+
 echo ""
 echo "copy-venv: verifying torch..."
 torch_check="$("${dst_venv}/bin/python" -c \

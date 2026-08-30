@@ -6,8 +6,9 @@
 .DESCRIPTION
   Mirrors .venv from the primary checkout (the git worktree list entry that is
   NOT under %USERPROFILE%\.cursor\worktrees\) into the current worktree using
-  robocopy, then runs uv sync to re-stamp activation-script paths for the new
-  location.  No packages are re-downloaded.
+  robocopy, rewrites shebangs / editable .pth / direct_url.json / Windows
+  trampoline UV_PYTHON_PATH for the new location, then runs uv sync to
+  re-register the editable install.  No packages are re-downloaded.
 
   Intended to be run from any linked worktree root.  Devs can call it
   directly; agents invoke it via the copy-venv-to-worktree-srxy skill.
@@ -29,6 +30,8 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+
+$ScriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 
 # ---------------------------------------------------------------------------
 # 1. Resolve current worktree root
@@ -123,10 +126,23 @@ Write-Host ""
 Write-Host "copy-venv: copy complete (robocopy exit $robocopyExit)"
 
 # ---------------------------------------------------------------------------
-# 5. uv sync — re-stamp activation scripts for the new path
+# 5. Rewrite shebangs / .pth / direct_url / trampoline UV_PYTHON_PATH
 # ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "copy-venv: running uv sync to fix activation-script paths..."
+Write-Host "copy-venv: rewriting venv paths (shebangs, editable .pth, trampolines)..."
+$dstPython = Join-Path $dstVenv 'Scripts\python.exe'
+$rewriteScript = Join-Path $ScriptDir 'rewrite_venv_paths.py'
+& $dstPython $rewriteScript --old-root $primaryRoot --new-root $destRoot
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "rewrite_venv_paths.py failed (exit $LASTEXITCODE)"
+    exit $LASTEXITCODE
+}
+
+# ---------------------------------------------------------------------------
+# 6. uv sync — re-register editable install
+# ---------------------------------------------------------------------------
+Write-Host ""
+Write-Host "copy-venv: running uv sync to re-register editable install..."
 Set-Location -LiteralPath $destRoot
 
 function Test-NvidiaGpuPresent {
@@ -144,9 +160,16 @@ function Test-NvidiaGpuPresent {
 if (Test-NvidiaGpuPresent) {
     Write-Host "copy-venv: NVIDIA GPU detected — running 'uv run task sync-win'"
     & uv run task sync-win
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "uv sync step failed (exit $LASTEXITCODE)"
+        exit $LASTEXITCODE
+    }
+    # Ensure editable is re-registered at the worktree path (sync-win may no-op).
+    Write-Host "copy-venv: re-registering editable with --reinstall-package srxy (offline)"
+    & uv sync --extra semantic-gpu --extra windows --offline --reinstall-package srxy
 } else {
-    Write-Host "copy-venv: no NVIDIA GPU — running 'uv sync --extra semantic --extra windows'"
-    & uv sync --extra semantic --extra windows
+    Write-Host "copy-venv: no NVIDIA GPU — running 'uv sync --extra semantic --extra windows --offline --reinstall-package srxy'"
+    & uv sync --extra semantic --extra windows --offline --reinstall-package srxy
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Error "uv sync step failed (exit $LASTEXITCODE)"
@@ -154,11 +177,37 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 # ---------------------------------------------------------------------------
-# 6. Verify
+# 7. Verify editable import + torch
 # ---------------------------------------------------------------------------
 Write-Host ""
+Write-Host "copy-venv: verifying paths..."
+$srxyFile = & $dstPython -c "import srxy; print(srxy.__file__)" 2>&1
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "failed to import srxy from destination venv: $srxyFile"
+    exit 1
+}
+$destSrcPrefix = (Join-Path $destRoot 'src').TrimEnd('\') + '\'
+$srxyNorm = ([string]$srxyFile).Trim() -replace '/', '\'
+if (-not $srxyNorm.StartsWith($destSrcPrefix, [System.StringComparison]::OrdinalIgnoreCase)) {
+    Write-Error "srxy.__file__ is not under worktree src/: $srxyFile"
+    exit 1
+}
+Write-Host "  srxy.__file__: $srxyFile"
+
+# Confirm pytest trampoline resolves via dest python (not primary).
+$pytestExe = Join-Path $dstVenv 'Scripts\pytest.exe'
+if (Test-Path -LiteralPath $pytestExe) {
+    $pytestProbe = & $pytestExe --version 2>&1
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error "pytest.exe from destination venv failed: $pytestProbe"
+        exit 1
+    }
+    Write-Host "  pytest: $pytestProbe"
+}
+
+Write-Host ""
 Write-Host "copy-venv: verifying torch..."
-$torchCheck = & (Join-Path $dstVenv 'Scripts\python.exe') -c `
+$torchCheck = & $dstPython -c `
     "import torch; print(torch.__version__, 'cuda=' + str(torch.cuda.is_available()))" `
     2>&1
 Write-Host "  torch: $torchCheck"

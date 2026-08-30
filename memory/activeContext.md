@@ -4,34 +4,31 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0**.
+- `feature/fixes_1.6.6` — version target **1.7.0** (worktree `cursor/3ae3cdde`).
 
 ## Current focus
 
-Just finished: **Linux validation of Windows-merged quality gate** + **Unix `copy-venv.sh`** for the copy-venv-to-worktree-srxy skill.
+Just finished: **copy-venv shebang / editable-path rewrite** so a copied worktree `.venv` no longer runs primary-checkout interpreters or imports.
 
 ## Touched files
 
-- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh` — new bash twin of `copy-venv-win.ps1` (rsync + `uv sync --extra semantic`)
-- `.cursor/skills/copy-venv-to-worktree-srxy/SKILL.md` — Unix section invokes the script (not inline snippet)
-- `scripts/quality/checks.sh` — SC2155: declare/assign `LIB_PYTEST_WORKERS` separately
-- `scripts/quality/internal/lib.sh` — drop unused `cov_append`; SC2034 disable on `LIB_SCOPE_REASON`
-- `memory/activeContext.md`, `memory/progress.md`
+- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/rewrite_venv_paths.py` — new: rewrite shebangs / `.pth` / `direct_url.json` + Windows `UV_PYTHON_PATH`
+- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh` — call rewriter; `--offline --reinstall-package srxy`; verify shebang + `srxy.__file__`
+- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv-win.ps1` — same + trampoline path verify
+- `.cursor/skills/copy-venv-to-worktree-srxy/SKILL.md` — document that `uv sync` alone does not fix shebangs
+- `tests/unit/test_copy_venv_rewrite.py` — given/when/then coverage for the rewriter
+- `memory/decisions.md`, `memory/activeContext.md`, `memory/progress.md`
 
 ## Verified
 
-- `bash …/copy-venv.sh` from primary → exit 0 “Already in the primary checkout”; shellcheck + shfmt clean
-- `uv run task checks-fix-quiet` PASSED (after shellcheck fixes; full pytest earlier in session: heavy 45, gui 167+1 skip, tui 90, core 671+1 skip)
-- `uv run task checks-all-quiet` PASSED
-
-## Manual QA (user)
-
-- **Verify installers after 1.7.0 changes**, especially the **Windows offline installer**: Recommended (GPU) should install CUDA PyTorch into the prefix `.venv` (`+cu130` / `torch.cuda.is_available()` True on NVIDIA). Also smoke macOS/Linux installers for 1.7.0 regressions (splash, theme, semantic option).
-- Note: this Linux host currently has `nvidia-smi` driver failure (`cuda=False` despite `2.13.0+cu130` in venv) — environmental, not a code bug.
+- Unit tests for rewriter: 2 passed
+- `shellcheck` + `shfmt` clean on `copy-venv.sh`
+- Core pytest: 673 passed, 1 skipped (after `uv sync --extra semantic` in this worktree)
+- `checks.sh --quiet --fix` light steps clean (earlier all-bucket run failed core only for missing semantic packages before sync)
 
 ## Next steps
 
-1. Commit copy-venv Unix script + shellcheck gate fixes (+ memory) when ready.
-2. User: manual Windows (and other) installer verification for 1.7.0.
-3. `/delete-worktree-srxy` for applied worktrees when ready.
-4. Final QA / release for 1.7.0 when ready.
+1. Commit copy-venv shebang rewrite (+ prior Unix copy-venv / shellcheck fixes if still uncommitted on parent) when ready.
+2. Optional: `/copy-venv-to-worktree-srxy --force` in this worktree to replace the thin sync-created `.venv` with a primary mirror + rewrite.
+3. User: manual Windows (and other) installer verification for 1.7.0.
+4. `/delete-worktree-srxy` for applied worktrees when ready.

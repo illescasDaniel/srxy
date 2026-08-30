@@ -16,8 +16,15 @@ asks to copy / set up the `.venv` in the current worktree.
 ## Goal
 
 Copy the fully-installed `.venv` from the primary checkout into this worktree,
-then run a fast `uv sync` whose only job is to re-stamp the activation-script
-paths for the new location. No packages are re-downloaded.
+rewrite console-script shebangs / editable `.pth` / `direct_url.json` (and on
+Windows, trampoline `UV_PYTHON_PATH`) so tools run against the **worktree**
+tree — then run a cheap offline `uv sync --reinstall-package srxy`. No
+packages are re-downloaded.
+
+`uv sync` alone does **not** fix shebangs after a copy
+(https://github.com/astral-sh/uv/issues/18196). Without the rewrite, the
+quality gate's direct `.venv/bin/pytest` (or `Scripts\pytest.exe`) still
+executes the primary checkout's interpreter and loads primary `srxy`.
 
 ## Steps
 
@@ -40,13 +47,18 @@ paths for the new location. No packages are re-downloaded.
    - Auto-detects the primary checkout from `git worktree list`.
    - Guards against running in the primary itself.
    - Uses `robocopy` to mirror `.venv`.
-   - Runs `uv run task sync-win` (NVIDIA GPU detected) or
-     `uv sync --extra semantic --extra windows` (no GPU) to fix paths.
-   - Prints source path, destination path, and torch version/CUDA check.
+   - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url` /
+     trampoline `UV_PYTHON_PATH`).
+   - Runs `uv run task sync-win` (NVIDIA GPU) or
+     `uv sync --extra semantic --extra windows --offline --reinstall-package srxy`
+     (no GPU). GPU path also re-registers the editable offline afterward.
+   - Verifies `srxy.__file__` is under the worktree `src/`, pytest runs, and
+     prints torch version/CUDA check.
 
 3. Verify the result reported by the script:
+   - `srxy.__file__` under this worktree's `src/`
    - torch version contains `+cu` and `cuda=True` on an NVIDIA machine, or
-   - `cpu` / `cuda=False` on non-GPU machines — both are correct.
+     `cpu` / `cuda=False` on non-GPU machines — both are correct.
 
 ### Unix / macOS
 
@@ -67,10 +79,14 @@ paths for the new location. No packages are re-downloaded.
    - Auto-detects the primary checkout from `git worktree list`.
    - Guards against running in the primary itself.
    - Uses `rsync` to mirror `.venv`.
-   - Runs `uv sync --extra semantic` to fix activation-script paths.
-   - Prints source path, destination path, and torch version/CUDA check.
+   - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url`).
+   - Runs `uv sync --extra semantic --offline --reinstall-package srxy`.
+   - Verifies pytest shebang points at this worktree's `.venv`,
+     `srxy.__file__` is under worktree `src/`, and prints torch check.
 
 3. Verify the result reported by the script:
+   - pytest shebang under this worktree's `.venv/bin/python`
+   - `srxy.__file__` under this worktree's `src/`
    - torch version and `cuda=True`/`False` as appropriate for this machine.
 
 ## Edge cases
@@ -82,3 +98,4 @@ paths for the new location. No packages are re-downloaded.
 | Source `.venv` is missing | Instructs the user to sync the primary checkout first (`uv sync --extra semantic` on Unix; `uv run task sync-win` on Windows), then retry. |
 | Primary checkout not found in worktree list | Aborts with a diagnostic message. |
 | `rsync` missing (Unix) | Aborts and asks to install `rsync`. |
+| Shebang / `srxy.__file__` still point at primary after rewrite | Exits non-zero — do not treat the copy as successful. |
