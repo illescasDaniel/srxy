@@ -94,7 +94,6 @@ def test_given_require_digest_false_when_downloading_without_sha256_then_writes_
 	assert destination.read_bytes() == PAYLOAD
 
 
-
 def test_given_wrong_sha256_when_downloading_then_fails_without_leaving_files(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):

@@ -15,8 +15,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from srxy.adapters.inbound.installer.catalog import (
-	BrewBottle,
 	DARWIN_ARM64_TESSERACT_BOTTLES,
+	BrewBottle,
 	DownloadArtifact,
 	_brew_bottle,
 	_normalize_machine,
