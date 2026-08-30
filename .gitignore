@@ -1,5 +1,6 @@
 .venv/
 .venv-bare/
+.venv-ci/
 examples/.venv-package-test/
 __pycache__/
 *.py[cod]
