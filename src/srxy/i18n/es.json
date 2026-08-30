@@ -285,6 +285,7 @@
   "gui.preview.find_next": "Siguiente",
   "gui.preview.find_close": "Cerrar",
   "gui.preview.find_no_matches": "Sin coincidencias",
+  "gui.preview.content_type": "Tipo de archivo detectado",
   "capabilities.detecting": "Detectando capacidades de GPU…",
   "summary.prefix.where": "Dónde",
   "summary.prefix.how": "Cómo",

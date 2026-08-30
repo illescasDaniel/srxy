@@ -169,3 +169,35 @@ def test_given_duplicate_path_when_insert_result_then_ignored(qapp: QCoreApplica
 	# when / then
 	assert model.insert_result(_result(path, 0.9)) is False
 	assert model.rowCount() == 1
+
+
+def test_given_batch_when_insert_results_then_sorted_unique(qapp: QCoreApplication, tmp_path: Path):
+	model = ResultsModel()
+	recorder = _SignalRecorder()
+	_wire(model, recorder)
+	added = model.insert_results(
+		[
+			_result(tmp_path / "a.txt", 0.4),
+			_result(tmp_path / "b.txt", 0.9),
+			_result(tmp_path / "a.txt", 0.7),
+		]
+	)
+	assert added == 2
+	assert model.rowCount() == 2
+	assert model.result_at(0).path.name == "b.txt"
+	assert model.index_of_path(tmp_path / "a.txt") == 1
+	assert not recorder.reset
+
+
+def test_given_partial_model_when_merge_results_then_adds_missing(qapp: QCoreApplication, tmp_path: Path):
+	model = ResultsModel()
+	model.insert_result(_result(tmp_path / "a.txt", 0.5))
+	added = model.merge_results(
+		[
+			_result(tmp_path / "a.txt", 0.5),
+			_result(tmp_path / "b.txt", 0.8),
+		]
+	)
+	assert added == 1
+	assert model.rowCount() == 2
+	assert model.index_of_path(tmp_path / "b.txt") == 0

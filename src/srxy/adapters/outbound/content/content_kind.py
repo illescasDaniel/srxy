@@ -127,6 +127,7 @@ class ContentRoute:
 	body_text: bool
 	as_media: bool
 	as_document: bool
+	detected_label: str = ""
 
 
 def read_sample(path: Path, max_bytes: int = _TEXT_SAMPLE_SIZE) -> bytes | None:
@@ -235,6 +236,21 @@ def is_ocr_image_logical_suffix(suffix: str) -> bool:
 	return suffix in DECODABLE_IMAGE_SUFFIXES
 
 
+def format_detected_type_label(path: Path, route: ContentRoute) -> str:
+	"""Compact preview-header label for Magika / logical type (e.g. ``OGG · named .txt``)."""
+	raw = (route.detected_label or route.logical_suffix.lstrip(".")).strip()
+	if not raw or raw.lower() in {"unknown", "undefined"}:
+		return ""
+	display = raw.upper()
+	path_suffix = path.suffix.lower()
+	logical = (route.logical_suffix or "").lower()
+	if path_suffix and logical and path_suffix != logical:
+		return f"{display} · named {path_suffix}"
+	if not path_suffix and logical:
+		return f"{display} · as {logical}"
+	return display
+
+
 def resolve_content_route(path: Path) -> ContentRoute:
 	"""Decide body-text / media / document routing for a filesystem path.
 
@@ -254,11 +270,24 @@ def resolve_content_route(path: Path) -> ContentRoute:
 					body_text=True,
 					as_media=False,
 					as_document=False,
+					detected_label=kind.label or kind.logical_suffix.lstrip(".") or "txt",
 				)
-		return ContentRoute(logical_suffix=suffix, body_text=False, as_media=True, as_document=False)
+		return ContentRoute(
+			logical_suffix=suffix,
+			body_text=False,
+			as_media=True,
+			as_document=False,
+			detected_label=suffix.lstrip("."),
+		)
 
 	if is_known_document_suffix(suffix):
-		return ContentRoute(logical_suffix=suffix, body_text=False, as_media=False, as_document=True)
+		return ContentRoute(
+			logical_suffix=suffix,
+			body_text=False,
+			as_media=False,
+			as_document=True,
+			detected_label=suffix.lstrip("."),
+		)
 
 	# Extensionless: always Magika (text or binary typing).
 	if not suffix:
@@ -271,7 +300,13 @@ def resolve_content_route(path: Path) -> ContentRoute:
 		# NULs contradict Magika is_text — never UTF-8-search these bytes.
 		return _route_from_kind(kind, fallback_suffix=suffix, allow_body_text=False)
 
-	return ContentRoute(logical_suffix=suffix, body_text=True, as_media=False, as_document=False)
+	return ContentRoute(
+		logical_suffix=suffix,
+		body_text=True,
+		as_media=False,
+		as_document=False,
+		detected_label=suffix.lstrip(".") or "txt",
+	)
 
 
 def route_after_document_failure(path: Path) -> ContentRoute:
@@ -288,20 +323,53 @@ def _route_from_kind(
 	allow_body_text: bool,
 ) -> ContentRoute:
 	if kind is None:
+		label = fallback_suffix.lstrip(".") if fallback_suffix else ""
 		if allow_body_text:
 			return ContentRoute(
 				logical_suffix=fallback_suffix or ".txt",
 				body_text=True,
 				as_media=False,
 				as_document=False,
+				detected_label=label or "txt",
 			)
-		return ContentRoute(logical_suffix=fallback_suffix, body_text=False, as_media=False, as_document=False)
+		return ContentRoute(
+			logical_suffix=fallback_suffix,
+			body_text=False,
+			as_media=False,
+			as_document=False,
+			detected_label=label,
+		)
 
 	suffix = kind.logical_suffix or fallback_suffix
+	label = kind.label or suffix.lstrip(".")
 	if is_document_logical_suffix(suffix):
-		return ContentRoute(logical_suffix=suffix, body_text=False, as_media=False, as_document=True)
+		return ContentRoute(
+			logical_suffix=suffix,
+			body_text=False,
+			as_media=False,
+			as_document=True,
+			detected_label=label,
+		)
 	if is_media_logical_suffix(suffix):
-		return ContentRoute(logical_suffix=suffix, body_text=False, as_media=True, as_document=False)
+		return ContentRoute(
+			logical_suffix=suffix,
+			body_text=False,
+			as_media=True,
+			as_document=False,
+			detected_label=label,
+		)
 	if allow_body_text and kind.is_text:
-		return ContentRoute(logical_suffix=suffix or ".txt", body_text=True, as_media=False, as_document=False)
-	return ContentRoute(logical_suffix=suffix, body_text=False, as_media=False, as_document=False)
+		return ContentRoute(
+			logical_suffix=suffix or ".txt",
+			body_text=True,
+			as_media=False,
+			as_document=False,
+			detected_label=label or "txt",
+		)
+	return ContentRoute(
+		logical_suffix=suffix,
+		body_text=False,
+		as_media=False,
+		as_document=False,
+		detected_label=label,
+	)

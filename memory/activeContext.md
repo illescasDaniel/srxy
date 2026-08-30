@@ -4,33 +4,33 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-- Worktree branch `cursor/79bcea9a` (GUI selection/preview + Magika content routing). Related primary branch still targets **1.7.0**.
+- Worktree branch `cursor/79bcea9a` (GUI selection/preview + Magika + UX polish). Related primary branch still targets **1.7.0**.
 
 ## Current focus
 
-Just finished: **preview lifetime fix** (stuck Loading / deleted `QTextDocument`) + **Magika content-kind routing** for extensionless / wrong-extension / binary files.
+Just finished: **GUI UX polish** on top of Magika/preview lifetime — batched progressive results, AlwaysOn scrollbars, Search icon tint, Magika type in preview header.
 
-## Touched files
+## Touched files (UX follow-up)
 
-- `src/srxy/adapters/inbound/gui/controller.py` — QQuickTextDocument hold, live re-resolve, `setPlainText`, fixed line-height
-- `src/srxy/adapters/inbound/gui/qml/Main.qml` — remove `text: controller.previewText` binding
-- `src/srxy/adapters/outbound/content/content_kind.py` — NUL + Magika route decisions
-- `src/srxy/adapters/outbound/content/line_sources.py`, `documents/document_text.py`, `metadata/media_metadata.py` — Magika wiring
-- `tests/unit/test_content_kind.py`, fixtures under `tests/fixtures/content_kind/`, GUI preview tests
-- `pyproject.toml` / `uv.lock` — `magika>=1.0.3`; earlier `ty` replaces basedpyright
+- `controller.py` / `models.py` — 50ms result batch flush, path→row cache, soft `merge_results` on finish
+- `Main.qml` — AlwaysOn scrollbars (results/matches/preview); `previewContentType` label
+- `search.svg` — white template strokes for `icon.color`
+- `content_kind.py` — `detected_label` + `format_detected_type_label`
 
 ## Verified
 
-- `./scripts/quality/checks.sh --quiet --fix` → **PASSED**
-- Full re-run of affected suites: `tests/gui/test_gui_controller.py` + `test_content_kind` + related → **143 passed**
+- Prior Magika/preview/`ty` commit: `cfbc736`
+- `./scripts/quality/checks.sh --quiet --fix` → **PASSED** after UX fixes
 
 ## Manual QA (user)
 
-- Rapid GUI row selection: preview should not stick on Loading; no shiboken `QTextDocument already deleted` traceback.
-- Optional: curseforge/Minecraft `assets/objects` hash files stay binary-skipped for body search; wrong-extension media/text/pdf behave per Magika route.
+- Fast search with many hits: list should stay responsive
+- Overflow lists/preview: stable scrollbars
+- Search button: icon matches text color on accent
+- Preview header: detected type (e.g. `OGG · named .txt`)
 
 ## Next steps
 
-1. User smoke of live preview selection + binary objects tree if available.
-2. Commit when ready; `/delete-worktree-srxy` for applied worktrees when done.
+1. User smoke of the four UX items live.
+2. `/delete-worktree-srxy` when done.
 3. Installer / 1.7.0 release QA remains outstanding on primary track.

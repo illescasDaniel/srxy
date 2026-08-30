@@ -24,6 +24,7 @@ class ResultsModel(QAbstractListModel):
 		super().__init__(parent)
 		self._results: list[FileSearchResult] = []
 		self._path_keys: set[str] = set()
+		self._path_rows: dict[str, int] = {}
 		self._limit: int | None = None
 		self._threshold = 0.35
 		self._semantic_image_threshold = 0.25
@@ -76,10 +77,11 @@ class ResultsModel(QAbstractListModel):
 		if path is None:
 			return -1
 		path_key = path.as_posix() if isinstance(path, Path) else str(path)
-		for index, item in enumerate(self._results):
-			if item.path.as_posix() == path_key:
-				return index
-		return -1
+		return self._path_rows.get(path_key, -1)
+
+	def _reindex_paths(self) -> None:
+		self._path_rows = {item.path.as_posix(): index for index, item in enumerate(self._results)}
+		self._path_keys = set(self._path_rows)
 
 	@Slot()
 	def clear(self):
@@ -88,6 +90,7 @@ class ResultsModel(QAbstractListModel):
 			self.beginRemoveRows(_EMPTY_INDEX, 0, count - 1)
 			self._results = []
 			self._path_keys.clear()
+			self._path_rows.clear()
 			self.endRemoveRows()
 
 	def insert_result(self, result: FileSearchResult) -> bool:
@@ -111,7 +114,40 @@ class ResultsModel(QAbstractListModel):
 			self._results.pop()
 			self._path_keys.discard(evicted.path.as_posix())
 			self.endRemoveRows()
-		return True
+		self._reindex_paths()
+		return path_key in self._path_keys
+
+	def insert_results(self, results: list[FileSearchResult]) -> int:
+		"""Insert many results (score-sorted). Return how many rows were newly added."""
+		if not results:
+			return 0
+		unique: list[FileSearchResult] = []
+		seen: set[str] = set()
+		for result in sorted(results, key=lambda item: item.score, reverse=True):
+			path_key = result.path.as_posix()
+			if path_key in seen or path_key in self._path_keys:
+				continue
+			seen.add(path_key)
+			unique.append(result)
+		if not unique:
+			return 0
+		if not self._results:
+			self.replace_results(unique)
+			return len(self._results)
+		added = 0
+		for result in unique:
+			if self.insert_result(result):
+				added += 1
+		return added
+
+	def merge_results(self, results: list[FileSearchResult]) -> int:
+		"""Add any missing hits from ``results`` without wiping the current list."""
+		if not results:
+			return 0
+		if not self._results:
+			self.replace_results(results)
+			return len(self._results)
+		return self.insert_results(results)
 
 	def replace_results(self, results: list[FileSearchResult]):
 		new_results = sorted(results, key=lambda item: item.score, reverse=True)
@@ -123,12 +159,16 @@ class ResultsModel(QAbstractListModel):
 			self.beginRemoveRows(_EMPTY_INDEX, 0, old_count - 1)
 			self._results = []
 			self._path_keys.clear()
+			self._path_rows.clear()
 			self.endRemoveRows()
 		if new_count:
 			self.beginInsertRows(_EMPTY_INDEX, 0, new_count - 1)
 			self._results = new_results
-			self._path_keys = {item.path.as_posix() for item in new_results}
+			self._reindex_paths()
 			self.endInsertRows()
+		else:
+			self._path_keys.clear()
+			self._path_rows.clear()
 
 
 class MatchesModel(QAbstractListModel):

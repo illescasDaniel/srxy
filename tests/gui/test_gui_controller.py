@@ -301,6 +301,7 @@ def test_given_selected_result_when_reading_header_then_path_and_metadata_split(
 	header = str(controller.previewHeader)
 	assert path.as_posix() not in header
 	assert "matched" in header
+	assert str(controller.previewContentType) == "PY"
 	controller.shutdown(thread_wait_ms=1000)
 
 
@@ -664,6 +665,53 @@ def test_given_selected_path_when_higher_score_inserts_above_then_selection_reta
 	# then — highlight follows the originally selected path
 	assert controller.selectedResult == 1
 	assert str(controller.previewFilePath) == low.as_posix()
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_many_result_events_when_flushing_batch_then_model_updates_once_per_flush(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	"""Progressive events buffer until flush — avoids per-hit ListView churn."""
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	model = controller.resultsModel
+	assert model is not None
+	inserts_before = []
+
+	def _on_inserted(*_args):
+		inserts_before.append(1)
+
+	model.rowsInserted.connect(_on_inserted)
+	for index in range(20):
+		path = tmp_path / f"f{index}.txt"
+		path.write_text("alpha\n", encoding="utf-8")
+		controller._on_search_event(  # noqa: SLF001 — intentional: skip test helper flush
+			SearchResultEvent(
+				result=FileSearchResult(path=path, score=0.5 + index * 0.01, breakdown={"content": 0.5}, lines=[])
+			)
+		)
+	assert model.rowCount() == 0
+	assert inserts_before == []
+	controller.flush_pending_results_for_tests()
+	assert model.rowCount() == 20
+	assert len(inserts_before) == 1  # empty→full replace_results single insert range
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_misnamed_media_when_previewing_then_content_type_shows_mismatch(qapp: QCoreApplication, tmp_path: Path):
+	from pathlib import Path as P
+
+	fixture = P(__file__).resolve().parents[1] / "fixtures" / "content_kind" / "beep.ogg"
+	path = tmp_path / "secret.txt"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["beep", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	content_type = str(controller.previewContentType)
+	assert "named .txt" in content_type
+	assert content_type.split(" · ", 1)[0] in {"OGG", "OGA", "OPUS"}
 	controller.shutdown(thread_wait_ms=1000)
 
 
@@ -1066,7 +1114,7 @@ def test_given_deleted_preview_document_when_applying_then_still_emits_and_clear
 	# when
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		controller._preview_generation,  # pyright: ignore[reportPrivateUsage]
-		("alpha\n", path, "", False, ""),
+		("alpha\n", path, "", False, "", "TXT", ".txt"),
 	)
 
 	# then — must leave loading and not raise
@@ -1097,7 +1145,7 @@ def test_given_stale_preview_generation_when_worker_finishes_then_result_is_igno
 	controller._preview_generation = 5  # pyright: ignore[reportPrivateUsage]
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		4,
-		("stale text", path, "", False, ""),
+		("stale text", path, "", False, "", "TXT", ".txt"),
 	)
 
 	# then

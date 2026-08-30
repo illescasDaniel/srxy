@@ -71,6 +71,11 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert window.findChild(QObject, "optionsButton") is not None
 	assert window.findChild(QObject, "filtersButton") is not None
 
+	assert window.findChild(QObject, "resultsScrollBar") is not None
+	assert window.findChild(QObject, "matchesScrollBar") is not None
+	assert window.findChild(QObject, "previewScroll") is not None
+	assert window.findChild(QObject, "previewContentType") is not None
+
 	for name in (
 		"optionsDialog",
 		"filtersDialog",

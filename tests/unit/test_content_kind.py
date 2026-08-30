@@ -130,3 +130,53 @@ def test_given_extensionless_png_when_resolving_then_media_image(tmp_path: Path)
 	route = resolve_content_route(path)
 	assert route.as_media
 	assert route.logical_suffix == ".png"
+
+
+def test_given_routes_when_formatting_detected_type_then_shows_mismatch_and_extensionless(tmp_path: Path):
+	from srxy.adapters.outbound.content.content_kind import ContentRoute, format_detected_type_label
+
+	named = tmp_path / "clip.txt"
+	named.write_bytes(b"x")
+	assert (
+		format_detected_type_label(
+			named,
+			ContentRoute(
+				logical_suffix=".mp4",
+				body_text=False,
+				as_media=True,
+				as_document=False,
+				detected_label="mp4",
+			),
+		)
+		== "MP4 · named .txt"
+	)
+	extensionless = tmp_path / "abcdef"
+	extensionless.write_bytes(b"x")
+	assert (
+		format_detected_type_label(
+			extensionless,
+			ContentRoute(
+				logical_suffix=".ogg",
+				body_text=False,
+				as_media=True,
+				as_document=False,
+				detected_label="ogg",
+			),
+		)
+		== "OGG · as .ogg"
+	)
+	plain = tmp_path / "note.py"
+	plain.write_text("x", encoding="utf-8")
+	assert (
+		format_detected_type_label(
+			plain,
+			ContentRoute(
+				logical_suffix=".py",
+				body_text=True,
+				as_media=False,
+				as_document=False,
+				detected_label="py",
+			),
+		)
+		== "PY"
+	)

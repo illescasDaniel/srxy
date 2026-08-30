@@ -290,6 +290,8 @@ class SearchController(QObject):
 		self._activity_spinner_timer: QTimer | None = None
 		self._preview_text = ""
 		self._preview_header = ""
+		self._preview_content_type = ""
+		self._preview_logical_suffix = ""
 		self._preview_plain_text = ""
 		self._preview_path: Path | None = None
 		self._preview_message = ""
@@ -315,6 +317,8 @@ class SearchController(QObject):
 		self._selected_path: Path | None = None
 		self._stream_status_timer: QTimer | None = None
 		self._stream_status_pending = False
+		self._pending_results: list[FileSearchResult] = []
+		self._results_flush_timer: QTimer | None = None
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
@@ -627,6 +631,11 @@ class SearchController(QObject):
 		return self._preview_header
 
 	previewHeader = Property(str, _get_preview_header, notify=previewChanged)
+
+	def _get_preview_content_type(self) -> str:
+		return self._preview_content_type
+
+	previewContentType = Property(str, _get_preview_content_type, notify=previewChanged)
 
 	def _get_preview_file_path(self) -> str:
 		if self._preview_path is None:
@@ -1038,6 +1047,9 @@ class SearchController(QObject):
 		# QML results ListView does not keep a stale currentIndex while its
 		# model shrinks (that logs "DelegateModel::cancel: index out range").
 		self._clear_selection()
+		self._pending_results.clear()
+		if self._results_flush_timer is not None:
+			self._results_flush_timer.stop()
 		self._results_model.clear()
 		self._clear_activity_status()
 		self._progress = 0.0
@@ -1208,11 +1220,11 @@ class SearchController(QObject):
 				self.progressChanged.emit()
 			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
-			changed = self._results_model.insert_result(event.result)
-			if changed:
-				self._retarget_selection_row()
+			self._pending_results.append(event.result)
+			self._schedule_results_flush()
 			self._schedule_stream_status_refresh()
 		elif isinstance(event, SearchErrorEvent):
+			self._flush_pending_results()
 			if self._search_cancel_requested:
 				self._search_cancel_requested = False
 				self._clear_activity_status()
@@ -1228,12 +1240,17 @@ class SearchController(QObject):
 			self._exit_code = 2
 			self._set_status(event.message)
 		elif isinstance(event, SearchFinishedEvent):
+			self._flush_pending_results()
 			self._clear_activity_status()
 			self._flush_stream_status()
 			preserve_path = self._selected_path
+			had_selection = preserve_path is not None
 			if event.results:
-				self._clear_selection()
-				self._results_model.replace_results(event.results)
+				# Soft-merge remaining hits after the progressive cap instead of
+				# wiping the list (avoids a second full ListView rebuild cliff).
+				self._results_model.merge_results(event.results)
+				if had_selection:
+					self._retarget_selection_row()
 			count = self._results_model.rowCount()
 			self._notify_results_empty_hint()
 			self._set_search_warnings(format_skipped_file_warnings(event.skipped_files, self._args.max_file_size))
@@ -1255,7 +1272,34 @@ class SearchController(QObject):
 				self._set_status_tr("status.files_matched", count=count)
 			if count:
 				restored = self._results_model.index_of_path(preserve_path)
-				self.selectResult(restored if restored >= 0 else 0)
+				if had_selection and restored >= 0:
+					if restored != self._selected_row:
+						self._selected_row = restored
+						self.selectedResultChanged.emit()
+				else:
+					self.selectResult(restored if restored >= 0 else 0)
+
+	def _schedule_results_flush(self):
+		"""Coalesce progressive inserts onto a short timer (keeps the GUI responsive)."""
+		if self._results_flush_timer is None:
+			timer = QTimer(self)
+			timer.setSingleShot(True)
+			timer.setInterval(50)
+			timer.timeout.connect(self._flush_pending_results)
+			self._results_flush_timer = timer
+		if not self._results_flush_timer.isActive():
+			self._results_flush_timer.start()
+
+	@Slot()
+	def _flush_pending_results(self):
+		if self._results_flush_timer is not None:
+			self._results_flush_timer.stop()
+		if not self._pending_results:
+			return
+		batch = self._pending_results
+		self._pending_results = []
+		if self._results_model.insert_results(batch):
+			self._retarget_selection_row()
 
 	def _schedule_stream_status_refresh(self):
 		self._stream_status_pending = True
@@ -1275,6 +1319,7 @@ class SearchController(QObject):
 		if not self._stream_status_pending:
 			return
 		self._stream_status_pending = False
+		self._flush_pending_results()
 		self._notify_results_empty_hint()
 		if self._activity is None and self._searching:
 			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
@@ -1380,6 +1425,8 @@ class SearchController(QObject):
 		if result is None:
 			self._dispose_preview_worker(wait_ms=0)
 			self._preview_header = ""
+			self._preview_content_type = ""
+			self._preview_logical_suffix = ""
 			self._preview_plain_text = ""
 			self._preview_path = None
 			self._preview_message = ""
@@ -1404,6 +1451,8 @@ class SearchController(QObject):
 				self._preview_message,
 				self._preview_truncated,
 				self._preview_truncated_footer,
+				self._preview_content_type,
+				self._preview_logical_suffix,
 			) = _resolve_preview_payload(result)
 			self._apply_preview_document()
 			return
@@ -1411,6 +1460,8 @@ class SearchController(QObject):
 
 		self._preview_message = tr("preview.loading")
 		self._preview_plain_text = ""
+		self._preview_content_type = ""
+		self._preview_logical_suffix = ""
 		self._preview_truncated = False
 		self._preview_truncated_footer = ""
 		self._apply_preview_document()
@@ -1433,8 +1484,8 @@ class SearchController(QObject):
 	def _on_preview_ready(self, generation: int, payload: object):
 		if generation != self._preview_generation:
 			return
-		plain, path, message, truncated, footer = cast(
-			tuple[str, Path | None, str, bool, str],
+		plain, path, message, truncated, footer, content_type, logical_suffix = cast(
+			tuple[str, Path | None, str, bool, str, str, str],
 			payload,
 		)
 		self._preview_plain_text = plain
@@ -1442,6 +1493,8 @@ class SearchController(QObject):
 		self._preview_message = message
 		self._preview_truncated = truncated
 		self._preview_truncated_footer = footer
+		self._preview_content_type = content_type
+		self._preview_logical_suffix = logical_suffix
 		self._apply_preview_document()
 
 	@Slot()
@@ -1480,7 +1533,10 @@ class SearchController(QObject):
 			line_count = len(lines)
 			gutter = preview_gutter_text(line_count)
 			footer = self._preview_truncated_footer if truncated else ""
-			suffix = self._preview_path.suffix.lower() if self._preview_path is not None else ""
+			if self._preview_logical_suffix:
+				suffix = self._preview_logical_suffix.lower()
+			else:
+				suffix = self._preview_path.suffix.lower() if self._preview_path is not None else ""
 			overlays_active = True
 		self._preview_text = display
 		self._preview_footer = footer
@@ -2062,6 +2118,12 @@ class SearchController(QObject):
 	def handle_search_event_for_tests(self, event: object):
 		"""Test helper — deliver a search event on the UI thread."""
 		self._on_search_event(event)
+		# Progressive results are timer-batched in the live GUI; flush now so
+		# unit tests observe the model without waiting on QTimer.
+		self._flush_pending_results()
+
+	def flush_pending_results_for_tests(self):
+		self._flush_pending_results()
 
 	def capabilities_for_tests(self) -> Capabilities:
 		return self._capabilities
@@ -2124,35 +2186,64 @@ class SearchController(QObject):
 		self._dispose_preview_worker(wait_ms=thread_wait_ms)
 
 
-def _resolve_preview_payload(result: FileSearchResult) -> tuple[str, Path | None, str, bool, str]:
-	"""Resolve preview content into (plain_text, path, message, truncated, footer)."""
-	from srxy.adapters.outbound.content.content_kind import resolve_content_route
+def _resolve_preview_payload(
+	result: FileSearchResult,
+) -> tuple[str, Path | None, str, bool, str, str, str]:
+	"""Resolve preview into (plain, path, message, truncated, footer, content_type, logical_suffix)."""
+	from srxy.adapters.outbound.content.content_kind import format_detected_type_label, resolve_content_route
 	from srxy.i18n import tr
 
 	path = result.path
 	truncated_footer = tr("preview.truncated")
 	joined_lines = "\n".join(line.text for line in result.lines[:50])
+	empty_type = ("", "")
 	try:
 		if not path.is_file():
 			if result.lines:
-				return joined_lines, path, "", False, truncated_footer
-			return "", path, "(No file preview available)", False, truncated_footer
+				return joined_lines, path, "", False, truncated_footer, *empty_type
+			return "", path, "(No file preview available)", False, truncated_footer, *empty_type
 		route = resolve_content_route(path)
+		content_type = format_detected_type_label(path, route)
+		logical_suffix = route.logical_suffix or ""
 		if route.as_media or (not route.body_text and not route.as_document):
 			if result.lines:
-				return joined_lines, path, "", False, truncated_footer
+				return joined_lines, path, "", False, truncated_footer, content_type, logical_suffix
 			kind = "media" if route.as_media else "binary"
-			return "", path, f"(Binary {kind} file — showing matches only)", False, truncated_footer
+			return (
+				"",
+				path,
+				f"(Binary {kind} file — showing matches only)",
+				False,
+				truncated_footer,
+				content_type,
+				logical_suffix,
+			)
 		with path.open("rb") as handle:
 			raw = handle.read(PREVIEW_MAX_BYTES + 1)
 		file_truncated = len(raw) > PREVIEW_MAX_BYTES
 		data = raw[:PREVIEW_MAX_BYTES]
 		if b"\x00" in data[:4096] and not route.body_text:
 			if result.lines:
-				return joined_lines, path, "", file_truncated, truncated_footer
-			return "", path, "(Binary file — showing matches only)", file_truncated, truncated_footer
-		return data.decode("utf-8", errors="replace"), path, "", file_truncated, truncated_footer
+				return joined_lines, path, "", file_truncated, truncated_footer, content_type, logical_suffix
+			return (
+				"",
+				path,
+				"(Binary file — showing matches only)",
+				file_truncated,
+				truncated_footer,
+				content_type,
+				logical_suffix,
+			)
+		return (
+			data.decode("utf-8", errors="replace"),
+			path,
+			"",
+			file_truncated,
+			truncated_footer,
+			content_type,
+			logical_suffix,
+		)
 	except OSError:
 		if result.lines:
-			return joined_lines, path, "", False, truncated_footer
-		return "", path, "(Could not read file)", False, truncated_footer
+			return joined_lines, path, "", False, truncated_footer, *empty_type
+		return "", path, "(Could not read file)", False, truncated_footer, *empty_type

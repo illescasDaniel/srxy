@@ -682,6 +682,10 @@ ApplicationWindow {
 								clip: true
 								model: controller ? controller.resultsModel : null
 								currentIndex: controller ? controller.selectedResult : -1
+								ScrollBar.vertical: ScrollBar {
+									objectName: "resultsScrollBar"
+									policy: ScrollBar.AlwaysOn
+								}
 								delegate: Item {
 									id: resultRow
 									required property int index
@@ -792,6 +796,10 @@ ApplicationWindow {
 								Layout.fillHeight: true
 								clip: true
 								model: controller ? controller.matchesModel : null
+								ScrollBar.vertical: ScrollBar {
+									objectName: "matchesScrollBar"
+									policy: ScrollBar.AlwaysOn
+								}
 								delegate: Item {
 									id: matchRow
 									required property int index
@@ -901,6 +909,19 @@ ApplicationWindow {
 									}
 								}
 								Label {
+									objectName: "previewContentType"
+									visible: controller && controller.previewContentType.length > 0
+									text: controller ? controller.previewContentType : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+									opacity: 0.85
+									ToolTip.visible: previewContentTypeHover.hovered && visible
+									ToolTip.text: root.t("gui.preview.content_type")
+									HoverHandler {
+										id: previewContentTypeHover
+									}
+								}
+								Label {
 									objectName: "previewHeader"
 									text: controller ? controller.previewHeader : ""
 									elide: Text.ElideRight
@@ -981,6 +1002,8 @@ ApplicationWindow {
 									Layout.fillWidth: true
 									Layout.fillHeight: true
 									clip: true
+									ScrollBar.vertical.policy: ScrollBar.AlwaysOn
+									ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
 									TextArea {
 										id: previewTextArea
 										objectName: "previewText"
