@@ -8,15 +8,17 @@ _Last updated: 2026-08-30_
 
 ## Current focus
 
-Applied from worktree `cursor/5852d6f1`: **GUI Settings menu** — Download All Models / Reset Cache / Reset All Settings + **All Settings…**. Parent gate passed; hardening `follow_system_color_scheme` for bare `QCoreApplication` in GUI tests.
+Applied `cursor/5648e20a` (persist + live filters validation) into parent. Merge `9b3256a`; follow-up theme guard `1604fd9`.
 
-## Prior (same branch)
+## Verified
 
-- Progress bar is file-scan only; parallel light + heavy search.
-- Persist GUI search options/filters; live filter validation (other worktrees).
+- Ancestry: `cursor/5648e20a` is ancestor of HEAD.
+- Composed with Settings menu (`reset_settings` + persist helpers both present).
+- No conflict markers.
+- Direct pytest: gui controller + qml load + settings persist = 90 passed.
 
 ## Next steps
 
-1. Manual GUI check: Settings menu shortcuts + All Settings dialog.
-2. Manual QA leftovers (OCR progress bar, mixed light/heavy streaming, installers).
+1. Manual: Persist options/filters; Filters live OK disable; Settings menu.
+2. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
 3. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
