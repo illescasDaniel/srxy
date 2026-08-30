@@ -178,32 +178,29 @@ def test_given_previous_selection_when_beginning_new_search_then_selection_is_cl
 	assert controller.matchesModel.rowCount() == 0
 
 
-def test_given_indeterminate_activity_when_searching_then_status_shows_static_glyph(
+def test_given_indeterminate_activity_when_searching_then_status_spinner_animates(
 	qapp: QCoreApplication, tmp_path: Path
 ):
-	"""Activity updates the status line, but does not animate every 100ms.
-
-	Animated statusChanged emits were measured at up to ~205ms each and summed to
-	seconds of GUI stalls while results streamed.
-	"""
+	"""Spinner glyph animates via ``activitySpinner``; status body stays stable."""
 	from PySide6.QtTest import QTest
 
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
 	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · photo.png")))
-	# Coalesced flush
 	QTest.qWait(300)
 	qapp.processEvents()
 
-	assert str(controller.status).startswith(ACTIVITY_SPINNER_FRAMES[0])
 	assert "OCR · photo.png" in str(controller.status)
+	assert str(controller.status).split(" ", 1)[0] not in set(ACTIVITY_SPINNER_FRAMES)
+	assert str(controller.activitySpinner) in ACTIVITY_SPINNER_FRAMES
+	first_spin = str(controller.activitySpinner)
 	first_status = str(controller.status)
 	QTest.qWait(150)
 	qapp.processEvents()
-	# No spinner animation timer — status text stays stable between activity events.
 	assert str(controller.status) == first_status
-	assert controller._activity_spinner_timer is None  # pyright: ignore[reportPrivateUsage]
+	assert str(controller.activitySpinner) != first_spin
+	assert controller._activity_spinner_timer is not None  # pyright: ignore[reportPrivateUsage]
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
@@ -215,8 +212,10 @@ def test_given_activity_clear_when_handling_event_then_stops_status_spinner(qapp
 	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
 	controller.handle_search_event_for_tests(SearchProgressEvent(current=5, total=10))
 	assert str(controller.progressCount) == "5/10"
+	assert controller.progressIndeterminate is False
 	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · photo.png")))
 	assert controller._activity is not None  # pyright: ignore[reportPrivateUsage]
+	assert str(controller.activitySpinner) in ACTIVITY_SPINNER_FRAMES
 	# File count stays visible while activity occupies the status line.
 	assert str(controller.progressCount) == "5/10"
 
@@ -224,6 +223,7 @@ def test_given_activity_clear_when_handling_event_then_stops_status_spinner(qapp
 
 	assert controller._activity is None  # pyright: ignore[reportPrivateUsage]
 	assert controller._activity_spinner_timer is None  # pyright: ignore[reportPrivateUsage]
+	assert str(controller.activitySpinner) == ""
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
@@ -233,12 +233,25 @@ def test_given_search_progress_when_handling_event_then_updates_file_count(qapp:
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	assert str(controller.progressCount) == ""
+	assert controller.progressIndeterminate is False
 
 	controller.handle_search_event_for_tests(SearchProgressEvent(current=3, total=12))
 
 	assert str(controller.progressCount) == "3/12"
 	assert float(controller.progress) == 25.0  # pyright: ignore[reportArgumentType]
+	assert controller.progressIndeterminate is False
 	assert "3/12" in str(controller.status)
+
+
+def test_given_search_start_when_no_total_yet_then_progress_is_indeterminate(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	# Simulate the startSearch progress reset without spinning a worker.
+	controller._set_progress_value(0.0, indeterminate=True)  # pyright: ignore[reportPrivateUsage]
+	assert controller.progressIndeterminate is True
+	assert float(controller.progress) == 0.0  # pyright: ignore[reportArgumentType]
 
 
 def test_given_determinate_activity_when_handling_event_then_updates_progress(qapp: QCoreApplication, tmp_path: Path):
@@ -254,9 +267,10 @@ def test_given_determinate_activity_when_handling_event_then_updates_progress(qa
 	qapp.processEvents()
 
 	assert float(controller.progress) == 25.0  # pyright: ignore[reportArgumentType]
+	assert controller.progressIndeterminate is False
 	assert "25%" in str(controller.status)
 	assert "Transcribe · speech.mp3" in str(controller.status)
-	assert str(controller.status).split(" ", 1)[0] in ACTIVITY_SPINNER_FRAMES
+	assert str(controller.activitySpinner) in ACTIVITY_SPINNER_FRAMES
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
@@ -266,11 +280,14 @@ def test_given_search_finished_when_activity_active_then_clears_status_spinner(q
 	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
 	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="CLIP · img.png")))
 	assert controller._activity is not None  # pyright: ignore[reportPrivateUsage]
+	assert controller._activity_spinner_timer is not None  # pyright: ignore[reportPrivateUsage]
 
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[], skipped_files=[]))
 
 	assert controller._activity is None  # pyright: ignore[reportPrivateUsage]
 	assert controller._activity_spinner_timer is None  # pyright: ignore[reportPrivateUsage]
+	assert str(controller.activitySpinner) == ""
+	assert controller.progressIndeterminate is False
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 

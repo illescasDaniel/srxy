@@ -53,13 +53,23 @@ def format_activity_status(
 	*,
 	spinner_frame: str = ACTIVITY_SPINNER_FRAMES[0],
 ) -> str:
+	body = format_activity_status_body(activity)
+	if not body:
+		return ""
+	if spinner_frame:
+		return f"{spinner_frame} {body}"
+	return body
+
+
+def format_activity_status_body(activity: ActivityUpdate) -> str:
+	"""Activity status text without the spinner glyph (GUI animates the glyph separately)."""
 	if activity.label is None:
 		return ""
 	task = activity.label
 	if activity.determinate and activity.current is not None and activity.total is not None:
 		percent = int((activity.current / activity.total) * 100)
-		return f"{spinner_frame} {percent}% {task}"
-	return f"{spinner_frame} {task}"
+		return f"{percent}% {task}"
+	return task
 
 
 __all__ = [
@@ -70,4 +80,5 @@ __all__ = [
 	"clear_activity",
 	"emit_activity",
 	"format_activity_status",
+	"format_activity_status_body",
 ]

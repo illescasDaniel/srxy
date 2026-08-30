@@ -1137,10 +1137,12 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					from: 0
 					to: 100
+					indeterminate: controller ? controller.progressIndeterminate : false
 					value: controller ? controller.progress : 0
 				}
 				Label {
 					objectName: "progressPercent"
+					visible: controller && !controller.progressIndeterminate
 					text: (controller ? Math.round(controller.progress) : 0) + "%"
 					Layout.preferredWidth: 48
 					horizontalAlignment: Text.AlignRight
@@ -1155,7 +1157,12 @@ ApplicationWindow {
 				}
 				Label {
 					objectName: "statusLabel"
-					text: controller ? controller.status : ""
+					text: {
+						if (!controller)
+							return ""
+						var spin = controller.activitySpinner
+						return spin.length > 0 ? (spin + " " + controller.status) : controller.status
+					}
 					Layout.preferredWidth: 280
 					elide: Text.ElideRight
 				}

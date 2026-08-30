@@ -72,7 +72,11 @@ from srxy.domain.file_query import (
 	sanitize_literal_term,
 )
 from srxy.domain.models import FileSearchResult
-from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.domain.progress import (
+	ACTIVITY_SPINNER_FRAMES,
+	ActivityUpdate,
+	format_activity_status_body,
+)
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
 
@@ -219,7 +223,9 @@ class _PreviewWorker(QObject):
 
 class SearchController(QObject):
 	statusChanged = Signal()
+	activitySpinnerChanged = Signal()
 	progressChanged = Signal()
+	progressIndeterminateChanged = Signal()
 	progressCountChanged = Signal()
 	staleChanged = Signal()
 	searchingChanged = Signal()
@@ -271,7 +277,9 @@ class SearchController(QObject):
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
 		self._path = resolve_gui_search_path(getattr(args, "path", None))
 		self._status = ""
+		self._activity_spinner = ""
 		self._progress = 0.0
+		self._progress_indeterminate = False
 		self._scan_current = 0
 		self._scan_total = 0
 		self._stale = True
@@ -419,10 +427,36 @@ class SearchController(QObject):
 
 	status = Property(str, _get_status, notify=statusChanged)
 
+	def _get_activity_spinner(self) -> str:
+		return self._activity_spinner
+
+	activitySpinner = Property(str, _get_activity_spinner, notify=activitySpinnerChanged)
+
+	def _set_activity_spinner(self, frame: str):
+		if self._activity_spinner != frame:
+			self._activity_spinner = frame
+			self.activitySpinnerChanged.emit()
+
 	def _get_progress(self) -> float:
 		return self._progress
 
 	progress = Property(float, _get_progress, notify=progressChanged)
+
+	def _get_progress_indeterminate(self) -> bool:
+		return self._progress_indeterminate
+
+	progressIndeterminate = Property(bool, _get_progress_indeterminate, notify=progressIndeterminateChanged)
+
+	def _set_progress_indeterminate(self, value: bool):
+		if self._progress_indeterminate != value:
+			self._progress_indeterminate = value
+			self.progressIndeterminateChanged.emit()
+
+	def _set_progress_value(self, value: float, *, indeterminate: bool | None = None):
+		if indeterminate is not None:
+			self._set_progress_indeterminate(indeterminate)
+		self._progress = value
+		self.progressChanged.emit()
 
 	def _get_progress_count(self) -> str:
 		if self._scan_total <= 0:
@@ -865,14 +899,10 @@ class SearchController(QObject):
 		self._activity = None
 		self._activity_spinner_index = 0
 		self._activity_status_pending = False
+		self._set_activity_spinner("")
 
 	def _refresh_activity_status(self):
-		"""Coalesce activity → status updates (no 100ms spinner animation).
-
-		Rewriting the status Label every spinner frame forced expensive QML
-		layout work while results were streaming; keep a static glyph and
-		throttle updates instead.
-		"""
+		"""Coalesce activity body → status (spinner glyph animates separately)."""
 		if self._activity is None:
 			return
 		self._activity_status_pending = True
@@ -894,20 +924,29 @@ class SearchController(QObject):
 		self._activity_status_pending = False
 		if self._activity is None:
 			return
-		# Static glyph — progress bar already shows determinate progress.
-		self._set_status(format_activity_status(self._activity, spinner_frame=ACTIVITY_SPINNER_FRAMES[0]))
+		# Body only — QML prefixes ``activitySpinner`` so the braille frame can
+		# animate without rewriting the full status string every tick.
+		self._set_status(format_activity_status_body(self._activity))
 
 	@Slot()
 	def _tick_activity_spinner(self):
-		# Kept for older tests/callers; animation disabled (see _refresh_activity_status).
 		if self._activity is None:
 			self._clear_activity_status()
 			return
-		self._refresh_activity_status()
+		self._activity_spinner_index += 1
+		frame = ACTIVITY_SPINNER_FRAMES[self._activity_spinner_index % len(ACTIVITY_SPINNER_FRAMES)]
+		self._set_activity_spinner(frame)
 
 	def _start_activity_spinner_if_needed(self):
-		# No animated status timer — status text is coalesced in _refresh_activity_status.
-		return
+		if self._activity_spinner_timer is not None:
+			return
+		frame = ACTIVITY_SPINNER_FRAMES[0]
+		self._set_activity_spinner(frame)
+		timer = QTimer(self)
+		timer.setInterval(100)
+		timer.timeout.connect(self._tick_activity_spinner)
+		self._activity_spinner_timer = timer
+		timer.start()
 
 
 	def _set_download_confirm(self, open_: bool, message: str = ""):
@@ -1084,8 +1123,7 @@ class SearchController(QObject):
 		# stall the QML ListView. Sorted once when the search finishes.
 		self._results_model.set_stream_append(True)
 		self._clear_activity_status()
-		self._progress = 0.0
-		self.progressChanged.emit()
+		self._set_progress_value(0.0, indeterminate=True)
 		self._set_scan_progress(0, 0)
 		self._set_search_warnings("")
 		self._notify_results_empty_hint()
@@ -1235,8 +1273,7 @@ class SearchController(QObject):
 	def _on_search_event(self, event: object):
 		if isinstance(event, SearchProgressEvent):
 			total = max(event.total, 1)
-			self._progress = min(100.0, 100.0 * event.current / total)
-			self.progressChanged.emit()
+			self._set_progress_value(min(100.0, 100.0 * event.current / total), indeterminate=False)
 			self._set_scan_progress(event.current, event.total)
 			if self._activity is None:
 				self._set_status_tr("status.scanning", current=event.current, total=event.total)
@@ -1248,8 +1285,7 @@ class SearchController(QObject):
 			self._start_activity_spinner_if_needed()
 			if event.update.determinate and event.update.current is not None and event.update.total is not None:
 				total = max(event.update.total, 1)
-				self._progress = min(100.0, 100.0 * event.update.current / total)
-				self.progressChanged.emit()
+				self._set_progress_value(min(100.0, 100.0 * event.update.current / total), indeterminate=False)
 			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
 			self._pending_results.append((event.result, event.labels))
@@ -1264,8 +1300,7 @@ class SearchController(QObject):
 				self._clear_activity_status()
 				self._flush_stream_status()
 				self._exit_code = 2
-				self._progress = 100.0
-				self.progressChanged.emit()
+				self._set_progress_value(100.0, indeterminate=False)
 				self._set_status_tr("status.search_cancelled")
 				return
 			self._clear_activity_status()
@@ -1292,14 +1327,12 @@ class SearchController(QObject):
 			self._set_search_warnings(format_skipped_file_warnings(event.skipped_files, self._args.max_file_size))
 			if event.cancelled:
 				self._exit_code = 2
-				self._progress = 100.0
-				self.progressChanged.emit()
+				self._set_progress_value(100.0, indeterminate=False)
 				self._set_status_tr("status.search_cancelled")
 				return
 			self._search_completed_ok = True
 			self._exit_code = 0 if count else 1
-			self._progress = 100.0
-			self.progressChanged.emit()
+			self._set_progress_value(100.0, indeterminate=False)
 			if self._default_result_limit_applied and count >= self._args.limit:
 				self._set_status_tr("status.default_result_limit", count=count, limit=self._args.limit)
 			elif count == 1:

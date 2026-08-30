@@ -48,6 +48,9 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Unix `copy-venv.sh` for `copy-venv-to-worktree-srxy` (rsync + `uv sync --extra semantic`); SKILL.md updated; primary-abort smoke + shellcheck/shfmt clean.
 - [x] Linux validation of bucketed quality gate — fixed ShellCheck (SC2155 `LIB_PYTEST_WORKERS`, unused `cov_append`, SC2034 `LIB_SCOPE_REASON`); `checks-fix-quiet` + `checks-all-quiet` PASSED (full bucket pytest: heavy 45 / gui 167 / tui 90 / core 671).
 
+- [x] GUI heavy-search freeze — subprocess isolation (no GIL on Qt thread), no process pool for light worker searches, stream-append + sort-on-finish, coalesced status/list updates, lighter results delegates; `profile-gui-freeze.sh` helper. User confirmed buttery UI (`c20d4dc`).
+- [x] Activity spinner via separate `activitySpinner` property; progress bar indeterminate until file total known, then 0–100%. Docs + `memory/decisions.md` annotated.
+
 ### Open
 
 - [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
@@ -67,3 +70,5 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Qt engine-destruction warning (`in the process of being created`) — root cause was teardown order: `QQmlEngine` was destroyed (via interpreter shutdown) while the `QQuickWindow` was still alive, so pending async delegate incubations kept `inProgressCreations > 0`. Fixed by destroying root windows before the engine in `gui/app.py` and `installer/app.py` (then flushing `DeferredDelete`); added a regression assertion in `test_gui_qml_load.py`. Gate passed.
 - [x] Host-portal registration warning (`Failed to register with host portal … Connection already associated with an application ID`) — Qt 6.11 deferred `org.freedesktop.host.portal.Registry.Register` because `desktopFileName()` was empty at `QGuiApplication` init; a later `follow_system_color_scheme()` portal read claimed the connection first. Fixed by setting identity via static setters before construction (`apply_app_identity`).
 - [x] Dialog OK buttons dark in dark mode — `DialogButtonBox` (FluentWinUI3) forces `highlighted` off on child buttons, so `AccentButton`'s `fillColor`/`foreground` fell back to `palette.button` (5.8%-alpha white → dark). Fixed by decoupling accent state into an explicit `accent` bool (default true) in `AccentButton.qml`; Search button toggles `accent` for the stale state; added `optionsOkButton`/`filtersOkButton` objectNames + a regression test asserting accent fill/foreground. Gate passed.
+- [x] GUI freezes every few hundred ms on heavy progressive search — in-process QThread scoring held the GIL; status spinner/`statusChanged` and mid-list inserts amplified ListView lag. Fixed via subprocess isolation + stream-append + coalescing; process pools disabled for light worker searches (fork storm).
+- [x] Frozen (non-animating) activity spinner after status coalesce — glyph now lives on `activitySpinner`; status body stays coalesced. Progress bar indeterminate until scan total exists.
