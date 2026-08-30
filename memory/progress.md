@@ -60,6 +60,8 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Progress bar non-monotonic during OCR — GUI no longer maps determinate activity (page/segment %) onto the file-scan progress bar; status line still shows `N% OCR · file`.
 - [x] GUI Settings menu + maintenance dialog — Settings → Settings… with per-model Clear/Re-download (text/image/transcribe/all) and Clear results cache; confirm dialogs; reuses download progress worker.
 - [x] Settings menu shortcuts — Download All Models / Reset Cache / Reset All Settings (deletes `settings.json`); **All Settings…** opens full dialog including preferences reset. Applied from worktree `cursor/5852d6f1`.
+- [x] GUI persist options/filters — opt-in checkboxes + Reset; `settings.json` (`$SRXY_HOME` or `~/.config/srxy`); flag on OK, payload on exit; restore on next GUI launch. Unit + GUI tests; docs. Applied from `cursor/5648e20a`.
+- [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`). Applied from `cursor/5648e20a`.
 
 ### Open
 
@@ -67,12 +69,9 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [ ] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media.
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
 - [ ] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download.
+- [ ] **Manual QA (user):** GUI persist — check Persist on Options/Filters, OK, quit, relaunch; Reset draft; unpersist clears `settings.json` payload; Filters live validation greys OK on bad input.
 - [ ] `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
-- [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
-- [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
-- [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
-- [ ] Optional follow-up: treat scanned documents that trigger per-page OCR as heavy (currently stay inline).
-- [ ] `/delete-worktree-srxy` for `cursor/5ebdc811` (`hh32`) when ready.
+- [ ] `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
 
 ## Bugs / sub-tasks discovered
 

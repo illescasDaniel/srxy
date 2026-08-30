@@ -16,6 +16,7 @@ ApplicationWindow {
 
 	property bool syncingOptions: false
 	property bool syncingFilters: false
+	property bool filtersDraftValid: true
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
@@ -212,6 +213,29 @@ ApplicationWindow {
 		optMatchSkippedNames.checked = !!draft.match_skipped_names
 		optArchives.checked = !!draft.include_archives
 		optSubdirs.checked = draft.include_subdirectories !== false
+		optPersist.checked = !!draft.persist_options
+		syncContentDependentOptions()
+		syncingOptions = false
+	}
+
+	function resetOptionsDraft() {
+		if (!controller)
+			return
+		syncingOptions = true
+		const draft = JSON.parse(controller.defaultOptionsJson())
+		optNames.checked = !!draft.search_names
+		optContents.checked = !!draft.search_contents
+		optDocsTags.checked = draft.search_docs_tags !== false
+		optSemantic.checked = !!draft.semantic
+		optOcr.checked = !!draft.ocr
+		optTranscribe.checked = !!draft.transcribe
+		optSemanticImage.checked = !!draft.semantic_image
+		optHidden.checked = !!draft.include_hidden
+		optNoise.checked = !!draft.include_noise
+		optNoiseFiles.checked = !!draft.include_noise_files
+		optMatchSkippedNames.checked = !!draft.match_skipped_names
+		optArchives.checked = !!draft.include_archives
+		optSubdirs.checked = draft.include_subdirectories !== false
 		syncContentDependentOptions()
 		syncingOptions = false
 	}
@@ -239,7 +263,8 @@ ApplicationWindow {
 			include_noise_files: optNoiseFiles.checked,
 			match_skipped_names: optMatchSkippedNames.checked,
 			include_archives: optArchives.checked,
-			include_subdirectories: optSubdirs.checked
+			include_subdirectories: optSubdirs.checked,
+			persist_options: optPersist.checked
 		}))
 	}
 
@@ -256,13 +281,30 @@ ApplicationWindow {
 		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
 		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		fltPersist.checked = !!draft.persist_filters
 		syncingFilters = false
+		validateFiltersDraft()
 	}
 
-	function pushFiltersToController() {
-		if (!controller || syncingFilters)
-			return ""
-		return controller.applyFiltersJson(JSON.stringify({
+	function resetFiltersDraft() {
+		if (!controller)
+			return
+		syncingFilters = true
+		const draft = JSON.parse(controller.defaultFiltersJson())
+		fltTopFiles.text = draft.top_files ?? ""
+		fltMaxMatches.text = draft.max_matches ?? "50"
+		fltThreshold.text = draft.threshold ?? "35"
+		fltVisualMin.text = draft.semantic_image_threshold ?? "18"
+		fltSpeechMin.text = draft.transcribe_threshold ?? "25"
+		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
+		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
+		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		syncingFilters = false
+		validateFiltersDraft()
+	}
+
+	function filtersDraftPayload() {
+		return JSON.stringify({
 			top_files: fltTopFiles.text,
 			max_matches: fltMaxMatches.text,
 			threshold: fltThreshold.text,
@@ -272,8 +314,30 @@ ApplicationWindow {
 				text_mib: fltDocSize.text,
 				ocr_mib: fltOcrSize.text,
 				transcribe_mib: fltMediaSize.text
-			}
-		}))
+			},
+			persist_filters: fltPersist.checked
+		})
+	}
+
+	function validateFiltersDraft() {
+		if (!controller || syncingFilters || !filtersError)
+			return
+		const err = controller.validateFiltersJson(filtersDraftPayload())
+		if (err) {
+			filtersError.text = err
+			filtersError.visible = true
+			filtersDraftValid = false
+		} else {
+			filtersError.text = ""
+			filtersError.visible = false
+			filtersDraftValid = true
+		}
+	}
+
+	function pushFiltersToController() {
+		if (!controller || syncingFilters)
+			return ""
+		return controller.applyFiltersJson(filtersDraftPayload())
 	}
 
 	function showHelp(key) {
@@ -1242,7 +1306,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: 520
 		implicitWidth: 520
-		height: Math.min(560, parent.height - 40)
+		height: Math.min(620, parent.height - 40)
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
@@ -1425,6 +1489,18 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					Layout.topMargin: 4
 				}
+				StyledCheckBox {
+					id: optPersist
+					objectName: "optPersist"
+					text: root.t("gui.options.persist")
+					Layout.topMargin: 12
+				}
+				Button {
+					id: optReset
+					objectName: "optReset"
+					text: root.t("gui.options.reset")
+					onClicked: resetOptionsDraft()
+				}
 			}
 		}
 	}
@@ -1453,12 +1529,16 @@ ApplicationWindow {
 				id: filtersOkButton
 				objectName: "filtersOkButton"
 				text: root.t("common.ok")
+				enabled: root.filtersDraftValid
 				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
+					if (!root.filtersDraftValid)
+						return
 					const err = pushFiltersToController()
 					if (err) {
 						filtersError.text = err
 						filtersError.visible = true
+						root.filtersDraftValid = false
 						return
 					}
 					filtersError.visible = false
@@ -1487,37 +1567,97 @@ ApplicationWindow {
 			Layout.fillWidth: true
 
 			Label { text: root.t("gui.filters.max_results") }
-			TextField { id: fltTopFiles; placeholderText: root.t("gui.filters.max_results_ph"); Layout.fillWidth: true }
+			TextField {
+				id: fltTopFiles
+				objectName: "fltTopFiles"
+				placeholderText: root.t("gui.filters.max_results_ph")
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "top_files" }
 
 			Label { text: root.t("gui.filters.hits_per_file") }
-			TextField { id: fltMaxMatches; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltMaxMatches
+				objectName: "fltMaxMatches"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "max_matches" }
 
 			Label { text: root.t("gui.filters.min_match") }
-			TextField { id: fltThreshold; text: "35"; Layout.fillWidth: true }
+			TextField {
+				id: fltThreshold
+				objectName: "fltThreshold"
+				text: "35"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "threshold" }
 
 			Label { text: root.t("gui.filters.visual_min") }
-			TextField { id: fltVisualMin; text: "18"; Layout.fillWidth: true }
+			TextField {
+				id: fltVisualMin
+				objectName: "fltVisualMin"
+				text: "18"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "semantic_image_threshold" }
 
 			Label { text: root.t("gui.filters.speech_min") }
-			TextField { id: fltSpeechMin; text: "25"; Layout.fillWidth: true }
+			TextField {
+				id: fltSpeechMin
+				objectName: "fltSpeechMin"
+				text: "25"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_threshold" }
 
 			Label { text: root.t("gui.filters.doc_mib") }
-			TextField { id: fltDocSize; text: "100"; Layout.fillWidth: true }
+			TextField {
+				id: fltDocSize
+				objectName: "fltDocSize"
+				text: "100"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "text_mib" }
 
 			Label { text: root.t("gui.filters.ocr_mib") }
-			TextField { id: fltOcrSize; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltOcrSize
+				objectName: "fltOcrSize"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "ocr_mib" }
 
 			Label { text: root.t("gui.filters.media_mib") }
-			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
+			TextField {
+				id: fltMediaSize
+				objectName: "fltMediaSize"
+				text: "500"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_mib" }
 		}
+			StyledCheckBox {
+				id: fltPersist
+				objectName: "fltPersist"
+				text: root.t("gui.filters.persist")
+				Layout.topMargin: 12
+			}
+			Button {
+				id: fltReset
+				objectName: "fltReset"
+				text: root.t("gui.filters.reset")
+				onClicked: resetFiltersDraft()
+			}
 		}
 	}
 

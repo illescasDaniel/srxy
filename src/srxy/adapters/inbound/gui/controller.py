@@ -38,6 +38,7 @@ from srxy.application.model_preflight import (
 from srxy.application.search_filters import (
 	SearchFilters,
 	apply_search_filters_to_args,
+	default_search_filters,
 	format_search_filters_summary,
 	search_filters_from_args,
 	validate_search_filters,
@@ -330,6 +331,9 @@ class SearchController(QObject):
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
+		self._persist_options = False
+		self._persist_filters = False
+		self._load_persisted_search_prefs()
 		# Fast snapshot first; full GPU probe runs after the window can paint.
 		self._capabilities = default_capabilities()
 		self._capabilities_probing = True
@@ -405,8 +409,28 @@ class SearchController(QObject):
 
 		QTimer.singleShot(800, lambda: self.checkForUpdates(silent=True))
 
+	def _load_persisted_search_prefs(self):
+		from srxy.application.settings import load_persisted_search_prefs
+
+		prefs = load_persisted_search_prefs()
+		self._persist_options = prefs.persist_options
+		self._persist_filters = prefs.persist_filters
+		if prefs.options is not None:
+			self._options = prefs.options
+		if prefs.filters is not None:
+			self._filters = prefs.filters
+
 	def _clamp_options_to_capabilities(self):
 		caps = self._capabilities
+		# While the GPU probe is still pending, default_capabilities() reports
+		# semantic/transcribe as disabled. Do not strip those ticks yet or a
+		# persisted "Similar meaning" (etc.) would be cleared before probe finishes.
+		if self._capabilities_probing:
+			self._options = replace(
+				self._options,
+				ocr=self._options.ocr and caps.ocr_enabled,
+			)
+			return
 		self._options = replace(
 			self._options,
 			semantic=self._options.semantic and caps.semantic_enabled,
@@ -414,6 +438,20 @@ class SearchController(QObject):
 			ocr=self._options.ocr and caps.ocr_enabled,
 			transcribe=self._options.transcribe and caps.transcribe_enabled,
 		)
+
+	def _write_persisted_search_prefs(self):
+		from srxy.application.settings import save_persisted_search_prefs, settings_path
+
+		ok = save_persisted_search_prefs(
+			persist_options=self._persist_options,
+			persist_filters=self._persist_filters,
+			options=self._options if self._persist_options else None,
+			filters=self._filters if self._persist_filters else None,
+		)
+		if not ok:
+			from srxy.i18n import tr
+
+			self.errorOccurred.emit(tr("gui.settings.save_failed", path=str(settings_path())))
 
 	def _get_results_model(self) -> ResultsModel:
 		return self._results_model
@@ -1941,40 +1979,71 @@ class SearchController(QObject):
 	@Slot(str, result=str)
 	def applyOptionsJson(self, payload: str) -> str:  # noqa: N802
 		data = json.loads(payload)
+		persist = bool(data.pop("persist_options", self._persist_options))
 		options = SearchOptions(**data)
 		if not has_search_source(options):
 			return search_source_required_message()
 		self._options = options
+		self._persist_options = persist
 		self._clamp_options_to_capabilities()
 		apply_search_options_to_args(self._args, self._options)
 		self.optionsSummaryChanged.emit()
 		self._refresh_stale()
+		# Commit on OK so prefs survive even if the process is killed before aboutToQuit.
+		self._write_persisted_search_prefs()
 		return ""
 
 	@Slot(str, result=str)
+	def validateFiltersJson(self, payload: str) -> str:  # noqa: N802
+		"""Return validation error for a filters JSON draft, or empty if valid."""
+		error, _draft, _persist = self._parse_filters_payload(payload)
+		return error
+
+	@Slot(str, result=str)
 	def applyFiltersJson(self, payload: str) -> str:  # noqa: N802
+		error, draft, persist = self._parse_filters_payload(payload)
+		if error or draft is None:
+			return error or "Invalid filters"
+		self._filters = draft
+		self._persist_filters = persist
+		apply_search_filters_to_args(self._args, self._filters)
+		self.filtersSummaryChanged.emit()
+		self._refresh_stale()
+		self._write_persisted_search_prefs()
+		return ""
+
+	def _parse_filters_payload(self, payload: str) -> tuple[str, SearchFilters | None, bool]:
 		from srxy.application.size_limits import SizeLimits
 
 		try:
 			data = json.loads(payload)
+			persist = bool(data.pop("persist_filters", self._persist_filters))
 			size = data.pop("size_limits")
 			draft = SearchFilters(size_limits=SizeLimits(**size), **data)
 			validate_search_filters(draft)
 		except (ValueError, json.JSONDecodeError, TypeError, KeyError) as error:
-			return str(error)
-		self._filters = draft
-		apply_search_filters_to_args(self._args, self._filters)
-		self.filtersSummaryChanged.emit()
-		self._refresh_stale()
-		return ""
+			return str(error), None, self._persist_filters
+		return "", draft, persist
 
 	@Slot(result=str)
 	def optionsJson(self) -> str:  # noqa: N802
-		return json.dumps(asdict(self._options))
+		payload = asdict(self._options)
+		payload["persist_options"] = self._persist_options
+		return json.dumps(payload)
 
 	@Slot(result=str)
 	def filtersJson(self) -> str:  # noqa: N802
-		return json.dumps(asdict(self._filters))
+		payload = asdict(self._filters)
+		payload["persist_filters"] = self._persist_filters
+		return json.dumps(payload)
+
+	@Slot(result=str)
+	def defaultOptionsJson(self) -> str:  # noqa: N802
+		return json.dumps(asdict(SearchOptions()))
+
+	@Slot(result=str)
+	def defaultFiltersJson(self) -> str:  # noqa: N802
+		return json.dumps(asdict(default_search_filters()))
 
 	@Slot(str, result=str)
 	def i18nTr(self, key: str) -> str:  # noqa: N802
@@ -2510,6 +2579,7 @@ class SearchController(QObject):
 			return
 
 	def shutdown(self, *, thread_wait_ms: int = 3000):
+		self._write_persisted_search_prefs()
 		self._dispose_search_worker(wait_ms=thread_wait_ms)
 		self._dispose_download_worker(wait_ms=thread_wait_ms)
 		self._dispose_update_worker(wait_ms=thread_wait_ms)

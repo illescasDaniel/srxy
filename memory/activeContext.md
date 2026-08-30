@@ -8,23 +8,16 @@ _Last updated: 2026-08-30_
 
 ## Current focus
 
-Applied from worktree `cursor/5852d6f1`: **GUI Settings menu** — Download All Models / Reset Cache / Reset All Settings + **All Settings…** dialog (models, cache, preferences/`settings.json` reset).
+Applied from worktree `cursor/5648e20a`: **GUI persist options/filters** + **live filters validation**. Parent already has Settings menu maintenance from `cursor/5852d6f1`.
 
-## Prior (same branch)
+## Done (this apply)
 
-- Progress bar is file-scan only (activity/OCR page % no longer drives the bar).
-- Parallel light + heavy search (text inline, OCR/CLIP/transcribe in pool).
-
-## Touched (this apply)
-
-- `src/srxy/application/settings.py` (`reset_settings`), `disk_usage.py`, `settings_maintenance.py`
-- `src/srxy/adapters/inbound/gui/controller.py`, `qml/Main.qml`
-- `src/srxy/i18n/en.json`, `es.json`
-- `docs/power-ups.md`, tests, `memory/*`
+- Persist options/filters via `settings.json` (OK + shutdown; restore without pre-probe clamp wipe)
+- Live filters dialog validation (disable OK while invalid)
+- Kept parent `reset_settings` / Settings menu APIs alongside persist helpers
 
 ## Next steps
 
 1. Finish merge quality gate on parent.
-2. Manual GUI check: Settings menu shortcuts + All Settings dialog.
-3. Manual QA leftovers (OCR progress bar, mixed light/heavy streaming, installers).
-4. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
+2. Manual: Persist + Similar meaning; Filters live validation; Settings menu shortcuts.
+3. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) and `cursor/5852d6f1` (`0svx`) when ready.
