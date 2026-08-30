@@ -99,7 +99,7 @@ def test_given_windows_semantic_and_nvidia_when_install_srxy_then_ensures_cuda_t
 	manifest = install_srxy(options, status=statuses.append)
 
 	pip_cmds = [cmd for cmd in captured if len(cmd) >= 3 and cmd[1:3] == ["pip", "install"]]
-	assert pip_cmds[0][3] == "srxy[semantic,windows]==1.6.4"
+	assert pip_cmds[0][3] == "srxy[semantic]==1.6.4"
 	cuda_cmds = [cmd for cmd in pip_cmds if "--index-url" in cmd]
 	assert len(cuda_cmds) == 1
 	assert cuda_cmds[0][cuda_cmds[0].index("--index-url") + 1] == cuda_wheel_index_url("cu130")
@@ -127,10 +127,11 @@ def test_given_windows_semantic_nvidia_when_planning_phases_then_includes_cuda_t
 	assert keys == ["uv", "venv", "package", "cuda_torch", "launcher"]
 
 
-def test_given_windows_host_when_install_srxy_then_pip_uses_windows_extra(
+def test_given_windows_host_when_install_srxy_without_semantic_then_pip_uses_bare_spec(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
+	# given
 	captured: list[list[str]] = []
 	_stub_windows_install(monkeypatch, captured_cmds=captured)
 	set_language("en")
@@ -146,19 +147,22 @@ def test_given_windows_host_when_install_srxy_then_pip_uses_windows_extra(
 		confirm_unsafe=True,
 	)
 
+	# when
 	manifest = install_srxy(options)
 
+	# then — pywin32 is core; no [windows] extra
 	pip_cmds = [cmd for cmd in captured if len(cmd) >= 4 and cmd[1:3] == ["pip", "install"]]
 	assert pip_cmds, f"no pip install in {captured!r}"
-	assert pip_cmds[0][3] == "srxy[windows]==1.6.4"
-	assert manifest.extra["srxy_spec"] == "srxy[windows]==1.6.4"
+	assert pip_cmds[0][3] == "srxy==1.6.4"
+	assert manifest.extra["srxy_spec"] == "srxy==1.6.4"
 	assert manifest.privacy_ack_version == PRIVACY_NOTICE_VERSION
 
 
-def test_given_windows_semantic_when_install_srxy_then_pip_merges_extras(
+def test_given_windows_semantic_when_install_srxy_then_pip_uses_semantic_extra(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
+	# given
 	captured: list[list[str]] = []
 	_stub_windows_install(monkeypatch, captured_cmds=captured)
 	set_language("en")
@@ -174,11 +178,13 @@ def test_given_windows_semantic_when_install_srxy_then_pip_merges_extras(
 		confirm_unsafe=True,
 	)
 
+	# when
 	manifest = install_srxy(options)
 
+	# then
 	pip_cmds = [cmd for cmd in captured if len(cmd) >= 4 and cmd[1:3] == ["pip", "install"]]
-	assert pip_cmds[0][3] == "srxy[semantic,windows]==1.6.4"
-	assert manifest.extra["srxy_spec"] == "srxy[semantic,windows]==1.6.4"
+	assert pip_cmds[0][3] == "srxy[semantic]==1.6.4"
+	assert manifest.extra["srxy_spec"] == "srxy[semantic]==1.6.4"
 	assert manifest.semantic is True
 
 

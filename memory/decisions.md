@@ -7,6 +7,29 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** On Linux/Material the Options dialog OK button drew white text while the Search button drew a black label *and* a black magnifier glyph. Material/Fluent/Universal compute their own highlighted label colour (`Material.primaryHighlightedTextColor`) and ignore `palette.buttonText`, so our WCAG `contrast_text_on(#3daee9) == #000000` only reached the Search button — which replaced its `contentItem` with a hand-tinted `Row { ColorOverlay; Text }`.
 - **Decision:** (1) Drop the Search button's custom `contentItem`/`ColorOverlay` (and the now-unused `Qt5Compat.GraphicalEffects` import in `Main.qml`); use plain `text` + `icon.source` so the style's own `IconLabel` paints both. (2) `AccentButton` also pins `palette.brightText: foreground`, because Fusion/Basic tint icons from `brightText` while drawing the label from `buttonText`. (3) `icon.color` is assigned **only** on macOS, via `Binding { when: Qt.platform.os === "osx" }` — Aqua predates `defaultIconColor`, but on every other style the role must stay *unresolved*: `QQuickIconLabel` falls back to `defaultIconColor` only when `icon.color` was never set, so even `"transparent"` strands the glyph untinted.
 - **Rationale:** Matching the style beats out-computing it — the OK button was already the style's own colour, so the only way for Search to agree was to stop overriding. Reading the painted colour back (`contentItem.color`) was tried and rejected: `QQuickIconLabel::color` is non-bindable, so the value froze at creation. Also removes a latent packaging bug — both `packaging/macos/prune-pyside.sh` and `packaging/linux-appimage/prune_pyside.sh` already delete the `Qt5Compat` QML module that `Main.qml` imported. Regression test asserts the Search label, its `QQuickIconImage` tint, and the dialog OK label are all the same colour.
+## 2026-08-30 — `[semantic]` is GPU-only; drop `semantic-gpu` name and CPU semantic
+
+- **Context:** Offering a lighter CPU `[semantic]` alongside `[semantic-gpu]` encouraged installs that are too slow for real use, and the dual extras confused docs/`sync-dev`.
+- **Decision:** (1) Keep one optional extra named `[semantic]` whose deps are the former `semantic-gpu` stack (sentence-transformers, faster-whisper, rawpy, explicit torch/torchaudio/torchvision, cublas markers). (2) Delete the old CPU-leaning semantic set and the `semantic-gpu` alias. (3) `sync.py` adds `--extra semantic` only for Linux/Windows NVIDIA or macOS Apple Silicon (MPS); no GPU / CUDA skip → no semantic extra. (4) README/install docs: GPU rows use `srxy[semantic]`; remove “Fast CPU, no GPU”; no-GPU users get core-only.
+- **Rationale:** Semantic search without a GPU is a poor default; one extra name matches user intent and keeps Windows CUDA via `[tool.uv.sources]` on checkout sync.
+
+## 2026-08-30 — `pywin32` is a core Windows dependency (no `[windows]` extra)
+
+- **Context:** Install docs, installer specs, CI, and `sync-dev` all had to remember `--extra windows` / `srxy[…,windows]` just to get Explorer tag support.
+- **Decision:** (1) Add `pywin32>=312; platform_system == 'Windows'` to core `[project] dependencies`. (2) Drop the `[windows]` extra entirely (no empty stub). (3) Stop appending `[windows]` in `sync.py`, installer `package_extras_for_host`, CI, and docs; bump privacy notice to v7 (pywin32 listed under core).
+- **Rationale:** Platform markers install pywin32 only on Windows; end-user and agent commands drop a whole extra dimension.
+
+## 2026-08-30 — Linux `semantic-gpu` only with NVIDIA; CI stays semantic-free
+
+- **Context:** First cut of `sync-dev` always used `--extra semantic-gpu` on Linux. CI never needed torch extras for `core+gui+tui`.
+- **Decision:** (1) Linux matches Windows: `semantic-gpu` only when NVIDIA is detected (same skip envs). No GPU → `--extra semantic`. (2) Document that GitHub Actions keeps `uv sync --frozen` (no `[semantic]` / `[semantic-gpu]`); CI does not run the heavy suite.
+- **Rationale:** Avoid multi-GiB CUDA wheels on CPU-only Linux laptops; CI stays lean and already omitted semantic extras.
+
+## 2026-08-30 — Platform-aware `sync` / `sync-dev` / `sync-uploader` tasks
+
+- **Context:** Agents and docs kept repeating OS-specific `uv sync --extra …` recipes (`semantic-gpu` on GPU Linux/Windows, `semantic` on macOS / CPU-only). Easy to get wrong; Windows especially thrashes CPU↔CUDA torch without `semantic-gpu`.
+- **Decision:** (1) Add `scripts/dev/sync.py` (plus Unix `sync.sh` / Windows `sync.ps1`) that picks extras per platform and mode. (2) Taskipy: `sync` = runtime (`--no-default-groups`), `sync-dev` = default for agents/devs, `sync-uploader` = dev + `uploader`; keep `sync-win` as a `sync-dev` alias. (3) Document in README, AGENTS.md, development.md, installation.md; point copy-venv / gate missing-venv messages at `sync-dev`. (4) Do not extend `[tool.uv.sources]` to Linux — PyPI Linux torch is already CUDA; Windows keeps the pytorch-cu130 sources marker.
+- **Rationale:** One command per intent; fewer multi-GiB mistakes; shorter docs; copy-venv and gates stay aligned with the same extras.
 
 ## 2026-08-30 — copy-venv rewrites shebangs / editable `.pth` (uv sync is not enough)
 

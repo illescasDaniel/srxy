@@ -29,7 +29,8 @@ for arg in "$@"; do
 Usage: copy-venv.sh [--force|-f]
 
 Copy .venv from the primary srxy checkout into this worktree, rewrite
-shebangs and editable paths, then uv sync --offline --reinstall-package srxy.
+shebangs and editable paths, then run scripts/dev/sync.py --dev --offline
+--reinstall-package srxy.
 EOF
 		exit 0
 		;;
@@ -93,7 +94,7 @@ dst_venv="${dest_root}/.venv"
 
 if [[ ! -d "${src_venv}" ]]; then
 	echo "error: Source .venv not found at: ${src_venv}" >&2
-	echo "Run 'uv sync --extra semantic' in the primary checkout first, then re-run this script." >&2
+	echo "Run 'uv run task sync-dev' in the primary checkout first, then re-run this script." >&2
 	exit 1
 fi
 
@@ -141,9 +142,12 @@ echo "copy-venv: rewriting venv paths (shebangs, editable .pth, direct_url)..."
 # 6. uv sync — re-register editable install (offline; no downloads)
 # ---------------------------------------------------------------------------
 echo ""
-echo "copy-venv: running 'uv sync --extra semantic --offline --reinstall-package srxy'..."
+echo "copy-venv: running platform-aware sync-dev (offline, reinstall srxy)..."
 cd "${dest_root}"
-uv sync --extra semantic --offline --reinstall-package srxy
+if ! "${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --dev --offline --reinstall-package srxy; then
+	echo "copy-venv: offline sync failed (extras may need downloads); retrying online..."
+	"${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --dev --reinstall-package srxy
+fi
 
 # ---------------------------------------------------------------------------
 # 7. Verify shebang, editable import, torch

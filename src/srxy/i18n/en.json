@@ -149,7 +149,6 @@
   "privacy.deps_intro": "These direct runtime libraries ship with srxy (or with optional extras) via PyPI. They process files on your machine; install/download privacy for the index itself is under PyPI above.",
   "privacy.deps_core_heading": "Core",
   "privacy.deps_semantic_heading": "Optional [semantic]",
-  "privacy.deps_windows_heading": "Optional [windows]",
   "privacy.dep.use.cryptography": "Encrypts the local search cache on disk",
   "privacy.dep.use.exifread": "Reads image EXIF/GPS/camera metadata",
   "privacy.dep.use.jellyfish": "Phonetic matching (“sounds like” search)",

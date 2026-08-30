@@ -4,6 +4,7 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
+<<<<<<< HEAD
 - `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/08e18461` (Search button label + icon colour matches dialog OK).
 
 ## Current focus
@@ -29,3 +30,14 @@ Applied: **Search button label + icon colour now matches the dialogs' OK button*
 2. Windows (Fluent) and macOS (Aqua) visual check — macOS is the only platform still setting `icon.color` explicitly.
 3. `/delete-worktree-srxy` for `cursor/08e18461` (`rlni`) when ready.
 4. Manual Windows (and other) installer verification for 1.7.0.
+=======
+- `cursor/ec4c7a6b` (worktree) — parent `feature/fixes_1.6.6` / version target **1.7.0**.
+
+## Current focus
+
+Collapsed extras: dropped CPU-only `[semantic]` path and the `[semantic-gpu]` name; single `[semantic]` = former GPU stack. `sync-dev` installs `--extra semantic` only on NVIDIA / Apple Silicon MPS; no GPU → core+dev only. README dropped “Fast CPU, no GPU”. Gate passed.
+
+## Next steps
+
+1. User may commit when ready.
+>>>>>>> cursor/ec4c7a6b

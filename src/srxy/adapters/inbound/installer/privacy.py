@@ -105,6 +105,7 @@ _CORE_DEPS: tuple[Dep, ...] = (
 	("pyside6", "PySide6", "https://doc.qt.io/qtforpython/"),
 	("python_docx", "python-docx", "https://python-docx.readthedocs.io/"),
 	("python_pptx", "python-pptx", "https://python-pptx.readthedocs.io/"),
+	("pywin32", "pywin32", "https://github.com/mhammond/pywin32"),
 	("rapidfuzz", "rapidfuzz", "https://github.com/rapidfuzz/RapidFuzz"),
 	("textual", "textual", "https://textual.textualize.io/"),
 	("wordfreq", "wordfreq", "https://github.com/rspeer/wordfreq"),
@@ -116,8 +117,6 @@ _SEMANTIC_DEPS: tuple[Dep, ...] = (
 	("rawpy", "rawpy", "https://github.com/letmaik/rawpy"),
 	("sentence_transformers", "sentence-transformers", "https://www.sbert.net/"),
 )
-
-_WINDOWS_DEPS: tuple[Dep, ...] = (("pywin32", "pywin32", "https://github.com/mhammond/pywin32"),)
 
 
 def _party_label(key: str) -> str:
@@ -143,7 +142,7 @@ def _html_link(key: str, url: str, privacy: str) -> str:
 
 
 # Bump when ack'd notice content changes so users re-acknowledge.
-PRIVACY_NOTICE_VERSION = "6"
+PRIVACY_NOTICE_VERSION = "7"
 
 
 def _vendor_source_parties(*, system: str | None = None) -> list[Party]:
@@ -246,7 +245,6 @@ def _library_section_lines(*, html: bool) -> list[str]:
 			"<ul>",
 			*_dep_group_lines(html=True, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
 			*_dep_group_lines(html=True, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
-			*_dep_group_lines(html=True, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
 			"</ul>",
 		]
 		return parts
@@ -258,8 +256,6 @@ def _library_section_lines(*, html: bool) -> list[str]:
 		*_dep_group_lines(html=False, heading_key="privacy.deps_core_heading", deps=_CORE_DEPS),
 		"",
 		*_dep_group_lines(html=False, heading_key="privacy.deps_semantic_heading", deps=_SEMANTIC_DEPS),
-		"",
-		*_dep_group_lines(html=False, heading_key="privacy.deps_windows_heading", deps=_WINDOWS_DEPS),
 	]
 	return parts
 

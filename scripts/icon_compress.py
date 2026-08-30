@@ -14,7 +14,7 @@ def compress_png(path: Path, *, quality: int = PNGQUANT_QUALITY):
 	pngquant = shutil.which("pngquant")
 	if pngquant is None:
 		raise SystemExit(
-			"pngquant not found on PATH; run `uv sync` (pngquant-cli is a dev dependency)"
+			"pngquant not found on PATH; run `uv run task sync-dev` (pngquant-cli is a dev dependency)"
 		)
 	result = subprocess.run(
 		[

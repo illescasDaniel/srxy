@@ -459,13 +459,14 @@ def _is_windows() -> bool:
 
 
 def package_extras_for_host(*, install_semantic: bool) -> list[str]:
-	"""Extras required for a prefix install on the current host OS."""
-	extras: list[str] = []
+	"""Extras required for a prefix install on the current host OS.
+
+	``pywin32`` is a core Windows dependency (platform marker), so there is no
+	``[windows]`` extra to add here.
+	"""
 	if install_semantic:
-		extras.append("semantic")
-	if _is_windows():
-		extras.append("windows")
-	return extras
+		return ["semantic"]
+	return []
 
 
 def _venv_python(venv: Path) -> Path:
@@ -565,7 +566,7 @@ def install_srxy(
 	env["PATH"] = f"{venv_bin}{_path_sep()}{env.get('PATH', '')}"
 
 	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
-	# Windows installs always need pywin32 ([windows]); semantic is optional.
+	# semantic is optional; pywin32 is a core Windows dependency (no [windows] extra).
 	extra_names = package_extras_for_host(install_semantic=options.install_semantic)
 	if extra_names:
 		spec = with_extras(spec, *extra_names)

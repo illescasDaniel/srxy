@@ -86,8 +86,7 @@ $dstVenv = Join-Path $destRoot  '.venv'
 if (-not (Test-Path $srcVenv)) {
     Write-Error @"
 Source .venv not found at: $srcVenv
-Run 'uv run task sync-win' (or 'uv sync --extra semantic --extra windows') in
-the primary checkout first, then re-run this script.
+Run 'uv run task sync-dev' in the primary checkout first, then re-run this script.
 "@
     exit 1
 }
@@ -142,34 +141,13 @@ if ($LASTEXITCODE -ne 0) {
 # 6. uv sync — re-register editable install
 # ---------------------------------------------------------------------------
 Write-Host ""
-Write-Host "copy-venv: running uv sync to re-register editable install..."
+Write-Host "copy-venv: running platform-aware sync-dev (offline, reinstall srxy)..."
 Set-Location -LiteralPath $destRoot
-
-function Test-NvidiaGpuPresent {
-    if ($env:SRXY_SKIP_CUDA_TORCH -eq '1') { return $false }
-    if ($null -ne $env:CUDA_VISIBLE_DEVICES -and $env:CUDA_VISIBLE_DEVICES.Trim() -eq '') { return $false }
-    $smi = Get-Command nvidia-smi.exe -ErrorAction SilentlyContinue
-    if (-not $smi) { return $false }
-    $tmp = [System.IO.Path]::GetTempFileName()
-    $p = Start-Process -FilePath $smi.Source -ArgumentList '-L' -NoNewWindow -PassThru -Wait `
-        -RedirectStandardOutput $tmp -RedirectStandardError ([System.IO.Path]::GetTempFileName())
-    Remove-Item $tmp -Force -ErrorAction SilentlyContinue
-    return ($p.ExitCode -eq 0)
-}
-
-if (Test-NvidiaGpuPresent) {
-    Write-Host "copy-venv: NVIDIA GPU detected — running 'uv run task sync-win'"
-    & uv run task sync-win
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error "uv sync step failed (exit $LASTEXITCODE)"
-        exit $LASTEXITCODE
-    }
-    # Ensure editable is re-registered at the worktree path (sync-win may no-op).
-    Write-Host "copy-venv: re-registering editable with --reinstall-package srxy (offline)"
-    & uv sync --extra semantic-gpu --extra windows --offline --reinstall-package srxy
-} else {
-    Write-Host "copy-venv: no NVIDIA GPU — running 'uv sync --extra semantic --extra windows --offline --reinstall-package srxy'"
-    & uv sync --extra semantic --extra windows --offline --reinstall-package srxy
+$syncPy = Join-Path $destRoot 'scripts\dev\sync.py'
+& $dstPython $syncPy --dev --offline --reinstall-package srxy
+if ($LASTEXITCODE -ne 0) {
+    Write-Host "copy-venv: offline sync failed (extras may need downloads); retrying online..."
+    & $dstPython $syncPy --dev --reinstall-package srxy
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Error "uv sync step failed (exit $LASTEXITCODE)"

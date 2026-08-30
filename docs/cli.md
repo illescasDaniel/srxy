@@ -85,7 +85,7 @@ Progress bar on stderr when TTY: a file-scan bar plus a second line with a spinn
 | Video (limited) | `.mkv`, `.avi`, `.webm` | filename only | |
 | Linux tags | any | xattrs (`xdg.tags`, etc.) | |
 | macOS tags | any | Finder tags + comments | |
-| Windows metadata | any | file properties (tags, author, program name, …) | `srxy[windows]` |
+| Windows metadata | any | file properties (tags, author, program name, …) | Windows (`pywin32`) |
 
 Media metadata and OS tags ignore `--max-file-size`. Plain text and office docs default to a **100 MiB** content cap (`--max-file-size 0` for unlimited). Binary-looking files (null in first 8 KiB) skip body text.
 

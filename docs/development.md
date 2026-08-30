@@ -3,29 +3,57 @@
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv sync --extra semantic
-./scripts/quality/checks.sh --fix
-./scripts/quality/checks.sh              # day-to-day (skips heaviest tests)
-./scripts/quality/checks.sh --full       # before release
-./scripts/quality/checks.sh --full+cpu   # release + forced-CPU transcribe matrix
+uv run task sync-dev                 # GPU-aware extras (see Sync below)
+uv run task checks-fix
+uv run task checks                    # day-to-day (auto-scope)
+./scripts/quality/checks.sh --full     # before release (Unix)
+./scripts/quality/checks.sh --full+cpu
 ```
 
 On **Windows**, use the PowerShell gate instead of `checks.sh` (bash/`flock` often fail under Git Bash or WSL mounts):
 
 ```powershell
-# Preferred on NVIDIA machines: syncs --extra semantic-gpu (CUDA torch from lockfile).
-uv run task sync-win
-# or: cmd /c scripts\dev\sync-win.cmd
+uv run task sync-dev
 powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1 -Fix
 powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
 # or: uv run task checks-win-fix / uv run task checks-win
 ```
 
-`uv sync` creates `.venv`, installs the project editable, and pulls the default **`dev`** dependency group (pytest, ruff, taskipy, …). Add `--extra windows` on Windows for Explorer tags. Upload tooling: `uv sync --group uploader`.
+## Sync
 
-On **Windows** with an NVIDIA GPU, use **`[semantic-gpu]`** (via `uv run task sync-win`) instead of bare `--extra semantic`. That extra declares `torch` / `torchvision` / `torchaudio` and `[tool.uv.sources]` pins them to the PyTorch `cu130` index on `win32`, so `uv sync` installs CUDA wheels from the lockfile and does not thrash CPU↔CUDA on every sync. `sync-win` still runs `ensure-windows-cuda-torch.ps1` afterward as a safety net. Verify with `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` — expect `+cu130`/`+cu126` and `True`. Details: [installation.md → Windows](installation.md#windows). The Windows quality gate re-runs the ensure script automatically when the `heavy` bucket is selected.
+Do not hand-pick extras on a developer machine. Use the Taskipy tasks (they call [`scripts/dev/sync.py`](../scripts/dev/sync.py)):
 
-### Bumping the release version
+| Task | What it installs |
+|------|------------------|
+| `uv run task sync` | Runtime extras only — **no** default/`dev` group (no pytest, ruff, taskipy, …) |
+| `uv run task sync-dev` | Default for agents and local development (`dev` group + extras) |
+| `uv run task sync-uploader` | `sync-dev` plus the `uploader` group (twine) |
+| `uv run task sync-win` | Alias of `sync-dev` (older Windows docs / `sync-win.cmd`) |
+
+Platform extras (same for every mode). `[semantic]` is GPU-only:
+
+| OS | Extras |
+|----|--------|
+| Linux + NVIDIA | `--extra semantic` (CUDA torch from PyPI). `SRXY_SKIP_CUDA_TORCH=1` or empty `CUDA_VISIBLE_DEVICES` → no semantic extra |
+| Linux (no GPU) | _(none)_ |
+| macOS Apple Silicon | `--extra semantic` (MPS / stock Mac wheel) |
+| macOS Intel | _(none)_ |
+| Windows + NVIDIA | `--extra semantic`, then `ensure-windows-cuda-torch.ps1`. `[tool.uv.sources]` pins `torch*` to the PyTorch `cu130` index on `win32` |
+| Windows (no GPU) | _(none)_ |
+
+**CI** does not use these tasks. GitHub Actions runs `uv sync --frozen` with **no** `[semantic]` — CI only runs `core+gui+tui`, never the heavy/real-model suite. (`pywin32` installs automatically on Windows via a core dependency marker.)
+
+Direct script (no Taskipy required): `./scripts/dev/sync.sh --dev` (Unix) or `powershell -File .\scripts\dev\sync.ps1 --dev`. Extra `uv sync` flags pass through (`--offline`, `--reinstall-package srxy`, …).
+
+On Windows + NVIDIA, verify CUDA torch after a sync:
+
+```powershell
+.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"
+```
+
+Expect `+cu130`/`+cu126` and `True`. Details: [installation.md → Windows](installation.md#windows). The Windows quality gate re-runs the ensure script when the `heavy` bucket is selected.
+
+## Bumping the release version
 
 Package builds read the app version from [`pyproject.toml`](../pyproject.toml) (`project.version`). When shipping a new release, update these in lockstep:
 
@@ -93,7 +121,7 @@ Dev-only under `tests/fixtures/` (not in wheel). See [`tests/fixtures/README.md`
 
 ## pytest
 
-Requires the `[semantic]` extra (`uv sync --extra semantic`); `SRXY_SEMANTIC=1` set in `tests/integration/conftest.py`.
+Requires the `[semantic]` extra (`uv run task sync-dev`); `SRXY_SEMANTIC=1` set in `tests/integration/conftest.py`.
 
 Default local gate pytest uses concurrent **buckets** so torch/whisper/Qt do not share xdist workers with unit tests:
 
@@ -111,7 +139,7 @@ uv run pytest tests/integration -m integration_full
 uv run pytest --integration-test-cpu
 ```
 
-Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (`srxy[windows]`).
+Platform tag tests: `pytest -m linux_xattr`, `macos_finder`, `windows_tags` (pywin32 is a core Windows dependency).
 
 ### TUI snapshots
 

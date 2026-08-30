@@ -50,7 +50,7 @@ lib_has_pytest_tests() {
 
 lib_require_venv() {
 	if [[ ! -d "${LIB_REPO_ROOT}/.venv" ]]; then
-		echo "Missing .venv. Create it first: uv sync --extra semantic" >&2
+		echo "Missing .venv. Create it first: uv run task sync-dev" >&2
 		exit 1
 	fi
 }
