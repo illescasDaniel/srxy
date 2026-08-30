@@ -4,40 +4,21 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-<<<<<<< HEAD
-- `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/08e18461` (Search button label + icon colour matches dialog OK).
+- `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/ec4c7a6b` (GPU-only `[semantic]` + platform-aware `sync-dev`).
 
 ## Current focus
 
-Applied: **Search button label + icon colour now matches the dialogs' OK button**. Material/Fluent/Universal paint their own highlighted label colour and ignore `palette.buttonText`; the Search button had been hand-tinting a custom `contentItem` from WCAG `foreground` (black on `#3daee9`). Search now uses the style's `IconLabel`; `icon.color` is assigned only on macOS.
+Applied: **`[semantic]` is GPU-only**; dropped `semantic-gpu` name and CPU semantic path. Platform-aware `sync` / `sync-dev` / `sync-uploader`; `pywin32` as core Windows dep. README/install no longer recommend semantic without a GPU.
 
 ## Touched (this apply)
 
-- `src/srxy/adapters/inbound/shared/qml/SrxyControls/AccentButton.qml`
-- `src/srxy/adapters/inbound/gui/qml/Main.qml`
-- `tests/gui/test_gui_qml_load.py`
-- `AGENTS.md`, `memory/*`
-
-## Verified
-
-- Worktree commit `7ca155a`; parent fast-forward `ded25c2..7ca155a`.
-- Offscreen probe (Linux Material): Search label + glyph + OK label all `#ffffff` when accented.
-- Parent `./scripts/quality/checks.sh --quiet --fix` then `--quiet` **PASSED**.
+- `scripts/dev/sync.py` (+ `sync.sh` / `sync.ps1` / `sync.cmd`), `pyproject.toml`, `uv.lock`
+- `tests/unit/test_dev_sync.py`, installer package_spec / privacy / install flow
+- README, AGENTS.md, docs/development.md, docs/installation.md, copy-venv / apply-worktree skills
+- `memory/*`
 
 ## Next steps
 
-1. User visual check on Linux (light + dark) that Search text/icon now match OK.
-2. Windows (Fluent) and macOS (Aqua) visual check — macOS is the only platform still setting `icon.color` explicitly.
-3. `/delete-worktree-srxy` for `cursor/08e18461` (`rlni`) when ready.
-4. Manual Windows (and other) installer verification for 1.7.0.
-=======
-- `cursor/ec4c7a6b` (worktree) — parent `feature/fixes_1.6.6` / version target **1.7.0**.
-
-## Current focus
-
-Collapsed extras: dropped CPU-only `[semantic]` path and the `[semantic-gpu]` name; single `[semantic]` = former GPU stack. `sync-dev` installs `--extra semantic` only on NVIDIA / Apple Silicon MPS; no GPU → core+dev only. README dropped “Fast CPU, no GPU”. Gate passed.
-
-## Next steps
-
-1. User may commit when ready.
->>>>>>> cursor/ec4c7a6b
+1. `/delete-worktree-srxy` for `cursor/ec4c7a6b` (`6mnv`) when ready.
+2. Manual Windows (and other) installer verification for 1.7.0.
+3. Optional: Linux Search button visual check from prior apply (`cursor/08e18461`) if not done.
