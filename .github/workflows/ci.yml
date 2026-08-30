@@ -23,6 +23,9 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      - name: Probe installer catalog URLs
+        run: uv run python -m srxy.adapters.inbound.installer.probe_catalog
+
       - name: Install shell linting tools
         run: |
           sudo apt-get update

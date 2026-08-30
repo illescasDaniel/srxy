@@ -32,10 +32,12 @@ def _partial_path(destination: Path) -> Path:
 	return destination.with_name(destination.name + ".part")
 
 
-def _check_source(url: str, expected_digest: str, display: str):
+def _check_source(url: str, expected_digest: str, display: str, *, require_digest: bool):
 	if not url.startswith("https://"):
 		raise RuntimeError(f"refusing non-https download URL: {url}")
 	if expected_digest:
+		return
+	if not require_digest:
 		return
 	if os.environ.get(ALLOW_UNVERIFIED_ENV, "").strip() == "1":
 		return
@@ -76,6 +78,37 @@ def _stream_to_file(
 	return hasher.hexdigest()
 
 
+def probe_url(
+	url: str,
+	*,
+	headers: Mapping[str, str] | None = None,
+	timeout: float = 30.0,
+) -> str:
+	"""Check that ``url`` is reachable over HTTPS without downloading the full body.
+
+	Uses a ranged GET (``bytes=0-0``). Returns the final URL after redirects.
+	Accepts 2xx and 206 responses.
+	"""
+	if not url.startswith("https://"):
+		raise RuntimeError(f"refusing non-https probe URL: {url}")
+	request_headers = {"User-Agent": "srxy-installer", "Range": "bytes=0-0"}
+	if headers:
+		request_headers.update(headers)
+	request = urllib.request.Request(url, headers=request_headers)  # noqa: S310
+	try:
+		with urllib.request.urlopen(request, timeout=timeout) as response:  # noqa: S310
+			status = getattr(response, "status", None) or response.getcode()
+			if status not in {200, 206}:
+				raise RuntimeError(f"probe failed for {url}: HTTP {status}")
+			# Drain at most one byte so the connection can close cleanly.
+			response.read(1)
+			return response.geturl()
+	except urllib.error.HTTPError as exc:
+		raise RuntimeError(f"probe failed for {url}: HTTP {exc.code}") from exc
+	except urllib.error.URLError as exc:
+		raise RuntimeError(f"probe failed for {url}: {exc}") from exc
+
+
 def download_file(
 	url: str,
 	destination: Path,
@@ -84,10 +117,11 @@ def download_file(
 	label: str = "",
 	progress: ProgressCallback | None = None,
 	headers: Mapping[str, str] | None = None,
+	require_digest: bool = True,
 ) -> Path:
 	display = label or destination.name
 	expected = sha256.strip().lower()
-	_check_source(url, expected, display)
+	_check_source(url, expected, display, require_digest=require_digest)
 
 	destination.parent.mkdir(parents=True, exist_ok=True)
 	partial = _partial_path(destination)
@@ -140,12 +174,21 @@ def download_to_temp(
 	label: str = "",
 	progress: ProgressCallback | None = None,
 	headers: Mapping[str, str] | None = None,
+	require_digest: bool = True,
 ) -> Path:
 	handle = tempfile.NamedTemporaryFile(prefix="srxy-dl-", suffix=suffix, delete=False)
 	handle.close()
 	path = Path(handle.name)
 	try:
-		return download_file(url, path, sha256=sha256, label=label, progress=progress, headers=headers)
+		return download_file(
+			url,
+			path,
+			sha256=sha256,
+			label=label,
+			progress=progress,
+			headers=headers,
+			require_digest=require_digest,
+		)
 	except BaseException:
 		path.unlink(missing_ok=True)
 		raise
@@ -159,4 +202,5 @@ __all__ = [
 	"extract_tar_archive",
 	"extract_zip_archive",
 	"move_tree",
+	"probe_url",
 ]

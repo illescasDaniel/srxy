@@ -52,8 +52,7 @@ GitHub Release DMGs are currently **unsigned** (Gatekeeper may warn or block on 
 Notes:
 
 - The online macOS wrapper installs srxy from PyPI and adds PATH in your shell rc.
-- On Apple Silicon, optional installer toggles can vendor ffmpeg (martin-riedl static build) and tesseract (pinned Homebrew core bottles from `ghcr.io`, relocated at install time; Homebrew itself is not required).
-- On Intel Macs, the installer pins and vendors `uv`; third-party tesseract/ffmpeg vendor downloads remain unavailable.
+- On Apple Silicon and Intel Macs, optional installer toggles can vendor ffmpeg (martin-riedl static build, latest release resolved at install time) and tesseract (Homebrew core bottles from `ghcr.io`, digests resolved at install time and relocated; Homebrew itself is not required).
 - No admin rights are required for the default `~/Applications` prefix.
 - First **Launch** after install can take several seconds while Qt libraries load cold; later opens from Finder are normal.
 

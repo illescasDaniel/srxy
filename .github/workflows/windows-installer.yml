@@ -29,6 +29,9 @@ jobs:
       - name: Sync dependencies
         run: uv sync --frozen
 
+      - name: Probe installer catalog URLs
+        run: uv run python -m srxy.adapters.inbound.installer.probe_catalog
+
       - name: Install Inno Setup 7
         shell: pwsh
         run: |

@@ -833,7 +833,9 @@ end;
 
 procedure CurPageChanged(CurPageID: Integer);
 begin
-  if (CurPageID = wpSelectComponents) and (not DefaultTypeApplied) and (not IsUninstallMode) then
+  { Silent installs honor /COMPONENTS= and /TYPE=; do not override with recommended. }
+  if (CurPageID = wpSelectComponents) and (not DefaultTypeApplied) and (not IsUninstallMode)
+     and (not WizardSilent) then
   begin
     DefaultTypeApplied := True;
     ApplyRecommendedSetupType;

@@ -85,3 +85,13 @@ def test_given_offline_iss_when_reading_then_engine_utf8_env_vars_set(iss_text: 
 	"""RunEngine must set PYTHONUTF8 + PYTHONIOENCODING so the log is valid Unicode."""
 	assert "SetEnvironmentVariable('PYTHONUTF8', '1')" in iss_text
 	assert "SetEnvironmentVariable('PYTHONIOENCODING', 'utf-8')" in iss_text
+
+
+def test_given_offline_iss_when_reading_then_silent_skips_recommended_type_override(iss_text: str):
+	"""Silent /COMPONENTS=core must not be overwritten by ApplyRecommendedSetupType."""
+	assert "procedure CurPageChanged(CurPageID: Integer);" in iss_text
+	assert "and (not WizardSilent) then" in iss_text
+	cur = iss_text.index("procedure CurPageChanged(CurPageID: Integer);")
+	apply = iss_text.index("ApplyRecommendedSetupType;", cur)
+	silent_guard = iss_text.index("and (not WizardSilent) then", cur)
+	assert silent_guard < apply
