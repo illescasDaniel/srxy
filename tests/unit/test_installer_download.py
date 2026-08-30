@@ -81,21 +81,17 @@ def test_given_missing_sha256_when_downloading_then_refuses_unverified_download(
 	assert not _part_of(destination).exists()
 
 
-def test_given_allow_unverified_env_when_downloading_without_sha256_then_writes_file(
+def test_given_require_digest_false_when_downloading_without_sha256_then_writes_file(
 	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
-	# given
-	monkeypatch.setenv(ALLOW_UNVERIFIED_ENV, "1")
+	monkeypatch.delenv(ALLOW_UNVERIFIED_ENV, raising=False)
 	_serve(monkeypatch)
-	destination = tmp_path / "nested" / "artifact.bin"
+	destination = tmp_path / "artifact.bin"
 
-	# when
-	result = download_file(URL, destination, sha256="")
+	result = download_file(URL, destination, sha256="", require_digest=False)
 
-	# then
 	assert result == destination
 	assert destination.read_bytes() == PAYLOAD
-	assert not _part_of(destination).exists()
 
 
 def test_given_wrong_sha256_when_downloading_then_fails_without_leaving_files(

@@ -61,9 +61,11 @@ run_one_bucket() {
 		return 0
 	fi
 
-	for env_pair in "${LIB_BUCKET_ENV[@]:-}"; do
-		cmd_env+=("${env_pair}")
-	done
+	if ((${#LIB_BUCKET_ENV[@]})); then
+		for env_pair in "${LIB_BUCKET_ENV[@]}"; do
+			cmd_env+=("${env_pair}")
+		done
+	fi
 	if [[ "${LIB_GATE_QUIET:-false}" == "true" && "${bucket}" == "heavy" ]]; then
 		cmd_env+=(
 			LIB_PYTEST_PROGRESS_INTERVAL=1

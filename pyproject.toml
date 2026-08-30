@@ -156,12 +156,17 @@ exclude = ["scripts/**", "packaging/**", "examples/**"]
 unresolved-attribute = "ignore"
 
 # Optional / platform-specific imports (parity with former basedpyright executionEnvironments).
+# CI uses bare `uv sync --frozen` (no [semantic]); these modules import extras lazily.
 [[tool.ty.overrides]]
 include = [
+	"src/srxy/adapters/outbound/documents/image_formats.py",
 	"src/srxy/adapters/outbound/metadata/windows_metadata.py",
 	"src/srxy/adapters/outbound/models/device.py",
+	"src/srxy/adapters/outbound/models/model_store.py",
 	"src/srxy/adapters/outbound/semantic/semantic_image.py",
+	"src/srxy/adapters/outbound/transcribe/transcribe_text.py",
 	"src/srxy/application/matching/semantic.py",
+	"tests/helpers.py",
 	"tests/unit/test_semantic_cache.py",
 ]
 [tool.ty.overrides.rules]

@@ -162,6 +162,35 @@ DARWIN_X86_64_CATALOG: dict[str, DownloadArtifact] = {
 		kind="archive",
 		notes="Astral uv standalone (Intel macOS, Apache-2.0 / MIT).",
 	),
+	# Digests resolved at install time via formulae.brew.sh (Intel sonoma bottles).
+	"tesseract": DownloadArtifact(
+		name="tesseract",
+		version="brew",
+		url="https://formulae.brew.sh/api/formula/tesseract.json",
+		sha256="",
+		kind="brew_bottles",
+		notes="Homebrew core tesseract + runtime deps (Intel sonoma bottles via ghcr.io; digests resolved at install).",
+	),
+	"tessdata_eng": DownloadArtifact(
+		name="tessdata_eng",
+		version="4.1.0",
+		url=(
+			"https://raw.githubusercontent.com/tesseract-ocr/tessdata/"
+			"4767ea922bcc460e70b87b1d303ebdfed0897da8/eng.traineddata"
+		),
+		sha256="daa0c97d651c19fba3b25e81317cd697e9908c8208090c94c3905381c23fc047",
+		kind="file",
+		notes="English traineddata for Tesseract, tessdata 4.1.0 (Apache-2.0).",
+	),
+	# Prefer install-time martin-riedl redirect resolve; URL here is the scripting entrypoint.
+	"ffmpeg": DownloadArtifact(
+		name="ffmpeg",
+		version="latest",
+		url="https://ffmpeg.martin-riedl.de/redirect/latest/macos/amd64/release/ffmpeg.zip",
+		sha256="",
+		kind="zip",
+		notes="Static FFmpeg for Intel macOS (martin-riedl; prefer install-time resolve).",
+	),
 }
 
 
@@ -255,12 +284,12 @@ def platform_catalog() -> dict[str, DownloadArtifact]:
 
 
 def vendor_downloads_supported() -> bool:
-	"""True when this host can auto-download tesseract/ffmpeg from the pinned catalog."""
+	"""True when this host can auto-download tesseract/ffmpeg from the catalog/resolvers."""
 	system = platform.system().lower()
 	machine = _normalize_machine(platform.machine())
 	if system == "linux" and machine == "x86_64":
 		return True
-	if system == "darwin" and machine == "arm64":
+	if system == "darwin" and machine in {"arm64", "x86_64"}:
 		return True
 	if system == "windows" and machine == "x86_64":
 		return True

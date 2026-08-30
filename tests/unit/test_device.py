@@ -49,6 +49,19 @@ def test_given_forced_cpu_when_resolving_torch_device_then_returns_cpu(monkeypat
 	assert resolve_torch_device() == "cpu"
 
 
+def test_given_torch_missing_when_resolving_torch_device_then_returns_cpu(monkeypatch: pytest.MonkeyPatch):
+	# given — core CI has no [semantic] / torch
+	monkeypatch.delenv("SRXY_SEMANTIC_DEVICE", raising=False)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.device._torch_available",
+		lambda: False,
+	)
+
+	# when / then
+	assert resolve_torch_device() == "cpu"
+	assert resolve_transcribe_device() == "cpu"
+
+
 def test_given_semantic_image_device_override_when_resolving_then_uses_override(monkeypatch: pytest.MonkeyPatch):
 	# given
 
@@ -63,10 +76,13 @@ def test_given_semantic_model_load_when_device_resolved_then_passes_device(monke
 	monkeypatch.setenv("SRXY_SEMANTIC_DEVICE", "mps")
 	semantic_module.reset_semantic_model()
 	fake_model = MagicMock()
+	constructor = MagicMock(return_value=fake_model)
+	fake_sentence_transformers = MagicMock()
+	fake_sentence_transformers.SentenceTransformer = constructor
 	with (
 		patch("srxy.adapters.outbound.models.model_store.ensure_semantic_text_model", return_value=True),
 		patch("srxy.application.matching.semantic.resolve_torch_device", return_value="mps"),
-		patch("sentence_transformers.SentenceTransformer", return_value=fake_model) as constructor,
+		patch.dict("sys.modules", {"sentence_transformers": fake_sentence_transformers}),
 	):
 		# when — call loader directly; unit conftest mocks _get_model for other tests
 		semantic_module._load_model()  # pyright: ignore[reportPrivateUsage]

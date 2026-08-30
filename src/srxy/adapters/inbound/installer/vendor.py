@@ -22,6 +22,12 @@ from srxy.adapters.inbound.installer.download import (
 	extract_zip_archive,
 	move_tree,
 )
+from srxy.adapters.inbound.installer.resolve import (
+	ResolvedArtifact,
+	resolve_ffmpeg,
+	resolve_tesseract,
+	resolve_tesseract_brew_bottles,
+)
 
 
 _SYSTEM_DYLIB_PREFIXES = ("/usr/lib/", "/System/", "/Library/Apple/")
@@ -116,7 +122,7 @@ def _install_tesseract_linux(
 	progress: ProgressCallback | None,
 	tessdata_langs: tuple[str, ...] | None = None,
 ) -> Path:
-	binary_item = artifact("tesseract")
+	resolved = resolve_tesseract()
 	vendor = prefix / "vendor" / "tesseract"
 	bin_dir = vendor / "bin"
 	tessdata = vendor / "tessdata"
@@ -125,11 +131,12 @@ def _install_tesseract_linux(
 
 	target = bin_dir / "tesseract"
 	download_file(
-		binary_item.url,
+		resolved.url,
 		target,
-		sha256=binary_item.sha256,
-		label=f"tesseract {binary_item.version}",
+		sha256=resolved.sha256,
+		label=f"tesseract {resolved.version}",
 		progress=progress,
+		require_digest=bool(resolved.sha256),
 	)
 	_chmod_executable(target)
 	_ensure_tessdata_langs(vendor, tessdata_langs, progress=progress)
@@ -373,8 +380,17 @@ def _install_tesseract_brew_bottles(
 		shutil.rmtree(extract_root)
 	extract_root.mkdir(parents=True, exist_ok=True)
 
+	machine = platform.machine().lower()
 	try:
-		for bottle in DARWIN_ARM64_TESSERACT_BOTTLES:
+		bottles = resolve_tesseract_brew_bottles()
+	except RuntimeError:
+		if machine in {"arm64", "arm64e"}:
+			bottles = DARWIN_ARM64_TESSERACT_BOTTLES
+		else:
+			raise
+
+	try:
+		for bottle in bottles:
 			archive = download_to_temp(
 				bottle.url,
 				suffix=".tar.gz",
@@ -491,7 +507,7 @@ def _install_tesseract_nsis(
 	tessdata_langs: tuple[str, ...] | None = None,
 ) -> Path:
 	"""Extract the UB-Mannheim NSIS setup into ``prefix/vendor/tesseract`` without elevation."""
-	item = artifact("tesseract")
+	resolved = resolve_tesseract()
 	vendor = prefix / "vendor" / "tesseract"
 	if vendor.exists():
 		shutil.rmtree(vendor)
@@ -500,11 +516,12 @@ def _install_tesseract_nsis(
 	work_dir = vendor / "_work"
 	work_dir.mkdir(parents=True, exist_ok=True)
 	installer = download_to_temp(
-		item.url,
+		resolved.url,
 		suffix=".exe",
-		sha256=item.sha256,
-		label=f"tesseract {item.version}",
+		sha256=resolved.sha256,
+		label=f"tesseract {resolved.version}",
 		progress=progress,
+		require_digest=bool(resolved.sha256),
 	)
 	try:
 		sevenz = _prepare_7zip_extractor(work_dir, progress=progress)
@@ -564,8 +581,13 @@ def _expose_ffmpeg_bin(vendor: Path, binary: Path) -> Path:
 	return target
 
 
-def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> Path:
-	item = artifact("ffmpeg")
+def _install_ffmpeg_tar(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	resolved: ResolvedArtifact | None = None,
+) -> Path:
+	item = resolved if resolved is not None else resolve_ffmpeg()
 	vendor = prefix / "vendor" / "ffmpeg"
 	archive = download_to_temp(
 		item.url,
@@ -573,6 +595,7 @@ def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> P
 		sha256=item.sha256,
 		label=f"ffmpeg {item.version}",
 		progress=progress,
+		require_digest=bool(item.sha256),
 	)
 	try:
 		extract_dir = vendor / "_extract"
@@ -594,8 +617,13 @@ def _install_ffmpeg_tar(prefix: Path, *, progress: ProgressCallback | None) -> P
 		archive.unlink(missing_ok=True)
 
 
-def _install_ffmpeg_zip(prefix: Path, *, progress: ProgressCallback | None) -> Path:
-	item = artifact("ffmpeg")
+def _install_ffmpeg_zip(
+	prefix: Path,
+	*,
+	progress: ProgressCallback | None,
+	resolved: ResolvedArtifact | None = None,
+) -> Path:
+	item = resolved if resolved is not None else resolve_ffmpeg()
 	vendor = prefix / "vendor" / "ffmpeg"
 	archive = download_to_temp(
 		item.url,
@@ -603,6 +631,7 @@ def _install_ffmpeg_zip(prefix: Path, *, progress: ProgressCallback | None) -> P
 		sha256=item.sha256,
 		label=f"ffmpeg {item.version}",
 		progress=progress,
+		require_digest=bool(item.sha256),
 	)
 	try:
 		extract_dir = vendor / "_extract"
@@ -642,12 +671,12 @@ def _install_ffmpeg_zip(prefix: Path, *, progress: ProgressCallback | None) -> P
 
 
 def install_ffmpeg(prefix: Path, *, progress: ProgressCallback | None = None) -> Path:
-	item = artifact("ffmpeg")
-	if item.kind == "archive":
-		return _install_ffmpeg_tar(prefix, progress=progress)
-	if item.kind == "zip":
-		return _install_ffmpeg_zip(prefix, progress=progress)
-	raise RuntimeError(f"unsupported ffmpeg artifact kind: {item.kind}")
+	resolved = resolve_ffmpeg()
+	if resolved.kind == "archive":
+		return _install_ffmpeg_tar(prefix, progress=progress, resolved=resolved)
+	if resolved.kind == "zip":
+		return _install_ffmpeg_zip(prefix, progress=progress, resolved=resolved)
+	raise RuntimeError(f"unsupported ffmpeg artifact kind: {resolved.kind}")
 
 
 __all__ = [

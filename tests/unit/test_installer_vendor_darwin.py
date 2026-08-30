@@ -65,8 +65,9 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 		label: str = "",
 		progress: object | None = None,
 		headers: dict[str, str] | None = None,
+		require_digest: bool = True,
 	):
-		_ = sha256, label, progress, headers
+		_ = sha256, label, progress, headers, require_digest
 		dest = tmp_path / f"dl-{hashlib.sha256(url.encode()).hexdigest()[:12]}{suffix}"
 		dest.write_bytes(downloads[url])
 		return dest
@@ -79,8 +80,9 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 		label: str = "",
 		progress: object | None = None,
 		headers: dict[str, str] | None = None,
+		require_digest: bool = True,
 	):
-		_ = sha256, label, progress, headers
+		_ = sha256, label, progress, headers, require_digest
 		dest.parent.mkdir(parents=True, exist_ok=True)
 		dest.write_bytes(downloads[url])
 
@@ -116,6 +118,20 @@ def test_given_windows_nsis_tesseract_when_installing_then_extracts_without_runn
 	monkeypatch.setattr(vendor_mod, "download_file", fake_download_file)
 	monkeypatch.setattr(vendor_mod.subprocess, "run", fake_run)
 	monkeypatch.setattr(vendor_mod, "_self_check_tesseract", lambda *_a, **_k: None)
+	from srxy.adapters.inbound.installer.resolve import ResolvedArtifact
+
+	item = catalog_mod.WIN_X86_64_CATALOG["tesseract"]
+	monkeypatch.setattr(
+		vendor_mod,
+		"resolve_tesseract",
+		lambda: ResolvedArtifact(
+			name=item.name,
+			version=item.version,
+			url=item.url,
+			sha256=item.sha256,
+			kind=item.kind,
+		),
+	)
 
 	prefix = tmp_path / "prefix"
 	binary = vendor_mod.install_tesseract(prefix)
@@ -162,7 +178,7 @@ def test_given_darwin_arm64_tesseract_bottles_when_listed_then_are_pinned_ghcr_b
 		assert "illescasDaniel/srxy" not in bottle.url
 
 
-def test_given_darwin_x86_64_when_reading_catalog_then_only_uv_is_pinned(
+def test_given_darwin_x86_64_when_reading_catalog_then_vendors_tesseract_and_ffmpeg(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	monkeypatch.setattr(catalog_mod.platform, "system", lambda: "Darwin")
@@ -170,9 +186,10 @@ def test_given_darwin_x86_64_when_reading_catalog_then_only_uv_is_pinned(
 
 	catalog = catalog_mod.platform_catalog()
 
-	assert set(catalog.keys()) == {"uv"}
-	assert catalog["uv"].url.endswith("uv-x86_64-apple-darwin.tar.gz")
-	assert catalog_mod.vendor_downloads_supported() is False
+	assert "uv" in catalog
+	assert catalog["ffmpeg"].kind == "zip"
+	assert catalog["tesseract"].kind == "brew_bottles"
+	assert catalog_mod.vendor_downloads_supported() is True
 
 
 def test_given_darwin_arm64e_when_reading_catalog_then_normalizes_to_arm64(
@@ -235,8 +252,9 @@ def test_given_tesseract_brew_bottles_when_installing_then_assembles_relocatable
 		label: str = "",
 		progress: object | None = None,
 		headers: dict[str, str] | None = None,
+		require_digest: bool = True,
 	):
-		_ = suffix, sha256, label, progress
+		_ = suffix, sha256, label, progress, require_digest
 		assert headers == catalog_mod.GHCR_BOTTLE_HEADERS
 		src = archives[url]
 		dest = tmp_path / f"dl-{src.name}"
@@ -276,6 +294,11 @@ def test_given_tesseract_brew_bottles_when_installing_then_assembles_relocatable
 	monkeypatch.setattr(vendor_mod, "_run_install_name_tool", lambda *_args: None)
 	monkeypatch.setattr(vendor_mod, "_adhoc_codesign", lambda _path: None)
 	monkeypatch.setattr(vendor_mod, "_self_check_tesseract", lambda *_args, **_kwargs: None)
+	monkeypatch.setattr(
+		vendor_mod,
+		"resolve_tesseract_brew_bottles",
+		lambda **_kwargs: catalog_mod.DARWIN_ARM64_TESSERACT_BOTTLES,
+	)
 
 	from srxy.adapters.inbound.installer.tessdata_langs import tessdata_url
 
@@ -287,8 +310,9 @@ def test_given_tesseract_brew_bottles_when_installing_then_assembles_relocatable
 		label: str = "",
 		progress: object | None = None,
 		headers: dict[str, str] | None = None,
+		require_digest: bool = True,
 	):
-		_ = sha256, label, progress, headers
+		_ = sha256, label, progress, headers, require_digest
 		if url == tessdata_url("osd"):
 			dest.write_bytes(b"fake-osd")
 			return
@@ -323,19 +347,19 @@ def test_given_ffmpeg_zip_when_installing_then_places_binary(
 		handle.writestr("ffmpeg", payload)
 
 	digest = hashlib.sha256(zip_path.read_bytes()).hexdigest()
+	from srxy.adapters.inbound.installer.resolve import ResolvedArtifact
 
-	def fake_artifact(name: str):
-		if name == "ffmpeg":
-			return catalog_mod.DownloadArtifact(
-				name="ffmpeg",
-				version=item.version,
-				url="https://example.invalid/ffmpeg.zip",
-				sha256=digest,
-				kind="zip",
-			)
-		return catalog_mod.DARWIN_ARM64_CATALOG[name]
-
-	monkeypatch.setattr(vendor_mod, "artifact", fake_artifact)
+	monkeypatch.setattr(
+		vendor_mod,
+		"resolve_ffmpeg",
+		lambda: ResolvedArtifact(
+			name="ffmpeg",
+			version=item.version,
+			url="https://example.invalid/ffmpeg.zip",
+			sha256=digest,
+			kind="zip",
+		),
+	)
 
 	def fake_download_to_temp(
 		url: str,
@@ -345,8 +369,9 @@ def test_given_ffmpeg_zip_when_installing_then_places_binary(
 		label: str = "",
 		progress: object | None = None,
 		headers: dict[str, str] | None = None,
+		require_digest: bool = True,
 	):
-		_ = url, suffix, sha256, label, progress, headers
+		_ = url, suffix, sha256, label, progress, headers, require_digest
 		dest = tmp_path / "downloaded.zip"
 		dest.write_bytes(zip_path.read_bytes())
 		return dest
