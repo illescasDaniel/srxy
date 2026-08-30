@@ -1322,7 +1322,7 @@ if (-not [string]::IsNullOrWhiteSpace($InternalBucket)) {
 
 # --- main gate ---
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot '.venv'))) {
-	Write-Host 'Missing .venv. Create it first: uv run task sync-win  (or: uv sync --extra semantic --extra windows)' -ForegroundColor Red
+	Write-Host 'Missing .venv. Create it first: uv run task sync-dev  (or: python scripts/dev/sync.py --dev)' -ForegroundColor Red
 	exit 1
 }
 
@@ -1367,7 +1367,7 @@ if (
 		& $ensureCuda
 		if ($LASTEXITCODE -ne 0) {
 			Write-Host "gate: ensure-windows-cuda-torch failed (exit $LASTEXITCODE). Heavy tests would run on CPU." -ForegroundColor Red
-			Write-Host 'Fix: uv run task sync-win   or set SRXY_SKIP_CUDA_TORCH=1 to bypass.' -ForegroundColor Red
+			Write-Host 'Fix: uv run task sync-dev   or set SRXY_SKIP_CUDA_TORCH=1 to bypass.' -ForegroundColor Red
 			exit $LASTEXITCODE
 		}
 	}

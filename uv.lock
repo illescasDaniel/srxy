@@ -2902,6 +2902,7 @@ dependencies = [
     { name = "pytesseract" },
     { name = "python-docx" },
     { name = "python-pptx" },
+    { name = "pywin32", marker = "sys_platform == 'win32'" },
     { name = "rapidfuzz" },
     { name = "textual" },
     { name = "wordfreq" },
@@ -2913,21 +2914,12 @@ semantic = [
     { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
     { name = "rawpy" },
     { name = "sentence-transformers" },
-]
-semantic-gpu = [
-    { name = "faster-whisper" },
-    { name = "nvidia-cublas-cu12", marker = "sys_platform == 'linux' or sys_platform == 'win32'" },
-    { name = "rawpy" },
-    { name = "sentence-transformers" },
     { name = "torch", version = "2.13.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
     { name = "torch", version = "2.13.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
     { name = "torchaudio", version = "2.11.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
     { name = "torchaudio", version = "2.11.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
     { name = "torchvision", version = "0.28.0", source = { registry = "https://pypi.org/simple" }, marker = "sys_platform != 'win32'" },
     { name = "torchvision", version = "0.28.0+cu130", source = { registry = "https://download.pytorch.org/whl/cu130" }, marker = "sys_platform == 'win32'" },
-]
-windows = [
-    { name = "pywin32" },
 ]
 
 [package.dev-dependencies]
@@ -2965,21 +2957,20 @@ requires-dist = [
     { name = "pytesseract", specifier = ">=0.3" },
     { name = "python-docx", specifier = ">=1.2" },
     { name = "python-pptx", specifier = ">=1.0" },
-    { name = "pywin32", marker = "extra == 'windows'", specifier = ">=312" },
+    { name = "pywin32", marker = "sys_platform == 'win32'", specifier = ">=312" },
     { name = "rapidfuzz", specifier = ">=3.14" },
     { name = "rawpy", marker = "extra == 'semantic'", specifier = ">=0.27" },
     { name = "sentence-transformers", marker = "extra == 'semantic'", specifier = ">=5.6" },
-    { name = "srxy", extras = ["semantic"], marker = "extra == 'semantic-gpu'" },
     { name = "textual", specifier = ">=3.0" },
-    { name = "torch", marker = "sys_platform == 'win32' and extra == 'semantic-gpu'", specifier = ">=2.13", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torch", marker = "sys_platform != 'win32' and extra == 'semantic-gpu'", specifier = ">=2.13" },
-    { name = "torchaudio", marker = "sys_platform == 'win32' and extra == 'semantic-gpu'", specifier = ">=2.11", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchaudio", marker = "sys_platform != 'win32' and extra == 'semantic-gpu'", specifier = ">=2.11" },
-    { name = "torchvision", marker = "sys_platform == 'win32' and extra == 'semantic-gpu'", specifier = ">=0.28", index = "https://download.pytorch.org/whl/cu130" },
-    { name = "torchvision", marker = "sys_platform != 'win32' and extra == 'semantic-gpu'", specifier = ">=0.28" },
+    { name = "torch", marker = "sys_platform == 'win32' and extra == 'semantic'", specifier = ">=2.13", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torch", marker = "sys_platform != 'win32' and extra == 'semantic'", specifier = ">=2.13" },
+    { name = "torchaudio", marker = "sys_platform == 'win32' and extra == 'semantic'", specifier = ">=2.11", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchaudio", marker = "sys_platform != 'win32' and extra == 'semantic'", specifier = ">=2.11" },
+    { name = "torchvision", marker = "sys_platform == 'win32' and extra == 'semantic'", specifier = ">=0.28", index = "https://download.pytorch.org/whl/cu130" },
+    { name = "torchvision", marker = "sys_platform != 'win32' and extra == 'semantic'", specifier = ">=0.28" },
     { name = "wordfreq", specifier = ">=3.1" },
 ]
-provides-extras = ["semantic", "semantic-gpu", "windows"]
+provides-extras = ["semantic"]
 
 [package.metadata.requires-dev]
 dev = [

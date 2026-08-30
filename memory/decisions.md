@@ -2,6 +2,30 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — `[semantic]` is GPU-only; drop `semantic-gpu` name and CPU semantic
+
+- **Context:** Offering a lighter CPU `[semantic]` alongside `[semantic-gpu]` encouraged installs that are too slow for real use, and the dual extras confused docs/`sync-dev`.
+- **Decision:** (1) Keep one optional extra named `[semantic]` whose deps are the former `semantic-gpu` stack (sentence-transformers, faster-whisper, rawpy, explicit torch/torchaudio/torchvision, cublas markers). (2) Delete the old CPU-leaning semantic set and the `semantic-gpu` alias. (3) `sync.py` adds `--extra semantic` only for Linux/Windows NVIDIA or macOS Apple Silicon (MPS); no GPU / CUDA skip → no semantic extra. (4) README/install docs: GPU rows use `srxy[semantic]`; remove “Fast CPU, no GPU”; no-GPU users get core-only.
+- **Rationale:** Semantic search without a GPU is a poor default; one extra name matches user intent and keeps Windows CUDA via `[tool.uv.sources]` on checkout sync.
+
+## 2026-08-30 — `pywin32` is a core Windows dependency (no `[windows]` extra)
+
+- **Context:** Install docs, installer specs, CI, and `sync-dev` all had to remember `--extra windows` / `srxy[…,windows]` just to get Explorer tag support.
+- **Decision:** (1) Add `pywin32>=312; platform_system == 'Windows'` to core `[project] dependencies`. (2) Drop the `[windows]` extra entirely (no empty stub). (3) Stop appending `[windows]` in `sync.py`, installer `package_extras_for_host`, CI, and docs; bump privacy notice to v7 (pywin32 listed under core).
+- **Rationale:** Platform markers install pywin32 only on Windows; end-user and agent commands drop a whole extra dimension.
+
+## 2026-08-30 — Linux `semantic-gpu` only with NVIDIA; CI stays semantic-free
+
+- **Context:** First cut of `sync-dev` always used `--extra semantic-gpu` on Linux. CI never needed torch extras for `core+gui+tui`.
+- **Decision:** (1) Linux matches Windows: `semantic-gpu` only when NVIDIA is detected (same skip envs). No GPU → `--extra semantic`. (2) Document that GitHub Actions keeps `uv sync --frozen` (no `[semantic]` / `[semantic-gpu]`); CI does not run the heavy suite.
+- **Rationale:** Avoid multi-GiB CUDA wheels on CPU-only Linux laptops; CI stays lean and already omitted semantic extras.
+
+## 2026-08-30 — Platform-aware `sync` / `sync-dev` / `sync-uploader` tasks
+
+- **Context:** Agents and docs kept repeating OS-specific `uv sync --extra …` recipes (`semantic-gpu` on GPU Linux/Windows, `semantic` on macOS / CPU-only). Easy to get wrong; Windows especially thrashes CPU↔CUDA torch without `semantic-gpu`.
+- **Decision:** (1) Add `scripts/dev/sync.py` (plus Unix `sync.sh` / Windows `sync.ps1`) that picks extras per platform and mode. (2) Taskipy: `sync` = runtime (`--no-default-groups`), `sync-dev` = default for agents/devs, `sync-uploader` = dev + `uploader`; keep `sync-win` as a `sync-dev` alias. (3) Document in README, AGENTS.md, development.md, installation.md; point copy-venv / gate missing-venv messages at `sync-dev`. (4) Do not extend `[tool.uv.sources]` to Linux — PyPI Linux torch is already CUDA; Windows keeps the pytorch-cu130 sources marker.
+- **Rationale:** One command per intent; fewer multi-GiB mistakes; shorter docs; copy-venv and gates stay aligned with the same extras.
+
 ## 2026-08-30 — copy-venv rewrites shebangs / editable `.pth` (uv sync is not enough)
 
 - **Context:** After rsync/robocopy of `.venv` into a worktree, console-script shebangs (`#!/primary/.venv/bin/python`), `srxy.pth`, and `direct_url.json` still point at the primary checkout. The quality gate prefers direct `.venv/bin/*` / `Scripts\*.exe` (`lib_uv_run` / `Get-VenvExe`), so worktree pytest executed **primary** Python and loaded **primary** `srxy`. `uv sync` does not rewrite those entry points ([astral-sh/uv#18196](https://github.com/astral-sh/uv/issues/18196)).

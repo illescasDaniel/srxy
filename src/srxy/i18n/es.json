@@ -149,7 +149,6 @@
   "privacy.deps_intro": "Estas bibliotecas de ejecución directas se instalan con srxy (o con extras opcionales) vía PyPI. Procesan archivos en tu equipo; la privacidad de instalación/descarga del índice está bajo PyPI arriba.",
   "privacy.deps_core_heading": "Núcleo",
   "privacy.deps_semantic_heading": "Opcional [semantic]",
-  "privacy.deps_windows_heading": "Opcional [windows]",
   "privacy.dep.use.cryptography": "Cifra la caché de búsqueda local en disco",
   "privacy.dep.use.exifread": "Lee metadatos EXIF/GPS/cámara de imágenes",
   "privacy.dep.use.jellyfish": "Coincidencia fonética (búsqueda «suena como»)",

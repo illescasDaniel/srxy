@@ -17,15 +17,26 @@ After writing or changing code, run the quality gate until it passes cleanly.
 
 `checks-win.ps1` mirrors the bash gate (same steps, buckets, lock file). Light verify steps and pytest buckets run **concurrently** on both platforms. ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Both gates apply a wall-clock watchdog to pytest (exit 124 on timeout); bash also has a stall (no-output) watchdog.
 
-Use the project env with `uv sync --extra semantic` (default `dev` dependency group); on Windows also `--extra windows`. On Windows + NVIDIA GPU prefer `uv run task sync-win` (`--extra semantic-gpu`) — see below.
+Use the project env with **`uv run task sync-dev`**. That task is platform-aware ([docs/development.md](docs/development.md#sync)):
 
-**Windows + NVIDIA GPU (required for fast heavy/semantic tests):** prefer `uv run task sync-win` (or `cmd /c scripts\dev\sync-win.cmd`). On NVIDIA machines it runs `uv sync --extra semantic-gpu --extra windows` so CUDA PyTorch (`+cu130`) comes from the lockfile via `[tool.uv.sources]`, then `scripts/dev/ensure-windows-cuda-torch.ps1` as a safety net. Bare `uv sync --extra semantic` without the GPU extra can still leave or restore a mismatched venv — use `sync-win`. Before a heavy gate, confirm:
+| OS | What `sync-dev` does |
+|----|----------------------|
+| Linux + NVIDIA | `uv sync --extra semantic`. `SRXY_SKIP_CUDA_TORCH=1` or empty `CUDA_VISIBLE_DEVICES` → no semantic extra |
+| Linux (no GPU) | `uv sync` (dev group only; no semantic) |
+| macOS Apple Silicon | `uv sync --extra semantic` (MPS) |
+| macOS Intel | `uv sync` (no semantic) |
+| Windows + NVIDIA | `uv sync --extra semantic`, then `ensure-windows-cuda-torch.ps1` |
+| Windows (no GPU) | `uv sync` (no semantic) |
+
+Variants: `uv run task sync` (runtime extras, **no** pytest/ruff), `uv run task sync-uploader` (dev + twine). `sync-win` is an alias of `sync-dev`. `[semantic]` is GPU-only (NVIDIA / Apple Silicon MPS). CI uses `uv sync --frozen` without semantic extras (no heavy suite). `pywin32` is a core Windows dependency (no `[windows]` extra).
+
+**Windows + NVIDIA GPU (required for fast heavy/semantic tests):** `sync-dev` pulls CUDA PyTorch (`+cu130`) from the lockfile via `[tool.uv.sources]`. Before a heavy gate, confirm:
 
 ```powershell
 .\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"
 ```
 
-Expect `+cu130` (or `+cu126`) and `True`. `+cpu` / `False` with an RTX GPU present means the venv is wrong — re-run `sync-win` / the ensure script (see [docs/development.md](docs/development.md) and [docs/installation.md](docs/installation.md#windows)). `checks-win.ps1` auto-runs the ensure script when the `heavy` bucket is selected (skipped in GitHub Actions / when `SRXY_SKIP_CUDA_TORCH=1`).
+Expect `+cu130` (or `+cu126`) and `True`. `+cpu` / `False` with an RTX GPU present means the venv is wrong — re-run `uv run task sync-dev` (see [docs/development.md](docs/development.md) and [docs/installation.md](docs/installation.md#windows)). `checks-win.ps1` auto-runs the ensure script when the `heavy` bucket is selected (skipped in GitHub Actions / when `SRXY_SKIP_CUDA_TORCH=1`).
 
 The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → ty → pip-audit → build → pytest buckets. Without `--fix`, light steps and pytest **overlap**.
 

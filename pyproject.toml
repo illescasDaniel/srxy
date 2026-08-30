@@ -26,26 +26,24 @@ dependencies = [
 	"textual>=3.0",
 	"wordfreq>=3.1",
 	"magika>=1.0.3",
+	# Explorer tags (System.Keywords). Marker keeps Linux/macOS installs lean.
+	"pywin32>=312; platform_system == 'Windows'",
 ]
 
 [project.optional-dependencies]
-# Text + image semantic search (sentence-transformers → PyTorch, CLIP, MiniLM).
+# Smarter search (sentence-transformers, CLIP, Whisper) + explicit torch stack.
+# Intended for machines with a GPU (CUDA on Linux/Windows, MPS on Apple Silicon).
+# On Windows, [tool.uv.sources] pulls torch*/cu130 from the PyTorch index for
+# checkout ``uv sync``; ``uv tool install`` still needs --with/--index for CUDA.
+# CI does not install this extra.
 semantic = [
 	"faster-whisper>=1.2",
 	"nvidia-cublas-cu12; platform_system == 'Linux' or platform_system == 'Windows'",
 	"rawpy>=0.27",
 	"sentence-transformers>=5.6",
-]
-# Windows/Linux GPU: CUDA PyTorch wheels. Use instead of [semantic] on GPU machines.
-# On Windows, [tool.uv.sources] pulls torch*/cu130 from the PyTorch index (not CPU PyPI).
-semantic-gpu = [
-	"srxy[semantic]",
 	"torch>=2.13",
 	"torchaudio>=2.11",
 	"torchvision>=0.28",
-]
-windows = [
-	"pywin32>=312",
 ]
 
 [dependency-groups]
@@ -192,6 +190,9 @@ source = ["srxy"]
 omit = ["tests/*"]
 
 [tool.taskipy.tasks]
+sync = { cmd = "python scripts/dev/sync.py", help = "platform-aware uv sync: runtime extras, no pytest/ruff/dev tools" }
+sync-dev = { cmd = "python scripts/dev/sync.py --dev", help = "platform-aware uv sync with the default dev group (GPU → semantic; else core+dev only)" }
+sync-uploader = { cmd = "python scripts/dev/sync.py --uploader", help = "platform-aware uv sync with dev + uploader (twine) groups" }
 cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
 tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
@@ -229,7 +230,7 @@ checks-core-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core", 
 checks-gui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,gui", help = "core+gui, agent-verbosity (Unix)" }
 checks-tui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,tui", help = "core+tui, agent-verbosity (Unix)" }
 checks-all-quiet = { cmd = "./scripts/quality/checks.sh --quiet --all", help = "all buckets, agent-verbosity (Unix)" }
-sync-win = { cmd = "cmd /c scripts\\dev\\sync-win.cmd", help = "Windows: uv sync --extra semantic-gpu (NVIDIA) or semantic + windows; ensure CUDA torch" }
+sync-win = { cmd = "python scripts/dev/sync.py --dev", help = "alias of sync-dev (kept for older docs / Windows muscle memory)" }
 checks-win = { cmd = "cmd /c scripts\\quality\\checks-win.cmd", help = "run quality gate (day-to-day; Windows; auto-scope)" }
 checks-win-fix = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Fix", help = "autofix then run quality gate (Windows)" }
 checks-win-full = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Full", help = "full local quality gate (pre-release; Windows)" }

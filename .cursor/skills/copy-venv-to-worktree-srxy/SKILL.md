@@ -49,9 +49,9 @@ executes the primary checkout's interpreter and loads primary `srxy`.
    - Uses `robocopy` to mirror `.venv`.
    - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url` /
      trampoline `UV_PYTHON_PATH`).
-   - Runs `uv run task sync-win` (NVIDIA GPU) or
-     `uv sync --extra semantic --extra windows --offline --reinstall-package srxy`
-     (no GPU). GPU path also re-registers the editable offline afterward.
+   - Runs `python scripts/dev/sync.py --dev --offline --reinstall-package srxy`
+     (platform extras + CUDA ensure on NVIDIA). If offline fails (e.g. primary
+     was synced without `semantic`), retries the same command online.
    - Verifies `srxy.__file__` is under the worktree `src/`, pytest runs, and
      prints torch version/CUDA check.
 
@@ -80,7 +80,9 @@ executes the primary checkout's interpreter and loads primary `srxy`.
    - Guards against running in the primary itself.
    - Uses `rsync` to mirror `.venv`.
    - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url`).
-   - Runs `uv sync --extra semantic --offline --reinstall-package srxy`.
+   - Runs `scripts/dev/sync.py --dev --offline --reinstall-package srxy`
+     (NVIDIA / Apple Silicon → `--extra semantic`; else core+dev only).
+     Retries online if offline fails.
    - Verifies pytest shebang points at this worktree's `.venv`,
      `srxy.__file__` is under worktree `src/`, and prints torch check.
 
@@ -95,7 +97,7 @@ executes the primary checkout's interpreter and loads primary `srxy`.
 |-----------|----------------------|
 | Running inside the primary checkout | Exits 0 with a clear message — nothing to copy from. |
 | Destination already has `.venv` | Warns and exits unless `--force` / `-Force` is passed. |
-| Source `.venv` is missing | Instructs the user to sync the primary checkout first (`uv sync --extra semantic` on Unix; `uv run task sync-win` on Windows), then retry. |
+| Source `.venv` is missing | Instructs the user to sync the primary checkout first (`uv run task sync-dev`), then retry. |
 | Primary checkout not found in worktree list | Aborts with a diagnostic message. |
 | `rsync` missing (Unix) | Aborts and asks to install `rsync`. |
 | Shebang / `srxy.__file__` still point at primary after rewrite | Exits non-zero — do not treat the copy as successful. |
