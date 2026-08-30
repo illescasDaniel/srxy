@@ -811,10 +811,15 @@ def _execute_file_search(
 
 	# Execution strategy selection (known before the walk — do not wait for a full list):
 	#
-	# THREAD pool — OCR / transcribe / CLIP inference
-	#   Per-file work runs outside Python for extended periods (Tesseract subprocess,
-	#   Whisper inference, CLIP inference), so the GIL is fully released and threads
-	#   give near-linear speedup.
+	# THREAD pool (heavy files only) — OCR / transcribe / CLIP inference
+	#   When any heavy mode is active, files that actually need OCR / transcribe / CLIP
+	#   are submitted to a ThreadPoolExecutor. Per-file work runs outside Python for
+	#   extended periods (Tesseract subprocess, Whisper, CLIP), so the GIL is released
+	#   and threads give near-linear speedup. Plain text / name / doc files are scored
+	#   inline on the walking thread so they are never FIFO-queued behind slow media
+	#   and keep streaming results / progress while OCR runs in the background.
+	#   Documents stay inline even with OCR on (most extract embedded text quickly;
+	#   scanned-page OCR inside a document may briefly block the walker for that file).
 	#
 	# PROCESS pool — large pure-text searches (no OCR / transcribe / CLIP)
 	#   Text-only matching (rapidfuzz, jellyfish, exact/partial string ops) is a mix
@@ -845,6 +850,15 @@ def _execute_file_search(
 	_may_use_processes = (
 		allow_process_pool and not _use_threads and max_workers != 1 and not _heavy and not _semantic_text
 	)
+
+	def _is_heavy_file(file_path: Path) -> bool:
+		if extractor.ocr_active(effective_ocr) and extractor.ocr_candidate_path(file_path):
+			return True
+		if extractor.transcribe_active(effective_transcribe) and extractor.transcribe_candidate_path(file_path):
+			return True
+		if images.is_active(effective_semantic_image) and images.is_image_path(file_path):
+			return True
+		return False
 
 	# Encode CLIP once up front when semantic image search is active so image hits can
 	# score as soon as they are discovered (no post-list scan for image paths).
@@ -1036,6 +1050,27 @@ def _execute_file_search(
 			_record_outcome(*future.result())
 		return still_pending
 
+	def _drain_completed_nonblocking(
+		pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]],
+		*,
+		pool: ThreadPoolExecutor | ProcessPoolExecutor | None = None,
+	) -> set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]]:
+		"""Collect finished heavy futures without waiting — keeps light-file throughput up."""
+		if not pending:
+			return pending
+		_check_cancel()
+		still_pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]] = set()
+		for future in pending:
+			if not future.done():
+				still_pending.add(future)
+				continue
+			if cancel_check is not None and cancel_check():
+				if pool is not None:
+					pool.shutdown(wait=False, cancel_futures=True)
+				raise SearchCancelled()
+			_record_outcome(*future.result())
+		return still_pending
+
 	def _iter_listed_paths() -> Iterator[Path]:
 		nonlocal listed
 		for file_path in walker.iter_files(
@@ -1057,20 +1092,24 @@ def _execute_file_search(
 
 	try:
 		if _use_threads:
-			pool = ThreadPoolExecutor(max_workers=max_workers)
-			pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]] = set()
+			heavy_pool = ThreadPoolExecutor(max_workers=max_workers)
+			heavy_pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]] = set()
 			try:
 				for file_path in _iter_listed_paths():
 					_check_cancel()
-					while len(pending) >= pending_limit:
-						pending = _drain_done(pending, pool=pool)
-					pending.add(pool.submit(_submit_file, file_path, activity=file_activity))
+					if _is_heavy_file(file_path):
+						while len(heavy_pending) >= pending_limit:
+							heavy_pending = _drain_done(heavy_pending, pool=heavy_pool)
+						heavy_pending.add(heavy_pool.submit(_submit_file, file_path, activity=file_activity))
+					else:
+						_record_outcome(*_submit_file(file_path, activity=file_activity))
+						heavy_pending = _drain_completed_nonblocking(heavy_pending, pool=heavy_pool)
 				listing_done = True
 				_catch_up_progress()
-				while pending:
-					pending = _drain_done(pending, pool=pool)
+				while heavy_pending:
+					heavy_pending = _drain_done(heavy_pending, pool=heavy_pool)
 			finally:
-				pool.shutdown(wait=True)
+				heavy_pool.shutdown(wait=True)
 		elif _may_use_processes:
 			buffer: list[Path] = []
 			proc_pool: ProcessPoolExecutor | None = None

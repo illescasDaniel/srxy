@@ -1286,9 +1286,10 @@ class SearchController(QObject):
 				return
 			self._activity = event.update
 			self._start_activity_spinner_if_needed()
-			if event.update.determinate and event.update.current is not None and event.update.total is not None:
-				total = max(event.update.total, 1)
-				self._set_progress_value(min(100.0, 100.0 * event.update.current / total), indeterminate=False)
+			# Per-file OCR page / transcribe segment percents belong in the status
+			# line only. Driving the search progress bar from them makes the bar
+			# jump to 100% mid-scan (last page of a PDF) then drop when the next
+			# file-level SearchProgressEvent arrives.
 			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
 			self._pending_results.append((event.result, event.labels))

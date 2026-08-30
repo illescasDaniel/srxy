@@ -286,22 +286,33 @@ def test_given_search_start_when_no_total_yet_then_progress_is_indeterminate(qap
 	assert float(controller.progress) == 0.0  # pyright: ignore[reportArgumentType]
 
 
-def test_given_determinate_activity_when_handling_event_then_updates_progress(qapp: QCoreApplication, tmp_path: Path):
+def test_given_determinate_activity_when_handling_event_then_status_shows_percent_not_bar(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	"""OCR page / transcribe segment % must not overwrite the file-scan progress bar."""
 	from PySide6.QtTest import QTest
+
+	from srxy.application.search_session import SearchProgressEvent
 
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchProgressEvent(current=95, total=100))
+	assert float(controller.progress) == 95.0  # pyright: ignore[reportArgumentType]
+	assert str(controller.progressCount) == "95/100"
+
 	controller.handle_search_event_for_tests(
-		SearchActivityEvent(ActivityUpdate(label="Transcribe · speech.mp3", current=25, total=100))
+		SearchActivityEvent(ActivityUpdate(label="OCR · scan.pdf", current=10, total=10))
 	)
 	QTest.qWait(300)
 	qapp.processEvents()
 
-	assert float(controller.progress) == 25.0  # pyright: ignore[reportArgumentType]
+	# File-scan bar stays put; page completion % only appears in status text.
+	assert float(controller.progress) == 95.0  # pyright: ignore[reportArgumentType]
+	assert str(controller.progressCount) == "95/100"
 	assert controller.progressIndeterminate is False
-	assert "25%" in str(controller.status)
-	assert "Transcribe · speech.mp3" in str(controller.status)
+	assert "100%" in str(controller.status)
+	assert "OCR · scan.pdf" in str(controller.status)
 	assert str(controller.activitySpinner) in ACTIVITY_SPINNER_FRAMES
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 

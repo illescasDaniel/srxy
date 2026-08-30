@@ -82,3 +82,13 @@ class DefaultTextExtractor:
 		from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_requested
 
 		return transcribe_requested(transcribe)
+
+	def ocr_candidate_path(self, path: Path) -> bool:
+		from srxy.adapters.outbound.ocr.ocr_text import is_ocr_image_path
+
+		return is_ocr_image_path(path)
+
+	def transcribe_candidate_path(self, path: Path) -> bool:
+		from srxy.adapters.outbound.transcribe.transcribe_text import is_transcribe_path
+
+		return is_transcribe_path(path)

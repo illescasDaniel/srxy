@@ -262,3 +262,57 @@ def test_given_heavy_thread_pool_when_scoring_images_then_emits_per_file_clip_ac
 	labels = {activity.label for activity in activities if activity is not None}
 	assert "CLIP · left.png" in labels or "CLIP · right.png" in labels
 	assert activities[-1] is None
+
+
+def test_given_heavy_pool_when_mixed_light_and_heavy_then_text_result_not_blocked_by_image(
+	tmp_path: Path,
+):
+	"""Plain-text files must score inline — never FIFO-queued behind in-flight CLIP/OCR."""
+	import threading
+	from unittest.mock import patch
+
+	image_path = tmp_path / "photo.png"
+	text_path = tmp_path / "notes.txt"
+	image_path.write_bytes(b"png")
+	text_path.write_text("needle in haystack\n", encoding="utf-8")
+	# Heavy file first so a FIFO-all-files pool would stall the text file.
+	walker = _FakeWalker([image_path, text_path])
+	release = threading.Event()
+	text_seen = threading.Event()
+	seen: list[str] = []
+
+	def on_result(result: FileSearchResult):
+		seen.append(result.path.name)
+		if result.path.name == "notes.txt":
+			text_seen.set()
+
+	def blocked_score(*_args, **_kwargs) -> float:
+		# Wait until the light file has already produced a result — proves
+		# text search did not sit behind this heavy future in the pool queue.
+		if not text_seen.wait(timeout=5):
+			raise TimeoutError("light text result never arrived while CLIP was blocked")
+		release.set()
+		return 0.9
+
+	with (
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", side_effect=blocked_score),
+	):
+		results = FileSearchUseCase(file_walker=walker).search(
+			tmp_path,
+			"needle",
+			search_names=False,
+			search_contents=True,
+			search_docs_tags=True,
+			semantic_image=True,
+			on_result=on_result,
+			max_workers=2,
+			threshold=0.3,
+			semantic_image_threshold=0.3,
+		)
+
+	assert "notes.txt" in seen
+	assert seen[0] == "notes.txt"
+	assert release.is_set()
+	assert any(result.path.name == "notes.txt" for result in results)

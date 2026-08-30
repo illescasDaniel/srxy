@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — Search progress bar is file-scan only (not OCR page / transcribe segment %)
+
+- **Context:** Searching Pictures with OCR, the progress bar could jump to 100% while status still showed `OCR · …`, then drop to ~95%. Document OCR (and transcribe) emit determinate activity with `current/total` for pages/segments; the GUI also fed those ratios into the same progress bar used for files completed / files listed.
+- **Decision:** `SearchActivityEvent` updates status/spinner only. The determinate search progress bar and `progressCount` come solely from `SearchProgressEvent` (and terminal finished/cancel). Page/segment percent remains visible in the status line via `format_activity_status_body` (`100% OCR · scan.pdf`).
+- **Rationale:** Mixing two independent ratios on one bar guarantees non-monotonic jumps whenever an in-file counter finishes ahead of the outer file counter.
+
+## 2026-08-30 — Heavy-mode search: light files inline, OCR/transcribe/CLIP in thread pool
+
+- **Context:** With OCR (or transcribe/CLIP) on, every discovered file — including plain `.txt` — went into the same `ThreadPoolExecutor`. FIFO queueing meant text scoring sat behind in-flight OCR workers, so progress looked frozen on the image being OCRed even though fast files were waiting.
+- **Decision:** (1) Classify paths with `ocr_candidate_path` / `transcribe_candidate_path` (TextExtractorPort) plus existing `is_image_path`. (2) When `_use_threads`, score light files synchronously on the walking thread; submit only heavy candidates to the pool. (3) Non-blocking drain of completed heavy futures between light files; blocking drain at `pending_limit` and after listing. Documents stay inline even with OCR (embedded text is usually cheap; scanned-page OCR is a known follow-up).
+- **Rationale:** Keeps streaming results/progress for text while heavy media runs in parallel; avoids GIL thrashing from putting pure-text matching on the same thread pool as OCR.
+
 ## 2026-08-30 — Concurrent search activity fan-in + early `0/N` progress
 
 - **Context:** OCR searches on small folders (e.g. 2 files in Downloads) left the GUI stuck on “Searching…” with no `1/2` counts and no `OCR · filename` labels. Sticky `activity.searching` blocked `status.scanning`; `_catch_up_progress` skipped `completed == 0`; heavy GUI/TUI searches use a thread pool that omitted `on_activity` to avoid overlapping labels.

@@ -56,13 +56,18 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] `pywin32` core Windows dependency (`platform_system == 'Windows'`); dropped `[windows]` extra; installer/sync/CI/docs simplified.
 - [x] Collapse extras: single GPU-oriented `[semantic]` (former `semantic-gpu`); drop CPU semantic + `semantic-gpu` name; README no “Fast CPU, no GPU”.
 - [x] Search progress UX — emit `0/N` when listing finishes; thread-pool fan-in for per-file OCR/CLIP/transcribe activity; GUI/TUI sticky Searching yields to Scanning N/M. Applied from worktree `cursor/5ebdc811`.
+- [x] Parallel light + heavy search — OCR/transcribe/CLIP candidates use the thread pool; plain text/name/doc files score inline so results keep streaming during OCR. Port predicates `ocr_candidate_path` / `transcribe_candidate_path`; mixed streaming unit test.
+- [x] Progress bar non-monotonic during OCR — GUI no longer maps determinate activity (page/segment %) onto the file-scan progress bar; status line still shows `N% OCR · file`.
 
 ### Open
 
+- [ ] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active.
+- [ ] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media.
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
 - [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
+- [ ] Optional follow-up: treat scanned documents that trigger per-page OCR as heavy (currently stay inline).
 - [ ] `/delete-worktree-srxy` for `cursor/5ebdc811` (`hh32`) when ready.
 
 ## Bugs / sub-tasks discovered
