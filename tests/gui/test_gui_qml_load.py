@@ -165,6 +165,69 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	qapp.processEvents()
 
 
+def _icon_image_colors(content_item: QObject) -> list[str]:
+	return [
+		_color_name(QQmlProperty(child, "color").read())
+		for child in content_item.children()
+		if child.metaObject().className() == "QQuickIconImage"
+	]
+
+
+def test_given_accented_search_button_when_loaded_then_label_and_glyph_match_dialog_ok(
+	qapp: QCoreApplication,
+):
+	"""Search must not paint its own label/glyph colour beside a differently-coloured OK.
+
+	Material/Fluent/Universal compute their own highlighted text colour and
+	ignore ``palette.buttonText``, so ``AccentButton.foreground`` (our WCAG pick)
+	can disagree with what the style actually draws — Linux Material gave a white
+	OK label next to a black Search label and glyph. The Search button must keep
+	the style's IconLabel and let ``defaultIconColor`` tint the glyph.
+	"""
+	# given
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	srxy_theme = apply_qt_quick_theme(qapp)
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+
+	# when — a query makes Search enabled; it is accented until a search runs
+	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
+	roots = engine.rootObjects()
+	assert roots
+	window = roots[0]
+	window.setProperty("visible", True)
+	QQmlProperty(window.findChild(QObject, "simpleQueryField"), "text").write("hello")
+	qapp.processEvents()
+
+	# then
+	search_button = window.findChild(QObject, "searchButton")
+	assert QQmlProperty(search_button, "enabled").read() is True
+	assert QQmlProperty(search_button, "highlighted").read() is True
+	search_label = QQmlProperty(search_button, "contentItem").read()
+	assert isinstance(search_label, QObject)
+	search_color = _color_name(QQmlProperty(search_label, "color").read())
+	assert _icon_image_colors(search_label) == [search_color]
+
+	dialog = window.findChild(QObject, "optionsDialog")
+	dialog.open()
+	qapp.processEvents()
+	ok_label = QQmlProperty(window.findChild(QObject, "optionsOkButton"), "contentItem").read()
+	assert isinstance(ok_label, QObject)
+	assert search_color == _color_name(QQmlProperty(ok_label, "color").read())
+	dialog.close()
+	qapp.processEvents()
+
+	controller.shutdown(thread_wait_ms=500)
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+
+
 def test_given_results_when_running_a_new_search_then_no_delegate_model_warning(
 	qapp: QCoreApplication,
 	tmp_path: Path,

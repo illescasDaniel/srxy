@@ -51,6 +51,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 - [x] GUI heavy-search freeze — subprocess isolation (no GIL on Qt thread), no process pool for light worker searches, stream-append + sort-on-finish, coalesced status/list updates, lighter results delegates; `profile-gui-freeze.sh` helper. User confirmed buttery UI (`c20d4dc`).
 - [x] Activity spinner via separate `activitySpinner` property; progress bar indeterminate until file total known, then 0–100%. Docs + `memory/decisions.md` annotated.
+- [x] Search button label/icon colour now matches the dialogs' OK button — dropped the hand-tinted custom `contentItem` (and the `Qt5Compat.GraphicalEffects` import, which packaging already prunes); `AccentButton` pins `palette.brightText` and only assigns `icon.color` on macOS. Regression test in `test_gui_qml_load.py`; gate passed.
 
 ### Open
 
@@ -73,3 +74,5 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Dialog OK buttons dark in dark mode — `DialogButtonBox` (FluentWinUI3) forces `highlighted` off on child buttons, so `AccentButton`'s `fillColor`/`foreground` fell back to `palette.button` (5.8%-alpha white → dark). Fixed by decoupling accent state into an explicit `accent` bool (default true) in `AccentButton.qml`; Search button toggles `accent` for the stale state; added `optionsOkButton`/`filtersOkButton` objectNames + a regression test asserting accent fill/foreground. Gate passed.
 - [x] GUI freezes every few hundred ms on heavy progressive search — in-process QThread scoring held the GIL; status spinner/`statusChanged` and mid-list inserts amplified ListView lag. Fixed via subprocess isolation + stream-append + coalescing; process pools disabled for light worker searches (fork storm).
 - [x] Frozen (non-animating) activity spinner after status coalesce — glyph now lives on `activitySpinner`; status body stays coalesced. Progress bar indeterminate until scan total exists.
+- [x] Linux/Material: black Search label + black magnifier glyph next to a white dialog OK label — Material ignores `palette.buttonText` and paints `primaryHighlightedTextColor`, while the Search button hand-tinted its own `contentItem` from the WCAG `foreground`. Fixed by letting the style's `IconLabel` paint label and icon (`defaultIconColor`), pinning `palette.brightText` for Fusion/Basic, and gating `icon.color` to macOS only.
+- [x] Latent packaging bug: `Main.qml` imported `Qt5Compat.GraphicalEffects`, but both the macOS and Linux AppImage prune scripts delete that QML module — removed with the `ColorOverlay` tint.

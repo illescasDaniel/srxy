@@ -2,7 +2,6 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
-import Qt5Compat.GraphicalEffects
 import SrxyControls
 
 ApplicationWindow {
@@ -527,56 +526,13 @@ ApplicationWindow {
 											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
 											focusPolicy: Qt.NoFocus
-											readonly property bool useNativeIconLabel: Qt.platform.os === "osx"
 											text: root.t("gui.search")
-											// macOS rejects a custom contentItem; use the style IconLabel there.
-											// Material/Fluent on Linux often leave stroke SVGs untinted via icon.color —
-											// ColorOverlay forces the icon to match ``foreground`` (same as the label).
-											icon.source: useNativeIconLabel ? "images/search.svg" : ""
-											icon.color: searchButton.foreground
+											// Keep the style's own IconLabel: it paints the label, and
+											// AccentButton leaves ``icon.color`` unassigned so the glyph
+											// follows ``defaultIconColor`` (same colour as the dialogs' OK).
+											icon.source: "images/search.svg"
 											icon.width: 16
 											icon.height: 16
-											Component.onCompleted: {
-												if (!useNativeIconLabel)
-													contentItem = searchTintedContent.createObject(searchButton)
-											}
-											Component {
-												id: searchTintedContent
-												Item {
-													implicitWidth: searchRow.implicitWidth
-													implicitHeight: Math.max(16, searchLabel.implicitHeight)
-													Row {
-														id: searchRow
-														anchors.centerIn: parent
-														spacing: searchButton.spacing
-														Item {
-															width: 16
-															height: 16
-															anchors.verticalCenter: parent.verticalCenter
-															Image {
-																id: searchIconImage
-																anchors.fill: parent
-																source: "images/search.svg"
-																sourceSize.width: 16
-																sourceSize.height: 16
-																visible: false
-															}
-															ColorOverlay {
-																anchors.fill: parent
-																source: searchIconImage
-																color: searchButton.foreground
-															}
-														}
-														Text {
-															id: searchLabel
-															text: searchButton.text
-															font: searchButton.font
-															color: searchButton.foreground
-															verticalAlignment: Text.AlignVCenter
-														}
-													}
-												}
-											}
 											onClicked: if (controller) controller.startSearch()
 										}
 										ToolButton {

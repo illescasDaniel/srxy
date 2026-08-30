@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — AccentButton icons follow the style's label colour, not our WCAG `foreground`
+
+- **Context:** On Linux/Material the Options dialog OK button drew white text while the Search button drew a black label *and* a black magnifier glyph. Material/Fluent/Universal compute their own highlighted label colour (`Material.primaryHighlightedTextColor`) and ignore `palette.buttonText`, so our WCAG `contrast_text_on(#3daee9) == #000000` only reached the Search button — which replaced its `contentItem` with a hand-tinted `Row { ColorOverlay; Text }`.
+- **Decision:** (1) Drop the Search button's custom `contentItem`/`ColorOverlay` (and the now-unused `Qt5Compat.GraphicalEffects` import in `Main.qml`); use plain `text` + `icon.source` so the style's own `IconLabel` paints both. (2) `AccentButton` also pins `palette.brightText: foreground`, because Fusion/Basic tint icons from `brightText` while drawing the label from `buttonText`. (3) `icon.color` is assigned **only** on macOS, via `Binding { when: Qt.platform.os === "osx" }` — Aqua predates `defaultIconColor`, but on every other style the role must stay *unresolved*: `QQuickIconLabel` falls back to `defaultIconColor` only when `icon.color` was never set, so even `"transparent"` strands the glyph untinted.
+- **Rationale:** Matching the style beats out-computing it — the OK button was already the style's own colour, so the only way for Search to agree was to stop overriding. Reading the painted colour back (`contentItem.color`) was tried and rejected: `QQuickIconLabel::color` is non-bindable, so the value froze at creation. Also removes a latent packaging bug — both `packaging/macos/prune-pyside.sh` and `packaging/linux-appimage/prune_pyside.sh` already delete the `Qt5Compat` QML module that `Main.qml` imported. Regression test asserts the Search label, its `QQuickIconImage` tint, and the dialog OK label are all the same colour.
+
 ## 2026-08-30 — copy-venv rewrites shebangs / editable `.pth` (uv sync is not enough)
 
 - **Context:** After rsync/robocopy of `.venv` into a worktree, console-script shebangs (`#!/primary/.venv/bin/python`), `srxy.pth`, and `direct_url.json` still point at the primary checkout. The quality gate prefers direct `.venv/bin/*` / `Scripts\*.exe` (`lib_uv_run` / `Get-VenvExe`), so worktree pytest executed **primary** Python and loaded **primary** `srxy`. `uv sync` does not rewrite those entry points ([astral-sh/uv#18196](https://github.com/astral-sh/uv/issues/18196)).

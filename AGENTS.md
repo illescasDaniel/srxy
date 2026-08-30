@@ -85,7 +85,11 @@ Run the full local gate (`./scripts/quality/checks.sh`) so integration, TUI, and
 
 ### Primary / accent CTAs
 
-Primary actions (Search, dialog OK/Yes, installer Launch, and similar) must use shared [`AccentButton`](src/srxy/adapters/inbound/shared/qml/SrxyControls/AccentButton.qml) from the `SrxyControls` module — not `Button { highlighted: true }` with hand-picked label colours. `AccentButton` paints the system accent fill and WCAG black/white `foreground` from the `srxyTheme` context property (set in GUI/installer `app.py` after `apply_qt_quick_theme`). Custom icon+text content must bind colours to `foreground`. Ordinary secondary actions stay plain `Button` / `ToolButton`.
+Primary actions (Search, dialog OK/Yes, installer Launch, and similar) must use shared [`AccentButton`](src/srxy/adapters/inbound/shared/qml/SrxyControls/AccentButton.qml) from the `SrxyControls` module — not `Button { highlighted: true }` with hand-picked label colours. `AccentButton` paints the system accent fill and feeds the WCAG black/white `foreground` from the `srxyTheme` context property (set in GUI/installer `app.py` after `apply_qt_quick_theme`) into `palette.buttonText` / `palette.brightText`, which is all the styles that honour those roles need.
+
+Do **not** give an `AccentButton` a custom `contentItem`, and do not set `icon.color` on one. Material, FluentWinUI3, and Universal compute their own highlighted label colour and ignore `palette.buttonText`, so hand-tinting to `foreground` puts a black Search label and glyph next to a white dialog OK label. Use plain `text` + `icon.source` and let the style's `IconLabel` paint both: it tints icons from `defaultIconColor`, which every style except Fusion/Basic (covered by `palette.brightText`) sets to its own label colour. Note that `icon.color` must stay *unassigned* — even writing `"transparent"` resolves the role and strands the glyph untinted.
+
+Ordinary secondary actions stay plain `Button` / `ToolButton`.
 
 ### Qt Quick Controls theming (platform pitfalls)
 

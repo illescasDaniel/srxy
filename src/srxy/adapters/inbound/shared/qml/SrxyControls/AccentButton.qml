@@ -28,9 +28,8 @@ Button {
 		colorGroup: control.enabled ? SystemPalette.Active : SystemPalette.Disabled
 	}
 
-	// Used by the Search button's icon tint (``icon.color``) so it matches the
-	// accent contrast colour. Plain dialog/launch buttons render their label
-	// through the style's own highlighted text colour instead.
+	// WCAG label colour for the styles that read it (see palette assignments):
+	// onAccent when accented, contrast-on-face otherwise.
 	readonly property color foreground: {
 		if (!control.enabled)
 			return refPalette.placeholderText
@@ -44,8 +43,28 @@ Button {
 
 	// The macOS DefaultButton and Fusion IconLabels draw the label with
 	// ``palette.buttonText`` even when highlighted (black on the accent bevel).
-	// Overriding it makes the label follow ``foreground`` (onAccent when accent,
-	// contrast on the button face otherwise). Fluent/Material/Universal compute
-	// their own highlighted text colours and ignore this role.
+	// Overriding it makes the label follow ``foreground``. Fluent/Material/
+	// Universal compute their own highlighted text colours and ignore this role
+	// — so their labels stay whatever the style paints, and any icon must follow
+	// that same colour rather than ``foreground`` (see below).
 	palette.buttonText: control.foreground
+
+	// Icons are tinted from the IconLabel's ``defaultIconColor``, which every
+	// style except Fusion/Basic sets to the exact colour it paints on the label.
+	// Those two use ``palette.brightText`` while highlighted, so pin it too or a
+	// glyph would disagree with the label beside it.
+	palette.brightText: control.foreground
+
+	// macOS Aqua predates ``defaultIconColor`` and leaves icons untinted, which
+	// renders an alpha-only template SVG as opaque white. Everywhere else
+	// ``icon.color`` must stay *unassigned*: IconLabel only falls back to
+	// ``defaultIconColor`` while the role is unresolved, so even writing
+	// ``"transparent"`` would strand the glyph untinted.
+	Binding {
+		target: control
+		property: "icon.color"
+		value: control.foreground
+		when: Qt.platform.os === "osx"
+		restoreMode: Binding.RestoreBinding
+	}
 }
