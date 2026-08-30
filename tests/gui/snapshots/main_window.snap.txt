@@ -21,8 +21,9 @@ mainWindow:
   canSearch: False
   buttons: Browse…, Search, Options, Filters, Cancel
   menus: Open file, Copy path, Copy all matches, Copy line, Copy location
+  settingsMenu: Download All Models…, Reset Cache…, Reset All Settings…, All Settings…
   helpMenu: About srxy…, Check for updates…, Language (English / Español)
-  dialogs: About srxy, Update srxy, About this setting, Download model, Downloading…, Error, Search warnings
+  dialogs: All Settings, About srxy, Update srxy, About this setting, Download model, Downloading…, Error, Search warnings
   panels: Results, Matches in file, File preview
   resultColumns: #, Match, Path, Matched
   matchColumns: #, Match, Location, Text

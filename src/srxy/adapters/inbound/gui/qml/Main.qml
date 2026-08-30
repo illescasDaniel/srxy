@@ -19,13 +19,86 @@ ApplicationWindow {
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
+	property int settingsRev: 0
+	property var settingsData: ({
+		models: [],
+		cache: { path: "", present: false, statusText: "", pathLabel: "" },
+		preferences: { path: "", present: false, statusText: "", pathLabel: "" },
+		busy: false
+	})
 
 	// Keep platform-native checkbox rendering (especially on macOS).
 	component StyledCheckBox: CheckBox {}
 
+	component SettingsModelRow: RowLayout {
+		required property string kind
+		readonly property var row: root.settingsModelRow(kind)
+		readonly property bool busy: !!(root.settingsData && root.settingsData.busy)
+		spacing: 8
+		ColumnLayout {
+			Layout.fillWidth: true
+			spacing: 2
+			Label {
+				text: row.label
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+			}
+			Label {
+				text: row.statusText
+				opacity: 0.75
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+			}
+		}
+		Button {
+			objectName: "settingsClear_" + kind
+			text: kind === "all"
+				? root.t("settings.action.clear_all")
+				: root.t("settings.action.clear")
+			enabled: !!row.installed && !busy
+			onClicked: if (controller) controller.confirmClearModel(kind)
+		}
+		Button {
+			objectName: "settingsRedownload_" + kind
+			text: kind === "all"
+				? root.t("settings.action.redownload_all")
+				: (row.installed
+					? root.t("settings.action.redownload")
+					: root.t("settings.action.download"))
+			enabled: !busy
+			onClicked: if (controller) controller.redownloadModel(kind)
+		}
+	}
+
 	function t(key) {
 		const _ = root.langRev
 		return controller ? controller.i18nTr(key) : key
+	}
+
+	function reloadSettingsData() {
+		const _ = root.settingsRev
+		if (!controller)
+			return
+		try {
+			root.settingsData = JSON.parse(controller.settingsJson)
+		} catch (e) {
+			root.settingsData = {
+				models: [],
+				cache: { path: "", present: false, statusText: "", pathLabel: "" },
+				preferences: { path: "", present: false, statusText: "", pathLabel: "" },
+				busy: false
+			}
+		}
+	}
+
+	function settingsModelRow(kind) {
+		const data = root.settingsData
+		const models = data && data.models ? data.models : []
+		for (let i = 0; i < models.length; i++) {
+			if (models[i].kind === kind)
+				return models[i]
+		}
+		return { kind: kind, label: kind, installed: false, statusText: "", path: "" }
 	}
 
 	Connections {
@@ -33,11 +106,40 @@ ApplicationWindow {
 		function onLanguageChanged() {
 			root.langRev++
 		}
+		function onSettingsUiChanged() {
+			root.settingsRev++
+			root.reloadSettingsData()
+		}
 	}
 
 	onLightThemeChanged: if (controller) controller.setPreviewTheme(root.lightTheme)
 	menuBar: MenuBar {
 		objectName: "helpMenuBar"
+		Menu {
+			title: root.t("menu.settings")
+			objectName: "settingsMenu"
+			Action {
+				objectName: "downloadAllModelsAction"
+				text: root.t("menu.settings.download_all")
+				onTriggered: if (controller) controller.confirmDownloadAllModels()
+			}
+			Action {
+				objectName: "resetCacheAction"
+				text: root.t("menu.settings.reset_cache")
+				onTriggered: if (controller) controller.confirmClearCache()
+			}
+			Action {
+				objectName: "resetPreferencesAction"
+				text: root.t("menu.settings.reset_preferences")
+				onTriggered: if (controller) controller.confirmResetPreferences()
+			}
+			MenuSeparator {}
+			Action {
+				objectName: "settingsAction"
+				text: root.t("menu.settings.open")
+				onTriggered: if (controller) controller.openSettings()
+			}
+		}
 		Menu {
 			title: root.t("menu.help")
 			objectName: "helpMenu"
@@ -1489,6 +1591,150 @@ ApplicationWindow {
 	}
 
 	Dialog {
+		id: settingsDialog
+		objectName: "settingsDialog"
+		title: root.t("settings.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(640, parent.width - 40)
+		height: Math.min(560, parent.height - 40)
+		visible: controller && controller.settingsOpen
+		onOpened: root.reloadSettingsData()
+		onClosed: if (controller) controller.closeSettings()
+		footer: DialogButtonBox {
+			Button {
+				text: root.t("common.close")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: settingsDialog.accept()
+			}
+		}
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ColumnLayout {
+				width: settingsDialog.availableWidth - 24
+				spacing: 12
+
+				Label {
+					text: root.t("settings.section.models")
+					font.bold: true
+					Layout.fillWidth: true
+				}
+
+				SettingsModelRow {
+					kind: "semantic_text"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "semantic_image"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "transcribe"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "all"
+					Layout.fillWidth: true
+				}
+
+				Label {
+					text: root.t("settings.section.cache")
+					font.bold: true
+					Layout.topMargin: 8
+					Layout.fillWidth: true
+				}
+
+				Label {
+					text: root.settingsData && root.settingsData.cache
+						? root.settingsData.cache.pathLabel
+						: ""
+					wrapMode: Text.WrapAnywhere
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.cache
+						? root.settingsData.cache.statusText
+						: ""
+					opacity: 0.75
+					Layout.fillWidth: true
+				}
+				Button {
+					objectName: "settingsClearCache"
+					text: root.t("settings.action.clear_cache")
+					enabled: !!(root.settingsData && root.settingsData.cache
+						&& root.settingsData.cache.present
+						&& !root.settingsData.busy)
+					Layout.alignment: Qt.AlignLeft
+					onClicked: if (controller) controller.confirmClearCache()
+				}
+
+				Label {
+					text: root.t("settings.section.preferences")
+					font.bold: true
+					Layout.topMargin: 8
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.preferences
+						? root.settingsData.preferences.pathLabel
+						: ""
+					wrapMode: Text.WrapAnywhere
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.preferences
+						? root.settingsData.preferences.statusText
+						: ""
+					opacity: 0.75
+					Layout.fillWidth: true
+				}
+				Button {
+					objectName: "settingsResetPreferences"
+					text: root.t("settings.action.reset_preferences")
+					enabled: !!(root.settingsData && root.settingsData.preferences
+						&& root.settingsData.preferences.present)
+					Layout.alignment: Qt.AlignLeft
+					onClicked: if (controller) controller.confirmResetPreferences()
+				}
+			}
+		}
+	}
+
+	Dialog {
+		id: settingsConfirmDialog
+		objectName: "settingsConfirmDialog"
+		title: root.t("settings.confirm.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(480, parent.width - 40)
+		closePolicy: Popup.NoAutoClose
+		footer: DialogButtonBox {
+			defaultButton: settingsConfirmYes
+			Button {
+				text: root.t("common.no")
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: settingsConfirmDialog.reject()
+			}
+			AccentButton {
+				id: settingsConfirmYes
+				text: root.t("common.yes")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: settingsConfirmDialog.accept()
+			}
+		}
+		Label {
+			wrapMode: Text.WrapAnywhere
+			width: settingsConfirmDialog.availableWidth > 0
+				? settingsConfirmDialog.availableWidth - 24
+				: 456
+			text: controller ? controller.settingsConfirmMessage : ""
+		}
+		onAccepted: if (controller) controller.acceptSettingsConfirm()
+		onRejected: if (controller) controller.rejectSettingsConfirm()
+	}
+
+	Dialog {
 		id: aboutDialog
 		objectName: "aboutDialog"
 		title: root.t("about.title")
@@ -1668,6 +1914,12 @@ ApplicationWindow {
 				downloadProgressDialog.open()
 			else
 				downloadProgressDialog.close()
+		}
+		function onSettingsConfirmChanged() {
+			if (controller && controller.settingsConfirmOpen)
+				settingsConfirmDialog.open()
+			else
+				settingsConfirmDialog.close()
 		}
 		function onCapabilitiesChanged() {
 			loadOptionsFromController()

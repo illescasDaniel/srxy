@@ -8,23 +8,23 @@ _Last updated: 2026-08-30_
 
 ## Current focus
 
-Fixed: **Progress bar 100%→95% during OCR** — GUI was driving the search progress bar from determinate activity (OCR page / transcribe segment %). Last page of a PDF set the bar to 100%, then the next file-scan event dropped it. Activity now updates status only; the bar follows file `current/total` only.
-
-## Touched
-
-- `src/srxy/adapters/inbound/gui/controller.py` — stop activity from setting progress bar
-- `tests/gui/test_gui_controller.py` — regression: OCR 10/10 must not overwrite 95/100 file progress
-- `memory/*`
+Applied from worktree `cursor/5852d6f1`: **GUI Settings menu** — Download All Models / Reset Cache / Reset All Settings + **All Settings…** dialog (models, cache, preferences/`settings.json` reset).
 
 ## Prior (same branch)
 
-- Parallel light + heavy search (text inline, OCR/CLIP/transcribe in pool)
+- Progress bar is file-scan only (activity/OCR page % no longer drives the bar).
+- Parallel light + heavy search (text inline, OCR/CLIP/transcribe in pool).
 
-## Verified
+## Touched (this apply)
 
-- `./scripts/quality/checks.sh --quiet --fix` then `--quiet` — **PASSED** (gui 66 incl. new regression).
+- `src/srxy/application/settings.py` (`reset_settings`), `disk_usage.py`, `settings_maintenance.py`
+- `src/srxy/adapters/inbound/gui/controller.py`, `qml/Main.qml`
+- `src/srxy/i18n/en.json`, `es.json`
+- `docs/power-ups.md`, tests, `memory/*`
 
 ## Next steps
 
-1. User visual check: OCR search on a folder with a multi-page PDF + other files — bar should only follow files; status may show `100% OCR · doc.pdf` without yanking the bar.
-2. Manual QA leftovers (mixed light/heavy streaming, installers).
+1. Finish merge quality gate on parent.
+2. Manual GUI check: Settings menu shortcuts + All Settings dialog.
+3. Manual QA leftovers (OCR progress bar, mixed light/heavy streaming, installers).
+4. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.

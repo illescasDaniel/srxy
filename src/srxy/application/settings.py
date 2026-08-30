@@ -68,12 +68,36 @@ def set_language_setting(language: str):
 	os.environ["SRXY_LANGUAGE"] = code
 
 
+def reset_settings() -> bool:
+	"""Delete persisted settings.json and clear the language env override.
+
+	Returns True if a settings file was removed. Does not write a new file;
+	callers should re-resolve language from the system locale afterward.
+	"""
+	path = settings_path()
+	removed = False
+	if path.is_file():
+		try:
+			path.unlink()
+			removed = True
+		except OSError:
+			pass
+	os.environ.pop("SRXY_LANGUAGE", None)
+	return removed
+
+
+def settings_file_present() -> bool:
+	return settings_path().is_file()
+
+
 __all__ = [
 	"DEFAULT_LANGUAGE",
 	"SUPPORTED_LANGUAGES",
 	"get_language_setting",
 	"load_settings",
+	"reset_settings",
 	"save_settings",
 	"set_language_setting",
+	"settings_file_present",
 	"settings_path",
 ]

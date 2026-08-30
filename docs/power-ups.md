@@ -97,6 +97,8 @@ Custom model paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PA
 
 Upgrading from older srxy versions clears unencrypted cache entries on first open (schema v2).
 
+In the GUI, **Settings** offers quick actions (**Download All Models**, **Reset Cache**, **Reset All Settings**) plus **All Settings…** for per-model clear/re-download and cache/preferences details. The CLI scripts below remain available for scripting and troubleshooting.
+
 ### Clear downloaded models
 
 Removes model weights only. Models re-download on next use (or run [Model prefetch](#model-prefetch) again).
