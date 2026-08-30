@@ -1701,7 +1701,7 @@ ApplicationWindow {
 		modal: true
 		anchors.centerIn: parent
 		width: Math.min(520, parent.width - 40)
-		visible: controller && controller.updateDialogOpen
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		closePolicy: controller && controller.updateBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
 		onClosed: if (controller) controller.closeUpdateDialog()
 		footer: DialogButtonBox {
@@ -1741,7 +1741,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: Math.min(640, parent.width - 40)
 		height: Math.min(560, parent.height - 40)
-		visible: controller && controller.settingsOpen
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		onOpened: root.reloadSettingsData()
 		onClosed: if (controller) controller.closeSettings()
 		footer: DialogButtonBox {
@@ -1886,7 +1886,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: Math.min(560, parent.width - 40)
 		height: Math.min(520, parent.height - 40)
-		visible: controller && controller.aboutOpen
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		onClosed: if (controller) controller.closeAbout()
 		ScrollView {
 			anchors.fill: parent
@@ -2058,11 +2058,29 @@ ApplicationWindow {
 			else
 				downloadProgressDialog.close()
 		}
+		function onSettingsUiChanged() {
+			if (controller && controller.settingsOpen)
+				settingsDialog.open()
+			else
+				settingsDialog.close()
+		}
 		function onSettingsConfirmChanged() {
 			if (controller && controller.settingsConfirmOpen)
 				settingsConfirmDialog.open()
 			else
 				settingsConfirmDialog.close()
+		}
+		function onAboutUiChanged() {
+			if (controller && controller.aboutOpen)
+				aboutDialog.open()
+			else
+				aboutDialog.close()
+		}
+		function onUpdateUiChanged() {
+			if (controller && controller.updateDialogOpen)
+				updateDialog.open()
+			else
+				updateDialog.close()
 		}
 		function onCapabilitiesChanged() {
 			loadOptionsFromController()
