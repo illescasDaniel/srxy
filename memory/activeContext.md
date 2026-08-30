@@ -18,15 +18,14 @@ Just finished: **merge of GUI search freeze fixes** into the parent branch — s
 - `docs/gui.md`, `memory/*`, Magika/preview/content-kind path from the same worktree branch
 - `scripts/dev/profile-gui-freeze.sh`
 
-## Verified (worktree before apply)
+## Verified
 
-- Freeze/perf commit: `c20d4dc`; spinner/progress: `439995a`; preview scrollbar: `04197c6`
+- Freeze/perf: `c20d4dc`; spinner/progress: `439995a`; preview scrollbar: `04197c6`
 - User confirmed buttery-smooth scrolling/UI after freeze fixes
-- Parent quality gate still to run after this merge
+- Applied: merge `55263f3` + gate formatting `3e82cb8`; `checks.sh --quiet --fix` and `--quiet` **PASSED** (needed `uv sync --extra semantic` for magika/`ty` on the primary checkout)
 
 ## Next steps
 
-1. Parent quality gate after apply (`checks.sh --quiet --fix` then `--quiet`).
-2. User smoke: activity spinner animates; progress bar pulses until `current/total`, then shows %.
-3. `/delete-worktree-srxy` for `cursor/79bcea9a` when ready.
-4. Manual Windows (and other) installer verification for 1.7.0.
+1. User smoke: activity spinner animates; progress bar pulses until `current/total`, then shows %.
+2. `/delete-worktree-srxy` for `cursor/79bcea9a` when ready.
+3. Manual Windows (and other) installer verification for 1.7.0.
