@@ -184,7 +184,14 @@ def _patch_fusion_selection_palette(app: QCoreApplication):
 
 
 def follow_system_color_scheme(app: QCoreApplication):
-	"""Prefer the desktop light/dark scheme so Quick Controls match the OS."""
+	"""Prefer the desktop light/dark scheme so Quick Controls match the OS.
+
+	Accepts ``QCoreApplication`` for call-site convenience; silently skips
+	non-GUI instances that appear in test contexts (``QCoreApplication`` has
+	no ``styleHints``).
+	"""
+	if not isinstance(app, QGuiApplication):
+		return
 	hints = app.styleHints()
 	set_scheme = getattr(hints, "setColorScheme", None)
 	if set_scheme is None:

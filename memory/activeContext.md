@@ -8,16 +8,15 @@ _Last updated: 2026-08-30_
 
 ## Current focus
 
-Applied from worktree `cursor/5648e20a`: **GUI persist options/filters** + **live filters validation**. Parent already has Settings menu maintenance from `cursor/5852d6f1`.
+Applied from worktree `cursor/5852d6f1`: **GUI Settings menu** — Download All Models / Reset Cache / Reset All Settings + **All Settings…**. Parent gate passed; hardening `follow_system_color_scheme` for bare `QCoreApplication` in GUI tests.
 
-## Done (this apply)
+## Prior (same branch)
 
-- Persist options/filters via `settings.json` (OK + shutdown; restore without pre-probe clamp wipe)
-- Live filters dialog validation (disable OK while invalid)
-- Kept parent `reset_settings` / Settings menu APIs alongside persist helpers
+- Progress bar is file-scan only; parallel light + heavy search.
+- Persist GUI search options/filters; live filter validation (other worktrees).
 
 ## Next steps
 
-1. Finish merge quality gate on parent.
-2. Manual: Persist + Similar meaning; Filters live validation; Settings menu shortcuts.
-3. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) and `cursor/5852d6f1` (`0svx`) when ready.
+1. Manual GUI check: Settings menu shortcuts + All Settings dialog.
+2. Manual QA leftovers (OCR progress bar, mixed light/heavy streaming, installers).
+3. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
