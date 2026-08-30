@@ -692,21 +692,46 @@ ApplicationWindow {
 									height: resultRowLayout.implicitHeight
 									Rectangle {
 										anchors.fill: parent
-										color: resultRow.index % 2 === 0
-											? (palette.alternateBase && palette.alternateBase !== palette.base
-												? palette.alternateBase
-												: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
-											: palette.base
-										opacity: resultsView.currentIndex === resultRow.index ? 0.65 : 1
+										color: resultsView.currentIndex === resultRow.index
+											? palette.highlight
+											: (resultRow.index % 2 === 0
+												? (palette.alternateBase && palette.alternateBase !== palette.base
+													? palette.alternateBase
+													: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
+												: palette.base)
 									}
 									RowLayout {
 										id: resultRowLayout
 										anchors.fill: parent
 										spacing: 0
-										Label { text: String(resultRow.index + 1); Layout.preferredWidth: 36; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.score; Layout.preferredWidth: 56; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.path; Layout.fillWidth: true; padding: 6; elide: Text.ElideMiddle }
-										Label { text: resultRow.labels; Layout.preferredWidth: 88; padding: 6; elide: Text.ElideRight }
+										Label {
+											text: String(resultRow.index + 1)
+											Layout.preferredWidth: 36
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.score
+											Layout.preferredWidth: 56
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.path
+											Layout.fillWidth: true
+											padding: 6
+											elide: Text.ElideMiddle
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.labels
+											Layout.preferredWidth: 88
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
 									}
 									MouseArea {
 										anchors.fill: parent
@@ -824,17 +849,17 @@ ApplicationWindow {
 					}
 					Frame {
 						SplitView.fillHeight: true
-						FontMetrics {
-							id: previewFontMetrics
-							font: previewTextArea.font
-						}
+						objectName: "previewFrame"
 						function scrollPreviewToLine(line) {
 							if (line <= 0)
 								return
 							var flick = previewScroll.contentItem
 							if (!flick)
 								return
-							flick.contentY = Math.max(0, (line - 1) * previewFontMetrics.height)
+							var lineHeight = controller && controller.previewLineHeight > 0
+								? controller.previewLineHeight
+								: previewTextArea.font.pixelSize
+							flick.contentY = Math.max(0, (line - 1) * lineHeight)
 						}
 						Connections {
 							target: controller
@@ -918,28 +943,71 @@ ApplicationWindow {
 									onClicked: if (controller) controller.closePreviewFind()
 								}
 							}
-							ScrollView {
-								id: previewScroll
+							RowLayout {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
-								clip: true
-								TextArea {
-									id: previewTextArea
-									objectName: "previewText"
-									readOnly: true
-									wrapMode: TextEdit.NoWrap
-									textFormat: TextEdit.RichText
-									font.family: Qt.platform.os === "windows"
-										? "Consolas"
-										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
-									text: controller ? controller.previewText : ""
-									selectByMouse: true
-									MouseArea {
-										anchors.fill: parent
-										acceptedButtons: Qt.RightButton
-										onClicked: previewMenu.popup()
+								spacing: 0
+								Item {
+									id: gutter
+									objectName: "previewGutter"
+									visible: controller && controller.previewLineCount > 0
+									Layout.fillHeight: true
+									Layout.preferredWidth: gutterText.implicitWidth + 12
+									clip: true
+									readonly property var flick: previewScroll.contentItem
+									Text {
+										id: gutterText
+										objectName: "previewGutterText"
+										width: gutter.width - 12
+										y: gutter.flick ? previewTextArea.topPadding - gutter.flick.contentY : 0
+										font: previewTextArea.font
+										color: controller ? controller.previewGutterColor : palette.text
+										horizontalAlignment: Text.AlignRight
+										text: controller ? controller.previewGutterText : ""
+									}
+									WheelHandler {
+										onWheel: (event) => {
+											if (!gutter.flick || !controller)
+												return
+											const step = Math.max(1, controller.previewLineHeight) * 3 * (event.angleDelta.y / 120)
+											const maxY = Math.max(0, gutter.flick.contentHeight - gutter.flick.height)
+											gutter.flick.contentY = Math.max(0, Math.min(maxY, gutter.flick.contentY - step))
+										}
 									}
 								}
+								ScrollView {
+									id: previewScroll
+									objectName: "previewScroll"
+									Layout.fillWidth: true
+									Layout.fillHeight: true
+									clip: true
+									TextArea {
+										id: previewTextArea
+										objectName: "previewText"
+										readOnly: true
+										wrapMode: TextEdit.NoWrap
+										textFormat: TextEdit.PlainText
+										font.family: Qt.platform.os === "windows"
+											? "Consolas"
+											: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+										// Content is owned by Python via attachPreviewDocument / setPlainText.
+										selectByMouse: true
+										Component.onCompleted: if (controller) controller.attachPreviewDocument(previewTextArea.textDocument)
+										MouseArea {
+											anchors.fill: parent
+											acceptedButtons: Qt.RightButton
+											onClicked: previewMenu.popup()
+										}
+									}
+								}
+							}
+							Label {
+								objectName: "previewFooter"
+								visible: controller && controller.previewFooter.length > 0
+								text: controller ? controller.previewFooter : ""
+								opacity: 0.75
+								Layout.fillWidth: true
+								wrapMode: Text.WordWrap
 							}
 							Menu {
 								id: previewMenu

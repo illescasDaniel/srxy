@@ -4,7 +4,7 @@
   Windows-native quality gate (parity with scripts/quality/checks.sh).
 
 .DESCRIPTION
-  Ruff, optional ShellCheck/shfmt, basedpyright, pip-audit, wheel build, pytest buckets.
+  Ruff, optional ShellCheck/shfmt, ty, pip-audit, wheel build, pytest buckets.
   Use on Windows when bash/flock cannot run ./scripts/quality/checks.sh.
 
   Flags: -Fix/--fix, -Full/--full, -FullCpu/--full+cpu, -Quiet/--quiet,
@@ -1059,25 +1059,25 @@ function Invoke-ShellStep {
 	Complete-GateStep -Status pass
 }
 
-function Invoke-PyrightStep {
+function Invoke-TyStep {
 	Invoke-InRepo {
 		$stderrFile = [System.IO.Path]::GetTempFileName()
 		try {
-			$pyrightExe = Get-VenvExe -Name 'basedpyright'
-			if ($pyrightExe) {
-				$json = & $pyrightExe --outputjson 2>$stderrFile
+			$tyExe = Get-VenvExe -Name 'ty'
+			if ($tyExe) {
+				$out = & $tyExe check --output-format github 2>$stderrFile
 			}
 			else {
-				$json = & uv run -- basedpyright --outputjson 2>$stderrFile
+				$out = & uv run -- ty check --output-format github 2>$stderrFile
 			}
 			$exit = [int]$LASTEXITCODE
 			$emitOut = @()
 			if (Test-Path -LiteralPath $EmitPy) {
 				if (Test-Path -LiteralPath $VenvPython) {
-					$emitOut = ($json | & $VenvPython $EmitPy pyright 2>&1 | ForEach-Object { "$_" })
+					$emitOut = ($out | & $VenvPython $EmitPy ty 2>&1 | ForEach-Object { "$_" })
 				}
 				else {
-					$emitOut = ($json | & uv run -- python $EmitPy pyright 2>&1 | ForEach-Object { "$_" })
+					$emitOut = ($out | & uv run -- python $EmitPy ty 2>&1 | ForEach-Object { "$_" })
 				}
 			}
 			$summary = $null
@@ -1085,9 +1085,6 @@ function Invoke-PyrightStep {
 				if ($line -like 'GATE_SUMMARY*') { $summary = $line }
 				elseif ($line -like '::*') {
 					Write-GateHost $line
-					if ($line -match 'invalid JSON' -and (Get-Item $stderrFile).Length -gt 0) {
-						Get-Content -LiteralPath $stderrFile | ForEach-Object { Write-GateHost $_ }
-					}
 				}
 			}
 			if ($summary) {
@@ -1100,7 +1097,10 @@ function Invoke-PyrightStep {
 			}
 			elseif ($exit -eq 0) { Complete-GateStep -Status pass }
 			else {
-				Write-GateGhaError 'basedpyright' "type check failed (exit $exit)"
+				if ((Get-Item $stderrFile).Length -gt 0) {
+					Get-Content -LiteralPath $stderrFile | ForEach-Object { Write-GateHost $_ }
+				}
+				Write-GateGhaError 'ty' "type check failed (exit $exit)"
 				Complete-GateStep -Status FAIL -Errors 1
 			}
 		}
@@ -1266,7 +1266,7 @@ function Invoke-NamedStep {
 	switch ($Name) {
 		'ruff' { Invoke-RuffStep -DoFix $DoFix }
 		'shell' { Invoke-ShellStep -DoFix $DoFix }
-		'basedpyright' { Invoke-PyrightStep }
+		'ty' { Invoke-TyStep }
 		'pip-audit' { Invoke-PipAuditStep }
 		'build' { Invoke-BuildStep }
 		'pytest' { Invoke-PytestStep }
@@ -1398,7 +1398,7 @@ try {
 	Set-Location -LiteralPath $RepoRoot
 
 	if ($Fix) {
-		foreach ($name in @('ruff', 'shell', 'basedpyright', 'pip-audit', 'build')) {
+		foreach ($name in @('ruff', 'shell', 'ty', 'pip-audit', 'build')) {
 			Start-GateStep $name
 			Invoke-NamedStep -Name $name -DoFix:$true
 		}
@@ -1427,7 +1427,7 @@ try {
 			Write-Host ("Parallel verify (light steps overlapping pytest buckets; workers={0})" -f $env:LIB_PYTEST_WORKERS)
 
 			$wall = Get-PytestWallSeconds
-			$lightNames = @('ruff', 'shell', 'basedpyright', 'pip-audit', 'build')
+			$lightNames = @('ruff', 'shell', 'ty', 'pip-audit', 'build')
 			$lightProcs = @{}
 			$lightStarted = @{}
 			$bucketProcs = @{}

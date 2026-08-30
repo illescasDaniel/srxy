@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import bisect
+from pathlib import Path
 from typing import Any
 
 from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, QPersistentModelIndex, Qt, Slot
@@ -22,6 +23,7 @@ class ResultsModel(QAbstractListModel):
 	def __init__(self, parent: Any = None):
 		super().__init__(parent)
 		self._results: list[FileSearchResult] = []
+		self._path_keys: set[str] = set()
 		self._limit: int | None = None
 		self._threshold = 0.35
 		self._semantic_image_threshold = 0.25
@@ -69,34 +71,47 @@ class ResultsModel(QAbstractListModel):
 			return self._results[row]
 		return None
 
+	def index_of_path(self, path: Path | str | None) -> int:
+		"""Return the row for ``path``, or ``-1`` when absent."""
+		if path is None:
+			return -1
+		path_key = path.as_posix() if isinstance(path, Path) else str(path)
+		for index, item in enumerate(self._results):
+			if item.path.as_posix() == path_key:
+				return index
+		return -1
+
 	@Slot()
 	def clear(self):
 		count = len(self._results)
 		if count:
 			self.beginRemoveRows(_EMPTY_INDEX, 0, count - 1)
 			self._results = []
+			self._path_keys.clear()
 			self.endRemoveRows()
 
-	def insert_result(self, result: FileSearchResult):
+	def insert_result(self, result: FileSearchResult) -> bool:
+		"""Insert ``result`` by descending score. Return True when the model changed."""
 		path_key = result.path.as_posix()
-		for item in self._results:
-			if item.path.as_posix() == path_key:
-				return
+		if path_key in self._path_keys:
+			return False
 		if self._limit is not None and len(self._results) >= self._limit:
 			worst = self._results[-1]
 			if result.score <= worst.score:
-				return
-		# Keep scores descending without resetting the whole model.
-		scores = [-item.score for item in self._results]
-		index = bisect.bisect_left(scores, -result.score)
+				return False
+		index = bisect.bisect_left(self._results, -result.score, key=lambda item: -item.score)
 		self.beginInsertRows(_EMPTY_INDEX, index, index)
 		self._results.insert(index, result)
+		self._path_keys.add(path_key)
 		self.endInsertRows()
 		if self._limit is not None and len(self._results) > self._limit:
 			last = len(self._results) - 1
+			evicted = self._results[last]
 			self.beginRemoveRows(_EMPTY_INDEX, last, last)
 			self._results.pop()
+			self._path_keys.discard(evicted.path.as_posix())
 			self.endRemoveRows()
+		return True
 
 	def replace_results(self, results: list[FileSearchResult]):
 		new_results = sorted(results, key=lambda item: item.score, reverse=True)
@@ -107,10 +122,12 @@ class ResultsModel(QAbstractListModel):
 		if old_count:
 			self.beginRemoveRows(_EMPTY_INDEX, 0, old_count - 1)
 			self._results = []
+			self._path_keys.clear()
 			self.endRemoveRows()
 		if new_count:
 			self.beginInsertRows(_EMPTY_INDEX, 0, new_count - 1)
 			self._results = new_results
+			self._path_keys = {item.path.as_posix() for item in new_results}
 			self.endInsertRows()
 
 

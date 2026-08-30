@@ -2,6 +2,24 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — Content routing via Magika + NUL gate (not path heuristics)
+
+- **Context:** Content search and preview were mis-handling extensionless Minecraft `assets/objects` hashes and wrong-extension files (e.g. mp4 named `.txt`, text named `.mp4`, lying `.pdf`). Basename/hash skips and suffix-only routing were rejected.
+- **Decision:** Add `magika` and `content_kind.resolve_content_route`: (1) NUL sample ⇒ never treat as UTF-8 body text even if Magika says `is_text`; (2) trust known media/doc suffixes when parse/metadata works; (3) escalate to Magika for extensionless, parse failure, or text/media mismatch; (4) `DocumentExtractError` on doc parse failure so callers can re-route. Wire through `line_sources`, `document_text`, `media_metadata`, and preview payloads.
+- **Rationale:** Content typing matches real bytes; Magika beats libmagic packaging pain. NUL-first avoids Magika false-positive text on tiny binary samples.
+
+## 2026-08-30 — Preview owns QTextDocument content; avoid dead QML/shiboken docs
+
+- **Context:** Rapid GUI selection left preview on “Loading…” with `RuntimeError: libshiboken: Internal C++ object (QTextDocument) already deleted` in `_apply_preview_document` / `_refresh_preview_line_height`.
+- **Decision:** Store `QQuickTextDocument`, re-resolve live `QTextDocument` via `textDocument()` + `shiboken6.isValid`, apply content with `setPlainText` (Python-owned), drop QML `text: controller.previewText` binding, always `previewChanged.emit()` after display updates, and estimate line height with a fixed constant (no `documentLayout()`/`defaultFont()` under shiboken).
+- **Rationale:** QML TextArea can replace the C++ document while a worker result still holds a stale pointer; writing through the live Quick document and not dual-binding text stops the lifetime crash and stuck Loading.
+
+## 2026-08-30 — Quality gate type checker: basedpyright → ty
+
+- **Context:** basedpyright was slow in the day-to-day gate; Astral's `ty` is far faster and already in the Astral toolchain with Ruff/uv.
+- **Decision:** Replace `basedpyright` with `ty` in the `dev` group; Unix `scripts/quality/ty.sh` and Windows `checks-win.ps1` both run `ty check --output-format github`. Config lives under `[tool.ty]` with rule/override parity for the old basedpyright relaxations (unknown/attribute noise, optional semantic/windows imports). Scope remains `src` + `tests` (scripts/packaging/examples excluded).
+- **Rationale:** Same gate surface on both platforms, much lower type-check wall time; github annotation format plugs into existing `gate_emit.py` counting.
+
 ## 2026-08-30 — `semantic-gpu` extra + uv sources for Windows CUDA torch
 
 - **Context:** `sync-win` always ran bare `uv sync --extra semantic` then `ensure-windows-cuda-torch.ps1`. Because the lockfile only had CPU PyPI torch, every sync uninstalled `+cu130` torch/torchvision/torchaudio and reinstalled CPU torch, then the ensure script re-downloaded CUDA wheels (~minutes / multi-GiB first time, still a full reinstall when already correct).

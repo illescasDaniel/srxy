@@ -54,7 +54,7 @@ uv run python scripts/bench_file_search.py
 
 ## Quality gate
 
-Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, basedpyright, pip-audit, build) run **in parallel** and **overlap** pytest buckets on both Unix and Windows. With `--fix` / `-Fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
+Without `--fix`, light verify steps (Ruff, ShellCheck/shfmt, ty, pip-audit, build) run **in parallel** and **overlap** pytest buckets on both Unix and Windows. With `--fix` / `-Fix`, steps stay **sequential** so autofix writers finish before later checks. Only one gate runs at a time (`.srxy-quality-gate.lock` in the repo root).
 
 Pytest is split into path-based **buckets** (not a single marker expression):
 

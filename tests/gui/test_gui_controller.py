@@ -12,7 +12,7 @@ from tests.helpers import set_fake_home
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
-from srxy.adapters.inbound.gui.preview import preview_font_family
+from srxy.adapters.inbound.gui.preview import PREVIEW_MAX_BYTES, PREVIEW_MAX_LINES
 from srxy.application.search_session import (
 	SearchActivityEvent,
 	SearchErrorEvent,
@@ -262,7 +262,7 @@ def test_given_search_finished_when_activity_active_then_clears_status_spinner(q
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
-def test_given_python_file_when_selecting_result_then_preview_is_html_with_line_numbers(
+def test_given_python_file_when_selecting_result_then_preview_is_plain_text_with_gutter(
 	qapp: QCoreApplication, tmp_path: Path
 ):
 	# given
@@ -272,16 +272,17 @@ def test_given_python_file_when_selecting_result_then_preview_is_html_with_line_
 	controller = SearchController(args)
 	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
 
-	# when
-	controller.selectResult(0)
-
-	# then
+	# when / then
 	assert float(controller.progress) == 100.0  # pyright: ignore[reportArgumentType]
 	preview = str(controller.previewText)
-	assert "<br/>" in preview
-	assert "def" in preview
-	assert f"font-family:{preview_font_family()}" in preview
+	assert "<br/>" not in preview
+	assert "def hello" in preview
+	assert controller.previewLineCount == 2
+	assert "1" in str(controller.previewGutterText)
+	assert "2" in str(controller.previewGutterText)
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_selected_result_when_reading_header_then_path_and_metadata_split(qapp: QCoreApplication, tmp_path: Path):
@@ -293,15 +294,14 @@ def test_given_selected_result_when_reading_header_then_path_and_metadata_split(
 	controller = SearchController(args)
 	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
 
-	# when
-	controller.selectResult(0)
-
-	# then
+	# when / then
 	assert str(controller.previewFilePath) == path.as_posix()
 	header = str(controller.previewHeader)
 	assert path.as_posix() not in header
 	assert "matched" in header
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_no_gpu_capabilities_when_clamping_then_disables_semantic(qapp: QCoreApplication, tmp_path: Path):
@@ -581,14 +581,126 @@ def test_given_large_file_when_selecting_result_then_preview_is_capped_with_foot
 	controller = SearchController(args)
 	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
-
-	# when
-	controller.selectResult(0)
+	controller.flush_preview_for_tests()
 
 	# then
 	preview = str(controller.previewText)
-	assert "Preview truncated" in preview
-	assert len(preview.encode("utf-8")) < 512_000
+	assert "Preview truncated" in str(controller.previewFooter)
+	assert preview.count("\n") + 1 <= PREVIEW_MAX_LINES
+	assert len(preview.encode("utf-8")) <= PREVIEW_MAX_BYTES
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_huge_file_when_resolving_preview_then_read_is_capped(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	path = tmp_path / "huge.bin"
+	path.write_bytes(b"x" * (PREVIEW_MAX_BYTES * 4))
+	args = build_parser().parse_args(["x", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	reads: list[int] = []
+	real_open = Path.open
+
+	def tracking_open(
+		self: Path,
+		mode: str = "r",
+		buffering: int = -1,
+		encoding: str | None = None,
+		errors: str | None = None,
+		newline: str | None = None,
+	):
+		handle = real_open(self, mode, buffering, encoding, errors, newline)
+		if self == path:
+			original_read = handle.read
+
+			def capped_read(size: int = -1):
+				reads.append(size)
+				return original_read(size)
+
+			handle.read = capped_read  # type: ignore[method-assign]
+		return handle
+
+	monkeypatch.setattr(Path, "open", tracking_open)
+
+	# when
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+
+	# then — never asks for the whole file (sample sniff + capped preview read)
+	assert reads
+	assert all(
+		size in {8192, PREVIEW_MAX_BYTES + 1} or (isinstance(size, int) and 0 < size <= PREVIEW_MAX_BYTES + 1)
+		for size in reads
+	)
+	assert max(reads) <= PREVIEW_MAX_BYTES + 1
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_selected_path_when_higher_score_inserts_above_then_selection_retargets(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	low = tmp_path / "low.txt"
+	high = tmp_path / "high.txt"
+	low.write_text("alpha\n", encoding="utf-8")
+	high.write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.handle_search_event_for_tests(
+		SearchResultEvent(result=FileSearchResult(path=low, score=0.5, breakdown={"content": 0.5}, lines=[]))
+	)
+	controller.selectResult(0)
+	controller.flush_preview_for_tests()
+	assert controller.selectedResult == 0
+	assert str(controller.previewFilePath) == low.as_posix()
+
+	# when — better score inserts above the current row
+	controller.handle_search_event_for_tests(
+		SearchResultEvent(result=FileSearchResult(path=high, score=0.9, breakdown={"content": 0.9}, lines=[]))
+	)
+
+	# then — highlight follows the originally selected path
+	assert controller.selectedResult == 1
+	assert str(controller.previewFilePath) == low.as_posix()
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_selected_path_when_search_finishes_then_selection_is_preserved(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	first = tmp_path / "a.txt"
+	second = tmp_path / "b.txt"
+	first.write_text("alpha\n", encoding="utf-8")
+	second.write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.handle_search_event_for_tests(
+		SearchResultEvent(result=FileSearchResult(path=first, score=0.4, breakdown={"content": 0.4}, lines=[]))
+	)
+	controller.handle_search_event_for_tests(
+		SearchResultEvent(result=FileSearchResult(path=second, score=0.8, breakdown={"content": 0.8}, lines=[]))
+	)
+	controller.selectResult(1)  # select the lower-scoring path
+	controller.flush_preview_for_tests()
+	assert str(controller.previewFilePath) == first.as_posix()
+
+	# when
+	controller.handle_search_event_for_tests(
+		SearchFinishedEvent(
+			results=[
+				FileSearchResult(path=second, score=0.8, breakdown={"content": 0.8}, lines=[]),
+				FileSearchResult(path=first, score=0.4, breakdown={"content": 0.4}, lines=[]),
+			],
+			skipped_files=[],
+		)
+	)
+	controller.flush_preview_for_tests()
+
+	# then
+	assert controller.selectedResult == 1
+	assert str(controller.previewFilePath) == first.as_posix()
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_controller_when_results_empty_then_hint_follows_search_state(qapp: QCoreApplication, tmp_path: Path):
@@ -819,6 +931,7 @@ def _make_preview_controller(qapp: QCoreApplication, tmp_path: Path, text: str, 
 	controller = SearchController(args)
 	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
 	return controller
 
 
@@ -841,6 +954,7 @@ def test_given_preview_when_find_next_and_previous_then_wraps_and_reports_status
 	assert controller.previewFindStatus == "1 / 2"
 	controller.previewFindPrevious()
 	assert controller.previewFindStatus == "2 / 2"
+	controller.shutdown(thread_wait_ms=1000)
 
 
 def test_given_preview_when_find_no_match_then_status_reports_no_matches(qapp: QCoreApplication, tmp_path: Path):
@@ -853,13 +967,14 @@ def test_given_preview_when_find_no_match_then_status_reports_no_matches(qapp: Q
 	# then
 	assert controller.previewFindStatus == "No matches"
 	assert controller.previewFindOpen is False
+	controller.shutdown(thread_wait_ms=1000)
 
 
-def test_given_preview_when_closing_find_then_clears_query_and_highlights(qapp: QCoreApplication, tmp_path: Path):
+def test_given_preview_when_closing_find_then_clears_query(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	controller = _make_preview_controller(qapp, tmp_path, "alpha\n")
 	controller.setPreviewFindQuery("alpha")
-	assert "background-color" in str(controller.previewText)
+	assert controller.previewFindStatus == "1 / 1"
 
 	# when
 	controller.closePreviewFind()
@@ -867,10 +982,11 @@ def test_given_preview_when_closing_find_then_clears_query_and_highlights(qapp: 
 	# then
 	assert controller.previewFindQuery == ""
 	assert controller.previewFindOpen is False
-	assert "background-color" not in str(controller.previewText)
+	assert controller.previewFindStatus == ""
+	controller.shutdown(thread_wait_ms=1000)
 
 
-def test_given_preview_when_theme_changes_then_rebuilds_with_dark_colors(qapp: QCoreApplication, tmp_path: Path):
+def test_given_preview_when_theme_changes_then_gutter_color_updates(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	path = tmp_path / "sample.py"
 	path.write_text("def x():\n\treturn 1\n", encoding="utf-8")
@@ -878,18 +994,120 @@ def test_given_preview_when_theme_changes_then_rebuilds_with_dark_colors(qapp: Q
 	controller = SearchController(args)
 	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
 	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
 
 	# when
-	light = str(controller.previewText)
+	light = str(controller.previewGutterColor)
 	controller.setPreviewTheme(False)
-	dark = str(controller.previewText)
+	dark = str(controller.previewGutterColor)
 
 	# then
-	assert "color:#0550ae" in light
-	assert "color:#ff7b72" in dark
+	assert light == "#888888"
+	assert dark == "#6e7681"
+	assert "def x" in str(controller.previewText)
+	controller.shutdown(thread_wait_ms=1000)
 
 
-def test_given_preview_when_open_folder_then_reveals_path(qapp: QCoreApplication, tmp_path: Path):
+def test_given_attached_document_when_selecting_then_preview_loads_via_worker(qapp: QCoreApplication, tmp_path: Path):
+	# given — attaching a document enables the async preview path
+	from PySide6.QtGui import QTextDocument
+
+	class _QuickDoc:
+		def __init__(self):
+			self._doc = QTextDocument()
+
+		def textDocument(self):
+			return self._doc
+
+	path = tmp_path / "note.txt"
+	path.write_text("alpha\nbeta\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.attachPreviewDocument(_QuickDoc())
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+
+	# when
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	assert str(controller.previewText) == "Loading preview…"
+	controller.flush_preview_for_tests()
+
+	# then
+	assert "alpha" in str(controller.previewText)
+	assert controller.previewLineCount == 2
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_deleted_preview_document_when_applying_then_still_emits_and_clears_loading(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given — attach then simulate QML destroying the C++ document
+	from PySide6.QtGui import QTextDocument
+
+	class _QuickDoc:
+		def __init__(self):
+			self._doc = QTextDocument()
+
+		def textDocument(self):
+			return self._doc
+
+	path = tmp_path / "note.txt"
+	path.write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	quick = _QuickDoc()
+	controller.attachPreviewDocument(quick)
+	controller._preview_message = "Loading preview…"  # pyright: ignore[reportPrivateUsage]
+	controller._preview_plain_text = ""  # pyright: ignore[reportPrivateUsage]
+	# Drop the only reference so Shiboken marks the C++ object deleted.
+	quick._doc = QTextDocument()  # replace with a fresh doc, then delete the old attach target
+	# Force the controller to see a dead quick wrapper instead of crashing the process.
+	controller._preview_quick_document = object()  # pyright: ignore[reportPrivateUsage]
+
+	# when
+	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
+		controller._preview_generation,  # pyright: ignore[reportPrivateUsage]
+		("alpha\n", path, "", False, ""),
+	)
+
+	# then — must leave loading and not raise
+	assert str(controller.previewText) == "alpha\n"
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_stale_preview_generation_when_worker_finishes_then_result_is_ignored(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	from PySide6.QtGui import QTextDocument
+
+	class _QuickDoc:
+		def __init__(self):
+			self._doc = QTextDocument()
+
+		def textDocument(self):
+			return self._doc
+
+	path = tmp_path / "note.txt"
+	path.write_text("alpha\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.attachPreviewDocument(_QuickDoc())
+
+	# when — deliver a stale worker payload after a newer generation
+	controller._preview_generation = 5  # pyright: ignore[reportPrivateUsage]
+	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
+		4,
+		("stale text", path, "", False, ""),
+	)
+
+	# then
+	assert "stale text" not in str(controller.previewText)
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_selected_result_when_opening_folder_then_desktop_reveal_is_called(
+	qapp: QCoreApplication, tmp_path: Path
+):
 	# given
 	path = tmp_path / "note.txt"
 	path.write_text("alpha\n", encoding="utf-8")

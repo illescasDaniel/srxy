@@ -304,7 +304,8 @@ def is_selectable_tessdata_code(code: str) -> bool:
 	"""Spoken / OCR language packs shown in installers (excludes script/* and equ)."""
 	if not code or "/" in code or code == "equ":
 		return False
-	return code in _checksums_payload().get("sha256", {})  # type: ignore[operator]
+	sha_map = _checksums_payload().get("sha256", {})
+	return isinstance(sha_map, dict) and code in sha_map
 
 
 def tessdata_display_name(code: str) -> str:

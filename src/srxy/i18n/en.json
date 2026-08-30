@@ -278,6 +278,7 @@
   "gui.search_warnings.tooltip": "Some files were skipped during search",
   "gui.about_setting": "About this setting",
   "preview.truncated": "Preview truncated (size/line limit reached).",
+  "preview.loading": "Loading preview…",
   "gui.preview.find_placeholder": "Find in file",
   "gui.preview.find_approximate": "Approximate",
   "gui.preview.find_previous": "Previous",

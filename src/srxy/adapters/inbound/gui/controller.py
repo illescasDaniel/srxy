@@ -7,8 +7,10 @@ import json
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
+from typing import cast
 
 from PySide6.QtCore import Property, QObject, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtGui import QTextDocument
 
 from srxy.adapters.inbound.gui.capabilities import (
 	Capabilities,
@@ -21,9 +23,11 @@ from srxy.adapters.inbound.gui.help_text import help_text as lookup_help_text
 from srxy.adapters.inbound.gui.models import MatchesModel, ResultsModel
 from srxy.adapters.inbound.gui.preview import (
 	PREVIEW_MAX_BYTES,
-	format_preview_for_file,
-	format_preview_message,
+	PREVIEW_PALETTES,
+	prepare_preview_text,
+	preview_gutter_text,
 )
+from srxy.adapters.inbound.gui.preview_highlighter import PreviewHighlighter
 from srxy.adapters.outbound.worker.search_worker import iter_subprocess_search_events
 from srxy.application.deps_preflight import deps_only_preflight
 from srxy.application.model_preflight import (
@@ -205,6 +209,21 @@ class _UpdateWorker(QObject):
 			self.failed.emit(str(exc))
 
 
+class _PreviewWorker(QObject):
+	"""Read a preview payload off the GUI thread (capped bytes only)."""
+
+	finished = Signal(int, object)
+
+	def __init__(self, result: FileSearchResult, generation: int):
+		super().__init__()
+		self._result = result
+		self._generation = generation
+
+	@Slot()
+	def run(self):
+		self.finished.emit(self._generation, _resolve_preview_payload(self._result))
+
+
 class SearchController(QObject):
 	statusChanged = Signal()
 	progressChanged = Signal()
@@ -276,7 +295,16 @@ class SearchController(QObject):
 		self._preview_message = ""
 		self._preview_truncated = False
 		self._preview_truncated_footer = ""
+		self._preview_footer = ""
+		self._preview_gutter_text = ""
+		self._preview_line_count = 0
+		self._preview_line_height = 0.0
 		self._preview_theme = "light"
+		self._preview_highlighter: PreviewHighlighter | None = None
+		self._preview_quick_document: QObject | None = None
+		self._preview_generation = 0
+		self._preview_thread: QThread | None = None
+		self._preview_worker: _PreviewWorker | None = None
 		self._find_open = False
 		self._find_query = ""
 		self._find_approximate = False
@@ -284,6 +312,9 @@ class SearchController(QObject):
 		self._find_index = -1
 		self._preview_scroll_line = -1
 		self._selected_row = -1
+		self._selected_path: Path | None = None
+		self._stream_status_timer: QTimer | None = None
+		self._stream_status_pending = False
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
@@ -608,6 +639,32 @@ class SearchController(QObject):
 		return self._preview_path is not None
 
 	previewHasFile = Property(bool, _get_preview_has_file, notify=previewChanged)
+
+	def _get_preview_gutter_text(self) -> str:
+		return self._preview_gutter_text
+
+	previewGutterText = Property(str, _get_preview_gutter_text, notify=previewChanged)
+
+	def _get_preview_line_count(self) -> int:
+		return self._preview_line_count
+
+	previewLineCount = Property(int, _get_preview_line_count, notify=previewChanged)
+
+	def _get_preview_line_height(self) -> float:
+		return self._preview_line_height
+
+	previewLineHeight = Property(float, _get_preview_line_height, notify=previewChanged)
+
+	def _get_preview_gutter_color(self) -> str:
+		palette = PREVIEW_PALETTES.get(self._preview_theme, PREVIEW_PALETTES["light"])
+		return palette.gutter
+
+	previewGutterColor = Property(str, _get_preview_gutter_color, notify=previewChanged)
+
+	def _get_preview_footer(self) -> str:
+		return self._preview_footer
+
+	previewFooter = Property(str, _get_preview_footer, notify=previewChanged)
 
 	def _get_preview_find_open(self) -> bool:
 		return self._find_open
@@ -1151,25 +1208,29 @@ class SearchController(QObject):
 				self.progressChanged.emit()
 			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
-			self._results_model.insert_result(event.result)
-			self._notify_results_empty_hint()
-			if self._activity is None:
-				self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
+			changed = self._results_model.insert_result(event.result)
+			if changed:
+				self._retarget_selection_row()
+			self._schedule_stream_status_refresh()
 		elif isinstance(event, SearchErrorEvent):
 			if self._search_cancel_requested:
 				self._search_cancel_requested = False
 				self._clear_activity_status()
+				self._flush_stream_status()
 				self._exit_code = 2
 				self._progress = 100.0
 				self.progressChanged.emit()
 				self._set_status_tr("status.search_cancelled")
 				return
 			self._clear_activity_status()
+			self._flush_stream_status()
 			self.errorOccurred.emit(event.message)
 			self._exit_code = 2
 			self._set_status(event.message)
 		elif isinstance(event, SearchFinishedEvent):
 			self._clear_activity_status()
+			self._flush_stream_status()
+			preserve_path = self._selected_path
 			if event.results:
 				self._clear_selection()
 				self._results_model.replace_results(event.results)
@@ -1193,7 +1254,42 @@ class SearchController(QObject):
 			else:
 				self._set_status_tr("status.files_matched", count=count)
 			if count:
-				self.selectResult(0)
+				restored = self._results_model.index_of_path(preserve_path)
+				self.selectResult(restored if restored >= 0 else 0)
+
+	def _schedule_stream_status_refresh(self):
+		self._stream_status_pending = True
+		if self._stream_status_timer is None:
+			timer = QTimer(self)
+			timer.setSingleShot(True)
+			timer.setInterval(100)
+			timer.timeout.connect(self._flush_stream_status)
+			self._stream_status_timer = timer
+		if not self._stream_status_timer.isActive():
+			self._stream_status_timer.start()
+
+	@Slot()
+	def _flush_stream_status(self):
+		if self._stream_status_timer is not None:
+			self._stream_status_timer.stop()
+		if not self._stream_status_pending:
+			return
+		self._stream_status_pending = False
+		self._notify_results_empty_hint()
+		if self._activity is None and self._searching:
+			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
+
+	def _retarget_selection_row(self):
+		"""Keep ``selectedResult`` pointed at ``_selected_path`` after score inserts."""
+		if self._selected_path is None:
+			return
+		row = self._results_model.index_of_path(self._selected_path)
+		if row < 0:
+			self._clear_selection()
+			return
+		if row != self._selected_row:
+			self._selected_row = row
+			self.selectedResultChanged.emit()
 
 	def _on_worker_finished(self):
 		# Keep searching=True until the QThread fully stops (_on_search_thread_finished)
@@ -1210,6 +1306,7 @@ class SearchController(QObject):
 		stale current item.
 		"""
 		self._selected_row = -1
+		self._selected_path = None
 		self._matches_model.clear()
 		self._reset_find()
 		self._load_preview(None)
@@ -1219,6 +1316,7 @@ class SearchController(QObject):
 	def selectResult(self, row: int):  # noqa: N802
 		result = self._results_model.result_at(row)
 		self._selected_row = row
+		self._selected_path = result.path if result is not None else None
 		self._matches_model.load_from_result(result, query=self._args.query or "")
 		self._reset_find()
 		self._load_preview(result)
@@ -1232,46 +1330,240 @@ class SearchController(QObject):
 		self._find_index = -1
 		self.findChanged.emit()
 
+	@Slot(QObject)
+	def attachPreviewDocument(self, quick_document: QObject | None):  # noqa: N802
+		"""Bind the QML TextArea document and install ``PreviewHighlighter``."""
+		self._preview_quick_document = quick_document
+		document = self._live_preview_document()
+		if document is None:
+			return
+		try:
+			document.setDocumentMargin(0)
+			if self._preview_highlighter is None:
+				self._preview_highlighter = PreviewHighlighter(document)
+			else:
+				self._preview_highlighter.setDocument(document)
+		except RuntimeError:
+			self._preview_quick_document = None
+			return
+		self._apply_preview_document()
+
+	def _live_preview_document(self) -> QTextDocument | None:
+		"""Re-resolve the QML-owned QTextDocument; return None if C++ object is gone."""
+		quick = self._preview_quick_document
+		if quick is None:
+			return None
+		try:
+			from shiboken6 import isValid
+
+			if not isValid(quick):
+				self._preview_quick_document = None
+				return None
+		except Exception:  # noqa: BLE001, S110
+			pass
+		text_document = getattr(quick, "textDocument", None)
+		document = text_document() if callable(text_document) else text_document
+		if not isinstance(document, QTextDocument):
+			return None
+		try:
+			from shiboken6 import isValid
+
+			if not isValid(document):
+				return None
+		except Exception:  # noqa: BLE001, S110
+			pass
+		return document
+
 	def _load_preview(self, result: FileSearchResult | None):
+		self._preview_generation += 1
+		generation = self._preview_generation
 		if result is None:
+			self._dispose_preview_worker(wait_ms=0)
 			self._preview_header = ""
 			self._preview_plain_text = ""
 			self._preview_path = None
 			self._preview_message = ""
 			self._preview_truncated = False
 			self._preview_truncated_footer = ""
-			self._rebuild_preview_html()
+			self._apply_preview_document()
 			return
 		labels = self._results_model.data(
 			self._results_model.index(self._selected_row, 0),
 			ResultsModel.LabelsRole,
 		)
 		self._preview_header = f"{format_score_percent(result.score)}  ·  matched: {labels}"
-		(
-			self._preview_plain_text,
-			self._preview_path,
-			self._preview_message,
-			self._preview_truncated,
-			self._preview_truncated_footer,
-		) = _resolve_preview_payload(result)
-		self._rebuild_preview_html()
-
-	def _rebuild_preview_html(self):
-		if self._preview_message:
-			self._preview_text = format_preview_message(self._preview_message)
-		elif self._preview_plain_text:
-			self._preview_text = format_preview_for_file(
-				self._preview_path or "",
+		self._preview_path = result.path
+		# Headless / unit tests never attach the QML document — resolve inline so
+		# we do not leak QThreads after SearchFinishedEvent auto-select. The live
+		# GUI attaches a document and uses the async worker to keep the UI free.
+		if self._live_preview_document() is None and self._preview_quick_document is None:
+			self._dispose_preview_worker(wait_ms=0)
+			(
 				self._preview_plain_text,
-				truncated=self._preview_truncated,
-				truncated_footer=self._preview_truncated_footer,
-				theme=self._preview_theme,
-				find_spans=self._find_overlays(),
-				current_spans=self._current_find_overlay(),
+				self._preview_path,
+				self._preview_message,
+				self._preview_truncated,
+				self._preview_truncated_footer,
+			) = _resolve_preview_payload(result)
+			self._apply_preview_document()
+			return
+		from srxy.i18n import tr
+
+		self._preview_message = tr("preview.loading")
+		self._preview_plain_text = ""
+		self._preview_truncated = False
+		self._preview_truncated_footer = ""
+		self._apply_preview_document()
+		self._start_preview_worker(result, generation)
+
+	def _start_preview_worker(self, result: FileSearchResult, generation: int):
+		self._dispose_preview_worker(wait_ms=0)
+		thread = QThread(self)
+		worker = _PreviewWorker(result, generation)
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		worker.finished.connect(self._on_preview_ready)
+		worker.finished.connect(thread.quit)
+		thread.finished.connect(self._on_preview_thread_finished, Qt.ConnectionType.QueuedConnection)
+		self._preview_thread = thread
+		self._preview_worker = worker
+		thread.start()
+
+	@Slot(int, object)
+	def _on_preview_ready(self, generation: int, payload: object):
+		if generation != self._preview_generation:
+			return
+		plain, path, message, truncated, footer = cast(
+			tuple[str, Path | None, str, bool, str],
+			payload,
+		)
+		self._preview_plain_text = plain
+		self._preview_path = path
+		self._preview_message = message
+		self._preview_truncated = truncated
+		self._preview_truncated_footer = footer
+		self._apply_preview_document()
+
+	@Slot()
+	def _on_preview_thread_finished(self):
+		finished = self.sender()
+		if self._preview_thread is not None and finished is not self._preview_thread:
+			return
+		worker = self._preview_worker
+		self._preview_worker = None
+		self._preview_thread = None
+		self._release_worker_on_main_thread(worker)
+
+	def _dispose_preview_worker(self, *, wait_ms: int):
+		thread = self._preview_thread
+		worker = self._preview_worker
+		self._preview_thread = None
+		self._preview_worker = None
+		self._stop_qthread(thread, wait_ms=wait_ms)
+		self._release_worker_on_main_thread(worker)
+
+	def _apply_preview_document(self):
+		"""Push plain preview text + highlighter context to the QML TextArea."""
+		display = ""
+		footer = ""
+		gutter = ""
+		line_count = 0
+		suffix = ""
+		overlays_active = False
+		if self._preview_message:
+			display = self._preview_message
+		elif self._preview_plain_text:
+			text, was_truncated = prepare_preview_text(self._preview_plain_text)
+			truncated = self._preview_truncated or was_truncated
+			display = text
+			lines = text.splitlines() or ([""] if text == "" else [])
+			line_count = len(lines)
+			gutter = preview_gutter_text(line_count)
+			footer = self._preview_truncated_footer if truncated else ""
+			suffix = self._preview_path.suffix.lower() if self._preview_path is not None else ""
+			overlays_active = True
+		self._preview_text = display
+		self._preview_footer = footer
+		self._preview_gutter_text = gutter
+		self._preview_line_count = line_count
+		document = self._live_preview_document()
+		if document is not None:
+			try:
+				document.setPlainText(display)
+				if self._preview_highlighter is not None:
+					if self._preview_highlighter.document() is not document:
+						self._preview_highlighter.setDocument(document)
+				elif display is not None:
+					self._preview_highlighter = PreviewHighlighter(document)
+			except RuntimeError:
+				document = None
+		try:
+			self._sync_highlighter(suffix=suffix, overlays_active=overlays_active)
+			self._refresh_preview_line_height()
+		except RuntimeError:
+			self._preview_line_height = 0.0
+		self.previewChanged.emit()
+
+	def _sync_highlighter(self, *, suffix: str, overlays_active: bool):
+		highlighter = self._preview_highlighter
+		if highlighter is None:
+			return
+		document = self._live_preview_document()
+		if document is None:
+			return
+		try:
+			from shiboken6 import isValid
+
+			if highlighter.document() is not None and not isValid(highlighter.document()):
+				return
+		except Exception:  # noqa: BLE001, S110
+			pass
+		highlighter.set_context(suffix=suffix, theme=self._preview_theme)
+		if overlays_active:
+			highlighter.set_overlays(
+				finds=self._find_overlays(),
+				current=self._current_find_overlay(),
 			)
 		else:
-			self._preview_text = ""
-		self.previewChanged.emit()
+			highlighter.set_overlays()
+		highlighter.rehighlight()
+
+	def _refresh_find_overlays(self):
+		"""Re-apply find/current overlays without rewriting the document text."""
+		highlighter = self._preview_highlighter
+		if highlighter is None:
+			self._apply_preview_document()
+			return
+		document = self._live_preview_document()
+		if document is None:
+			self._apply_preview_document()
+			return
+		previous = highlighter.overlay_line_numbers()
+		highlighter.set_overlays(
+			finds=self._find_overlays(),
+			current=self._current_find_overlay(),
+		)
+		affected = previous | highlighter.overlay_line_numbers()
+		try:
+			if not affected:
+				highlighter.rehighlight()
+				return
+			for line_number in affected:
+				block = document.findBlockByNumber(line_number - 1)
+				if block.isValid():
+					highlighter.rehighlightBlock(block)
+		except RuntimeError:
+			self._apply_preview_document()
+
+	def _refresh_preview_line_height(self):
+		if self._preview_line_count <= 0:
+			self._preview_line_height = 0.0
+			return
+		# Do not touch the QML-owned QTextDocument here. documentLayout()/defaultFont()
+		# can abort via shiboken when Quick has already replaced/deleted the C++ object
+		# (that was the stuck "Loading preview…" crash). QML scroll can fall back when
+		# line height is unset; use a stable monospace estimate instead.
+		self._preview_line_height = 16.0
 
 	def _find_overlays(self) -> dict[int, list[tuple[int, int]]]:
 		overlays: dict[int, list[tuple[int, int]]] = {}
@@ -1336,7 +1628,13 @@ class SearchController(QObject):
 		theme = "light" if light else "dark"
 		if theme != self._preview_theme:
 			self._preview_theme = theme
-			self._rebuild_preview_html()
+			if self._preview_highlighter is not None:
+				self._preview_highlighter.set_context(
+					suffix=self._preview_path.suffix.lower() if self._preview_path is not None else "",
+					theme=theme,
+				)
+				self._preview_highlighter.rehighlight()
+			self.previewChanged.emit()
 
 	@Slot()
 	def openPreviewFind(self):  # noqa: N802
@@ -1344,7 +1642,7 @@ class SearchController(QObject):
 		if self._find_matches and self._find_index < 0:
 			self._find_index = 0
 			self._scroll_to_find()
-			self._rebuild_preview_html()
+			self._refresh_find_overlays()
 		self.findChanged.emit()
 
 	@Slot()
@@ -1354,7 +1652,7 @@ class SearchController(QObject):
 		self._find_approximate = False
 		self._find_matches = []
 		self._find_index = -1
-		self._rebuild_preview_html()
+		self._refresh_find_overlays()
 		self.findChanged.emit()
 
 	@Slot(str)
@@ -1367,7 +1665,7 @@ class SearchController(QObject):
 		if self._find_matches:
 			self._find_index = 0
 			self._scroll_to_find()
-		self._rebuild_preview_html()
+		self._refresh_find_overlays()
 		self.findChanged.emit()
 
 	@Slot(bool)
@@ -1380,7 +1678,7 @@ class SearchController(QObject):
 		if self._find_matches:
 			self._find_index = 0
 			self._scroll_to_find()
-		self._rebuild_preview_html()
+		self._refresh_find_overlays()
 		self.findChanged.emit()
 
 	@Slot()
@@ -1389,7 +1687,8 @@ class SearchController(QObject):
 			return
 		self._find_index = (self._find_index + 1) % len(self._find_matches)
 		self._scroll_to_find()
-		self._rebuild_preview_html()
+		self._refresh_find_overlays()
+		self.findChanged.emit()
 
 	@Slot()
 	def previewFindPrevious(self):  # noqa: N802
@@ -1397,7 +1696,8 @@ class SearchController(QObject):
 			return
 		self._find_index = (self._find_index - 1) % len(self._find_matches)
 		self._scroll_to_find()
-		self._rebuild_preview_html()
+		self._refresh_find_overlays()
+		self.findChanged.emit()
 
 	@Slot(int)
 	def revealPreviewLine(self, line: int):  # noqa: N802
@@ -1781,6 +2081,23 @@ class SearchController(QObject):
 	def search_subprocess_for_tests(self) -> object | None:
 		return self._search_subprocess
 
+	def flush_preview_for_tests(self, *, timeout_ms: int = 5000):
+		"""Wait for the in-flight preview worker and deliver its result."""
+		from PySide6.QtCore import QCoreApplication
+
+		thread = self._preview_thread
+		if thread is not None:
+			try:
+				from shiboken6 import isValid
+
+				if isValid(thread) and thread.isRunning():
+					thread.wait(timeout_ms)
+			except RuntimeError:
+				pass
+		app = QCoreApplication.instance()
+		if app is not None:
+			app.processEvents()
+
 	def set_update_thread_for_tests(self, thread: QThread | None):
 		self._update_thread = thread
 
@@ -1804,10 +2121,12 @@ class SearchController(QObject):
 		self._dispose_search_worker(wait_ms=thread_wait_ms)
 		self._dispose_download_worker(wait_ms=thread_wait_ms)
 		self._dispose_update_worker(wait_ms=thread_wait_ms)
+		self._dispose_preview_worker(wait_ms=thread_wait_ms)
 
 
 def _resolve_preview_payload(result: FileSearchResult) -> tuple[str, Path | None, str, bool, str]:
 	"""Resolve preview content into (plain_text, path, message, truncated, footer)."""
+	from srxy.adapters.outbound.content.content_kind import resolve_content_route
 	from srxy.i18n import tr
 
 	path = result.path
@@ -1818,10 +2137,17 @@ def _resolve_preview_payload(result: FileSearchResult) -> tuple[str, Path | None
 			if result.lines:
 				return joined_lines, path, "", False, truncated_footer
 			return "", path, "(No file preview available)", False, truncated_footer
-		raw = path.read_bytes()
+		route = resolve_content_route(path)
+		if route.as_media or (not route.body_text and not route.as_document):
+			if result.lines:
+				return joined_lines, path, "", False, truncated_footer
+			kind = "media" if route.as_media else "binary"
+			return "", path, f"(Binary {kind} file — showing matches only)", False, truncated_footer
+		with path.open("rb") as handle:
+			raw = handle.read(PREVIEW_MAX_BYTES + 1)
 		file_truncated = len(raw) > PREVIEW_MAX_BYTES
 		data = raw[:PREVIEW_MAX_BYTES]
-		if b"\x00" in data[:4096]:
+		if b"\x00" in data[:4096] and not route.body_text:
 			if result.lines:
 				return joined_lines, path, "", file_truncated, truncated_footer
 			return "", path, "(Binary file — showing matches only)", file_truncated, truncated_footer

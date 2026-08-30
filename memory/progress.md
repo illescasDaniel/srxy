@@ -8,6 +8,9 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Done
 
+- [x] Preview lifetime / stuck “Loading…” — hold `QQuickTextDocument`, re-resolve live doc + `isValid`, Python `setPlainText`, drop QML text binding, fixed line-height (no shiboken `documentLayout`).
+- [x] Magika content routing — NUL-first binary gate; escalate Magika for extensionless / parse fail / wrong extension; wire body/media/doc/preview; fixtures + unit/GUI tests. Dependency `magika>=1.0.3`.
+- [x] Quality type checker `basedpyright` → `ty` (Unix + Windows gate).
 - [x] Windows GUI (PR #28) — FluentWinUI3 theme, fallback Universal → Windows.
 - [x] Shared `AccentButton` + button GUI improvements.
 - [x] Windows offline Inno Setup installer + download-based tessdata packs.

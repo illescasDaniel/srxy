@@ -144,3 +144,28 @@ def test_given_empty_model_when_replace_results_then_only_inserts(qapp: QCoreApp
 	assert recorder.removed == []
 	assert recorder.inserted == [(0, 0)]
 	assert not recorder.reset
+
+
+def test_given_results_when_index_of_path_then_returns_row(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	low = _result(tmp_path / "low.txt", 0.4)
+	high = _result(tmp_path / "high.txt", 0.9)
+	model = ResultsModel()
+	model.insert_result(low)
+	model.insert_result(high)
+
+	# when / then
+	assert model.index_of_path(high.path) == 0
+	assert model.index_of_path(low.path) == 1
+	assert model.index_of_path(tmp_path / "missing.txt") == -1
+
+
+def test_given_duplicate_path_when_insert_result_then_ignored(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	model = ResultsModel()
+	path = tmp_path / "note.txt"
+	assert model.insert_result(_result(path, 0.5)) is True
+
+	# when / then
+	assert model.insert_result(_result(path, 0.9)) is False
+	assert model.rowCount() == 1
