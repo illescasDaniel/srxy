@@ -72,6 +72,10 @@ GUI text-tree snapshots live under `tests/gui/snapshots/`. Refresh:
 UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen pytest tests/gui/test_gui_snapshots.py
 ```
 
+## Click-driven flow tests
+
+Pilot-style helpers live in [`tests/gui/helpers.py`](../tests/gui/helpers.py) (`load_main`, `click`, `set_text`, dialog open/OK). End-to-end flows (path → query → options/filters → Search → results/progress) are in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py). They run in the **gui** quality-gate bucket (`QT_QPA_PLATFORM=offscreen`). Prefer typing into `pathField` over clicking Browse (native `FolderDialog` is hostile offscreen).
+
 Regenerate the README screenshot for the host OS (writes `docs/images/gui-macos.png`, `gui-linux.png`, or `gui-windows.png`):
 
 ```bash

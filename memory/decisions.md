@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — develop is the continuous-development trunk
+
+- **Context:** Feature work previously lived on `feature/fixes_1.6.6` and related worktrees. Development continues on `develop`.
+- **Decision:** Treat `develop` as the active integration branch for new work; keep `memory/activeContext.md` / `progress.md` oriented to `develop` rather than the old feature branch name.
+- **Rationale:** Avoid agents writing memory against a branch that is no longer where ongoing work lands.
+
+## 2026-08-30 — pytest + QML event helpers over Squish / Qt Quick Test
+
+- **Context:** Want UIKit/Selenium-style GUI flows (click buttons, open dialogs, assert results/progress) without a second commercial toolchain.
+- **Decision:** Add `tests/gui/helpers.py` (`load_main`, `QTest.mouseClick` on `QQuickItem`, `set_text`, dialog helpers) and given/when/then flows in `tests/gui/test_gui_flows.py` under the existing offscreen **gui** pytest bucket. Prefer typing `pathField` over Browse/`FolderDialog`. Do not adopt Squish or QML `TestCase` files as the primary suite.
+- **Rationale:** Fits uv/pytest/CI offscreen gate, mirrors Textual Pilot style, reuses existing `objectName`s; commercial/OS-level drivers are poor ROI for this MIT desktop app.
+
 ## 2026-08-30 — Reset All Settings also clears live options/filters
 
 - **Context:** Reset All Settings deleted `settings.json` but left `_options` / `_filters` / persist flags in the controller. The dialogs still showed the old ticks, and `shutdown` → `_write_persisted_search_prefs` recreated the file.

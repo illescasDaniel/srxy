@@ -4,20 +4,22 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0**.
+- `develop` — continuous development trunk (post–feature-branch work lives here). Version target **1.7.0**.
 
 ## Current focus
 
-Fixed Reset All Settings: also restores factory options/filters and clears persist flags; quit no longer recreates `settings.json` when the file is gone and persist is off.
+QML click-driven GUI flow tests: `tests/gui/helpers.py` + `tests/gui/test_gui_flows.py` (path/query/options/filters → Search → results/progress). Scoped to the **gui** quality-gate bucket.
 
 ## Verified
 
-- `checks.sh --quiet --fix` + verify PASSED.
-- GUI controller reset test asserts session prefs cleared and file stays absent after shutdown.
+- `checks.sh --quiet --fix` PASSED; `checks.sh --quiet --gui` PASSED.
+- `QT_QPA_PLATFORM=offscreen uv run pytest tests/gui/test_gui_flows.py --durations=10` → **3 passed in ~1.6s**
+  - happy path ~0.84s call
+  - names-only ~0.50s call
+  - filters validation ~0.14s call
+- Wall clock including process start ~3s.
 
 ## Next steps
 
-1. Manual: Reset All Settings with Persist on — options/filters should snap to defaults immediately; quit must not recreate `settings.json`.
-2. Manual: Persist options/filters; Filters live OK disable; Settings menu.
-3. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
-4. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
+1. Manual QA items still open in `progress.md` (persist / settings / OCR progress).
+2. Worktree cleanup (`cursor/5648e20a`, `cursor/5852d6f1`) when ready.

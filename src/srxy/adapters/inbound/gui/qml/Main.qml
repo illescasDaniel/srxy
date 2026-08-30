@@ -1288,6 +1288,7 @@ ApplicationWindow {
 					elide: Text.ElideRight
 				}
 				Button {
+					objectName: "cancelSearchButton"
 					text: root.t("gui.cancel")
 					visible: controller && controller.searching
 					onClicked: controller.cancelSearch()
@@ -1363,6 +1364,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optNames
+					objectName: "optNames"
 					text: root.t("gui.options.file_names")
 					checked: true
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
@@ -1372,6 +1374,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optContents
+					objectName: "optContents"
 					text: root.t("gui.options.file_contents")
 					checked: true
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()

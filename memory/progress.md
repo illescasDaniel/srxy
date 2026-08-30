@@ -63,6 +63,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] GUI persist options/filters — opt-in checkboxes + Reset; `settings.json` (`$SRXY_HOME` or `~/.config/srxy`); flag on OK, payload on exit; restore on next GUI launch. Unit + GUI tests; docs. Applied from `cursor/5648e20a`.
 - [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`). Applied from `cursor/5648e20a`.
 - [x] Reset All Settings also clears live options/filters + persist flags (and quit does not recreate `settings.json` when file absent / persist off).
+- [x] QML click-driven GUI flow tests — `tests/gui/helpers.py` + `test_gui_flows.py` (full path/query/options/filters/search, names-only via Options UI, filters live validation via click). ~1.6s for 3 tests offscreen; gui bucket.
 
 ### Open
 

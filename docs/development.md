@@ -149,6 +149,10 @@ New or changed TUI elements need snapshot coverage in `tests/tui/` (`assert_svg_
 
 GUI chrome text-tree snapshots live in `tests/gui/snapshots/`. Refresh: `UPDATE_GUI_SNAPSHOTS=1 QT_QPA_PLATFORM=offscreen uv run pytest tests/gui/test_gui_snapshots.py`. See [docs/gui.md](gui.md) and [docs/architecture.md](architecture.md).
 
+### GUI click flows
+
+Offscreen QML event helpers (`tests/gui/helpers.py`) drive clicks/text for end-to-end flows in `tests/gui/test_gui_flows.py` (gui bucket). Prefer `pathField` over Browse. Details: [docs/gui.md](gui.md#click-driven-flow-tests).
+
 ### GUI cold-start timing
 
 Opt-in marks on stderr while launching the default GUI:

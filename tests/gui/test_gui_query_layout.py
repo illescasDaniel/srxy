@@ -2,20 +2,17 @@
 
 from __future__ import annotations
 
-import os
 import sys
 import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, Qt, QtMsgType, QUrl, qInstallMessageHandler
-from PySide6.QtGui import QGuiApplication
-from PySide6.QtQml import QQmlApplicationEngine, QQmlProperty
+from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, Qt, QtMsgType, qInstallMessageHandler
+from PySide6.QtQml import QQmlProperty
+from tests.gui.helpers import ensure_qapp, load_main
 
 from srxy.adapters.inbound.cli.cli import build_parser
-from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
-from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.gui]
@@ -23,36 +20,7 @@ pytestmark = [pytest.mark.integration, pytest.mark.gui]
 
 @pytest.fixture(scope="module")
 def qapp() -> QCoreApplication:
-	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
-	app = QCoreApplication.instance()
-	if app is None:
-		app = QGuiApplication([])
-		apply_qt_quick_theme(app)
-	assert isinstance(app, QCoreApplication)
-	return app
-
-
-def _load_main(controller: SearchController) -> tuple[QQmlApplicationEngine, QObject]:
-	engine = QQmlApplicationEngine()
-	engine.addImportPath(shared_qml_import_path())
-	theme = apply_qt_quick_theme(QCoreApplication.instance())  # type: ignore[arg-type]
-	engine.rootContext().setContextProperty("controller", controller)
-	engine.rootContext().setContextProperty("srxyTheme", theme)
-	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
-	roots = engine.rootObjects()
-	assert roots, "failed to load Main.qml"
-	window = roots[0]
-	assert isinstance(window, QObject)
-	# Main.qml stays hidden until run_gui reveals it; tests need a visible window for layout.
-	window.setProperty("visible", True)
-	return engine, window
-
-
-def _shutdown(controller: SearchController, engine: QQmlApplicationEngine, window: QObject, qapp: QCoreApplication):
-	controller.shutdown(thread_wait_ms=500)
-	window.deleteLater()
-	engine.deleteLater()
-	qapp.processEvents()
+	return ensure_qapp()
 
 
 def test_given_main_qml_when_loaded_then_mode_box_lives_in_how_and_search_button_exists(
@@ -70,23 +38,18 @@ def test_given_main_qml_when_loaded_then_mode_box_lives_in_how_and_search_button
 	controller = SearchController(args)
 
 	# when
-	engine, window = _load_main(controller)
+	harness = load_main(controller, qapp)
 	for _ in range(20):
 		qapp.processEvents()
 
-	mode_box = window.findChild(QObject, "queryModeBox")
-	search_button = window.findChild(QObject, "searchButton")
-	simple_field = window.findChild(QObject, "simpleQueryField")
-	options_button = window.findChild(QObject, "optionsButton")
-	filters_button = window.findChild(QObject, "filtersButton")
+	mode_box = harness.find("queryModeBox")
+	search_button = harness.find("searchButton")
+	simple_field = harness.find("simpleQueryField")
+	options_button = harness.find("optionsButton")
+	harness.find("filtersButton")
 
 	# then
 	qInstallMessageHandler(previous)
-	assert mode_box is not None
-	assert search_button is not None
-	assert simple_field is not None
-	assert options_button is not None
-	assert filters_button is not None
 	# Mode selector is a sibling section of Options/Filters under How's column.
 	options_parent = options_button.parent()
 	assert options_parent is not None
@@ -106,7 +69,7 @@ def test_given_main_qml_when_loaded_then_mode_box_lives_in_how_and_search_button
 		assert abs(btn_h - btn_implicit_h) <= 2.0
 		assert btn_h + 0.5 >= field_h
 	assert not msgs, "QML errors:\n" + "\n".join(msgs)
-	_shutdown(controller, engine, window, qapp)
+	harness.shutdown()
 
 
 def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp: QCoreApplication):
@@ -120,11 +83,11 @@ def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp:
 	previous = qInstallMessageHandler(_handler)
 	args = build_parser().parse_args(["", ".", "--cli"])
 	controller = SearchController(args)
-	engine, window = _load_main(controller)
+	harness = load_main(controller, qapp)
 
 	# when
 	QMetaObject.invokeMethod(
-		window,
+		harness.window,
 		"applyDemoMultiTerms",
 		Qt.ConnectionType.DirectConnection,
 		Q_ARG(str, '["alpha", "beta", "gamma"]'),
@@ -133,7 +96,7 @@ def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp:
 		qapp.processEvents()
 	# Shrink back to one term via the same helper.
 	QMetaObject.invokeMethod(
-		window,
+		harness.window,
 		"applyDemoMultiTerms",
 		Qt.ConnectionType.DirectConnection,
 		Q_ARG(str, '["only"]'),
@@ -145,19 +108,21 @@ def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp:
 	qInstallMessageHandler(previous)
 	assert not msgs, "QML ReferenceErrors:\n" + "\n".join(msgs)
 	assert controller.queryMode in {"simple", "multi", "advanced"}
-	_shutdown(controller, engine, window, qapp)
+	harness.shutdown()
 
 
-def test_given_cancelled_search_when_finished_then_search_button_stays_accented(qapp: QCoreApplication, tmp_path: Path):
+def test_given_cancelled_search_when_finished_then_search_button_stays_accented(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
 	# given — Search accent tracks controller.stale; cancel must not drop it
 	(tmp_path / "note.txt").write_text("alpha\n", encoding="utf-8")
 	args = build_parser().parse_args(["zzzz-no-match-token", str(tmp_path), "--cli"])
 	controller = SearchController(args)
-	engine, window = _load_main(controller)
+	harness = load_main(controller, qapp)
 	for _ in range(20):
 		qapp.processEvents()
-	search_button = window.findChild(QObject, "searchButton")
-	assert search_button is not None
+	search_button = harness.find("searchButton")
 	assert QQmlProperty(search_button, "accent").read() is True
 
 	# when
@@ -174,4 +139,4 @@ def test_given_cancelled_search_when_finished_then_search_button_stays_accented(
 	assert controller.stale is True
 	assert QQmlProperty(search_button, "accent").read() is True
 	assert QQmlProperty(search_button, "highlighted").read() is True
-	_shutdown(controller, engine, window, qapp)
+	harness.shutdown()
