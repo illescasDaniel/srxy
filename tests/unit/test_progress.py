@@ -75,6 +75,48 @@ def test_given_determinate_activity_when_formatting_body_then_omits_spinner():
 	assert format_activity_status_body(update) == "25% Transcribe · speech.mp3"
 
 
+def test_given_searching_label_when_checking_generic_then_yields_to_scanning():
+	from srxy.domain.progress import is_generic_searching_activity
+
+	assert is_generic_searching_activity(None, searching_label="Searching…") is True
+	assert is_generic_searching_activity(ActivityUpdate(label="Searching…"), searching_label="Searching…") is True
+	assert is_generic_searching_activity(ActivityUpdate(label="OCR · photo.png"), searching_label="Searching…") is False
+
+
+def test_given_concurrent_fan_in_when_two_threads_emit_then_clear_keeps_other_label():
+	import threading
+
+	from srxy.domain.progress import concurrent_activity_fan_in, emit_activity
+
+	received: list[ActivityUpdate | None] = []
+	fan_in = concurrent_activity_fan_in(received.append)
+	ready = threading.Barrier(2)
+	hold = threading.Event()
+
+	def worker_a():
+		emit_activity(fan_in, "OCR · a.png")
+		ready.wait()
+		hold.wait(timeout=5)
+		fan_in(None)
+
+	def worker_b():
+		ready.wait()
+		emit_activity(fan_in, "OCR · b.png")
+		hold.set()
+		fan_in(None)
+
+	threads = [threading.Thread(target=worker_a), threading.Thread(target=worker_b)]
+	for thread in threads:
+		thread.start()
+	for thread in threads:
+		thread.join(timeout=5)
+
+	labels = [update.label if update is not None else None for update in received]
+	assert "OCR · a.png" in labels
+	assert "OCR · b.png" in labels
+	assert labels[-1] is None
+
+
 def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_progress():
 	# given
 	from srxy.adapters.outbound.transcribe.transcribe_text import (

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import threading
 from collections.abc import Callable
 from dataclasses import dataclass
 from typing import TypeAlias
@@ -8,7 +9,7 @@ from typing import TypeAlias
 ActivityCallback: TypeAlias = Callable[["ActivityUpdate | None"], None]
 
 
-ACTIVITY_SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+ACTIVITY_SPINNER_FRAMES = "⠋⠙⠹⠼⠴⠦⠧⠇⠏"
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,6 +43,31 @@ def clear_activity(on_activity: ActivityCallback | None):
 		on_activity(None)
 
 
+def concurrent_activity_fan_in(downstream: ActivityCallback) -> ActivityCallback:
+	"""Merge per-thread activity updates so concurrent OCR/transcribe can share one status line.
+
+	Each thread owns one slot. ``None`` clears that thread only. Downstream sees the
+	most recently updated remaining label, or ``None`` when no slots remain.
+	"""
+	lock = threading.Lock()
+	by_thread: dict[int, ActivityUpdate] = {}
+
+	def _fan_in(update: ActivityUpdate | None):
+		tid = threading.get_ident()
+		with lock:
+			if update is None or update.label is None:
+				by_thread.pop(tid, None)
+			else:
+				by_thread.pop(tid, None)
+				by_thread[tid] = update
+			if not by_thread:
+				downstream(None)
+			else:
+				downstream(next(reversed(by_thread.values())))
+
+	return _fan_in
+
+
 def activity_short_label(label: str) -> str:
 	if " · " in label:
 		return label.split(" · ", 1)[0]
@@ -72,13 +98,20 @@ def format_activity_status_body(activity: ActivityUpdate) -> str:
 	return task
 
 
+def is_generic_searching_activity(activity: ActivityUpdate | None, *, searching_label: str) -> bool:
+	"""True when status should yield to determinate Scanning N/M text."""
+	return activity is None or activity.label is None or activity.label == searching_label
+
+
 __all__ = [
 	"ACTIVITY_SPINNER_FRAMES",
 	"ActivityCallback",
 	"ActivityUpdate",
 	"activity_short_label",
 	"clear_activity",
+	"concurrent_activity_fan_in",
 	"emit_activity",
 	"format_activity_status",
 	"format_activity_status_body",
+	"is_generic_searching_activity",
 ]

@@ -243,6 +243,40 @@ def test_given_search_progress_when_handling_event_then_updates_file_count(qapp:
 	assert "3/12" in str(controller.status)
 
 
+def test_given_sticky_searching_activity_when_progress_arrives_then_status_shows_scanning(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	from PySide6.QtTest import QTest
+
+	from srxy.application.search_session import SearchProgressEvent
+	from srxy.i18n import tr
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label=tr("activity.searching"))))
+	QTest.qWait(50)
+	qapp.processEvents()
+
+	controller.handle_search_event_for_tests(SearchProgressEvent(current=1, total=2))
+
+	assert str(controller.progressCount) == "1/2"
+	assert "1/2" in str(controller.status)
+	assert "OCR ·" not in str(controller.status)
+
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · photo.png")))
+	QTest.qWait(300)
+	qapp.processEvents()
+
+	assert "OCR · photo.png" in str(controller.status)
+
+	controller.handle_search_event_for_tests(SearchProgressEvent(current=2, total=2))
+
+	assert str(controller.progressCount) == "2/2"
+	assert "OCR · photo.png" in str(controller.status)
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_given_search_start_when_no_total_yet_then_progress_is_indeterminate(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)

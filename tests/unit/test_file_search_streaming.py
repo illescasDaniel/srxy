@@ -188,3 +188,77 @@ def test_given_streaming_search_when_reporting_activity_then_uses_searching_not_
 	assert "Searching…" in labels
 	assert "Listing files…" not in labels
 	assert activities[-1] is None
+
+
+def test_given_heavy_thread_pool_when_listing_finishes_then_progress_includes_zero_of_total(
+	tmp_path: Path,
+):
+	"""Catch-up must emit 0/N so the UI can show counts before slow OCR returns."""
+	import threading
+	from unittest.mock import patch
+
+	paths = [tmp_path / "a.png", tmp_path / "b.png"]
+	for path in paths:
+		path.write_bytes(b"png")
+	walker = _FakeWalker(paths)
+	progress_calls: list[tuple[int, int]] = []
+	release = threading.Event()
+
+	def on_progress(current: int, total: int):
+		progress_calls.append((current, total))
+		if current == 0 and total == 2:
+			release.set()
+
+	def blocked_score(*_args, **_kwargs) -> float:
+		if not release.wait(timeout=5):
+			raise TimeoutError("progress catch-up never released workers")
+		return 0.0
+
+	with (
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", side_effect=blocked_score),
+	):
+		FileSearchUseCase(file_walker=walker).search(
+			tmp_path,
+			"sunset",
+			search_names=False,
+			search_contents=True,
+			search_docs_tags=False,
+			semantic_image=True,
+			on_progress=on_progress,
+			max_workers=2,
+		)
+
+	assert progress_calls[0] == (0, 2)
+	assert progress_calls[-1] == (2, 2)
+
+
+def test_given_heavy_thread_pool_when_scoring_images_then_emits_per_file_clip_activity(
+	tmp_path: Path,
+):
+	from unittest.mock import patch
+
+	(tmp_path / "left.png").write_bytes(b"png")
+	(tmp_path / "right.png").write_bytes(b"png")
+	activities: list[ActivityUpdate | None] = []
+
+	with (
+		patch("srxy.adapters.outbound.content.image_similarity.is_semantic_image_active", return_value=True),
+		patch("srxy.application.use_cases.search_files.encode_semantic_image_query", return_value=[1.0, 0.0]),
+		patch("srxy.application.use_cases.search_files.score_image", return_value=0.5),
+	):
+		FileSearchUseCase().search(
+			tmp_path,
+			"sunset",
+			search_names=False,
+			search_contents=True,
+			search_docs_tags=False,
+			semantic_image=True,
+			on_activity=activities.append,
+			max_workers=2,
+		)
+
+	labels = {activity.label for activity in activities if activity is not None}
+	assert "CLIP · left.png" in labels or "CLIP · right.png" in labels
+	assert activities[-1] is None

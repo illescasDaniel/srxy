@@ -51,20 +51,19 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 - [x] GUI heavy-search freeze — subprocess isolation (no GIL on Qt thread), no process pool for light worker searches, stream-append + sort-on-finish, coalesced status/list updates, lighter results delegates; `profile-gui-freeze.sh` helper. User confirmed buttery UI (`c20d4dc`).
 - [x] Activity spinner via separate `activitySpinner` property; progress bar indeterminate until file total known, then 0–100%. Docs + `memory/decisions.md` annotated.
-<<<<<<< HEAD
 - [x] Search button label/icon colour now matches the dialogs' OK button — dropped the hand-tinted custom `contentItem` (and the `Qt5Compat.GraphicalEffects` import, which packaging already prunes); `AccentButton` pins `palette.brightText` and only assigns `icon.color` on macOS. Regression test in `test_gui_qml_load.py`; gate passed.
-=======
 - [x] Platform-aware `sync` / `sync-dev` / `sync-uploader` Taskipy tasks + `scripts/dev/sync.py` (Linux/Windows NVIDIA → semantic-gpu; else semantic); docs/AGENTS/copy-venv updated; `sync-win` alias kept.
 - [x] `pywin32` core Windows dependency (`platform_system == 'Windows'`); empty deprecated `[windows]` extra; installer/sync/CI/docs simplified.
 - [x] Collapse extras: single GPU-oriented `[semantic]` (former `semantic-gpu`); drop CPU semantic + `semantic-gpu` name; `sync-dev` only adds semantic on NVIDIA / Apple Silicon; README no “Fast CPU, no GPU”.
->>>>>>> cursor/ec4c7a6b
+- [x] Search progress UX — emit `0/N` when listing finishes; thread-pool fan-in for per-file OCR/CLIP/transcribe activity; GUI/TUI sticky Searching yields to Scanning N/M. Gate passed.
 
 ### Open
 
+- [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
 - [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
-- [ ] Commit: copy-venv shebang rewrite (+ Unix copy-venv / shellcheck fixes if still pending on parent) when ready.
+- [ ] Commit: search progress UX (+ copy-venv shebang rewrite if still pending on parent) when ready.
 
 ## Bugs / sub-tasks discovered
 

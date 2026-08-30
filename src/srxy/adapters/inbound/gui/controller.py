@@ -76,6 +76,7 @@ from srxy.domain.progress import (
 	ACTIVITY_SPINNER_FRAMES,
 	ActivityUpdate,
 	format_activity_status_body,
+	is_generic_searching_activity,
 )
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
@@ -1274,7 +1275,10 @@ class SearchController(QObject):
 			total = max(event.total, 1)
 			self._set_progress_value(min(100.0, 100.0 * event.current / total), indeterminate=False)
 			self._set_scan_progress(event.current, event.total)
-			if self._activity is None:
+			from srxy.i18n import tr
+
+			# Sticky "Searching…" must not block determinate Scanning N/M text.
+			if is_generic_searching_activity(self._activity, searching_label=tr("activity.searching")):
 				self._set_status_tr("status.scanning", current=event.current, total=event.total)
 		elif isinstance(event, SearchActivityEvent):
 			if event.update is None:

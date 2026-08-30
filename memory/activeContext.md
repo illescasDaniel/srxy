@@ -4,40 +4,27 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-<<<<<<< HEAD
-- `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/08e18461` (Search button label + icon colour matches dialog OK).
+- `cursor/5ebdc811` (worktree) — parent `feature/fixes_1.6.6` / version target **1.7.0**.
 
 ## Current focus
 
-Applied: **Search button label + icon colour now matches the dialogs' OK button**. Material/Fluent/Universal paint their own highlighted label colour and ignore `palette.buttonText`; the Search button had been hand-tinting a custom `contentItem` from WCAG `foreground` (black on `#3daee9`). Search now uses the style's `IconLabel`; `icon.color` is assigned only on macOS.
+Search progress UX: determinate file counts (`0/N` … `N/N`) as soon as the walk finishes, plus per-file OCR/CLIP/transcribe activity during concurrent (thread-pool) heavy searches. Sticky “Searching…” no longer blocks `Scanning current/total` in GUI/TUI status.
 
-## Touched (this apply)
+## Touched
 
-- `src/srxy/adapters/inbound/shared/qml/SrxyControls/AccentButton.qml`
-- `src/srxy/adapters/inbound/gui/qml/Main.qml`
-- `tests/gui/test_gui_qml_load.py`
-- `AGENTS.md`, `memory/*`
+- `src/srxy/domain/progress.py` — `concurrent_activity_fan_in`, `is_generic_searching_activity`
+- `src/srxy/application/use_cases/search_files.py` — catch-up emits `0/N`; thread pool passes fan-in activity
+- `src/srxy/adapters/inbound/gui/controller.py` — scanning status when activity is generic Searching
+- `src/srxy/adapters/inbound/tui/app.py` — same status priority
+- `tests/unit/test_progress.py`, `test_file_search_streaming.py`, `test_file_search.py`
+- `tests/gui/test_gui_controller.py`
 
 ## Verified
 
-- Worktree commit `7ca155a`; parent fast-forward `ded25c2..7ca155a`.
-- Offscreen probe (Linux Material): Search label + glyph + OK label all `#ffffff` when accented.
-- Parent `./scripts/quality/checks.sh --quiet --fix` then `--quiet` **PASSED**.
+- `copy-venv.sh` → worktree `.venv`; `srxy.__file__` under this tree; torch `2.13.0+cu130` `cuda=True`
+- `./scripts/quality/checks.sh --quiet --fix` then `--quiet` **PASSED**
 
 ## Next steps
 
-1. User visual check on Linux (light + dark) that Search text/icon now match OK.
-2. Windows (Fluent) and macOS (Aqua) visual check — macOS is the only platform still setting `icon.color` explicitly.
-3. `/delete-worktree-srxy` for `cursor/08e18461` (`rlni`) when ready.
-4. Manual Windows (and other) installer verification for 1.7.0.
-=======
-- `cursor/ec4c7a6b` (worktree) — parent `feature/fixes_1.6.6` / version target **1.7.0**.
-
-## Current focus
-
-Collapsed extras: dropped CPU-only `[semantic]` path and the `[semantic-gpu]` name; single `[semantic]` = former GPU stack. `sync-dev` installs `--extra semantic` only on NVIDIA / Apple Silicon MPS; no GPU → core+dev only. README dropped “Fast CPU, no GPU”. Gate passed.
-
-## Next steps
-
-1. User may commit when ready.
->>>>>>> cursor/ec4c7a6b
+1. User visual check: OCR search on a small folder (e.g. Downloads with 2 images) — progressCount `0/2`→`1/2`→`2/2`, status `OCR · filename` / `Scanning N/M`.
+2. User may commit when ready.
