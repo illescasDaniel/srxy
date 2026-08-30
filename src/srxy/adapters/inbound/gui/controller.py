@@ -948,7 +948,6 @@ class SearchController(QObject):
 		self._activity_spinner_timer = timer
 		timer.start()
 
-
 	def _set_download_confirm(self, open_: bool, message: str = ""):
 		self._download_confirm_open = open_
 		self._download_confirm_message = message

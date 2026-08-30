@@ -243,9 +243,7 @@ def test_given_search_progress_when_handling_event_then_updates_file_count(qapp:
 	assert "3/12" in str(controller.status)
 
 
-def test_given_search_start_when_no_total_yet_then_progress_is_indeterminate(
-	qapp: QCoreApplication, tmp_path: Path
-):
+def test_given_search_start_when_no_total_yet_then_progress_is_indeterminate(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	# Simulate the startSearch progress reset without spinning a worker.
