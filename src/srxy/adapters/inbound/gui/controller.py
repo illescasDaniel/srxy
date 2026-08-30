@@ -440,8 +440,16 @@ class SearchController(QObject):
 		)
 
 	def _write_persisted_search_prefs(self):
-		from srxy.application.settings import save_persisted_search_prefs, settings_path
+		from srxy.application.settings import (
+			save_persisted_search_prefs,
+			settings_file_present,
+			settings_path,
+		)
 
+		# After Reset All Settings the file is gone and persist flags are off —
+		# do not recreate settings.json just to record false flags.
+		if not self._persist_options and not self._persist_filters and not settings_file_present():
+			return
 		ok = save_persisted_search_prefs(
 			persist_options=self._persist_options,
 			persist_filters=self._persist_filters,
@@ -2251,6 +2259,16 @@ class SearchController(QObject):
 		except Exception as error:  # noqa: BLE001
 			self.errorOccurred.emit(str(error))
 			return
+		# Drop in-session search prefs too — deleting settings.json alone left
+		# ticks/filters live until quit, and shutdown rewrote the file.
+		self._options = SearchOptions()
+		self._filters = default_search_filters()
+		self._persist_options = False
+		self._persist_filters = False
+		self._clamp_options_to_capabilities()
+		apply_search_options_to_args(self._args, self._options)
+		apply_search_filters_to_args(self._args, self._filters)
+		self._refresh_stale()
 		# Re-resolve from system locale without rewriting settings.json.
 		set_language(resolve_language())
 		self._language = get_language()

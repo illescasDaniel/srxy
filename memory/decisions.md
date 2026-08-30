@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — Reset All Settings also clears live options/filters
+
+- **Context:** Reset All Settings deleted `settings.json` but left `_options` / `_filters` / persist flags in the controller. The dialogs still showed the old ticks, and `shutdown` → `_write_persisted_search_prefs` recreated the file.
+- **Decision:** (1) `resetPreferences` restores factory `SearchOptions()` / `default_search_filters()`, clears both persist flags, reapplies args, refreshes stale. (2) `_write_persisted_search_prefs` no-ops when both persist flags are off and the settings file is absent (so quit after reset does not recreate it).
+- **Rationale:** Removing the settings file must mean a clean slate for search prefs in the same session, not only on the next launch.
+
 ## 2026-08-30 — Search progress bar is file-scan only (not OCR page / transcribe segment %)
 
 - **Context:** Searching Pictures with OCR, the progress bar could jump to 100% while status still showed `OCR · …`, then drop to ~95%. Document OCR (and transcribe) emit determinate activity with `current/total` for pages/segments; the GUI also fed those ratios into the same progress bar used for files completed / files listed.
@@ -16,7 +22,7 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 ## 2026-08-30 — GUI Settings dialog via JSON snapshot property
 
 - **Context:** Need a Settings menu for clearing/re-downloading AI models and clearing the encrypted results cache, with per-kind rows and live size/status.
-- **Decision:** (1) Top menu **Settings** has shortcut Actions (**Download All Models**, **Reset Cache**, **Reset All Settings**) plus **All Settings…** for the full dialog. (2) `SearchController.settingsJson` holds a refreshed snapshot (`models[]` + `cache` + `preferences` + `busy`); QML parses it and binds rows. (3) Clears / resets / download-all go through a Yes/No confirm; re-downloads reuse `_DownloadWorker` / progress UI with `_settings_redownload` skipping the search-time download confirm and chaining kinds for `all`. (4) **Reset All Settings** deletes `settings.json` via `reset_settings()` and re-applies system language without rewriting the file. (5) Helpers live in `application/disk_usage.py` + `application/settings_maintenance.py` over existing `model_store` / `cache` / `settings` APIs.
+- **Decision:** (1) Top menu **Settings** has shortcut Actions (**Download All Models**, **Reset Cache**, **Reset All Settings**) plus **All Settings…** for the full dialog. (2) `SearchController.settingsJson` holds a refreshed snapshot (`models[]` + `cache` + `preferences` + `busy`); QML parses it and binds rows. (3) Clears / resets / download-all go through a Yes/No confirm; re-downloads reuse `_DownloadWorker` / progress UI with `_settings_redownload` skipping the search-time download confirm and chaining kinds for `all`. (4) **Reset All Settings** deletes `settings.json` via `reset_settings()`, re-applies system language without rewriting the file, and restores factory search options/filters (clears persist flags) so the live session matches the missing file. (5) Helpers live in `application/disk_usage.py` + `application/settings_maintenance.py` over existing `model_store` / `cache` / `settings` APIs.
 - **Rationale:** Common maintenance stays one click away; the full dialog covers per-model detail. Avoids duplicating download UX; keeps OCR/vendor wipe out of scope until dedicated clear APIs exist.
 ## 2026-08-30 — Persist restore must not clamp GPU options during capability probe
 

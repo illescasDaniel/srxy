@@ -62,6 +62,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Settings menu shortcuts — Download All Models / Reset Cache / Reset All Settings (deletes `settings.json`); **All Settings…** opens full dialog including preferences reset. Applied from worktree `cursor/5852d6f1`.
 - [x] GUI persist options/filters — opt-in checkboxes + Reset; `settings.json` (`$SRXY_HOME` or `~/.config/srxy`); flag on OK, payload on exit; restore on next GUI launch. Unit + GUI tests; docs. Applied from `cursor/5648e20a`.
 - [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`). Applied from `cursor/5648e20a`.
+- [x] Reset All Settings also clears live options/filters + persist flags (and quit does not recreate `settings.json` when file absent / persist off).
 
 ### Open
 
@@ -70,6 +71,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
 - [ ] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download.
 - [ ] **Manual QA (user):** GUI persist — check Persist on Options/Filters, OK, quit, relaunch; Reset draft; unpersist clears `settings.json` payload; Filters live validation greys OK on bad input.
+- [ ] **Manual QA (user):** Reset All Settings with Persist on — options/filters snap to factory defaults immediately; quit leaves `settings.json` absent.
 - [ ] `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
 - [ ] `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
 

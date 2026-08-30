@@ -8,17 +8,16 @@ _Last updated: 2026-08-30_
 
 ## Current focus
 
-Applied `cursor/5648e20a` (persist + live filters validation) into parent. Merge `9b3256a`; follow-up theme guard `1604fd9`.
+Fixed Reset All Settings: also restores factory options/filters and clears persist flags; quit no longer recreates `settings.json` when the file is gone and persist is off.
 
 ## Verified
 
-- Ancestry: `cursor/5648e20a` is ancestor of HEAD.
-- Composed with Settings menu (`reset_settings` + persist helpers both present).
-- No conflict markers.
-- Direct pytest: gui controller + qml load + settings persist = 90 passed.
+- `checks.sh --quiet --fix` + verify PASSED.
+- GUI controller reset test asserts session prefs cleared and file stays absent after shutdown.
 
 ## Next steps
 
-1. Manual: Persist options/filters; Filters live OK disable; Settings menu.
-2. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
-3. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
+1. Manual: Reset All Settings with Persist on — options/filters should snap to defaults immediately; quit must not recreate `settings.json`.
+2. Manual: Persist options/filters; Filters live OK disable; Settings menu.
+3. `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
+4. `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.

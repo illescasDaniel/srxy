@@ -1502,28 +1502,52 @@ def test_given_preferences_file_when_reset_then_deletes_and_refreshes_language(
 	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ):
 	# given
-	from srxy.application.settings import set_language_setting, settings_path
+	from srxy.application.search_options import SearchOptions
+	from srxy.application.settings import save_persisted_search_prefs, set_language_setting, settings_path
 	from srxy.i18n import set_language
 
 	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
 	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
 	set_language("es")
 	set_language_setting("es")
+	from dataclasses import replace
+
+	from srxy.application.search_filters import default_search_filters
+
+	custom_filters = replace(default_search_filters(), top_files="10")
+	save_persisted_search_prefs(
+		persist_options=True,
+		persist_filters=True,
+		options=SearchOptions(include_hidden=True, include_archives=True),
+		filters=custom_filters,
+	)
 	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	assert controller.language == "es"
 	assert settings_path().is_file()
+	assert json.loads(controller.optionsJson())["include_hidden"] is True
+	assert json.loads(controller.filtersJson())["top_files"] == "10"
 
 	# when
 	controller.confirmResetPreferences()
 	controller.acceptSettingsConfirm()
 
-	# then
+	# then — file gone, language cleared, session options/filters back to factory
 	assert not settings_path().exists()
 	assert "SRXY_LANGUAGE" not in os.environ
 	payload = json.loads(str(controller.settingsJson))
 	assert payload["preferences"]["present"] is False
+	options = json.loads(controller.optionsJson())
+	assert options["include_hidden"] is False
+	assert options["include_archives"] is False
+	assert options["persist_options"] is False
+	filters = json.loads(controller.filtersJson())
+	assert filters["persist_filters"] is False
+	assert filters["top_files"] == ""
+	assert options == {**json.loads(controller.defaultOptionsJson()), "persist_options": False}
+	assert filters == {**json.loads(controller.defaultFiltersJson()), "persist_filters": False}
 	controller.shutdown(thread_wait_ms=100)
+	assert not settings_path().exists()
 	set_language("en")
 
 
