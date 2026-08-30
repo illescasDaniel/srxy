@@ -33,7 +33,12 @@ from srxy.domain.file_query import (
 	score_file_query_on_text,
 )
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
-from srxy.domain.progress import ActivityCallback, clear_activity, emit_activity
+from srxy.domain.progress import (
+	ActivityCallback,
+	clear_activity,
+	concurrent_activity_fan_in,
+	emit_activity,
+)
 from srxy.ports.outbound.content import (
 	ContentCachePort,
 	FileWalkerPort,
@@ -857,8 +862,8 @@ def _execute_file_search(
 	) -> tuple[FileSearchResult | None, list[SkippedFile]]:
 		# Captures all search parameters from the enclosing scope. Each call is
 		# self-contained so no shared mutable state is touched inside the worker.
-		# Activity is passed only for sequential search; concurrent pools omit it
-		# because overlapping OCR/transcribe labels would conflict in the TUI.
+		# Concurrent thread pools pass a fan-in activity callback so per-file
+		# OCR/transcribe/CLIP labels still reach the UI without stomping each other.
 		names_only = is_names_only_path(
 			file_path,
 			search_root=search_root,
@@ -924,7 +929,12 @@ def _execute_file_search(
 			transcribe_threshold,
 		)
 
-	emit_activity(on_activity, tr("activity.searching"))
+	# Thread-pool heavy search: merge per-worker activity into one status line.
+	file_activity = on_activity
+	if _use_threads and on_activity is not None:
+		file_activity = concurrent_activity_fan_in(on_activity)
+
+	emit_activity(file_activity, tr("activity.searching"))
 	completed = 0
 	listed = 0
 	listing_done = False
@@ -1001,10 +1011,12 @@ def _execute_file_search(
 
 	def _emit_listing_activity():
 		if listed % _LISTING_ACTIVITY_INTERVAL == 0:
-			emit_activity(on_activity, tr("activity.searching"), current=listed)
+			emit_activity(file_activity, tr("activity.searching"), current=listed)
 
 	def _catch_up_progress():
-		if on_progress is not None and completed > 0 and listed > 0:
+		# Emit as soon as the walk finishes — including 0/N — so the UI can show
+		# determinate file counts while slow OCR/transcribe workers are still running.
+		if on_progress is not None and listed > 0:
 			on_progress(completed, listed)
 
 	def _drain_done(
@@ -1052,7 +1064,7 @@ def _execute_file_search(
 					_check_cancel()
 					while len(pending) >= pending_limit:
 						pending = _drain_done(pending, pool=pool)
-					pending.add(pool.submit(_submit_file, file_path))
+					pending.add(pool.submit(_submit_file, file_path, activity=file_activity))
 				listing_done = True
 				_catch_up_progress()
 				while pending:
@@ -1086,7 +1098,7 @@ def _execute_file_search(
 				if proc_pool is None:
 					for buffered in buffer:
 						_check_cancel()
-						_record_outcome(*_submit_file(buffered, activity=on_activity))
+						_record_outcome(*_submit_file(buffered, activity=file_activity))
 				else:
 					_catch_up_progress()
 					while pending:
@@ -1097,7 +1109,7 @@ def _execute_file_search(
 		else:
 			for file_path in _iter_listed_paths():
 				_check_cancel()
-				_record_outcome(*_submit_file(file_path, activity=on_activity))
+				_record_outcome(*_submit_file(file_path, activity=file_activity))
 			listing_done = True
 			_catch_up_progress()
 	except SearchCancelled as error:
@@ -1109,6 +1121,8 @@ def _execute_file_search(
 			if skipped_files is not None and error.skipped_files:
 				skipped_files.extend(error.skipped_files)
 	finally:
+		# Clear the downstream callback directly so leftover fan-in slots cannot
+		# leave a stale spinner after the search ends.
 		clear_activity(on_activity)
 
 	if cancelled:

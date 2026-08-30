@@ -69,7 +69,12 @@ from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
 from srxy.domain.file_query import file_q_to_dict
 from srxy.domain.models import FileSearchResult
-from srxy.domain.progress import ACTIVITY_SPINNER_FRAMES, ActivityUpdate, format_activity_status
+from srxy.domain.progress import (
+	ACTIVITY_SPINNER_FRAMES,
+	ActivityUpdate,
+	format_activity_status,
+	is_generic_searching_activity,
+)
 from srxy.i18n import tr
 from srxy.ports.inbound.search_runner import SearchRunnerPort
 from srxy.ports.outbound.desktop import DesktopPort
@@ -826,7 +831,8 @@ class SrxyApp(App[int]):
 			return
 		percent = int((message.current / message.total) * 100)
 		progress.update(total=100, progress=percent)
-		if self._activity is None:
+		# Sticky "Searching…" must not block determinate Scanning N/M text.
+		if is_generic_searching_activity(self._activity, searching_label=tr("activity.searching")):
 			self._set_status(tr("tui.status.scanning_files", current=message.current, total=message.total))
 
 	def _clear_activity_status(self):
