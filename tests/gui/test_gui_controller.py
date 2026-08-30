@@ -29,9 +29,11 @@ pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
 @pytest.fixture(scope="module")
 def qapp() -> QCoreApplication:
 	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+	from PySide6.QtGui import QGuiApplication
+
 	app = QCoreApplication.instance()
 	if app is None:
-		app = QCoreApplication([])
+		app = QGuiApplication([])
 	assert isinstance(app, QCoreApplication)
 	return app
 
@@ -1269,3 +1271,223 @@ def test_given_selected_result_when_opening_folder_then_desktop_reveal_is_called
 
 	# then
 	desktop.reveal_path.assert_called_once_with(path)
+
+
+def test_given_persisted_options_when_controller_starts_then_restores(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	from srxy.application.search_options import SearchOptions
+	from srxy.application.settings import save_persisted_search_prefs
+
+	save_persisted_search_prefs(
+		persist_options=True,
+		persist_filters=False,
+		options=SearchOptions(include_hidden=True, include_archives=True),
+	)
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+
+	# when
+	controller = SearchController(args)
+	payload = json.loads(controller.optionsJson())
+
+	# then
+	assert payload["persist_options"] is True
+	assert payload["include_hidden"] is True
+	assert payload["include_archives"] is True
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_persist_flag_when_shutdown_then_writes_settings(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	settings = tmp_path / "settings.json"
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(settings))
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	error = controller.applyOptionsJson(
+		json.dumps(
+			{
+				**json.loads(controller.defaultOptionsJson()),
+				"include_noise": True,
+				"persist_options": True,
+			}
+		)
+	)
+	assert error == ""
+
+	# when
+	controller.shutdown(thread_wait_ms=100)
+
+	# then
+	from srxy.application.settings import load_persisted_search_prefs
+
+	prefs = load_persisted_search_prefs()
+	assert prefs.persist_options is True
+	assert prefs.options is not None
+	assert prefs.options.include_noise is True
+
+
+def test_given_unpersist_when_shutdown_then_clears_payload(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	settings = tmp_path / "settings.json"
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(settings))
+	from srxy.application.search_options import SearchOptions
+	from srxy.application.settings import save_persisted_search_prefs
+
+	save_persisted_search_prefs(
+		persist_options=True,
+		persist_filters=False,
+		options=SearchOptions(include_hidden=True),
+	)
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	error = controller.applyOptionsJson(json.dumps({**json.loads(controller.optionsJson()), "persist_options": False}))
+	assert error == ""
+
+	# when
+	controller.shutdown(thread_wait_ms=100)
+
+	# then
+	from srxy.application.settings import load_persisted_search_prefs, load_settings
+
+	prefs = load_persisted_search_prefs()
+	assert prefs.persist_options is False
+	assert prefs.options is None
+	assert "options" not in load_settings()
+
+
+def test_given_default_options_json_when_reset_then_factory_defaults(qapp: QCoreApplication, tmp_path: Path):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.applyOptionsJson(
+		json.dumps({**json.loads(controller.defaultOptionsJson()), "include_hidden": True, "persist_options": True})
+	)
+
+	# when
+	defaults = json.loads(controller.defaultOptionsJson())
+
+	# then — defaults are factory values; session persist flag untouched until push
+	assert defaults["include_hidden"] is False
+	assert defaults["search_names"] is True
+	assert "persist_options" not in defaults
+	assert json.loads(controller.optionsJson())["persist_options"] is True
+	controller.shutdown(thread_wait_ms=100)
+
+
+def _gpu_capabilities(*, semantic: bool = True) -> object:
+	from srxy.adapters.inbound.gui.capabilities import Capabilities
+
+	return Capabilities(
+		semantic_deps=True,
+		has_gpu=semantic,
+		ocr=True,
+		ffmpeg=True,
+		transcribe_deps=True,
+		semantic_enabled=semantic,
+		semantic_image_enabled=semantic,
+		transcribe_enabled=semantic,
+		ocr_enabled=True,
+	)
+
+
+def test_given_persisted_semantic_when_controller_starts_then_survives_probe(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	"""Regression: default_capabilities() has semantic_enabled=False; clamp must not wipe
+	persisted Similar-meaning before the deferred GPU probe finishes."""
+	# given
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	from srxy.application.search_options import SearchOptions
+	from srxy.application.settings import save_persisted_search_prefs
+
+	save_persisted_search_prefs(
+		persist_options=True,
+		persist_filters=False,
+		options=SearchOptions(semantic=True, search_names=True, search_contents=True),
+	)
+
+	def _probe():
+		return _gpu_capabilities(semantic=True)
+
+	_probe.cache_clear = lambda: None  # type: ignore[attr-defined]
+	monkeypatch.setattr("srxy.adapters.inbound.gui.controller.probe_capabilities", _probe)
+
+	# when
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	payload = json.loads(controller.optionsJson())
+
+	# then
+	assert payload["persist_options"] is True
+	assert payload["semantic"] is True
+	controller.shutdown(thread_wait_ms=100)
+
+
+def test_given_persist_options_when_apply_then_writes_settings_immediately(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.set_capabilities_for_tests(_gpu_capabilities(semantic=True))
+
+	# when — OK commits to disk without waiting for aboutToQuit
+	error = controller.applyOptionsJson(
+		json.dumps(
+			{
+				**json.loads(controller.defaultOptionsJson()),
+				"semantic": True,
+				"persist_options": True,
+			}
+		)
+	)
+	assert error == ""
+
+	# then
+	from srxy.application.settings import load_persisted_search_prefs
+
+	prefs = load_persisted_search_prefs()
+	assert prefs.persist_options is True
+	assert prefs.options is not None
+	assert prefs.options.semantic is True
+
+	# and a fresh controller restores them after probe
+	def _probe():
+		return _gpu_capabilities(semantic=True)
+
+	_probe.cache_clear = lambda: None  # type: ignore[attr-defined]
+	monkeypatch.setattr("srxy.adapters.inbound.gui.controller.probe_capabilities", _probe)
+	restored = SearchController(build_parser().parse_args(["alpha", str(tmp_path), "--cli"]))
+	assert json.loads(restored.optionsJson())["semantic"] is True
+	controller.shutdown(thread_wait_ms=100)
+	restored.shutdown(thread_wait_ms=100)
+
+
+def test_given_unwritable_settings_when_persist_then_emits_error(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	errors: list[str] = []
+	controller.errorOccurred.connect(errors.append)
+	monkeypatch.setattr(
+		"srxy.application.settings.save_persisted_search_prefs",
+		lambda **_kwargs: False,
+	)
+
+	# when
+	controller.applyOptionsJson(json.dumps({**json.loads(controller.defaultOptionsJson()), "persist_options": True}))
+
+	# then
+	assert errors
+	assert "settings.json" in errors[0]
+	controller.shutdown(thread_wait_ms=100)

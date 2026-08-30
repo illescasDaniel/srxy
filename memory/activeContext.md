@@ -4,30 +4,26 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/5ebdc811` (search progress: file counts + OCR activity).
+- `feature/fixes_1.6.6` — version target **1.7.0**.
 
 ## Current focus
 
-Applied: **Search progress UX** — determinate file counts (`0/N` … `N/N`) as soon as the walk finishes, plus per-file OCR/CLIP/transcribe activity during concurrent (thread-pool) heavy searches. Sticky “Searching…” no longer blocks `Scanning current/total` in GUI/TUI status.
+**GUI persist fix** — restore no longer wiped by pre-probe clamp; prefs write on OK; save failures surfaced.
 
-## Touched (this apply)
+## Touched (this fix)
 
-- `src/srxy/domain/progress.py` — `concurrent_activity_fan_in`, `is_generic_searching_activity`
-- `src/srxy/application/use_cases/search_files.py` — catch-up emits `0/N`; thread pool passes fan-in activity
-- `src/srxy/adapters/inbound/gui/controller.py` — scanning status when activity is generic Searching
-- `src/srxy/adapters/inbound/tui/app.py` — same status priority
-- `tests/unit/test_progress.py`, `test_file_search_streaming.py`, `test_file_search.py`
-- `tests/gui/test_gui_controller.py`
-- `memory/*`
+- `src/srxy/adapters/inbound/gui/controller.py` — probe-aware clamp; write on OK + shutdown; error on save fail
+- `src/srxy/application/settings.py` — `save_*` return bool
+- `src/srxy/i18n/en.json`, `es.json` — `gui.settings.save_failed`
+- `tests/gui/test_gui_controller.py` — semantic restore / immediate write / save-fail tests; QGuiApplication qapp
+- `memory/decisions.md`
 
 ## Verified
 
-- Parent `./scripts/quality/checks.sh --quiet --fix` then `--quiet` **PASSED** (first heavy run hit transient CUDA OOM; retry clean).
-- Worktree commit `bfd9422`; merge `7a1e76f`.
+- GUI suite 199 passed; persist-related tests 13 passed.
+- Host note: `~/.config/srxy` may be root-owned from sandbox runs — user must `sudo chown -R "$USER:$USER" ~/.config/srxy` for writes as daniel.
 
 ## Next steps
 
-1. User visual check: OCR search on a small folder — progressCount `0/2`→`1/2`→`2/2`, status `OCR · filename` / `Scanning N/M`.
-2. `/delete-worktree-srxy` for `cursor/5ebdc811` (`hh32`) when ready.
-3. `/delete-worktree-srxy` for `cursor/ec4c7a6b` (`6mnv`) if still present.
-4. Manual Windows (and other) installer verification for 1.7.0.
+1. User: fix ownership of `~/.config/srxy`, then Persist + Similar meaning + OK + relaunch.
+2. Prior open: OCR progress visual check; installer QA.

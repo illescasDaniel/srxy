@@ -110,6 +110,29 @@ ApplicationWindow {
 		optMatchSkippedNames.checked = !!draft.match_skipped_names
 		optArchives.checked = !!draft.include_archives
 		optSubdirs.checked = draft.include_subdirectories !== false
+		optPersist.checked = !!draft.persist_options
+		syncContentDependentOptions()
+		syncingOptions = false
+	}
+
+	function resetOptionsDraft() {
+		if (!controller)
+			return
+		syncingOptions = true
+		const draft = JSON.parse(controller.defaultOptionsJson())
+		optNames.checked = !!draft.search_names
+		optContents.checked = !!draft.search_contents
+		optDocsTags.checked = draft.search_docs_tags !== false
+		optSemantic.checked = !!draft.semantic
+		optOcr.checked = !!draft.ocr
+		optTranscribe.checked = !!draft.transcribe
+		optSemanticImage.checked = !!draft.semantic_image
+		optHidden.checked = !!draft.include_hidden
+		optNoise.checked = !!draft.include_noise
+		optNoiseFiles.checked = !!draft.include_noise_files
+		optMatchSkippedNames.checked = !!draft.match_skipped_names
+		optArchives.checked = !!draft.include_archives
+		optSubdirs.checked = draft.include_subdirectories !== false
 		syncContentDependentOptions()
 		syncingOptions = false
 	}
@@ -137,7 +160,8 @@ ApplicationWindow {
 			include_noise_files: optNoiseFiles.checked,
 			match_skipped_names: optMatchSkippedNames.checked,
 			include_archives: optArchives.checked,
-			include_subdirectories: optSubdirs.checked
+			include_subdirectories: optSubdirs.checked,
+			persist_options: optPersist.checked
 		}))
 	}
 
@@ -146,6 +170,23 @@ ApplicationWindow {
 			return
 		syncingFilters = true
 		const draft = JSON.parse(controller.filtersJson())
+		fltTopFiles.text = draft.top_files ?? ""
+		fltMaxMatches.text = draft.max_matches ?? "50"
+		fltThreshold.text = draft.threshold ?? "35"
+		fltVisualMin.text = draft.semantic_image_threshold ?? "18"
+		fltSpeechMin.text = draft.transcribe_threshold ?? "25"
+		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
+		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
+		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		fltPersist.checked = !!draft.persist_filters
+		syncingFilters = false
+	}
+
+	function resetFiltersDraft() {
+		if (!controller)
+			return
+		syncingFilters = true
+		const draft = JSON.parse(controller.defaultFiltersJson())
 		fltTopFiles.text = draft.top_files ?? ""
 		fltMaxMatches.text = draft.max_matches ?? "50"
 		fltThreshold.text = draft.threshold ?? "35"
@@ -170,7 +211,8 @@ ApplicationWindow {
 				text_mib: fltDocSize.text,
 				ocr_mib: fltOcrSize.text,
 				transcribe_mib: fltMediaSize.text
-			}
+			},
+			persist_filters: fltPersist.checked
 		}))
 	}
 
@@ -1140,7 +1182,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: 520
 		implicitWidth: 520
-		height: Math.min(560, parent.height - 40)
+		height: Math.min(620, parent.height - 40)
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
@@ -1323,6 +1365,18 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					Layout.topMargin: 4
 				}
+				StyledCheckBox {
+					id: optPersist
+					objectName: "optPersist"
+					text: root.t("gui.options.persist")
+					Layout.topMargin: 12
+				}
+				Button {
+					id: optReset
+					objectName: "optReset"
+					text: root.t("gui.options.reset")
+					onClicked: resetOptionsDraft()
+				}
 			}
 		}
 	}
@@ -1416,6 +1470,18 @@ ApplicationWindow {
 			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
 			InfoButton { helpKey: "transcribe_mib" }
 		}
+			StyledCheckBox {
+				id: fltPersist
+				objectName: "fltPersist"
+				text: root.t("gui.filters.persist")
+				Layout.topMargin: 12
+			}
+			Button {
+				id: fltReset
+				objectName: "fltReset"
+				text: root.t("gui.filters.reset")
+				onClicked: resetFiltersDraft()
+			}
 		}
 	}
 

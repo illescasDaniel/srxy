@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-08-30 — Persist restore must not clamp GPU options during capability probe
+
+- **Context:** User checked Similar meaning + Persist, OK, quit, relaunched — option was gone. `default_capabilities()` always has `semantic_enabled=False` (GPU probe deferred); init clamped persisted ticks away before `refreshCapabilities()`. Separately, write-only-on-exit meant a failed silent `save_settings` (e.g. root-owned `~/.config/srxy`) left no payload.
+- **Decision:** (1) While `_capabilities_probing`, clamp only OCR; leave semantic / semantic_image / transcribe until the real probe. (2) Write prefs on dialog OK as well as shutdown. (3) `save_settings` / `save_persisted_search_prefs` return bool; emit `errorOccurred` when write fails.
+- **Rationale:** Probe deferral is for startup speed; it must not erase user intent. OK-time write matches “I confirmed Persist”; surfacing permission errors beats silent no-ops.
+
+## 2026-08-30 — GUI opt-in persist for options/filters via settings.json
+
+- **Context:** Search options and filters were session-only; users wanted an explicit way to keep them across exits without always writing prefs. Installer prefix vs PyPI/dev needed a single storage story.
+- **Decision:** (1) Extend existing `settings.json` (`settings_path()`: `$SRXY_HOME/settings.json` or `~/.config/srxy/settings.json`) with `persist_options` / `persist_filters` flags plus `options` / `filters` payloads — no separate `app-preferences.json`. (2) GUI-only: checkbox + Reset at the bottom of each dialog; persist flag committed on OK; payloads written in `controller.shutdown` (`aboutToQuit`). Unpersist clears that payload. (3) Shared load/save helpers in `application/settings.py` for a future TUI wire-up.
+- **Rationale:** Reuses the language settings path rules users already have; write-on-exit matches the checkbox wording; Reset only edits the dialog draft so OK remains the confirm step.
+
 ## 2026-08-30 — Concurrent search activity fan-in + early `0/N` progress
 
 - **Context:** OCR searches on small folders (e.g. 2 files in Downloads) left the GUI stuck on “Searching…” with no `1/2` counts and no `OCR · filename` labels. Sticky `activity.searching` blocked `status.scanning`; `_catch_up_progress` skipped `completed == 0`; heavy GUI/TUI searches use a thread pool that omitted `on_activity` to avoid overlapping labels.

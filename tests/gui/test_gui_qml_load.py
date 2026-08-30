@@ -96,6 +96,12 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 		assert callable(open_fn) and callable(close_fn), name
 		open_fn()
 		qapp.processEvents()
+		if name == "optionsDialog":
+			assert window.findChild(QObject, "optPersist") is not None
+			assert window.findChild(QObject, "optReset") is not None
+		if name == "filtersDialog":
+			assert window.findChild(QObject, "fltPersist") is not None
+			assert window.findChild(QObject, "fltReset") is not None
 		close_fn()
 		qapp.processEvents()
 
