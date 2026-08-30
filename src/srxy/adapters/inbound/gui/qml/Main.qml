@@ -1069,16 +1069,15 @@ ApplicationWindow {
 									Layout.fillWidth: true
 									Layout.fillHeight: true
 									clip: true
-									ScrollBar.vertical: ScrollBar {
-										policy: ScrollBar.AlwaysOn
-										visible: previewTextArea.length > 0
-											&& previewTextArea.contentHeight > previewScroll.height + 1
-									}
-									ScrollBar.horizontal: ScrollBar {
-										policy: ScrollBar.AlwaysOn
-										visible: previewTextArea.length > 0
-											&& previewTextArea.contentWidth > previewScroll.width + 1
-									}
+									// Keep the *default* attached bars (correctly anchored). Replacing
+									// ScrollBar.vertical with a bare ScrollBar {} drops Qt's anchors and
+									// parks the bar at (0,0) — looking "misplaced" over the text/gutter.
+									readonly property bool needsVScroll: previewTextArea.length > 0
+										&& previewTextArea.contentHeight > previewScroll.availableHeight + 1
+									readonly property bool needsHScroll: previewTextArea.length > 0
+										&& previewTextArea.contentWidth > previewScroll.availableWidth + 1
+									ScrollBar.vertical.policy: needsVScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+									ScrollBar.horizontal.policy: needsHScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
 									TextArea {
 										id: previewTextArea
 										objectName: "previewText"
