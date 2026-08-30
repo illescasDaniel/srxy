@@ -10,7 +10,14 @@ _CPU_WARNING_CONTEXTS: set[str] = set()
 def _torch_available() -> bool:
 	import importlib.util
 
-	return importlib.util.find_spec("torch") is not None
+	# Tests inject a MagicMock via sys.modules; find_spec raises ValueError without __spec__.
+	mod = sys.modules.get("torch")
+	if mod is not None:
+		return True
+	try:
+		return importlib.util.find_spec("torch") is not None
+	except (ImportError, ValueError, ModuleNotFoundError):
+		return False
 
 
 def _auto_torch_device() -> str:
