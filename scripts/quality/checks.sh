@@ -356,7 +356,8 @@ if [[ "${FIX}" == true ]]; then
 else
 	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
 	if [[ -z "${LIB_PYTEST_WORKERS:-}" ]]; then
-		export LIB_PYTEST_WORKERS="$(_lib_pytest_worker_count)"
+		LIB_PYTEST_WORKERS="$(_lib_pytest_worker_count)"
+		export LIB_PYTEST_WORKERS
 	fi
 
 	echo "Parallel verify (light steps overlapping pytest buckets; workers=${LIB_PYTEST_WORKERS})"

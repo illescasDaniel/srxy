@@ -42,12 +42,15 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Windows CUDA torch ensure — bare `uv sync` leaves/restores CPU-only PyTorch; added `sync-win` task + `ensure-windows-cuda-torch.ps1`, gate auto-runs before `heavy`, docs/AGENTS/`apply-worktree-srxy` updated. Verified `2.13.0+cu130` / `cuda=True` on RTX 4070.
 - [x] Windows installer CUDA PyTorch phase — after semantic package on Windows+NVIDIA, reinstall `cu130` (fallback `cu126`) into prefix `.venv` via `installer/cuda_torch.py`; unit + flow tests; docs. Gate passed.
 - [x] `semantic-gpu` extra + uv sources — Windows CUDA torch locked via `[tool.uv.sources]` / pytorch-cu130 index; `sync-win` uses `--extra semantic-gpu` on NVIDIA so sync no longer thrash-reinstalls CUDA wheels. Verified: `Checked 121 packages` + `OK (2.13.0+cu130, cuda=True)`.
+- [x] Unix `copy-venv.sh` for `copy-venv-to-worktree-srxy` (rsync + `uv sync --extra semantic`); SKILL.md updated; primary-abort smoke + shellcheck/shfmt clean.
+- [x] Linux validation of bucketed quality gate — fixed ShellCheck (SC2155 `LIB_PYTEST_WORKERS`, unused `cov_append`, SC2034 `LIB_SCOPE_REASON`); `checks-fix-quiet` + `checks-all-quiet` PASSED (full bucket pytest: heavy 45 / gui 167 / tui 90 / core 671).
 
 ### Open
 
 - [ ] **Manual QA (user):** verify installers after 1.7.0 — especially Windows offline Recommended (GPU) installs CUDA PyTorch (`+cu*` / `cuda.is_available()`); smoke macOS/Linux installers too.
 - [ ] Optional: faster splash (native pixmap / pre-Qt) if perceived gap still too long.
 - [ ] Final QA — Windows/macOS installers. (Windows dark-mode GUI visual QA done; Linux Material + macOS Search/OK visual QA done.)
+- [ ] Commit: Unix copy-venv + shellcheck gate fixes (when ready).
 
 ## Bugs / sub-tasks discovered
 

@@ -48,20 +48,37 @@ paths for the new location. No packages are re-downloaded.
    - torch version contains `+cu` and `cuda=True` on an NVIDIA machine, or
    - `cpu` / `cuda=False` on non-GPU machines — both are correct.
 
-### Unix / macOS (fallback)
+### Unix / macOS
 
-```bash
-# from the worktree root
-PRIMARY=$(git worktree list | awk 'NR==1{print $1}')
-rsync -a --info=progress2 "$PRIMARY/.venv/" .venv/
-uv sync --extra semantic
-```
+1. Run the helper script from the worktree root:
+
+   ```bash
+   bash .cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh
+   ```
+
+   Add `--force` if the worktree already has a `.venv` that you want to
+   replace:
+
+   ```bash
+   bash .cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh --force
+   ```
+
+2. The script:
+   - Auto-detects the primary checkout from `git worktree list`.
+   - Guards against running in the primary itself.
+   - Uses `rsync` to mirror `.venv`.
+   - Runs `uv sync --extra semantic` to fix activation-script paths.
+   - Prints source path, destination path, and torch version/CUDA check.
+
+3. Verify the result reported by the script:
+   - torch version and `cuda=True`/`False` as appropriate for this machine.
 
 ## Edge cases
 
 | Situation | What the script does |
 |-----------|----------------------|
-| Running inside the primary checkout | Aborts with a clear message — nothing to copy from. |
-| Destination already has `.venv` | Warns and exits unless `-Force` is passed. |
-| Source `.venv` is missing | Instructs the user to run `uv run task sync-win` on the primary checkout first, then retry. |
+| Running inside the primary checkout | Exits 0 with a clear message — nothing to copy from. |
+| Destination already has `.venv` | Warns and exits unless `--force` / `-Force` is passed. |
+| Source `.venv` is missing | Instructs the user to sync the primary checkout first (`uv sync --extra semantic` on Unix; `uv run task sync-win` on Windows), then retry. |
 | Primary checkout not found in worktree list | Aborts with a diagnostic message. |
+| `rsync` missing (Unix) | Aborts and asks to install `rsync`. |

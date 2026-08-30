@@ -306,6 +306,7 @@ lib_auto_scope_buckets() {
 	if [[ "${want_core}" -eq 1 ]]; then
 		LIB_SELECTED_BUCKETS+=(core)
 	fi
+	# shellcheck disable=SC2034  # consumed by checks.sh / pytest.sh after sourcing
 	LIB_SCOPE_REASON="auto → ${LIB_SELECTED_BUCKETS[*]}"
 }
 
@@ -320,7 +321,6 @@ lib_bucket_args() {
 	local -a paths=()
 	local workers=0
 	local enable_qt=false
-	local cov_append=false
 
 	case "${bucket}" in
 	core)
