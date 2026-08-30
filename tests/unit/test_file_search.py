@@ -772,9 +772,15 @@ def test_given_mp3_with_mocked_transcript_when_transcribing_then_returns_transcr
 	copy_media_fixture("minimal.mp3", tmp_path / "podcast.mp3")
 	query = "all the other boys"
 
-	with patch(
-		"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
-		return_value=iter([(160, "And all the other boys")]),
+	with (
+		patch(
+			"srxy.adapters.outbound.content.line_sources.is_transcribe_active",
+			return_value=True,
+		),
+		patch(
+			"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
+			return_value=iter([(160, "And all the other boys")]),
+		),
 	):
 		# when
 		results = magic_file_search(tmp_path, query, search_names=False, transcribe=True)
@@ -797,9 +803,15 @@ def test_given_transcript_at_two_forty_when_searching_for_minute_token_then_does
 
 	copy_media_fixture("minimal.mp3", tmp_path / "song.flac")
 
-	with patch(
-		"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
-		return_value=iter([(160, "And all the other boys")]),
+	with (
+		patch(
+			"srxy.adapters.outbound.content.line_sources.is_transcribe_active",
+			return_value=True,
+		),
+		patch(
+			"srxy.adapters.outbound.content.line_sources.iter_transcript_lines",
+			return_value=iter([(160, "And all the other boys")]),
+		),
 	):
 		# when
 		results = magic_file_search(tmp_path, "02", search_names=False, transcribe=True)

@@ -14,6 +14,10 @@ def _torch_available() -> bool:
 
 
 def _auto_torch_device() -> str:
+	# Core installs omit [semantic]; treat missing torch as CPU without importing.
+	if not _torch_available():
+		return "cpu"
+
 	import torch
 
 	if torch.cuda.is_available():

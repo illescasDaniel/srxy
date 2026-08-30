@@ -291,8 +291,12 @@ def test_given_semantic_match_type_when_env_disabled_then_it_is_unavailable(monk
 
 
 def test_given_semantic_match_type_when_env_enabled_then_it_is_available(monkeypatch: pytest.MonkeyPatch):
-	# given
+	# given — env alone is not enough; CI has no sentence_transformers unless stubbed
 	monkeypatch.setenv("SRXY_SEMANTIC", "1")
+	monkeypatch.setattr(
+		"srxy.application.matching.semantic.sentence_transformers_installed",
+		lambda: True,
+	)
 	get_atomic_matcher.cache_clear()
 
 	# when
