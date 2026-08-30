@@ -75,6 +75,10 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert window.findChild(QObject, "matchesScrollBar") is not None
 	assert window.findChild(QObject, "previewScroll") is not None
 	assert window.findChild(QObject, "previewContentType") is not None
+	qapp.processEvents()
+	# Empty models → scrollbars hidden
+	assert window.findChild(QObject, "resultsScrollBar").property("visible") is False
+	assert window.findChild(QObject, "matchesScrollBar").property("visible") is False
 
 	for name in (
 		"optionsDialog",

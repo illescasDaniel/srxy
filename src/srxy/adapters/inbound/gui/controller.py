@@ -124,17 +124,10 @@ class _SearchWorker(QObject):
 
 	@Slot()
 	def run(self):
-		runner = self._search_runner
-		if runner.uses_subprocess(self._args):
-			self._run_subprocess()
-		else:
-			runner.run_blocking(
-				self._args,
-				on_event=self.event_ready.emit,
-				cancel_check=lambda: self._cancel,
-				# Never fork from a QThread — ProcessPoolExecutor + Qt SIGSEGVs.
-				allow_process_pool=False,
-			)
+		# Always isolate search in a child process so scoring cannot hold the
+		# GUI interpreter's GIL. Light searches must not enable a process pool
+		# inside that worker (see search_uses_subprocess gating there).
+		self._run_subprocess()
 		self.finished.emit()
 
 	def request_cancel(self):
@@ -288,6 +281,8 @@ class SearchController(QObject):
 		self._activity: ActivityUpdate | None = None
 		self._activity_spinner_index = 0
 		self._activity_spinner_timer: QTimer | None = None
+		self._activity_status_timer: QTimer | None = None
+		self._activity_status_pending = False
 		self._preview_text = ""
 		self._preview_header = ""
 		self._preview_content_type = ""
@@ -317,8 +312,10 @@ class SearchController(QObject):
 		self._selected_path: Path | None = None
 		self._stream_status_timer: QTimer | None = None
 		self._stream_status_pending = False
-		self._pending_results: list[FileSearchResult] = []
+		self._results_empty_hint_cache: str | None = None
+		self._pending_results: list[tuple[FileSearchResult, str]] = []
 		self._results_flush_timer: QTimer | None = None
+		self._results_flush_started = False
 		self._last_snapshot: str | None = None
 		self._options = search_options_from_args(self._args)
 		self._filters = search_filters_from_args(self._args)
@@ -487,6 +484,11 @@ class SearchController(QObject):
 	resultsEmptyHint = Property(str, _get_results_empty_hint, notify=resultsEmptyHintChanged)
 
 	def _notify_results_empty_hint(self):
+		# Only notify QML when the hint text actually changes.
+		hint = self._get_results_empty_hint()
+		if self._results_empty_hint_cache == hint:
+			return
+		self._results_empty_hint_cache = hint
 		self.resultsEmptyHintChanged.emit()
 
 	def _get_query_mode(self) -> str:
@@ -854,33 +856,59 @@ class SearchController(QObject):
 				self._clear_activity_status()
 
 	def _clear_activity_status(self):
+		if self._activity_status_timer is not None:
+			self._activity_status_timer.stop()
+			self._activity_status_timer = None
 		if self._activity_spinner_timer is not None:
 			self._activity_spinner_timer.stop()
 			self._activity_spinner_timer = None
 		self._activity = None
 		self._activity_spinner_index = 0
+		self._activity_status_pending = False
 
 	def _refresh_activity_status(self):
+		"""Coalesce activity → status updates (no 100ms spinner animation).
+
+		Rewriting the status Label every spinner frame forced expensive QML
+		layout work while results were streaming; keep a static glyph and
+		throttle updates instead.
+		"""
 		if self._activity is None:
 			return
-		frame = ACTIVITY_SPINNER_FRAMES[self._activity_spinner_index % len(ACTIVITY_SPINNER_FRAMES)]
-		self._set_status(format_activity_status(self._activity, spinner_frame=frame))
+		self._activity_status_pending = True
+		if self._activity_status_timer is None:
+			timer = QTimer(self)
+			timer.setSingleShot(True)
+			timer.setInterval(250)
+			timer.timeout.connect(self._flush_activity_status)
+			self._activity_status_timer = timer
+		if not self._activity_status_timer.isActive():
+			self._activity_status_timer.start()
+
+	@Slot()
+	def _flush_activity_status(self):
+		if self._activity_status_timer is not None:
+			self._activity_status_timer.stop()
+		if not self._activity_status_pending:
+			return
+		self._activity_status_pending = False
+		if self._activity is None:
+			return
+		# Static glyph — progress bar already shows determinate progress.
+		self._set_status(format_activity_status(self._activity, spinner_frame=ACTIVITY_SPINNER_FRAMES[0]))
 
 	@Slot()
 	def _tick_activity_spinner(self):
+		# Kept for older tests/callers; animation disabled (see _refresh_activity_status).
 		if self._activity is None:
 			self._clear_activity_status()
 			return
-		self._activity_spinner_index += 1
 		self._refresh_activity_status()
 
 	def _start_activity_spinner_if_needed(self):
-		if self._activity_spinner_timer is None:
-			timer = QTimer(self)
-			timer.setInterval(100)
-			timer.timeout.connect(self._tick_activity_spinner)
-			self._activity_spinner_timer = timer
-			timer.start()
+		# No animated status timer — status text is coalesced in _refresh_activity_status.
+		return
+
 
 	def _set_download_confirm(self, open_: bool, message: str = ""):
 		self._download_confirm_open = open_
@@ -1048,9 +1076,13 @@ class SearchController(QObject):
 		# model shrinks (that logs "DelegateModel::cancel: index out range").
 		self._clear_selection()
 		self._pending_results.clear()
+		self._results_flush_started = False
 		if self._results_flush_timer is not None:
 			self._results_flush_timer.stop()
 		self._results_model.clear()
+		# Contiguous appends during progressive search — mid-list score inserts
+		# stall the QML ListView. Sorted once when the search finishes.
+		self._results_model.set_stream_append(True)
 		self._clear_activity_status()
 		self._progress = 0.0
 		self.progressChanged.emit()
@@ -1220,11 +1252,13 @@ class SearchController(QObject):
 				self.progressChanged.emit()
 			self._refresh_activity_status()
 		elif isinstance(event, SearchResultEvent):
-			self._pending_results.append(event.result)
+			self._pending_results.append((event.result, event.labels))
 			self._schedule_results_flush()
-			self._schedule_stream_status_refresh()
+			# Status text is updated when the results flush runs.
 		elif isinstance(event, SearchErrorEvent):
 			self._flush_pending_results()
+			self._results_model.set_stream_append(False)
+			self._results_model.sort_by_score()
 			if self._search_cancel_requested:
 				self._search_cancel_requested = False
 				self._clear_activity_status()
@@ -1243,14 +1277,16 @@ class SearchController(QObject):
 			self._flush_pending_results()
 			self._clear_activity_status()
 			self._flush_stream_status()
+			self._results_model.set_stream_append(False)
 			preserve_path = self._selected_path
 			had_selection = preserve_path is not None
 			if event.results:
 				# Soft-merge remaining hits after the progressive cap instead of
 				# wiping the list (avoids a second full ListView rebuild cliff).
 				self._results_model.merge_results(event.results)
-				if had_selection:
-					self._retarget_selection_row()
+			self._results_model.sort_by_score()
+			if had_selection:
+				self._retarget_selection_row()
 			count = self._results_model.rowCount()
 			self._notify_results_empty_hint()
 			self._set_search_warnings(format_skipped_file_warnings(event.skipped_files, self._args.max_file_size))
@@ -1280,15 +1316,22 @@ class SearchController(QObject):
 					self.selectResult(restored if restored >= 0 else 0)
 
 	def _schedule_results_flush(self):
-		"""Coalesce progressive inserts onto a short timer (keeps the GUI responsive)."""
+		"""Coalesce progressive inserts: first hit ASAP, then every ~1000ms.
+
+		Show the first match immediately, then batch arrivals so the ListView
+		is not updated constantly while scrolling.
+		"""
 		if self._results_flush_timer is None:
 			timer = QTimer(self)
 			timer.setSingleShot(True)
-			timer.setInterval(50)
 			timer.timeout.connect(self._flush_pending_results)
 			self._results_flush_timer = timer
-		if not self._results_flush_timer.isActive():
-			self._results_flush_timer.start()
+		if self._results_flush_timer.isActive():
+			return
+		# First paint of this search: flush on the next event-loop tick.
+		# Later windows: 1000ms to limit ListView layout cost per update.
+		self._results_flush_timer.setInterval(0 if not self._results_flush_started else 1000)
+		self._results_flush_timer.start()
 
 	@Slot()
 	def _flush_pending_results(self):
@@ -1298,8 +1341,17 @@ class SearchController(QObject):
 			return
 		batch = self._pending_results
 		self._pending_results = []
-		if self._results_model.insert_results(batch):
+		self._results_flush_started = True
+		changed = self._results_model.insert_results(batch)
+		if changed:
 			self._retarget_selection_row()
+		# Keep match-count status in sync with the batched list update only.
+		self._notify_results_empty_hint()
+		if self._activity is None and self._searching:
+			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())
+		# More hits arrived while we were updating — schedule the next window.
+		if self._pending_results:
+			self._schedule_results_flush()
 
 	def _schedule_stream_status_refresh(self):
 		self._stream_status_pending = True
@@ -1319,7 +1371,6 @@ class SearchController(QObject):
 		if not self._stream_status_pending:
 			return
 		self._stream_status_pending = False
-		self._flush_pending_results()
 		self._notify_results_empty_hint()
 		if self._activity is None and self._searching:
 			self._set_status_tr("status.matches_progress", count=self._results_model.rowCount())

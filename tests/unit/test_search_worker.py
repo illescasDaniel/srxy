@@ -70,6 +70,35 @@ def test_given_file_search_result_when_round_trip_dict_then_preserves_fields(tmp
 	assert restored == result
 
 
+def test_given_light_search_when_run_worker_main_then_disables_process_pool(monkeypatch: pytest.MonkeyPatch):
+	"""Light searches must not fork a ProcessPool (whole-machine freeze risk)."""
+	args = _build_args(["transform", ".", "--cli"])
+	stdout = StringIO()
+	execute = MagicMock(return_value=([], []))
+	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
+	monkeypatch.setattr("sys.stdout", stdout)
+	monkeypatch.setattr("srxy.application.search_runner.FileSearchService.execute", execute)
+
+	run_worker_main()
+
+	assert execute.call_count == 1
+	assert execute.call_args.kwargs.get("allow_process_pool") is False
+
+
+def test_given_ocr_search_when_run_worker_main_then_allows_process_pool(monkeypatch: pytest.MonkeyPatch):
+	args = _build_args(["transform", ".", "--ocr", "--cli"])
+	stdout = StringIO()
+	execute = MagicMock(return_value=([], []))
+	monkeypatch.setattr("sys.stdin", StringIO(json.dumps(args_to_payload(args)) + "\n"))
+	monkeypatch.setattr("sys.stdout", stdout)
+	monkeypatch.setattr("srxy.application.search_runner.FileSearchService.execute", execute)
+
+	run_worker_main()
+
+	assert execute.call_count == 1
+	assert execute.call_args.kwargs.get("allow_process_pool") is True
+
+
 def test_given_worker_args_when_run_worker_main_then_emits_json_events(monkeypatch: pytest.MonkeyPatch):
 	# given
 	args = _build_args(["transform", ".", "--ocr", "--cli"])

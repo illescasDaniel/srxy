@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import Qt5Compat.GraphicalEffects
 import SrxyControls
 
 ApplicationWindow {
@@ -526,13 +527,56 @@ ApplicationWindow {
 											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
 											focusPolicy: Qt.NoFocus
-											// The native macOS style rejects a custom contentItem, so the
-											// icon+label goes through the style's own IconLabel instead.
+											readonly property bool useNativeIconLabel: Qt.platform.os === "osx"
 											text: root.t("gui.search")
-											icon.source: "images/search.svg"
+											// macOS rejects a custom contentItem; use the style IconLabel there.
+											// Material/Fluent on Linux often leave stroke SVGs untinted via icon.color —
+											// ColorOverlay forces the icon to match ``foreground`` (same as the label).
+											icon.source: useNativeIconLabel ? "images/search.svg" : ""
 											icon.color: searchButton.foreground
 											icon.width: 16
 											icon.height: 16
+											Component.onCompleted: {
+												if (!useNativeIconLabel)
+													contentItem = searchTintedContent.createObject(searchButton)
+											}
+											Component {
+												id: searchTintedContent
+												Item {
+													implicitWidth: searchRow.implicitWidth
+													implicitHeight: Math.max(16, searchLabel.implicitHeight)
+													Row {
+														id: searchRow
+														anchors.centerIn: parent
+														spacing: searchButton.spacing
+														Item {
+															width: 16
+															height: 16
+															anchors.verticalCenter: parent.verticalCenter
+															Image {
+																id: searchIconImage
+																anchors.fill: parent
+																source: "images/search.svg"
+																sourceSize.width: 16
+																sourceSize.height: 16
+																visible: false
+															}
+															ColorOverlay {
+																anchors.fill: parent
+																source: searchIconImage
+																color: searchButton.foreground
+															}
+														}
+														Text {
+															id: searchLabel
+															text: searchButton.text
+															font: searchButton.font
+															color: searchButton.foreground
+															verticalAlignment: Text.AlignVCenter
+														}
+													}
+												}
+											}
 											onClicked: if (controller) controller.startSearch()
 										}
 										ToolButton {
@@ -675,16 +719,21 @@ ApplicationWindow {
 						Item {
 							Layout.fillWidth: true
 							Layout.fillHeight: true
+							property int contextResultRow: -1
 							ListView {
 								id: resultsView
 								objectName: "resultsView"
 								anchors.fill: parent
 								clip: true
+								reuseItems: true
+								cacheBuffer: 200
 								model: controller ? controller.resultsModel : null
 								currentIndex: controller ? controller.selectedResult : -1
 								ScrollBar.vertical: ScrollBar {
 									objectName: "resultsScrollBar"
 									policy: ScrollBar.AlwaysOn
+									visible: resultsView.count > 0
+										&& resultsView.contentHeight > resultsView.height + 1
 								}
 								delegate: Item {
 									id: resultRow
@@ -693,7 +742,8 @@ ApplicationWindow {
 									required property string path
 									required property string labels
 									width: resultsView.width
-									height: resultRowLayout.implicitHeight
+									// Fixed height avoids per-row implicitHeight measure storms while streaming.
+									height: 28
 									Rectangle {
 										anchors.fill: parent
 										color: resultsView.currentIndex === resultRow.index
@@ -742,18 +792,32 @@ ApplicationWindow {
 										acceptedButtons: Qt.LeftButton | Qt.RightButton
 										onClicked: (mouse) => {
 											controller.selectResult(resultRow.index)
-											if (mouse.button === Qt.RightButton)
-												resultMenu.popup()
+											if (mouse.button === Qt.RightButton) {
+												resultsView.parent.contextResultRow = resultRow.index
+												resultContextMenu.popup()
+											}
 										}
 										onDoubleClicked: controller.openResult(resultRow.index)
 									}
-									Menu {
-										id: resultMenu
-										MenuItem { text: root.t("gui.menu.open_file"); onTriggered: controller.openResult(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.open_containing_folder"); onTriggered: controller.openResultFolder(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_path"); onTriggered: controller.copyResultPath(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_all_matches"); onTriggered: controller.copyAllMatches(resultRow.index) }
-									}
+								}
+							}
+							Menu {
+								id: resultContextMenu
+								MenuItem {
+									text: root.t("gui.menu.open_file")
+									onTriggered: controller.openResult(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.open_containing_folder")
+									onTriggered: controller.openResultFolder(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_path")
+									onTriggered: controller.copyResultPath(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_all_matches")
+									onTriggered: controller.copyAllMatches(resultsView.parent.contextResultRow)
 								}
 							}
 							Label {
@@ -795,10 +859,13 @@ ApplicationWindow {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
 								clip: true
+								cacheBuffer: 400
 								model: controller ? controller.matchesModel : null
 								ScrollBar.vertical: ScrollBar {
 									objectName: "matchesScrollBar"
 									policy: ScrollBar.AlwaysOn
+									visible: matchesView.count > 0
+										&& matchesView.contentHeight > matchesView.height + 1
 								}
 								delegate: Item {
 									id: matchRow
@@ -1002,8 +1069,16 @@ ApplicationWindow {
 									Layout.fillWidth: true
 									Layout.fillHeight: true
 									clip: true
-									ScrollBar.vertical.policy: ScrollBar.AlwaysOn
-									ScrollBar.horizontal.policy: ScrollBar.AlwaysOn
+									ScrollBar.vertical: ScrollBar {
+										policy: ScrollBar.AlwaysOn
+										visible: previewTextArea.length > 0
+											&& previewTextArea.contentHeight > previewScroll.height + 1
+									}
+									ScrollBar.horizontal: ScrollBar {
+										policy: ScrollBar.AlwaysOn
+										visible: previewTextArea.length > 0
+											&& previewTextArea.contentWidth > previewScroll.width + 1
+									}
 									TextArea {
 										id: previewTextArea
 										objectName: "previewText"

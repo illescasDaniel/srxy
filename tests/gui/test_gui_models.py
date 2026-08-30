@@ -27,7 +27,9 @@ def qapp() -> QCoreApplication:
 	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 	app = QCoreApplication.instance()
 	if app is None:
-		app = QCoreApplication([])
+		from PySide6.QtGui import QGuiApplication
+
+		app = QGuiApplication([])
 	assert isinstance(app, QCoreApplication)
 	return app
 
@@ -201,3 +203,96 @@ def test_given_partial_model_when_merge_results_then_adds_missing(qapp: QCoreApp
 	assert added == 1
 	assert model.rowCount() == 2
 	assert model.index_of_path(tmp_path / "b.txt") == 0
+
+
+def test_given_batch_when_insert_results_then_reindexes_once(qapp: QCoreApplication, tmp_path: Path, monkeypatch):
+	model = ResultsModel()
+	model.insert_result(_result(tmp_path / "seed.txt", 0.1))
+	calls = {"n": 0}
+	original = model._reindex_paths
+
+	def _counting_reindex():
+		calls["n"] += 1
+		original()
+
+	monkeypatch.setattr(model, "_reindex_paths", _counting_reindex)
+	added = model.insert_results([(_result(tmp_path / f"f{i}.txt", 0.5 + i * 0.01), f"label-{i}") for i in range(12)])
+	assert added == 12
+	assert calls["n"] == 1
+
+
+def test_given_stream_append_when_insert_results_then_one_contiguous_range(qapp: QCoreApplication, tmp_path: Path):
+	model = ResultsModel()
+	model.set_stream_append(True)
+	recorder = _SignalRecorder()
+	_wire(model, recorder)
+	added = model.insert_results(
+		[
+			(_result(tmp_path / "a.txt", 0.4), "a"),
+			(_result(tmp_path / "b.txt", 0.9), "b"),
+		]
+	)
+	assert added == 2
+	assert model.rowCount() == 2
+	# Append keeps arrival/batch order among new rows (sorted within the batch input).
+	assert model.result_at(0).path.name == "b.txt"
+	assert model.result_at(1).path.name == "a.txt"
+	assert recorder.inserted == [(0, 1)]
+	assert not recorder.reset
+	assert model.sort_by_score() is False  # already score-desc within this tiny set
+
+
+def test_given_unsorted_stream_when_sort_by_score_then_reorders(qapp: QCoreApplication, tmp_path: Path):
+	model = ResultsModel()
+	model.set_stream_append(True)
+	model.insert_results([(_result(tmp_path / "low.txt", 0.2), "l"), (_result(tmp_path / "high.txt", 0.9), "h")])
+	# Force unsorted order by a second append batch with a mid score first... actually first batch sorts input.
+	model.set_stream_append(True)
+	model.insert_results([(_result(tmp_path / "mid.txt", 0.5), "m")])
+	assert [model.result_at(i).path.name for i in range(model.rowCount())] == ["high.txt", "low.txt", "mid.txt"]
+	assert model.sort_by_score() is True
+	assert [model.result_at(i).path.name for i in range(model.rowCount())] == ["high.txt", "mid.txt", "low.txt"]
+
+
+def test_given_precomputed_labels_when_reading_data_then_uses_cache_without_match_labels(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch
+):
+	import srxy.adapters.inbound.gui.models as models_mod
+
+	calls = {"n": 0}
+	real = models_mod.match_labels
+
+	def _counting_match_labels(*args, **kwargs):
+		calls["n"] += 1
+		return real(*args, **kwargs)
+
+	monkeypatch.setattr(models_mod, "match_labels", _counting_match_labels)
+	model = ResultsModel()
+	path = tmp_path / "note.txt"
+	model.insert_results([(_result(path, 0.9), "name, content")])
+	assert calls["n"] == 0
+	index = model.index(0, 0)
+	assert model.data(index, ResultsModel.LabelsRole) == "name, content"
+	assert model.data(index, ResultsModel.LabelsRole) == "name, content"
+	assert calls["n"] == 0
+
+
+def test_given_plain_insert_when_labels_missing_then_computes_once(qapp: QCoreApplication, tmp_path: Path, monkeypatch):
+	import srxy.adapters.inbound.gui.models as models_mod
+
+	calls = {"n": 0}
+	real = models_mod.match_labels
+
+	def _counting_match_labels(*args, **kwargs):
+		calls["n"] += 1
+		return real(*args, **kwargs)
+
+	monkeypatch.setattr(models_mod, "match_labels", _counting_match_labels)
+	model = ResultsModel()
+	path = tmp_path / "note.txt"
+	model.insert_result(_result(path, 0.9))
+	assert calls["n"] == 1
+	index = model.index(0, 0)
+	assert model.data(index, ResultsModel.LabelsRole)
+	assert model.data(index, ResultsModel.LabelsRole)
+	assert calls["n"] == 1

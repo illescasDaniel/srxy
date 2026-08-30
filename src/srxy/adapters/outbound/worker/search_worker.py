@@ -17,6 +17,7 @@ from srxy.application.search_control import (
 	emit_result_if_under_cap,
 	finished_results_payload,
 )
+from srxy.application.search_formatting import match_labels
 from srxy.application.search_runner import apply_args_to_env
 from srxy.application.worker_env import bootstrap_worker_env
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
@@ -202,19 +203,28 @@ def run_worker_main():
 			_emit_event(event)
 
 		def on_result(result: FileSearchResult):
+			labels = match_labels(
+				result,
+				threshold=args.threshold,
+				semantic_image_threshold=args.semantic_image_threshold,
+				transcribe_threshold=args.transcribe_threshold,
+			)
 			emit_result_if_under_cap(
 				emit_state,
-				lambda: _emit_event({"type": "result", "result": file_result_to_dict(result)}),
+				lambda: _emit_event({"type": "result", "result": file_result_to_dict(result), "labels": labels}),
 			)
 
 		try:
+			# Process pools are only for heavy modes that already required this
+			# worker. Light (name/content) searches stay single-process so a large
+			# tree cannot fork cpu_count interpreters and thrash the machine.
 			results, skipped_files = services.file_search.execute(
 				args,
 				skipped_files=skipped_files,
 				on_progress=on_progress,
 				on_activity=on_activity,
 				on_result=on_result,
-				allow_process_pool=True,
+				allow_process_pool=search_uses_subprocess(args),
 			)
 		except SearchCancelled as error:
 			cancelled = True

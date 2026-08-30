@@ -25,10 +25,14 @@ class ResultsModel(QAbstractListModel):
 		self._results: list[FileSearchResult] = []
 		self._path_keys: set[str] = set()
 		self._path_rows: dict[str, int] = {}
+		self._labels: dict[str, str] = {}
 		self._limit: int | None = None
 		self._threshold = 0.35
 		self._semantic_image_threshold = 0.25
 		self._transcribe_threshold = 0.35
+		# While True, progressive inserts append in one contiguous range instead of
+		# mid-list bisect inserts (those shift every row index and stall QML ListView).
+		self._stream_append = False
 
 	def set_thresholds(self, *, threshold: float, semantic_image_threshold: float, transcribe_threshold: float):
 		self._threshold = threshold
@@ -37,6 +41,9 @@ class ResultsModel(QAbstractListModel):
 
 	def set_limit(self, limit: int | None):
 		self._limit = limit
+
+	def set_stream_append(self, enabled: bool) -> None:
+		self._stream_append = bool(enabled)
 
 	def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _EMPTY_INDEX) -> int:  # noqa: N802
 		if parent.isValid():
@@ -52,12 +59,7 @@ class ResultsModel(QAbstractListModel):
 		if role == self.ScoreRole:
 			return format_score_percent(result.score)
 		if role == self.LabelsRole:
-			return match_labels(
-				result,
-				threshold=self._threshold,
-				semantic_image_threshold=self._semantic_image_threshold,
-				transcribe_threshold=self._transcribe_threshold,
-			)
+			return self._labels.get(result.path.as_posix(), "match")
 		return None
 
 	def roleNames(self) -> dict[int, QByteArray]:  # noqa: N802
@@ -83,6 +85,16 @@ class ResultsModel(QAbstractListModel):
 		self._path_rows = {item.path.as_posix(): index for index, item in enumerate(self._results)}
 		self._path_keys = set(self._path_rows)
 
+	def _label_for(self, result: FileSearchResult, label: str | None) -> str:
+		if label is not None and label != "":
+			return label
+		return match_labels(
+			result,
+			threshold=self._threshold,
+			semantic_image_threshold=self._semantic_image_threshold,
+			transcribe_threshold=self._transcribe_threshold,
+		)
+
 	@Slot()
 	def clear(self):
 		count = len(self._results)
@@ -91,9 +103,16 @@ class ResultsModel(QAbstractListModel):
 			self._results = []
 			self._path_keys.clear()
 			self._path_rows.clear()
+			self._labels.clear()
 			self.endRemoveRows()
 
-	def insert_result(self, result: FileSearchResult) -> bool:
+	def insert_result(
+		self,
+		result: FileSearchResult,
+		label: str | None = None,
+		*,
+		reindex: bool = True,
+	) -> bool:
 		"""Insert ``result`` by descending score. Return True when the model changed."""
 		path_key = result.path.as_posix()
 		if path_key in self._path_keys:
@@ -106,39 +125,102 @@ class ResultsModel(QAbstractListModel):
 		self.beginInsertRows(_EMPTY_INDEX, index, index)
 		self._results.insert(index, result)
 		self._path_keys.add(path_key)
+		self._labels[path_key] = self._label_for(result, label)
 		self.endInsertRows()
 		if self._limit is not None and len(self._results) > self._limit:
 			last = len(self._results) - 1
 			evicted = self._results[last]
+			evicted_key = evicted.path.as_posix()
 			self.beginRemoveRows(_EMPTY_INDEX, last, last)
 			self._results.pop()
-			self._path_keys.discard(evicted.path.as_posix())
+			self._path_keys.discard(evicted_key)
+			self._labels.pop(evicted_key, None)
 			self.endRemoveRows()
-		self._reindex_paths()
+		if reindex:
+			self._reindex_paths()
 		return path_key in self._path_keys
 
-	def insert_results(self, results: list[FileSearchResult]) -> int:
-		"""Insert many results (score-sorted). Return how many rows were newly added."""
-		if not results:
+	def insert_results(
+		self,
+		items: list[tuple[FileSearchResult, str | None]] | list[tuple[FileSearchResult, str]] | list[FileSearchResult],
+	) -> int:
+		"""Insert many results (score-sorted). Return how many rows were newly added.
+
+		``items`` may be plain ``FileSearchResult`` values or ``(result, labels)`` tuples
+		where labels were precomputed off the GUI thread.
+		"""
+		if not items:
 			return 0
-		unique: list[FileSearchResult] = []
+		normalized: list[tuple[FileSearchResult, str | None]] = []
+		for item in items:
+			if isinstance(item, tuple):
+				normalized.append(item)
+			else:
+				normalized.append((item, None))
+		unique: list[tuple[FileSearchResult, str | None]] = []
 		seen: set[str] = set()
-		for result in sorted(results, key=lambda item: item.score, reverse=True):
+		for result, label in sorted(normalized, key=lambda pair: pair[0].score, reverse=True):
 			path_key = result.path.as_posix()
 			if path_key in seen or path_key in self._path_keys:
 				continue
 			seen.add(path_key)
-			unique.append(result)
+			unique.append((result, label))
 		if not unique:
 			return 0
-		if not self._results:
-			self.replace_results(unique)
-			return len(self._results)
+		if self._stream_append:
+			return self._append_results_range(unique)
+		# Prefer incremental inserts over wipe+rebuild (full replace forces the
+		# QML ListView to destroy/recreate every delegate).
 		added = 0
-		for result in unique:
-			if self.insert_result(result):
+		for result, label in unique:
+			if self.insert_result(result, label, reindex=False):
 				added += 1
+		if added:
+			self._reindex_paths()
 		return added
+
+	def _append_results_range(self, unique: list[tuple[FileSearchResult, str | None]]) -> int:
+		"""Append ``unique`` as one contiguous insert (ListView-friendly)."""
+		if not unique:
+			return 0
+		to_add = unique
+		if self._limit is not None and len(self._results) >= self._limit:
+			worst = min(item.score for item in self._results)
+			to_add = [(result, label) for result, label in unique if result.score > worst]
+			if not to_add:
+				return 0
+		start = len(self._results)
+		end = start + len(to_add) - 1
+		self.beginInsertRows(_EMPTY_INDEX, start, end)
+		for result, label in to_add:
+			path_key = result.path.as_posix()
+			self._results.append(result)
+			self._path_keys.add(path_key)
+			self._labels[path_key] = self._label_for(result, label)
+		self.endInsertRows()
+		# Evict worst rows if we grew past the limit (rare; only near cap).
+		while self._limit is not None and len(self._results) > self._limit:
+			worst_i = min(range(len(self._results)), key=lambda i: self._results[i].score)
+			evicted = self._results[worst_i]
+			evicted_key = evicted.path.as_posix()
+			self.beginRemoveRows(_EMPTY_INDEX, worst_i, worst_i)
+			self._results.pop(worst_i)
+			self._path_keys.discard(evicted_key)
+			self._labels.pop(evicted_key, None)
+			self.endRemoveRows()
+		self._reindex_paths()
+		return len(to_add)
+
+	def sort_by_score(self) -> bool:
+		"""Re-order rows by descending score. Return True when order changed."""
+		if len(self._results) <= 1:
+			return False
+		ordered = sorted(self._results, key=lambda item: item.score, reverse=True)
+		if ordered == self._results:
+			return False
+		labels = {path: self._labels[path] for path in self._labels}
+		self.replace_results(ordered, labels=labels)
+		return True
 
 	def merge_results(self, results: list[FileSearchResult]) -> int:
 		"""Add any missing hits from ``results`` without wiping the current list."""
@@ -147,9 +229,14 @@ class ResultsModel(QAbstractListModel):
 		if not self._results:
 			self.replace_results(results)
 			return len(self._results)
-		return self.insert_results(results)
+		return self.insert_results([(result, None) for result in results])
 
-	def replace_results(self, results: list[FileSearchResult]):
+	def replace_results(
+		self,
+		results: list[FileSearchResult],
+		*,
+		labels: dict[str, str] | None = None,
+	):
 		new_results = sorted(results, key=lambda item: item.score, reverse=True)
 		if self._limit is not None:
 			new_results = new_results[: self._limit]
@@ -160,15 +247,21 @@ class ResultsModel(QAbstractListModel):
 			self._results = []
 			self._path_keys.clear()
 			self._path_rows.clear()
+			self._labels.clear()
 			self.endRemoveRows()
 		if new_count:
 			self.beginInsertRows(_EMPTY_INDEX, 0, new_count - 1)
 			self._results = new_results
 			self._reindex_paths()
+			for result in new_results:
+				path_key = result.path.as_posix()
+				cached = labels.get(path_key) if labels is not None else None
+				self._labels[path_key] = self._label_for(result, cached)
 			self.endInsertRows()
 		else:
 			self._path_keys.clear()
 			self._path_rows.clear()
+			self._labels.clear()
 
 
 class MatchesModel(QAbstractListModel):
