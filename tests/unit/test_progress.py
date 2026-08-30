@@ -2,7 +2,13 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from srxy.domain.progress import ActivityUpdate, clear_activity, emit_activity, format_activity_status
+from srxy.domain.progress import (
+	ActivityUpdate,
+	clear_activity,
+	emit_activity,
+	format_activity_status,
+	format_activity_status_body,
+)
 
 
 def test_given_activity_update_when_determinate_then_reports_progress():
@@ -60,6 +66,13 @@ def test_given_indeterminate_activity_when_formatting_status_then_omits_percent(
 
 	# when / then
 	assert format_activity_status(update, spinner_frame="⠙") == "⠙ OCR · photo.png"
+	assert format_activity_status_body(update) == "OCR · photo.png"
+	assert format_activity_status(update, spinner_frame="") == "OCR · photo.png"
+
+
+def test_given_determinate_activity_when_formatting_body_then_omits_spinner():
+	update = ActivityUpdate(label="Transcribe · speech.mp3", current=15, total=60)
+	assert format_activity_status_body(update) == "25% Transcribe · speech.mp3"
 
 
 def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_progress():

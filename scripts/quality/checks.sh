@@ -2,7 +2,7 @@
 
 set -u
 
-# Quality gate — ruff, shell, basedpyright, pip-audit, build, and optionally pytest.
+# Quality gate — ruff, shell, ty, pip-audit, build, and optionally pytest.
 # --fix: ruff autofix+format and shfmt write; sequential (writers first).
 # Without --fix: light verify steps run in parallel, overlapping pytest buckets
 # (core/gui/tui/heavy) selected via --scope / auto git-diff scope.
@@ -208,30 +208,30 @@ gate_step_shell() {
 	fi
 }
 
-gate_step_pyright() {
-	pyright_stderr="$(mktemp)"
-	pyright_json="$("${quality_dir}/pyright.sh" --outputjson 2>"${pyright_stderr}")"
-	pyright_exit=$?
-	emit_out="$(printf '%s' "${pyright_json}" | lib_uv_run python "${internal_dir}/gate_emit.py" pyright 2>&1)"
+gate_step_ty() {
+	ty_stderr="$(mktemp)"
+	ty_out="$("${quality_dir}/ty.sh" --github 2>"${ty_stderr}")"
+	ty_exit=$?
+	emit_out="$(printf '%s' "${ty_out}" | lib_uv_run python "${internal_dir}/gate_emit.py" ty 2>&1)"
 	summary=""
 	while IFS= read -r line; do
 		if [[ "${line}" == GATE_SUMMARY* ]]; then
 			summary="${line}"
 		elif [[ "${line}" == ::* ]]; then
 			echo "${line}"
-			if [[ "${line}" == *"basedpyright returned invalid JSON"* ]] && [[ -s "${pyright_stderr}" ]]; then
-				cat "${pyright_stderr}" >&2
-			fi
 		fi
 	done <<<"${emit_out}"
-	rm -f "${pyright_stderr}"
+	if [[ -s "${ty_stderr}" ]] && [[ "${ty_exit}" -ne 0 ]] && [[ -z "${summary}" ]]; then
+		cat "${ty_stderr}" >&2
+	fi
+	rm -f "${ty_stderr}"
 	if [[ -n "${summary}" ]]; then
 		gate_apply_emit_summary "${summary}"
 	else
-		if [[ "${pyright_exit}" -eq 0 ]]; then
+		if [[ "${ty_exit}" -eq 0 ]]; then
 			gate_record_pass
 		else
-			gate_gha_error "" "" "" "basedpyright" "type check failed (exit ${pyright_exit})"
+			gate_gha_error "" "" "" "ty" "type check failed (exit ${ty_exit})"
 			gate_record_fail 1 0
 		fi
 	fi
@@ -340,8 +340,8 @@ if [[ "${FIX}" == true ]]; then
 	gate_step_start "shell"
 	gate_step_shell
 
-	gate_step_start "basedpyright"
-	gate_step_pyright
+	gate_step_start "ty"
+	gate_step_ty
 
 	gate_step_start "pip-audit"
 	gate_step_pip_audit
@@ -375,14 +375,14 @@ else
 
 	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
 	gate_run_step_logged "shell" gate_step_shell "${parallel_dir}"
-	gate_run_step_logged "basedpyright" gate_step_pyright "${parallel_dir}"
+	gate_run_step_logged "ty" gate_step_ty "${parallel_dir}"
 	gate_run_step_logged "pip-audit" gate_step_pip_audit "${parallel_dir}"
 	gate_run_step_logged "build" gate_step_build "${parallel_dir}"
 	wait
 
 	gate_finish_step "ruff" "${parallel_dir}"
 	gate_finish_step "shell" "${parallel_dir}"
-	gate_finish_step "basedpyright" "${parallel_dir}"
+	gate_finish_step "ty" "${parallel_dir}"
 	gate_finish_step "pip-audit" "${parallel_dir}"
 	gate_finish_step "build" "${parallel_dir}"
 

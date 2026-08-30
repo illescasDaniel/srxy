@@ -189,8 +189,9 @@ class HelpModal(ModalScreen[None]):
 		set_language_setting(str(value))
 		self.query_one(f"#{self.HELP_TEXT_ID}", Static).update(tr("tui.help.text"))
 		app = self.app
-		if hasattr(app, "_refresh_i18n"):
-			app._refresh_i18n()
+		refresh = getattr(app, "_refresh_i18n", None)
+		if callable(refresh):
+			refresh()
 
 
 class SearchFiltersModal(ModalScreen[SearchFilters | None]):

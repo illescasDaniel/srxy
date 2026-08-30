@@ -4,31 +4,29 @@ _Last updated: 2026-08-30_
 
 ## Branch
 
-- `feature/fixes_1.6.6` — version target **1.7.0** (worktree `cursor/3ae3cdde`).
+- `feature/fixes_1.6.6` — version target **1.7.0**. Just applied worktree `cursor/79bcea9a` (Magika/preview + GUI search responsiveness + spinner/progress + preview scrollbar).
 
 ## Current focus
 
-Just finished: **copy-venv shebang / editable-path rewrite** so a copied worktree `.venv` no longer runs primary-checkout interpreters or imports.
+Just finished: **merge of GUI search freeze fixes** into the parent branch — subprocess isolation, no process pool for light worker searches, stream-append + sort-on-finish, coalesced status/list updates, `activitySpinner` property, indeterminate progress until file total known, preview ScrollBar placement. Prior parent work (copy-venv shebang rewrite) remains on this branch.
 
-## Touched files
+## Touched (this apply)
 
-- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/rewrite_venv_paths.py` — new: rewrite shebangs / `.pth` / `direct_url.json` + Windows `UV_PYTHON_PATH`
-- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh` — call rewriter; `--offline --reinstall-package srxy`; verify shebang + `srxy.__file__`
-- `.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv-win.ps1` — same + trampoline path verify
-- `.cursor/skills/copy-venv-to-worktree-srxy/SKILL.md` — document that `uv sync` alone does not fix shebangs
-- `tests/unit/test_copy_venv_rewrite.py` — given/when/then coverage for the rewriter
-- `memory/decisions.md`, `memory/activeContext.md`, `memory/progress.md`
+- `src/srxy/adapters/inbound/gui/controller.py`, `models.py`, `qml/Main.qml`
+- `src/srxy/adapters/outbound/worker/search_worker.py`
+- `src/srxy/domain/progress.py`
+- `docs/gui.md`, `memory/*`, Magika/preview/content-kind path from the same worktree branch
+- `scripts/dev/profile-gui-freeze.sh`
 
-## Verified
+## Verified (worktree before apply)
 
-- Unit tests for rewriter: 2 passed
-- `shellcheck` + `shfmt` clean on `copy-venv.sh`
-- Core pytest: 673 passed, 1 skipped (after `uv sync --extra semantic` in this worktree)
-- `checks.sh --quiet --fix` light steps clean (earlier all-bucket run failed core only for missing semantic packages before sync)
+- Freeze/perf commit: `c20d4dc`; spinner/progress: `439995a`; preview scrollbar: `04197c6`
+- User confirmed buttery-smooth scrolling/UI after freeze fixes
+- Parent quality gate still to run after this merge
 
 ## Next steps
 
-1. Commit copy-venv shebang rewrite (+ prior Unix copy-venv / shellcheck fixes if still uncommitted on parent) when ready.
-2. Optional: `/copy-venv-to-worktree-srxy --force` in this worktree to replace the thin sync-created `.venv` with a primary mirror + rewrite.
-3. User: manual Windows (and other) installer verification for 1.7.0.
-4. `/delete-worktree-srxy` for applied worktrees when ready.
+1. Parent quality gate after apply (`checks.sh --quiet --fix` then `--quiet`).
+2. User smoke: activity spinner animates; progress bar pulses until `current/total`, then shows %.
+3. `/delete-worktree-srxy` for `cursor/79bcea9a` when ready.
+4. Manual Windows (and other) installer verification for 1.7.0.

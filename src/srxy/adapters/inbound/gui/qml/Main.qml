@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import Qt5Compat.GraphicalEffects
 import SrxyControls
 
 ApplicationWindow {
@@ -526,13 +527,56 @@ ApplicationWindow {
 											accent: controller ? controller.stale : true
 											enabled: controller !== null && controller !== undefined && controller.canSearch
 											focusPolicy: Qt.NoFocus
-											// The native macOS style rejects a custom contentItem, so the
-											// icon+label goes through the style's own IconLabel instead.
+											readonly property bool useNativeIconLabel: Qt.platform.os === "osx"
 											text: root.t("gui.search")
-											icon.source: "images/search.svg"
+											// macOS rejects a custom contentItem; use the style IconLabel there.
+											// Material/Fluent on Linux often leave stroke SVGs untinted via icon.color —
+											// ColorOverlay forces the icon to match ``foreground`` (same as the label).
+											icon.source: useNativeIconLabel ? "images/search.svg" : ""
 											icon.color: searchButton.foreground
 											icon.width: 16
 											icon.height: 16
+											Component.onCompleted: {
+												if (!useNativeIconLabel)
+													contentItem = searchTintedContent.createObject(searchButton)
+											}
+											Component {
+												id: searchTintedContent
+												Item {
+													implicitWidth: searchRow.implicitWidth
+													implicitHeight: Math.max(16, searchLabel.implicitHeight)
+													Row {
+														id: searchRow
+														anchors.centerIn: parent
+														spacing: searchButton.spacing
+														Item {
+															width: 16
+															height: 16
+															anchors.verticalCenter: parent.verticalCenter
+															Image {
+																id: searchIconImage
+																anchors.fill: parent
+																source: "images/search.svg"
+																sourceSize.width: 16
+																sourceSize.height: 16
+																visible: false
+															}
+															ColorOverlay {
+																anchors.fill: parent
+																source: searchIconImage
+																color: searchButton.foreground
+															}
+														}
+														Text {
+															id: searchLabel
+															text: searchButton.text
+															font: searchButton.font
+															color: searchButton.foreground
+															verticalAlignment: Text.AlignVCenter
+														}
+													}
+												}
+											}
 											onClicked: if (controller) controller.startSearch()
 										}
 										ToolButton {
@@ -675,13 +719,22 @@ ApplicationWindow {
 						Item {
 							Layout.fillWidth: true
 							Layout.fillHeight: true
+							property int contextResultRow: -1
 							ListView {
 								id: resultsView
 								objectName: "resultsView"
 								anchors.fill: parent
 								clip: true
+								reuseItems: true
+								cacheBuffer: 200
 								model: controller ? controller.resultsModel : null
 								currentIndex: controller ? controller.selectedResult : -1
+								ScrollBar.vertical: ScrollBar {
+									objectName: "resultsScrollBar"
+									policy: ScrollBar.AlwaysOn
+									visible: resultsView.count > 0
+										&& resultsView.contentHeight > resultsView.height + 1
+								}
 								delegate: Item {
 									id: resultRow
 									required property int index
@@ -689,42 +742,82 @@ ApplicationWindow {
 									required property string path
 									required property string labels
 									width: resultsView.width
-									height: resultRowLayout.implicitHeight
+									// Fixed height avoids per-row implicitHeight measure storms while streaming.
+									height: 28
 									Rectangle {
 										anchors.fill: parent
-										color: resultRow.index % 2 === 0
-											? (palette.alternateBase && palette.alternateBase !== palette.base
-												? palette.alternateBase
-												: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
-											: palette.base
-										opacity: resultsView.currentIndex === resultRow.index ? 0.65 : 1
+										color: resultsView.currentIndex === resultRow.index
+											? palette.highlight
+											: (resultRow.index % 2 === 0
+												? (palette.alternateBase && palette.alternateBase !== palette.base
+													? palette.alternateBase
+													: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
+												: palette.base)
 									}
 									RowLayout {
 										id: resultRowLayout
 										anchors.fill: parent
 										spacing: 0
-										Label { text: String(resultRow.index + 1); Layout.preferredWidth: 36; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.score; Layout.preferredWidth: 56; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.path; Layout.fillWidth: true; padding: 6; elide: Text.ElideMiddle }
-										Label { text: resultRow.labels; Layout.preferredWidth: 88; padding: 6; elide: Text.ElideRight }
+										Label {
+											text: String(resultRow.index + 1)
+											Layout.preferredWidth: 36
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.score
+											Layout.preferredWidth: 56
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.path
+											Layout.fillWidth: true
+											padding: 6
+											elide: Text.ElideMiddle
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.labels
+											Layout.preferredWidth: 88
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
 									}
 									MouseArea {
 										anchors.fill: parent
 										acceptedButtons: Qt.LeftButton | Qt.RightButton
 										onClicked: (mouse) => {
 											controller.selectResult(resultRow.index)
-											if (mouse.button === Qt.RightButton)
-												resultMenu.popup()
+											if (mouse.button === Qt.RightButton) {
+												resultsView.parent.contextResultRow = resultRow.index
+												resultContextMenu.popup()
+											}
 										}
 										onDoubleClicked: controller.openResult(resultRow.index)
 									}
-									Menu {
-										id: resultMenu
-										MenuItem { text: root.t("gui.menu.open_file"); onTriggered: controller.openResult(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.open_containing_folder"); onTriggered: controller.openResultFolder(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_path"); onTriggered: controller.copyResultPath(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_all_matches"); onTriggered: controller.copyAllMatches(resultRow.index) }
-									}
+								}
+							}
+							Menu {
+								id: resultContextMenu
+								MenuItem {
+									text: root.t("gui.menu.open_file")
+									onTriggered: controller.openResult(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.open_containing_folder")
+									onTriggered: controller.openResultFolder(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_path")
+									onTriggered: controller.copyResultPath(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_all_matches")
+									onTriggered: controller.copyAllMatches(resultsView.parent.contextResultRow)
 								}
 							}
 							Label {
@@ -766,7 +859,14 @@ ApplicationWindow {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
 								clip: true
+								cacheBuffer: 400
 								model: controller ? controller.matchesModel : null
+								ScrollBar.vertical: ScrollBar {
+									objectName: "matchesScrollBar"
+									policy: ScrollBar.AlwaysOn
+									visible: matchesView.count > 0
+										&& matchesView.contentHeight > matchesView.height + 1
+								}
 								delegate: Item {
 									id: matchRow
 									required property int index
@@ -824,17 +924,17 @@ ApplicationWindow {
 					}
 					Frame {
 						SplitView.fillHeight: true
-						FontMetrics {
-							id: previewFontMetrics
-							font: previewTextArea.font
-						}
+						objectName: "previewFrame"
 						function scrollPreviewToLine(line) {
 							if (line <= 0)
 								return
 							var flick = previewScroll.contentItem
 							if (!flick)
 								return
-							flick.contentY = Math.max(0, (line - 1) * previewFontMetrics.height)
+							var lineHeight = controller && controller.previewLineHeight > 0
+								? controller.previewLineHeight
+								: previewTextArea.font.pixelSize
+							flick.contentY = Math.max(0, (line - 1) * lineHeight)
 						}
 						Connections {
 							target: controller
@@ -873,6 +973,19 @@ ApplicationWindow {
 									ToolTip.text: controller ? controller.previewFilePath : ""
 									HoverHandler {
 										id: previewFilePathHover
+									}
+								}
+								Label {
+									objectName: "previewContentType"
+									visible: controller && controller.previewContentType.length > 0
+									text: controller ? controller.previewContentType : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+									opacity: 0.85
+									ToolTip.visible: previewContentTypeHover.hovered && visible
+									ToolTip.text: root.t("gui.preview.content_type")
+									HoverHandler {
+										id: previewContentTypeHover
 									}
 								}
 								Label {
@@ -918,28 +1031,80 @@ ApplicationWindow {
 									onClicked: if (controller) controller.closePreviewFind()
 								}
 							}
-							ScrollView {
-								id: previewScroll
+							RowLayout {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
-								clip: true
-								TextArea {
-									id: previewTextArea
-									objectName: "previewText"
-									readOnly: true
-									wrapMode: TextEdit.NoWrap
-									textFormat: TextEdit.RichText
-									font.family: Qt.platform.os === "windows"
-										? "Consolas"
-										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
-									text: controller ? controller.previewText : ""
-									selectByMouse: true
-									MouseArea {
-										anchors.fill: parent
-										acceptedButtons: Qt.RightButton
-										onClicked: previewMenu.popup()
+								spacing: 0
+								Item {
+									id: gutter
+									objectName: "previewGutter"
+									visible: controller && controller.previewLineCount > 0
+									Layout.fillHeight: true
+									Layout.preferredWidth: gutterText.implicitWidth + 12
+									clip: true
+									readonly property var flick: previewScroll.contentItem
+									Text {
+										id: gutterText
+										objectName: "previewGutterText"
+										width: gutter.width - 12
+										y: gutter.flick ? previewTextArea.topPadding - gutter.flick.contentY : 0
+										font: previewTextArea.font
+										color: controller ? controller.previewGutterColor : palette.text
+										horizontalAlignment: Text.AlignRight
+										text: controller ? controller.previewGutterText : ""
+									}
+									WheelHandler {
+										onWheel: (event) => {
+											if (!gutter.flick || !controller)
+												return
+											const step = Math.max(1, controller.previewLineHeight) * 3 * (event.angleDelta.y / 120)
+											const maxY = Math.max(0, gutter.flick.contentHeight - gutter.flick.height)
+											gutter.flick.contentY = Math.max(0, Math.min(maxY, gutter.flick.contentY - step))
+										}
 									}
 								}
+								ScrollView {
+									id: previewScroll
+									objectName: "previewScroll"
+									Layout.fillWidth: true
+									Layout.fillHeight: true
+									clip: true
+									// Keep the *default* attached bars (correctly anchored). Replacing
+									// ScrollBar.vertical with a bare ScrollBar {} drops Qt's anchors and
+									// parks the bar at (0,0) — looking "misplaced" over the text/gutter.
+									readonly property bool needsVScroll: previewTextArea.length > 0
+										&& previewTextArea.contentHeight > previewScroll.availableHeight + 1
+									readonly property bool needsHScroll: previewTextArea.length > 0
+										&& previewTextArea.contentWidth > previewScroll.availableWidth + 1
+									ScrollBar.vertical.policy: needsVScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+									ScrollBar.horizontal.policy: needsHScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+									TextArea {
+										id: previewTextArea
+										objectName: "previewText"
+										readOnly: true
+										wrapMode: TextEdit.NoWrap
+										textFormat: TextEdit.PlainText
+										font.family: Qt.platform.os === "windows"
+											? "Consolas"
+											: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+										// Content is owned by Python via attachPreviewDocument / setPlainText.
+										selectByMouse: true
+										Component.onCompleted: if (controller) controller.attachPreviewDocument(previewTextArea.textDocument)
+										MouseArea {
+											anchors.fill: parent
+											acceptedButtons: Qt.RightButton
+											onClicked: previewMenu.popup()
+										}
+									}
+								}
+							}
+							Label {
+								objectName: "previewFooter"
+								visible: controller && controller.previewFooter.length > 0
+								text: controller ? controller.previewFooter : ""
+								opacity: 0.75
+								Layout.fillWidth: true
+								wrapMode: Text.WordWrap
 							}
 							Menu {
 								id: previewMenu
@@ -971,10 +1136,12 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					from: 0
 					to: 100
+					indeterminate: controller ? controller.progressIndeterminate : false
 					value: controller ? controller.progress : 0
 				}
 				Label {
 					objectName: "progressPercent"
+					visible: controller && !controller.progressIndeterminate
 					text: (controller ? Math.round(controller.progress) : 0) + "%"
 					Layout.preferredWidth: 48
 					horizontalAlignment: Text.AlignRight
@@ -989,7 +1156,12 @@ ApplicationWindow {
 				}
 				Label {
 					objectName: "statusLabel"
-					text: controller ? controller.status : ""
+					text: {
+						if (!controller)
+							return ""
+						var spin = controller.activitySpinner
+						return spin.length > 0 ? (spin + " " + controller.status) : controller.status
+					}
 					Layout.preferredWidth: 280
 					elide: Text.ElideRight
 				}

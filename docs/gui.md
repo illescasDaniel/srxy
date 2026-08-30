@@ -19,11 +19,26 @@ Named sections top to bottom:
 | **How to search** | Options and Filters buttons (stacked) open popup dialogs; Options uses the same sections as the TUI (Where / How / Which files); each control has an **(i)** info button |
 | **Search** | Wider Search button (enabled only when path + query are usable); warning icon when the query is invalid; system highlight tint when settings are stale |
 | **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits |
-| **Search progress** | Progress bar, percentage, `current/total` file count, animated status spinner during OCR/transcribe/semantic work, Cancel; inactive until the first search |
+| **Search progress** | Progress bar (indeterminate until the file total is known, then 0–100%), percentage, `current/total` file count, animated status spinner during OCR/transcribe/semantic work, Cancel; inactive until the first search |
 
 Power-ups that need optional deps or a GPU (CUDA/MPS) are grayed out when unavailable; **(i)** stays clickable and explains how to fix (install `srxy[semantic]`, Tesseract, ffmpeg, GPU PyTorch). Missing **AI model caches** do not gray out — Search prompts to download with confirm + progress dialogs (same idea as the TUI).
 
 Tesseract and ffmpeg are system binaries: the GUI does not install them; info text points at package managers and official sites.
+
+## Search responsiveness (progressive results)
+
+Heavy searches (large trees, many hits) must not stall the Qt event loop:
+
+| Rule | Why |
+|------|-----|
+| GUI search always runs in a **subprocess** | Scoring on a QThread holds the GIL and freezes the UI even when Python handlers are fast |
+| Light (name/content) worker searches use **no process pool** | `allow_process_pool=True` over `$HOME` can fork `cpu_count` interpreters and thrash the whole machine |
+| Progressive hits **stream-append** then **sort on finish** | Mid-list score inserts reshuffle every row index and stall the ListView |
+| Result flushes coalesce (~1s after the first hit) | Limits ListView layout cost while still showing early matches |
+| Activity **status body** is coalesced; the braille **spinner** is a separate property | Rewriting the full status string every 100ms used to cost tens–hundreds of ms per tick under load |
+| Progress bar is **indeterminate** until a file total exists | Walk/search overlap means `%` is meaningless before `current/total` is known |
+
+Dev helper: `scripts/dev/profile-gui-freeze.sh` (needs ptrace/`sudo`) dumps stacks and a speedscope/flamegraph for live freezes.
 
 ## Startup splash
 

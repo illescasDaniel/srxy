@@ -7,6 +7,29 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** After rsync/robocopy of `.venv` into a worktree, console-script shebangs (`#!/primary/.venv/bin/python`), `srxy.pth`, and `direct_url.json` still point at the primary checkout. The quality gate prefers direct `.venv/bin/*` / `Scripts\*.exe` (`lib_uv_run` / `Get-VenvExe`), so worktree pytest executed **primary** Python and loaded **primary** `srxy`. `uv sync` does not rewrite those entry points ([astral-sh/uv#18196](https://github.com/astral-sh/uv/issues/18196)).
 - **Decision:** (1) Add `rewrite_venv_paths.py` and run it after copy in `copy-venv.sh` / `copy-venv-win.ps1`. (2) Rewrite text shebangs, activate scripts, `*.pth`, and `direct_url.json`; on Windows also update trampoline `UV_PYTHON_PATH` PE resources when they embed the old venv python. (3) Follow with `uv sync --offline --reinstall-package srxy` (plus existing extras / `sync-win` on GPU Windows). (4) Fail the script if pytest shebang / `srxy.__file__` still reference the primary tree.
 - **Rationale:** Avoids multi-GiB re-downloads while making worktree tools and editable imports land on the worktree tree. Native binaries (`ruff`) and uv-managed `python` symlinks/trampolines are left alone.
+## 2026-08-30 — GUI search isolation + progressive ListView updates
+
+- **Context:** Searching `$HOME` for common queries froze the GUI (and briefly the whole machine after a bad subprocess+pool experiment). py-spy showed in-process QThread scoring holding the GIL (~60% samples); NDJSON probes showed model flushes were cheap while status/ListView work and event-loop lag were not.
+- **Decision:** (1) Always run GUI search in the existing search **subprocess**. (2) Gate worker `allow_process_pool` on `search_uses_subprocess(args)` so light searches stay single-process. (3) Stream-append results during search, sort once on finish; coalesce list/status updates; lighten results delegates (`reuseItems`, fixed height, shared context menu). (4) Animate activity via a separate `activitySpinner` property; use an indeterminate `ProgressBar` until a file total is known.
+- **Rationale:** Isolates GIL from Qt without a free-threaded interpreter; avoids process-pool fork storms on large trees; keeps progressive UX without mid-list index storms.
+
+## 2026-08-30 — Content routing via Magika + NUL gate (not path heuristics)
+
+- **Context:** Content search and preview were mis-handling extensionless Minecraft `assets/objects` hashes and wrong-extension files (e.g. mp4 named `.txt`, text named `.mp4`, lying `.pdf`). Basename/hash skips and suffix-only routing were rejected.
+- **Decision:** Add `magika` and `content_kind.resolve_content_route`: (1) NUL sample ⇒ never treat as UTF-8 body text even if Magika says `is_text`; (2) trust known media/doc suffixes when parse/metadata works; (3) escalate to Magika for extensionless, parse failure, or text/media mismatch; (4) `DocumentExtractError` on doc parse failure so callers can re-route. Wire through `line_sources`, `document_text`, `media_metadata`, and preview payloads.
+- **Rationale:** Content typing matches real bytes; Magika beats libmagic packaging pain. NUL-first avoids Magika false-positive text on tiny binary samples.
+
+## 2026-08-30 — Preview owns QTextDocument content; avoid dead QML/shiboken docs
+
+- **Context:** Rapid GUI selection left preview on “Loading…” with `RuntimeError: libshiboken: Internal C++ object (QTextDocument) already deleted` in `_apply_preview_document` / `_refresh_preview_line_height`.
+- **Decision:** Store `QQuickTextDocument`, re-resolve live `QTextDocument` via `textDocument()` + `shiboken6.isValid`, apply content with `setPlainText` (Python-owned), drop QML `text: controller.previewText` binding, always `previewChanged.emit()` after display updates, and estimate line height with a fixed constant (no `documentLayout()`/`defaultFont()` under shiboken).
+- **Rationale:** QML TextArea can replace the C++ document while a worker result still holds a stale pointer; writing through the live Quick document and not dual-binding text stops the lifetime crash and stuck Loading.
+
+## 2026-08-30 — Quality gate type checker: basedpyright → ty
+
+- **Context:** basedpyright was slow in the day-to-day gate; Astral's `ty` is far faster and already in the Astral toolchain with Ruff/uv.
+- **Decision:** Replace `basedpyright` with `ty` in the `dev` group; Unix `scripts/quality/ty.sh` and Windows `checks-win.ps1` both run `ty check --output-format github`. Config lives under `[tool.ty]` with rule/override parity for the old basedpyright relaxations (unknown/attribute noise, optional semantic/windows imports). Scope remains `src` + `tests` (scripts/packaging/examples excluded).
+- **Rationale:** Same gate surface on both platforms, much lower type-check wall time; github annotation format plugs into existing `gate_emit.py` counting.
 
 ## 2026-08-30 — `semantic-gpu` extra + uv sources for Windows CUDA torch
 

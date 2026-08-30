@@ -8,7 +8,7 @@ After writing or changing code, run the quality gate until it passes cleanly.
 
 1. **Autofix** — run `./scripts/quality/checks.sh --quiet --fix` and address any remaining issues it reports.
 2. **Verify** — run `./scripts/quality/checks.sh --quiet` (no `--fix`) and confirm a clean pass.
-3. **Repeat** — if either step fails, fix the reported problems (rerun `--fix` for Ruff/shell issues; fix basedpyright, pip-audit, and pytest failures in code) and go back to step 1 until both commands succeed.
+3. **Repeat** — if either step fails, fix the reported problems (rerun `--fix` for Ruff/shell issues; fix ty, pip-audit, and pytest failures in code) and go back to step 1 until both commands succeed.
 
 **Windows (native PowerShell — use when bash/`flock`/CRLF breaks `checks.sh`):**
 
@@ -27,7 +27,7 @@ Use the project env with `uv sync --extra semantic` (default `dev` dependency gr
 
 Expect `+cu130` (or `+cu126`) and `True`. `+cpu` / `False` with an RTX GPU present means the venv is wrong — re-run `sync-win` / the ensure script (see [docs/development.md](docs/development.md) and [docs/installation.md](docs/installation.md#windows)). `checks-win.ps1` auto-runs the ensure script when the `heavy` bucket is selected (skipped in GitHub Actions / when `SRXY_SKIP_CUDA_TORCH=1`).
 
-The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → basedpyright → pip-audit → build → pytest buckets. Without `--fix`, light steps and pytest **overlap**.
+The gate runs, in order: Ruff (lint + format) → ShellCheck/shfmt → ty → pip-audit → build → pytest buckets. Without `--fix`, light steps and pytest **overlap**.
 
 ### Pytest buckets and auto-scope
 
@@ -51,7 +51,7 @@ CI (`CI=true`) selects `core+gui+tui` (no heavy). File-search fixtures live at `
 
 The gate takes an exclusive flock on `.srxy-quality-gate.lock` (repo root). A second overlapping `checks.sh` exits immediately with an error instead of spawning another pytest tree.
 
-`--fix` autofixes Ruff and shell scripts only; basedpyright and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `GITHUB_ACTIONS=true`. On Windows, `checks-win.ps1 -Full` still runs the heavy suite even if a leftover local `CI=true` is set.
+`--fix` autofixes Ruff and shell scripts only; ty and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `GITHUB_ACTIONS=true`. On Windows, `checks-win.ps1 -Full` still runs the heavy suite even if a leftover local `CI=true` is set.
 
 `--quiet` (Unix) / `-Quiet` (Windows) is the agent-verbosity mode: passing light-step logs are suppressed and pytest collapses to sparse `[gate] N/total` progress lines, showing failures in full (`-ra --tb=short`). Omit the flag for the full human-facing output. **AI agents must always use the quiet variants** (`--quiet` / `-Quiet`, or the `*-quiet` Taskipy tasks). The non-quiet `checks` / `checks-fix` / `checks-win` / `checks-win-fix` tasks and plain `checks.sh` / `checks-win.ps1` are for humans.
 

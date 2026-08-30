@@ -6,18 +6,18 @@ quality_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 # shellcheck source=internal/lib.sh
 source "${quality_dir}/internal/lib.sh"
 
-OUTPUT_JSON=false
+OUTPUT_GITHUB=false
 for arg in "$@"; do
 	case "${arg}" in
-	--outputjson)
-		OUTPUT_JSON=true
+	--output-format=github | --github)
+		OUTPUT_GITHUB=true
 		;;
 	esac
 done
 
 lib_require_venv
-if [[ "${OUTPUT_JSON}" == true ]]; then
-	lib_uv_run basedpyright --outputjson
+if [[ "${OUTPUT_GITHUB}" == true ]]; then
+	lib_uv_run ty check --output-format github
 else
-	lib_uv_run basedpyright
+	lib_uv_run ty check
 fi

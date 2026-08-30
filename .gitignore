@@ -23,6 +23,7 @@ htmlcov/
 .ruff_cache/
 .mypy_cache/
 .basedpyright/
+.ty/cache/
 .DS_Store
 
 *.log

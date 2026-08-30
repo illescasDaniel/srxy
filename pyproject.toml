@@ -25,6 +25,7 @@ dependencies = [
 	"rapidfuzz>=3.14",
 	"textual>=3.0",
 	"wordfreq>=3.1",
+	"magika>=1.0.3",
 ]
 
 [project.optional-dependencies]
@@ -49,7 +50,6 @@ windows = [
 
 [dependency-groups]
 dev = [
-	"basedpyright>=1.39",
 	"pip-audit>=2.10",
 	"pytest>=9.1",
 	"pytest-cov>=7.1",
@@ -60,6 +60,7 @@ dev = [
 	"ruff>=0.15",
 	"taskipy>=1.14",
 	"pngquant-cli>=3.0.3",
+	"ty>=0.0.75",
 ]
 uploader = [
 	"twine>=6.2",
@@ -139,31 +140,52 @@ lines-after-imports = 2
 "tests/integration/test_file_search_fixtures.py" = ["S603", "S607"]
 "tests/tui/test_qa_integration.py" = ["S108"]
 
-[tool.basedpyright]
-typeCheckingMode = "strict"
-include = ["src", "tests"]
-pythonVersion = "3.11"
-venvPath = "."
-venv = ".venv"
-extraPaths = ["src"]
-reportMissingTypeStubs = false
-reportMissingModuleSource = false
-reportUnknownMemberType = false
-reportUnknownLambdaType = false
-reportUnknownVariableType = false
-reportUnknownArgumentType = false
-reportUnknownParameterType = false
-reportAttributeAccessIssue = false
-executionEnvironments = [
-	{ root = "src/srxy/adapters/outbound/metadata/windows_metadata.py", reportMissingModuleSource = "none", reportMissingImports = "none" },
-	{ root = "src/srxy/adapters/outbound/models/device.py", reportMissingImports = "none" },
-	{ root = "src/srxy/adapters/outbound/semantic/semantic_image.py", reportMissingImports = "none" },
-	{ root = "src/srxy/application/matching/semantic.py", reportMissingImports = "none" },
-	{ root = "tests/unit/test_semantic_cache.py", reportMissingImports = "none" },
-	{ root = "tests/unit/test_windows_metadata.py", reportPrivateUsage = "none" },
-	{ root = "src" },
-	{ root = "tests", extraPaths = ["src", "."] },
+[tool.ty.environment]
+python-version = "3.11"
+python = ".venv"
+# Cross-platform codebase (winreg/startfile/etc. behind platform guards).
+python-platform = "all"
+# `src` for the installed package layout; `.` so `tests.*` resolve like basedpyright's tests env.
+root = ["./src", "."]
+
+[tool.ty.src]
+# Match former basedpyright include = ["src", "tests"] (skip benches/docs/quality scripts).
+exclude = ["scripts/**", "packaging/**", "examples/**"]
+
+[tool.ty.rules]
+# Parity with former basedpyright: reportAttributeAccessIssue=false and reportUnknown*=false.
+# Those mostly surface in ty as unresolved-attribute / object-typed invalid-argument-type.
+unresolved-attribute = "ignore"
+
+# Optional / platform-specific imports (parity with former basedpyright executionEnvironments).
+[[tool.ty.overrides]]
+include = [
+	"src/srxy/adapters/outbound/metadata/windows_metadata.py",
+	"src/srxy/adapters/outbound/models/device.py",
+	"src/srxy/adapters/outbound/semantic/semantic_image.py",
+	"src/srxy/application/matching/semantic.py",
+	"tests/unit/test_semantic_cache.py",
 ]
+[tool.ty.overrides.rules]
+unresolved-import = "ignore"
+invalid-argument-type = "ignore"
+no-matching-overload = "ignore"
+
+# Qt/Textual stubs + MagicMock-heavy tests.
+[[tool.ty.overrides]]
+include = ["tests/**"]
+[tool.ty.overrides.rules]
+invalid-argument-type = "ignore"
+invalid-assignment = "ignore"
+call-top-callable = "ignore"
+call-non-callable = "ignore"
+no-matching-overload = "ignore"
+not-iterable = "ignore"
+unsupported-operator = "ignore"
+missing-argument = "ignore"
+too-many-positional-arguments = "ignore"
+missing-slot = "ignore"
+
 
 [tool.coverage.run]
 source = ["srxy"]
