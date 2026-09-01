@@ -68,9 +68,11 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Parallel OCR/CLIP activity label sync — fan-in summarizes concurrent workers as `OCR · N files` (not one stale filename); listing `Searching…` bypasses worker fan-in so it does not prefix CLIP/OCR labels.
 
 - [x] GUI cache/model clear off main thread — `_SettingsMaintenanceWorker` runs delete + settings snapshot rebuild on `QThread`; avoids UI hitch from `build_settings_snapshot` size walks after cache reset. Worktree `38v7`.
+- [x] `SecondaryButton` + `SrxyDialogFooter` — dialog Cancel matches Options/Filter on Linux Material (avoids Qt Material `DialogButtonBox` flat+accent foreground); migrated GUI + installer footers and secondary CTAs. Gate passed (`checks-quiet --scope=gui`).
 
 ### Open
 
+- [ ] **Manual QA (user):** Linux Material — dialog Cancel matches Options/Filter (gray contained button, neutral text); OK/Search still accent-filled.
 - [ ] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active.
 - [ ] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media.
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).

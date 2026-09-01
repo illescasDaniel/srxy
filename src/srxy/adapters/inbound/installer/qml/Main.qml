@@ -218,7 +218,7 @@ ApplicationWindow {
 						text: c.prefix
 						onTextChanged: c.setPrefix(text)
 					}
-					Button {
+					SecondaryButton {
 						objectName: "browsePrefixButton"
 						text: root.t("gui.browse")
 						onClicked: {
@@ -517,7 +517,7 @@ ApplicationWindow {
 						text: c.uninstallPrefix
 						onTextChanged: c.setUninstallPrefix(text)
 					}
-					Button {
+					SecondaryButton {
 						objectName: "browseUninstallButton"
 						text: root.t("gui.browse")
 						onClicked: {
@@ -628,38 +628,38 @@ ApplicationWindow {
 		RowLayout {
 			width: parent.width
 			spacing: 8
-			Button {
+			SecondaryButton {
 				text: root.t("common.back")
 				visible: c.page !== "mode"
 				enabled: c.canGoBack
 				onClicked: c.goBack()
 			}
 			Item { Layout.fillWidth: true }
-			Button {
+			SecondaryButton {
 				text: root.t("common.next")
 				visible: (c.mode === "install" || c.mode === "reinstall") && c.page !== "path" && c.page !== "progress"
 				enabled: !c.busy && (c.page !== "privacy" || c.privacyAck)
 				onClicked: c.goNext()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.install")
 				visible: c.mode === "install" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startInstall()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.reinstall")
 				visible: c.mode === "reinstall" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startReinstall()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.next")
 				visible: c.mode === "uninstall" && c.page === "mode"
 				enabled: !c.busy
 				onClicked: c.goNext()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.uninstall")
 				visible: c.mode === "uninstall" && c.page === "uninstall"
 				enabled: !c.busy
@@ -670,12 +670,12 @@ ApplicationWindow {
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
 				onClicked: c.launchInstalled()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.finish")
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
 				onClicked: Qt.quit()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.close")
 				visible: c.page === "progress" && !c.busy && !(c.finished && (c.mode === "install" || c.mode === "reinstall"))
 				onClicked: Qt.quit()
@@ -703,9 +703,14 @@ ApplicationWindow {
 		id: helpDialog
 		title: root.t("help.option_title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(root.width - 40, 480)
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: helpDialog.accept()
+			}
+		}
 
 		ColumnLayout {
 			anchors.fill: parent
@@ -731,17 +736,15 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: Math.min(root.width - 40, 480)
 		closePolicy: Popup.NoAutoClose
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: unsafePrefixContinue
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: unsafePrefixDialog.reject()
 			}
 			AccentButton {
 				id: unsafePrefixContinue
 				text: root.t("installer.confirm.button.continue")
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: unsafePrefixDialog.accept()
 			}
 		}

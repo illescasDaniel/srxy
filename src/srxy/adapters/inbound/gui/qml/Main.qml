@@ -51,7 +51,7 @@ ApplicationWindow {
 				Layout.fillWidth: true
 			}
 		}
-		Button {
+		SecondaryButton {
 			objectName: "settingsClear_" + kind
 			text: kind === "all"
 				? root.t("settings.action.clear_all")
@@ -59,7 +59,7 @@ ApplicationWindow {
 			enabled: !!row.installed && !busy
 			onClicked: if (controller) controller.confirmClearModel(kind)
 		}
-		Button {
+		SecondaryButton {
 			objectName: "settingsRedownload_" + kind
 			text: kind === "all"
 				? root.t("settings.action.redownload_all")
@@ -425,7 +425,7 @@ ApplicationWindow {
 			Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
 		}
 		readonly property real fieldHeight: termField.height
-		Button {
+		SecondaryButton {
 			text: "−"
 			visible: termModel.count > 1
 			onClicked: {
@@ -481,7 +481,7 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					RowLayout {
 						anchors.fill: parent
-						Button {
+						SecondaryButton {
 							objectName: "browseButton"
 							text: root.t("gui.browse")
 							onClicked: folderDialog.open()
@@ -596,7 +596,7 @@ ApplicationWindow {
 														width: parent.width
 													}
 												}
-												Button {
+												SecondaryButton {
 													text: root.t("gui.add_term")
 													onClicked: {
 														termModel.append({ term: "", join: "or" })
@@ -777,7 +777,7 @@ ApplicationWindow {
 									optionsButton.implicitWidth,
 									filtersButton.implicitWidth
 								)
-								Button {
+								SecondaryButton {
 									id: optionsButton
 									objectName: "optionsButton"
 									text: root.t("gui.options")
@@ -789,7 +789,7 @@ ApplicationWindow {
 										optionsDialog.open()
 									}
 								}
-								Button {
+								SecondaryButton {
 									id: filtersButton
 									objectName: "filtersButton"
 									text: root.t("gui.filters")
@@ -1287,7 +1287,7 @@ ApplicationWindow {
 					Layout.preferredWidth: 280
 					elide: Text.ElideRight
 				}
-				Button {
+				SecondaryButton {
 					objectName: "cancelSearchButton"
 					text: root.t("gui.cancel")
 					visible: controller && controller.searching
@@ -1315,18 +1315,16 @@ ApplicationWindow {
 				controller.refreshCapabilities()
 			loadOptionsFromController()
 		}
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: optionsOkButton
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: optionsDialog.reject()
 			}
 			AccentButton {
 				id: optionsOkButton
 				objectName: "optionsOkButton"
 				text: root.t("common.ok")
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
 					const err = pushOptionsToController()
 					if (err) {
@@ -1499,7 +1497,7 @@ ApplicationWindow {
 					text: root.t("gui.options.persist")
 					Layout.topMargin: 12
 				}
-				Button {
+				SecondaryButton {
 					id: optReset
 					objectName: "optReset"
 					text: root.t("gui.options.reset")
@@ -1522,11 +1520,10 @@ ApplicationWindow {
 			filtersError.visible = false
 			loadFiltersFromController()
 		}
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: filtersOkButton
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: filtersDialog.reject()
 			}
 			AccentButton {
@@ -1534,7 +1531,6 @@ ApplicationWindow {
 				objectName: "filtersOkButton"
 				text: root.t("common.ok")
 				enabled: root.filtersDraftValid
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: {
 					if (!root.filtersDraftValid)
 						return
@@ -1656,7 +1652,7 @@ ApplicationWindow {
 				text: root.t("gui.filters.persist")
 				Layout.topMargin: 12
 			}
-			Button {
+			SecondaryButton {
 				id: fltReset
 				objectName: "fltReset"
 				text: root.t("gui.filters.reset")
@@ -1670,11 +1666,16 @@ ApplicationWindow {
 		objectName: "helpDialog"
 		title: root.t("help.dialog_title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(520, parent.width - 40)
 		implicitWidth: 520
 		contentWidth: availableWidth
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: helpDialog.accept()
+			}
+		}
 		ColumnLayout {
 			width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
 			spacing: 8
@@ -1705,25 +1706,22 @@ ApplicationWindow {
 		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		closePolicy: controller && controller.updateBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
 		onClosed: if (controller) controller.closeUpdateDialog()
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: updateYesButton
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
 				visible: controller && controller.updateDialogMode === "prompt"
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: updateDialog.reject()
 			}
 			AccentButton {
 				id: updateYesButton
 				text: root.t("update.yes")
 				visible: controller && controller.updateCanApply
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: if (controller) controller.applyUpdate()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("update.ok")
 				visible: controller && controller.updateDialogMode === "info"
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: updateDialog.accept()
 			}
 		}
@@ -1745,10 +1743,9 @@ ApplicationWindow {
 		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		onOpened: root.reloadSettingsData()
 		onClosed: if (controller) controller.closeSettings()
-		footer: DialogButtonBox {
-			Button {
+		footer: SrxyDialogFooter {
+			SecondaryButton {
 				text: root.t("common.close")
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: settingsDialog.accept()
 			}
 		}
@@ -1803,7 +1800,7 @@ ApplicationWindow {
 					opacity: 0.75
 					Layout.fillWidth: true
 				}
-				Button {
+				SecondaryButton {
 					objectName: "settingsClearCache"
 					text: root.t("settings.action.clear_cache")
 					enabled: !!(root.settingsData && root.settingsData.cache
@@ -1833,7 +1830,7 @@ ApplicationWindow {
 					opacity: 0.75
 					Layout.fillWidth: true
 				}
-				Button {
+				SecondaryButton {
 					objectName: "settingsResetPreferences"
 					text: root.t("settings.action.reset_preferences")
 					enabled: !!(root.settingsData && root.settingsData.preferences
@@ -1855,17 +1852,15 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: Math.min(480, parent.width - 40)
 		closePolicy: Popup.NoAutoClose
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: settingsConfirmAccept
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: settingsConfirmDialog.reject()
 			}
 			AccentButton {
 				id: settingsConfirmAccept
 				text: controller ? controller.settingsConfirmAcceptLabel : ""
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: settingsConfirmDialog.accept()
 			}
 		}
@@ -1885,12 +1880,17 @@ ApplicationWindow {
 		objectName: "aboutDialog"
 		title: root.t("about.title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(560, parent.width - 40)
 		height: Math.min(520, parent.height - 40)
 		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		onClosed: if (controller) controller.closeAbout()
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: aboutDialog.accept()
+			}
+		}
 		ScrollView {
 			anchors.fill: parent
 			clip: true
@@ -1964,17 +1964,15 @@ ApplicationWindow {
 		implicitWidth: 480
 		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
-		footer: DialogButtonBox {
+		footer: SrxyDialogFooter {
 			defaultButton: downloadConfirmAccept
-			Button {
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: downloadConfirmDialog.reject()
 			}
 			AccentButton {
 				id: downloadConfirmAccept
 				text: root.t("settings.action.download")
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: downloadConfirmDialog.accept()
 			}
 		}
@@ -1999,7 +1997,12 @@ ApplicationWindow {
 		implicitWidth: 420
 		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
-		standardButtons: Dialog.Cancel
+		footer: SrxyDialogFooter {
+			SecondaryButton {
+				text: root.t("common.cancel")
+				onClicked: downloadProgressDialog.reject()
+			}
+		}
 		ColumnLayout {
 			width: downloadProgressDialog.availableWidth > 0
 				? downloadProgressDialog.availableWidth - 24
@@ -2025,9 +2028,14 @@ ApplicationWindow {
 		objectName: "searchWarningsDialog"
 		title: root.t("gui.search_warnings.title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(560, parent.width - 40)
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: searchWarningsDialog.accept()
+			}
+		}
 		ScrollView {
 			anchors.fill: parent
 			clip: true
@@ -2045,10 +2053,15 @@ ApplicationWindow {
 		objectName: "errorDialog"
 		title: root.t("gui.error")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: 420
 		implicitWidth: 420
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: errorDialog.accept()
+			}
+		}
 		Label {
 			id: errorLabel
 			wrapMode: Text.Wrap
