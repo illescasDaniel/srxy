@@ -66,6 +66,8 @@ Offline Inno Setup installer (x86_64):
 
 Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) and run. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required).
 
+A second, PySide6-based offline wrapper (`srxy-*-installer-<installer_version>-pyside-x86_64.zip`) — the same QML wizard used by the macOS `.app` and Linux AppImage offline installers — is built in CI as a build artifact while the Windows installer migration is in progress. It is not yet attached to GitHub Releases; the Inno installer above remains the supported/shipped Windows installer until an NSIS-based single-file wrapper replaces Inno's outer shell (tracked separately). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md#pyside-wizard-offline).
+
 ### Offline wizard
 
 - Choose **Install or update**, **Reinstall**, or **Uninstall**.
@@ -92,7 +94,8 @@ Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.m
 | Online | `./packaging/linux-appimage/build-online.sh` | `./packaging/linux-appimage/smoke-appimage-online.sh` |
 | macOS Offline | `./packaging/macos/build-offline.sh` | `./packaging/macos/smoke-offline.sh` |
 | macOS Online | `./packaging/macos/build-online.sh` | `./packaging/macos/smoke-online.sh` |
-| Windows Offline | `./packaging/windows/build-offline.ps1` | `./packaging/windows/smoke-offline.ps1` |
+| Windows Offline (Inno) | `./packaging/windows/build-offline.ps1` | `./packaging/windows/smoke-offline.ps1` |
+| Windows Offline (PySide) | `./packaging/windows/build-offline-pyside.ps1` | `./packaging/windows/smoke-offline-pyside.ps1` |
 
 Packaging details (AppDir layout, UPX, checksums, CI): [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md). Bootstrap sources: [`packaging/online-bootstrap/`](../packaging/online-bootstrap/). Compatibility pins: [`packaging/installer_meta.toml`](../packaging/installer_meta.toml).
 

@@ -215,6 +215,8 @@ build-macos-installer-offline-signed = { cmd = "./packaging/macos/build-offline-
 build-macos-installer-online-signed = { cmd = "./packaging/macos/build-online-signed.sh", help = "build + locally sign/notarize/staple the online macOS installer (see packaging/macos/signing.env.example)" }
 build-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/build-offline.ps1", help = "build offline Windows Inno Setup installer into dist/" }
 smoke-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline.ps1", help = "smoke headless Windows install engine (or pass -InstallerExe)" }
+build-windows-installer-offline-pyside = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/build-offline-pyside.ps1", help = "build offline Windows PySide installer wrapper (payload zip) into dist/" }
+smoke-windows-installer-offline-pyside = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline-pyside.ps1", help = "smoke the built Windows PySide installer wrapper payload (or pass -Payload)" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate packaged square + installer icons from assets/icons/srxy.png" }
 generate-macos-icons = { cmd = "uv run python scripts/generate_macos_icons.py", help = "regenerate squircle-masked macOS icons from assets/icons/srxy.png" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day; Unix; auto-scope)" }
