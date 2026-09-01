@@ -4,12 +4,13 @@ from __future__ import annotations
 
 import argparse
 import json
+import threading
 from collections.abc import Callable
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
 
-from PySide6.QtCore import Property, QObject, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import Q_ARG, Property, QMetaObject, QObject, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QTextDocument
 
 from srxy.adapters.inbound.gui.capabilities import (
@@ -406,6 +407,8 @@ class SearchController(QObject):
 		self._download_worker: _DownloadWorker | None = None
 		self._maintenance_thread: QThread | None = None
 		self._maintenance_worker: _SettingsMaintenanceWorker | None = None
+		self._snapshot_thread: threading.Thread | None = None
+		self._snapshot_loading = False
 		self._download_queue: list[PendingModelDownload] = []
 		self._pending_search_args: argparse.Namespace | None = None
 		self._download_confirm_open = False
@@ -2215,23 +2218,87 @@ class SearchController(QObject):
 		self._about_open = False
 		self.aboutUiChanged.emit()
 
-	def _settings_maintenance_busy(self) -> bool:
-		return bool(
+	def _settings_maintenance_busy(self, *, include_snapshot_loading: bool = True) -> bool:
+		busy = (
 			self._searching
 			or self._download_progress_open
 			or self._download_queue
 			or self._download_worker is not None
 			or self._maintenance_worker is not None
 		)
+		if include_snapshot_loading:
+			busy = busy or self._snapshot_loading
+		return bool(busy)
 
-	def _emit_settings_snapshot(self):
-		from srxy.application.settings_maintenance import build_settings_snapshot
-
-		self._settings_json = json.dumps(
-			build_settings_snapshot(busy=self._settings_maintenance_busy()),
+	def _loading_settings_json(self) -> str:
+		return json.dumps(
+			{
+				"loading": True,
+				"busy": self._settings_maintenance_busy(),
+				"models": [],
+				"cache": {
+					"path": "",
+					"present": False,
+					"statusText": "",
+					"pathLabel": "",
+				},
+				"preferences": {
+					"path": "",
+					"present": False,
+					"statusText": "",
+					"pathLabel": "",
+				},
+			},
 			sort_keys=True,
 		)
-		self.settingsUiChanged.emit()
+
+	def _emit_settings_snapshot(self, *, show_loading: bool = False):
+		self._refresh_settings_snapshot_async(show_loading=show_loading)
+
+	def _refresh_settings_snapshot_async(self, *, show_loading: bool = False):
+		if show_loading:
+			self._settings_json = self._loading_settings_json()
+			self.settingsUiChanged.emit()
+		self._start_settings_snapshot_worker()
+
+	def _dispose_snapshot_worker(self, *, wait_ms: int):
+		thread = self._snapshot_thread
+		self._snapshot_thread = None
+		self._snapshot_loading = False
+		if thread is not None and thread.is_alive():
+			thread.join(max(wait_ms, 0) / 1000.0)
+
+	def _start_settings_snapshot_worker(self):
+		self._dispose_snapshot_worker(wait_ms=0)
+		self._snapshot_loading = True
+
+		def _run():
+			from srxy.application.settings_maintenance import build_settings_snapshot
+
+			snapshot_json = json.dumps(
+				build_settings_snapshot(
+					busy=self._settings_maintenance_busy(include_snapshot_loading=False),
+				),
+				sort_keys=True,
+			)
+			QMetaObject.invokeMethod(
+				self,
+				"_apply_settings_snapshot_json",
+				Qt.ConnectionType.QueuedConnection,
+				Q_ARG(str, snapshot_json),
+			)
+
+		thread = threading.Thread(target=_run, name="srxy-settings-snapshot", daemon=True)
+		self._snapshot_thread = thread
+		thread.start()
+
+	@Slot(str)
+	def _apply_settings_snapshot_json(self, snapshot_json: str):
+		self._snapshot_loading = False
+		self._snapshot_thread = None
+		if snapshot_json:
+			self._settings_json = snapshot_json
+			self.settingsUiChanged.emit()
 
 	@Property(bool, notify=settingsUiChanged)
 	def settingsOpen(self) -> bool:  # noqa: N802
@@ -2260,12 +2327,13 @@ class SearchController(QObject):
 	@Slot()
 	def openSettings(self):  # noqa: N802
 		self._settings_open = True
-		self._emit_settings_snapshot()
+		self._emit_settings_snapshot(show_loading=True)
 		self.settingsUiChanged.emit()
 
 	@Slot()
 	def closeSettings(self):  # noqa: N802
 		self._settings_open = False
+		self._dispose_snapshot_worker(wait_ms=0)
 		self.settingsUiChanged.emit()
 
 	@Slot()
@@ -2693,6 +2761,7 @@ class SearchController(QObject):
 		self._dispose_search_worker(wait_ms=thread_wait_ms)
 		self._dispose_download_worker(wait_ms=thread_wait_ms)
 		self._dispose_maintenance_worker(wait_ms=thread_wait_ms)
+		self._dispose_snapshot_worker(wait_ms=thread_wait_ms)
 		self._dispose_update_worker(wait_ms=thread_wait_ms)
 		self._dispose_preview_worker(wait_ms=thread_wait_ms)
 

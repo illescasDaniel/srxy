@@ -24,7 +24,6 @@ from srxy.application.model_preflight import (
 	format_download_prompt,
 	semantic_image_model_label,
 	semantic_text_model_label,
-	transcribe_model_download_info,
 )
 from srxy.i18n import tr
 
@@ -32,9 +31,13 @@ from srxy.i18n import tr
 SETTINGS_MODEL_KINDS = ("semantic_text", "semantic_image", "transcribe", "all")
 
 
-def _active_transcribe_dir() -> Path:
-	_label, _hint, target = transcribe_model_download_info()
-	return target
+def _transcribe_installed() -> bool:
+	root = transcribe_model_root()
+	if root.is_dir() and is_model_installed(root):
+		return True
+	return is_model_installed(transcribe_faster_whisper_model_dir()) or is_model_installed(
+		transcribe_transformers_model_dir()
+	)
 
 
 def _model_label(kind: str) -> str:
@@ -43,8 +46,7 @@ def _model_label(kind: str) -> str:
 	if kind == "semantic_image":
 		return semantic_image_model_label()
 	if kind == "transcribe":
-		label, _hint, _path = transcribe_model_download_info()
-		return label
+		return tr("model.label.transcribe_faster_whisper")
 	if kind == "all":
 		return tr("settings.model.all")
 	raise ValueError(f"Unknown settings model kind: {kind!r}")
@@ -70,35 +72,45 @@ def _model_installed(kind: str) -> bool:
 	if kind == "semantic_image":
 		return is_model_installed(semantic_image_model_dir())
 	if kind == "transcribe":
-		return is_model_installed(_active_transcribe_dir())
+		return _transcribe_installed()
 	if kind == "all":
 		return any(_model_installed(k) for k in ("semantic_text", "semantic_image", "transcribe"))
 	raise ValueError(f"Unknown settings model kind: {kind!r}")
 
 
-def _model_size_bytes(kind: str) -> int:
+def _model_size_bytes(kind: str, *, size_cache: dict[str, int] | None = None) -> int:
+	if size_cache is not None and kind in size_cache:
+		return size_cache[kind]
 	if kind == "semantic_text":
-		return path_size_bytes(semantic_text_model_dir())
-	if kind == "semantic_image":
-		return path_size_bytes(semantic_image_model_dir())
-	if kind == "transcribe":
+		size = path_size_bytes(semantic_text_model_dir())
+	elif kind == "semantic_image":
+		size = path_size_bytes(semantic_image_model_dir())
+	elif kind == "transcribe":
 		# Include both backends under the shared root when present.
 		root = transcribe_model_root()
 		if root.is_dir():
-			return path_size_bytes(root)
-		return path_size_bytes(transcribe_faster_whisper_model_dir()) + path_size_bytes(
-			transcribe_transformers_model_dir()
+			size = path_size_bytes(root)
+		else:
+			size = path_size_bytes(transcribe_faster_whisper_model_dir()) + path_size_bytes(
+				transcribe_transformers_model_dir()
+			)
+	elif kind == "all":
+		size = sum(
+			_model_size_bytes(single, size_cache=size_cache)
+			for single in ("semantic_text", "semantic_image", "transcribe")
 		)
-	if kind == "all":
-		return sum(_model_size_bytes(k) for k in ("semantic_text", "semantic_image", "transcribe"))
-	raise ValueError(f"Unknown settings model kind: {kind!r}")
+	else:
+		raise ValueError(f"Unknown settings model kind: {kind!r}")
+	if size_cache is not None and kind != "all":
+		size_cache[kind] = size
+	return size
 
 
-def _model_status_text(kind: str) -> str:
+def _model_status_text(kind: str, *, size_cache: dict[str, int] | None = None) -> str:
 	installed = _model_installed(kind)
 	if not installed:
 		return tr("settings.status.not_installed")
-	size = format_byte_size(_model_size_bytes(kind))
+	size = format_byte_size(_model_size_bytes(kind, size_cache=size_cache))
 	return tr("settings.status.installed", size=size)
 
 
@@ -113,6 +125,10 @@ def _cache_present() -> bool:
 def build_settings_snapshot(*, busy: bool) -> dict[str, Any]:
 	from srxy.application.settings import settings_file_present, settings_path
 
+	size_cache: dict[str, int] = {}
+	for kind in ("semantic_text", "semantic_image", "transcribe"):
+		if _model_installed(kind):
+			_model_size_bytes(kind, size_cache=size_cache)
 	models: list[dict[str, Any]] = []
 	for kind in SETTINGS_MODEL_KINDS:
 		installed = _model_installed(kind)
@@ -121,7 +137,7 @@ def build_settings_snapshot(*, busy: bool) -> dict[str, Any]:
 				"kind": kind,
 				"label": _model_label(kind),
 				"installed": installed,
-				"statusText": _model_status_text(kind),
+				"statusText": _model_status_text(kind, size_cache=size_cache),
 				"path": str(_model_path(kind)),
 			}
 		)
@@ -197,6 +213,8 @@ def pending_downloads_for_kind(kind: str) -> list[PendingModelDownload]:
 			)
 		]
 	if kind == "transcribe":
+		from srxy.application.model_preflight import transcribe_model_download_info
+
 		label, size_hint, target = transcribe_model_download_info()
 		return [
 			PendingModelDownload(

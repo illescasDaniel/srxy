@@ -6,7 +6,16 @@ import bisect
 from pathlib import Path
 from typing import Any
 
-from PySide6.QtCore import QAbstractListModel, QByteArray, QModelIndex, QPersistentModelIndex, Qt, Slot
+from PySide6.QtCore import (
+	Property,
+	QAbstractListModel,
+	QByteArray,
+	QModelIndex,
+	QPersistentModelIndex,
+	Qt,
+	Signal,
+	Slot,
+)
 
 from srxy.application.search_formatting import format_score_percent, iter_grouped_line_displays, match_labels
 from srxy.domain.models import FileSearchResult
@@ -271,9 +280,17 @@ class MatchesModel(QAbstractListModel):
 	PlainTextRole = Qt.ItemDataRole.UserRole + 4
 	LineNumberRole = Qt.ItemDataRole.UserRole + 5
 
+	maxTextLengthChanged = Signal()
+
 	def __init__(self, parent: Any = None):
 		super().__init__(parent)
 		self._rows: list[tuple[str, str, float, str, int]] = []
+		self._max_text_length = 0
+
+	def _get_max_text_length(self) -> int:
+		return self._max_text_length
+
+	maxTextLength = Property(int, _get_max_text_length, notify=maxTextLengthChanged)
 
 	def rowCount(self, parent: QModelIndex | QPersistentModelIndex = _EMPTY_INDEX) -> int:  # noqa: N802
 		if parent.isValid():
@@ -309,16 +326,22 @@ class MatchesModel(QAbstractListModel):
 	def clear(self):
 		self.beginResetModel()
 		self._rows = []
+		self._max_text_length = 0
+		self.maxTextLengthChanged.emit()
 		self.endResetModel()
 
 	def load_from_result(self, result: FileSearchResult | None, *, query: str):
 		self.beginResetModel()
 		self._rows = []
+		max_len = 0
 		if result is not None:
 			for location, preview, score, plain, line_number in iter_grouped_line_displays(
 				result.lines, query=query, highlight="html"
 			):
 				self._rows.append((location, preview, score, plain, line_number))
+				max_len = max(max_len, len(plain))
+		self._max_text_length = max_len
+		self.maxTextLengthChanged.emit()
 		self.endResetModel()
 
 	def row_plain(self, row: int) -> tuple[str, str]:

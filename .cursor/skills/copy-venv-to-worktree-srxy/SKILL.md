@@ -49,7 +49,7 @@ executes the primary checkout's interpreter and loads primary `srxy`.
    - Uses `robocopy` to mirror `.venv`.
    - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url` /
      trampoline `UV_PYTHON_PATH`).
-   - Runs `python scripts/dev/sync.py --dev --offline --reinstall-package srxy`
+   - Runs `python scripts/dev/sync.py --offline --reinstall-package srxy`
      (platform extras + CUDA ensure on NVIDIA). If offline fails (e.g. primary
      was synced without `semantic`), retries the same command online.
    - Verifies `srxy.__file__` is under the worktree `src/`, pytest runs, and
@@ -80,7 +80,7 @@ executes the primary checkout's interpreter and loads primary `srxy`.
    - Guards against running in the primary itself.
    - Uses `rsync` to mirror `.venv`.
    - Runs `rewrite_venv_paths.py` (shebangs / `.pth` / `direct_url`).
-   - Runs `scripts/dev/sync.py --dev --offline --reinstall-package srxy`
+   - Runs `scripts/dev/sync.py --offline --reinstall-package srxy`
      (NVIDIA / Apple Silicon → `--extra semantic`; else core+dev only).
      Retries online if offline fails.
    - Verifies pytest shebang points at this worktree's `.venv`,

@@ -2,6 +2,24 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-01 — Checkout sync bootstrap via `uv run --no-project`
+
+- **Context:** `uv run task sync` (runtime-only, `--no-default-groups`) runs through Taskipy from `.venv`, which loads dev-only deps like `psutil`. Windows refuses to unlink the loaded `.pyd` (os error 5); on Unix the dev group would be ripped out mid-run.
+- **Decision:** (1) Drop `sync` / `sync-win` Taskipy tasks; keep `sync-dev` / `sync-uploader` as thin wrappers that never prune the group they run from. (2) Pruning syncs (`--no-default-groups`, `--only-group`) must use `uv run --no-project python scripts/dev/sync.py` so the script runs on a standalone interpreter. (3) `sync.py` detects `running_inside_project_venv()` and refuses pruning unless `--force`.
+- **Rationale:** Taskipy cannot orchestrate its own uninstall; `--no-project` is the uv-supported escape hatch.
+
+## 2026-09-01 — Parallel file-count probe for search progress total
+
+- **Context:** `_execute_file_search` consumes `iter_files` lazily; once OCR pending hits the limit, the walk blocks on `_drain_done`. `listing_done` and the `(0, N)` emission were gated behind the full walk — minutes for large image folders.
+- **Decision:** Start a daemon counting thread with identical walker args (no duplicate skip warnings). Use `probe_total` as progress denominator until `listing_done`; emit `(0, N)` when probe finishes. Join probe in `finally`.
+- **Rationale:** One extra cheap directory walk buys immediate UI feedback without changing OCR parallelism.
+
+## 2026-09-01 — Settings snapshot off main thread via stdlib thread, not QThread
+
+- **Context:** `build_settings_snapshot` blocked the GUI ~5s (model size walks + torch device probe). Initial QThread worker crashed on Windows pytest (torch/numpy import from QThread → access violation).
+- **Decision:** (1) stdlib `threading.Thread` + `QMetaObject.invokeMethod(..., QueuedConnection)` to apply JSON on the GUI thread. (2) Memoize per-kind sizes in one snapshot call so the `all` row reuses cache. (3) Remove torch from snapshot path; static transcribe label + lazy import only for pending downloads.
+- **Rationale:** Keeps dialog instant without fighting Qt thread affinity for heavy Python imports.
+
 ## 2026-08-30 — develop is the continuous-development trunk
 
 - **Context:** Feature work previously lived on `feature/fixes_1.6.6` and related worktrees. Development continues on `develop`.

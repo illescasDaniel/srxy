@@ -21,14 +21,26 @@ powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
 
 ## Sync
 
-Do not hand-pick extras on a developer machine. Use the Taskipy tasks (they call [`scripts/dev/sync.py`](../scripts/dev/sync.py)):
+Do not hand-pick extras on a developer machine. Use [`scripts/dev/sync.py`](../scripts/dev/sync.py) (platform-aware extras + Windows CUDA ensure):
+
+**First-time / bootstrap** (same on every OS — does not load the project venv):
+
+```bash
+uv run --no-project python scripts/dev/sync.py
+uv run --no-project python scripts/dev/sync.py --group uploader
+uv run --no-project python scripts/dev/sync.py --no-default-groups
+```
+
+Wrappers: `./scripts/dev/sync.sh` (Unix) or `powershell -File .\scripts\dev\sync.ps1` (Windows).
+
+**Once `.venv` exists**, thin Taskipy aliases:
 
 | Task | What it installs |
 |------|------------------|
-| `uv run task sync` | Runtime extras only — **no** default/`dev` group (no pytest, ruff, taskipy, …) |
 | `uv run task sync-dev` | Default for agents and local development (`dev` group + extras) |
 | `uv run task sync-uploader` | `sync-dev` plus the `uploader` group (twine) |
-| `uv run task sync-win` | Alias of `sync-dev` (older Windows docs / `sync-win.cmd`) |
+
+All `uv sync` flags pass through (`--offline`, `--reinstall-package srxy`, …). Pruning syncs (`--no-default-groups`) must use the bootstrap command above — not Taskipy — or Windows may refuse to unlink loaded dev packages.
 
 Platform extras (same for every mode). `[semantic]` is GPU-only:
 
@@ -43,7 +55,7 @@ Platform extras (same for every mode). `[semantic]` is GPU-only:
 
 **CI** does not use these tasks. GitHub Actions runs `uv sync --frozen` with **no** `[semantic]` — CI only runs `core+gui+tui`, never the heavy/real-model suite. (`pywin32` installs automatically on Windows via a core dependency marker.)
 
-Direct script (no Taskipy required): `./scripts/dev/sync.sh --dev` (Unix) or `powershell -File .\scripts\dev\sync.ps1 --dev`. Extra `uv sync` flags pass through (`--offline`, `--reinstall-package srxy`, …).
+Direct script (no Taskipy required): `./scripts/dev/sync.sh` (Unix) or `powershell -File .\scripts\dev\sync.ps1` (Windows). Extra `uv sync` flags pass through (`--offline`, `--reinstall-package srxy`, …).
 
 On Windows + NVIDIA, verify CUDA torch after a sync:
 

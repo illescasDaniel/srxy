@@ -1322,7 +1322,7 @@ if (-not [string]::IsNullOrWhiteSpace($InternalBucket)) {
 
 # --- main gate ---
 if (-not (Test-Path -LiteralPath (Join-Path $RepoRoot '.venv'))) {
-	Write-Host 'Missing .venv. Create it first: uv run task sync-dev  (or: python scripts/dev/sync.py --dev)' -ForegroundColor Red
+	Write-Host 'Missing .venv. Create it first: uv run task sync-dev  (or: uv run --no-project python scripts/dev/sync.py)' -ForegroundColor Red
 	exit 1
 }
 

@@ -195,9 +195,8 @@ source = ["srxy"]
 omit = ["tests/*"]
 
 [tool.taskipy.tasks]
-sync = { cmd = "python scripts/dev/sync.py", help = "platform-aware uv sync: runtime extras, no pytest/ruff/dev tools" }
-sync-dev = { cmd = "python scripts/dev/sync.py --dev", help = "platform-aware uv sync with the default dev group (GPU → semantic; else core+dev only)" }
-sync-uploader = { cmd = "python scripts/dev/sync.py --uploader", help = "platform-aware uv sync with dev + uploader (twine) groups" }
+sync-dev = { cmd = "python scripts/dev/sync.py", help = "platform-aware uv sync with the default dev group (GPU → semantic; else core+dev only)" }
+sync-uploader = { cmd = "python scripts/dev/sync.py --group uploader", help = "platform-aware uv sync with dev + uploader (twine) groups" }
 cli = { cmd = "uv run srxy --cli", help = "launch plain CLI (pass query/path/flags after --)" }
 tui = { cmd = "uv run srxy --tui", help = "launch Textual TUI (pass query/path/flags after --)" }
 gui = { cmd = "uv run srxy", help = "launch GUI (pass query/path/flags after --)" }
@@ -235,7 +234,6 @@ checks-core-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core", 
 checks-gui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,gui", help = "core+gui, agent-verbosity (Unix)" }
 checks-tui-quiet = { cmd = "./scripts/quality/checks.sh --quiet --scope=core,tui", help = "core+tui, agent-verbosity (Unix)" }
 checks-all-quiet = { cmd = "./scripts/quality/checks.sh --quiet --all", help = "all buckets, agent-verbosity (Unix)" }
-sync-win = { cmd = "python scripts/dev/sync.py --dev", help = "alias of sync-dev (kept for older docs / Windows muscle memory)" }
 checks-win = { cmd = "cmd /c scripts\\quality\\checks-win.cmd", help = "run quality gate (day-to-day; Windows; auto-scope)" }
 checks-win-fix = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Fix", help = "autofix then run quality gate (Windows)" }
 checks-win-full = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Full", help = "full local quality gate (pre-release; Windows)" }

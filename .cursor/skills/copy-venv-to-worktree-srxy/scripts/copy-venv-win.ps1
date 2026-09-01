@@ -144,10 +144,10 @@ Write-Host ""
 Write-Host "copy-venv: running platform-aware sync-dev (offline, reinstall srxy)..."
 Set-Location -LiteralPath $destRoot
 $syncPy = Join-Path $destRoot 'scripts\dev\sync.py'
-& $dstPython $syncPy --dev --offline --reinstall-package srxy
+& $dstPython $syncPy --offline --reinstall-package srxy
 if ($LASTEXITCODE -ne 0) {
     Write-Host "copy-venv: offline sync failed (extras may need downloads); retrying online..."
-    & $dstPython $syncPy --dev --reinstall-package srxy
+    & $dstPython $syncPy --reinstall-package srxy
 }
 if ($LASTEXITCODE -ne 0) {
     Write-Error "uv sync step failed (exit $LASTEXITCODE)"

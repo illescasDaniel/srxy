@@ -73,8 +73,15 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 
 	assert window.findChild(QObject, "resultsScrollBar") is not None
 	assert window.findChild(QObject, "matchesScrollBar") is not None
+	assert window.findChild(QObject, "matchesHScrollBar") is not None
 	assert window.findChild(QObject, "previewScroll") is not None
 	assert window.findChild(QObject, "previewContentType") is not None
+	preview_text = window.findChild(QObject, "previewText")
+	assert preview_text is not None
+	main_qml = (Path(__file__).resolve().parents[2] / "src/srxy/adapters/inbound/gui/qml/Main.qml").read_text(
+		encoding="utf-8"
+	)
+	assert "verticalAlignment: TextEdit.AlignTop" in main_qml
 	qapp.processEvents()
 	# Empty models → scrollbars hidden
 	assert window.findChild(QObject, "resultsScrollBar").property("visible") is False
@@ -114,6 +121,8 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert window.findChild(QObject, "resetPreferencesAction") is not None
 	controller.openSettings()
 	qapp.processEvents()
+	while controller._snapshot_loading:  # pyright: ignore[reportPrivateUsage]
+		qapp.processEvents()
 	assert controller.settingsOpen is True
 	settings_dialog = window.findChild(QObject, "settingsDialog")
 	assert settings_dialog is not None
@@ -121,6 +130,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert settings_dialog.findChild(QObject, "settingsRedownload_all") is not None
 	assert settings_dialog.findChild(QObject, "settingsClearCache") is not None
 	assert settings_dialog.findChild(QObject, "settingsResetPreferences") is not None
+	assert settings_dialog.findChild(QObject, "settingsBusyIndicator") is not None
 	controller.closeSettings()
 	qapp.processEvents()
 	assert controller.settingsOpen is False

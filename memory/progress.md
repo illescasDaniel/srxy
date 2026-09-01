@@ -70,6 +70,15 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] GUI cache/model clear off main thread — `_SettingsMaintenanceWorker` runs delete + settings snapshot rebuild on `QThread`; avoids UI hitch from `build_settings_snapshot` size walks after cache reset. Worktree `38v7`.
 - [x] `SecondaryButton` + `SrxyDialogFooter` — dialog Cancel matches Options/Filter on Linux Material (avoids Qt Material `DialogButtonBox` flat+accent foreground); migrated GUI + installer footers and secondary CTAs. Gate passed (`checks-quiet --scope=gui`).
 
+### Windows fixes batch (2026-09-01)
+
+- [x] Sync script rework — `scripts/dev/sync.py` mirrors uv flags (`--group`, `--no-default-groups` passthrough); pruning guard refuses sync from inside `.venv` without `--force`; bootstrap via `uv run --no-project python scripts/dev/sync.py`; deleted `sync`/`sync-win` Taskipy tasks and wrappers; docs/README/AGENTS/installation restructured around three install paths (release installers, `uv tool install git+…`, checkout sync).
+- [x] All Settings async — settings snapshot built off main thread (stdlib `threading.Thread` + queued apply); loading spinner in dialog; per-kind size cache avoids duplicate walks for `all` row; torch removed from snapshot hot path.
+- [x] Matches horizontal scroll — `MatchesModel.maxTextLength` + `TextMetrics` contentWidth; horizontal ScrollBar; header tracks scroll.
+- [x] File total probe — parallel counting thread emits `0/N` before OCR-backpressured main walk finishes.
+- [x] Preview vertical alignment — `verticalAlignment: TextEdit.AlignTop` on `previewTextArea` (overrides FluentWinUI3 `AlignVCenter`).
+- [x] Gate — `checks-win.ps1 -Fix -Quiet -Scope core,gui` + verify PASSED.
+
 ### Open
 
 - [ ] **Manual QA (user):** Linux Material — dialog Cancel matches Options/Filter (gray contained button, neutral text); OK/Search still accent-filled.

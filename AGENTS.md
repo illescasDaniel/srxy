@@ -28,7 +28,7 @@ Use the project env with **`uv run task sync-dev`**. That task is platform-aware
 | Windows + NVIDIA | `uv sync --extra semantic`, then `ensure-windows-cuda-torch.ps1` |
 | Windows (no GPU) | `uv sync` (no semantic) |
 
-Variants: `uv run task sync` (runtime extras, **no** pytest/ruff), `uv run task sync-uploader` (dev + twine). `sync-win` is an alias of `sync-dev`. `[semantic]` is GPU-only (NVIDIA / Apple Silicon MPS). CI uses `uv sync --frozen` without semantic extras (no heavy suite). `pywin32` is a core Windows dependency (no `[windows]` extra).
+Variants: `uv run task sync-uploader` (dev + twine). Bootstrap: `uv run --no-project python scripts/dev/sync.py`. `[semantic]` is GPU-only (NVIDIA / Apple Silicon MPS). CI uses `uv sync --frozen` without semantic extras (no heavy suite). `pywin32` is a core Windows dependency (no `[windows]` extra).
 
 **Windows + NVIDIA GPU (required for fast heavy/semantic tests):** `sync-dev` pulls CUDA PyTorch (`+cu130`) from the lockfile via `[tool.uv.sources]`. Before a heavy gate, confirm:
 

@@ -1009,14 +1009,62 @@ def _execute_file_search(
 		if cancel_check is not None and cancel_check():
 			raise SearchCancelled()
 
+	probe_total = 0
+	probe_lock = threading.Lock()
+	probe_done = threading.Event()
+
+	def _progress_denominator() -> int:
+		if listing_done:
+			return listed
+		with probe_lock:
+			return probe_total
+
+	def _emit_count_progress():
+		total = _progress_denominator()
+		if on_progress is not None and total > 0:
+			on_progress(completed, total)
+
+	def _run_file_count_probe():
+		nonlocal probe_total
+		count = 0
+		try:
+			for _file_path in walker.iter_files(
+				root,
+				skip_hidden_folders=skip_hidden_folders,
+				skip_noise_folders=skip_noise_folders,
+				skip_noise_files=skip_noise_files,
+				match_skipped_names=match_skipped_names,
+				include_archives=include_archives,
+				include_subdirectories=include_subdirectories,
+				cancel_check=cancel_check,
+				skipped_files=None,
+			):
+				count += 1
+		except SearchCancelled:
+			return
+		finally:
+			with probe_lock:
+				probe_total = count
+			probe_done.set()
+			_emit_count_progress()
+
+	probe_thread = threading.Thread(
+		target=_run_file_count_probe,
+		name="srxy-file-count-probe",
+		daemon=True,
+	)
+	probe_thread.start()
+
 	def _record_outcome(result: FileSearchResult | None, file_skipped: list[SkippedFile]):
 		nonlocal completed
 		completed += 1
 		_note_permission_skips(file_skipped)
 		if skipped_files is not None:
 			skipped_files.extend(file_skipped)
-		if listing_done and on_progress is not None:
-			on_progress(completed, listed)
+		if on_progress is not None:
+			total = _progress_denominator()
+			if total > 0 and (listing_done or probe_done.is_set()):
+				on_progress(completed, total)
 		if result is None:
 			return
 		results.append(result)
@@ -1030,8 +1078,7 @@ def _execute_file_search(
 	def _catch_up_progress():
 		# Emit as soon as the walk finishes — including 0/N — so the UI can show
 		# determinate file counts while slow OCR/transcribe workers are still running.
-		if on_progress is not None and listed > 0:
-			on_progress(completed, listed)
+		_emit_count_progress()
 
 	def _drain_done(
 		pending: set[Future[tuple[FileSearchResult | None, list[SkippedFile]]]],
@@ -1160,6 +1207,8 @@ def _execute_file_search(
 			if skipped_files is not None and error.skipped_files:
 				skipped_files.extend(error.skipped_files)
 	finally:
+		if probe_thread.is_alive():
+			probe_thread.join(timeout=5)
 		# Clear the downstream callback directly so leftover fan-in slots cannot
 		# leave a stale spinner after the search ends.
 		clear_activity(on_activity)

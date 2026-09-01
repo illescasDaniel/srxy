@@ -12,11 +12,20 @@ Picks the ``[semantic]`` extra only when a GPU is available:
 
 CI does **not** use this script — workflows run ``uv sync --frozen`` (no semantic extras).
 
-Modes (Taskipy: ``sync`` / ``sync-dev`` / ``sync-uploader``):
+First-time / bootstrap (never loads the project venv):
 
-- runtime (default): project + extras, no default/dev groups (no pytest, ruff, …)
-- ``--dev``: default ``dev`` group + extras
-- ``--uploader``: default ``dev`` group + extras + ``uploader`` (twine)
+  uv run --no-project python scripts/dev/sync.py
+  uv run --no-project python scripts/dev/sync.py --group uploader
+  uv run --no-project python scripts/dev/sync.py --no-default-groups
+
+Once ``.venv`` exists, thin Taskipy wrappers also work:
+
+  uv run task sync-dev
+  uv run task sync-uploader
+
+All ``uv sync`` flags (``--group``, ``--no-default-groups``, ``--offline``, …) pass
+through verbatim. Pruning syncs (``--no-default-groups``, ``--only-group``) are refused
+when this script runs from inside the project ``.venv`` unless ``--force`` is set.
 """
 
 from __future__ import annotations
@@ -30,25 +39,25 @@ import sys
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 
-
-MODE_RUNTIME = "runtime"
-MODE_DEV = "dev"
-MODE_UPLOADER = "uploader"
+_PRUNING_FLAGS = frozenset({"--no-default-groups", "--only-group"})
 
 _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 _USAGE = """\
 Platform-aware uv sync for this checkout.
 
-  uv run task sync            runtime extras (no pytest / ruff / taskipy)
-  uv run task sync-dev        default for agents and local development
-  uv run task sync-uploader   dev + twine (PyPI upload)
+Bootstrap (same on every OS — does not use the project venv):
 
-Same script:
+  uv run --no-project python scripts/dev/sync.py
+  uv run --no-project python scripts/dev/sync.py --group uploader
+  uv run --no-project python scripts/dev/sync.py --no-default-groups
 
-  python scripts/dev/sync.py
-  python scripts/dev/sync.py --dev
-  python scripts/dev/sync.py --uploader
+Or use the wrappers: ./scripts/dev/sync.sh (Unix) / .\\scripts\\dev\\sync.ps1 (Windows)
+
+Once .venv exists:
+
+  uv run task sync-dev
+  uv run task sync-uploader
 
 Linux / Windows + NVIDIA → --extra semantic
 macOS Apple Silicon → --extra semantic
@@ -56,13 +65,35 @@ No GPU → no semantic extra (core only)
 
 CI uses bare ``uv sync --frozen`` (no semantic extras).
 
-Extra flags after the mode are forwarded to uv sync, e.g.
-  python scripts/dev/sync.py --dev --offline --reinstall-package srxy
+Extra uv sync flags pass through, e.g.
+  uv run --no-project python scripts/dev/sync.py --offline --reinstall-package srxy
 """
 
 
 def repo_root() -> Path:
 	return _REPO_ROOT
+
+
+def project_venv_path() -> Path:
+	return repo_root() / ".venv"
+
+
+def running_inside_project_venv() -> bool:
+	try:
+		venv = project_venv_path().resolve()
+		prefix = Path(sys.prefix).resolve()
+	except OSError:
+		return False
+	return prefix == venv or venv in prefix.parents
+
+
+def passthrough_prunes(passthrough: Sequence[str]) -> bool:
+	return any(flag.split("=", 1)[0] in _PRUNING_FLAGS for flag in passthrough)
+
+
+def bootstrap_command(*, passthrough: Sequence[str] = ()) -> str:
+	args = ["uv", "run", "--no-project", "python", "scripts/dev/sync.py", *passthrough]
+	return " ".join(args)
 
 
 def is_cuda_forced_off(environ: Mapping[str, str] | None = None) -> bool:
@@ -123,17 +154,12 @@ def resolve_extras(
 
 
 def build_uv_sync_command(
-	mode: str,
 	extras: Sequence[str],
 	passthrough: Sequence[str] = (),
 ) -> list[str]:
 	cmd = ["uv", "sync"]
-	if mode == MODE_RUNTIME:
-		cmd.append("--no-default-groups")
 	for extra in extras:
 		cmd.extend(["--extra", extra])
-	if mode == MODE_UPLOADER:
-		cmd.extend(["--group", "uploader"])
 	cmd.extend(passthrough)
 	return cmd
 
@@ -159,17 +185,6 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 		description=_USAGE,
 		formatter_class=argparse.RawDescriptionHelpFormatter,
 	)
-	mode = parser.add_mutually_exclusive_group()
-	mode.add_argument(
-		"--dev",
-		action="store_true",
-		help="include the default dev group (pytest, ruff, taskipy, …)",
-	)
-	mode.add_argument(
-		"--uploader",
-		action="store_true",
-		help="dev group plus the uploader group (twine)",
-	)
 	parser.add_argument(
 		"--dry-run",
 		action="store_true",
@@ -180,13 +195,12 @@ def parse_args(argv: Sequence[str] | None = None) -> argparse.Namespace:
 		action="store_true",
 		help="skip ensure-windows-cuda-torch.ps1 even on Windows",
 	)
+	parser.add_argument(
+		"--force",
+		action="store_true",
+		help="allow pruning sync flags even when running from the project .venv",
+	)
 	args, unknown = parser.parse_known_args(argv)
-	if args.dev:
-		args.mode = MODE_DEV
-	elif args.uploader:
-		args.mode = MODE_UPLOADER
-	else:
-		args.mode = MODE_RUNTIME
 	args.passthrough = _strip_separator(unknown)
 	return args
 
@@ -200,11 +214,29 @@ def _run(cmd: Sequence[str], *, dry_run: bool, cwd: Path) -> int:
 	return int(completed.returncode)
 
 
+def _refuse_pruning_sync(*, passthrough: Sequence[str]) -> int:
+	print(
+		"sync: error: pruning sync flags cannot run from the project .venv "
+		"(loaded packages such as taskipy/psutil would block removal on Windows).",
+		file=sys.stderr,
+	)
+	print(f"sync: rerun with: {bootstrap_command(passthrough=passthrough)}", file=sys.stderr)
+	print("sync: or pass --force to override.", file=sys.stderr)
+	return 1
+
+
 def main(argv: Sequence[str] | None = None) -> int:
 	args = parse_args(argv)
 	root = repo_root()
+	if (
+		not args.force
+		and running_inside_project_venv()
+		and passthrough_prunes(args.passthrough)
+	):
+		return _refuse_pruning_sync(passthrough=args.passthrough)
+
 	extras = resolve_extras()
-	uv_cmd = build_uv_sync_command(args.mode, extras, args.passthrough)
+	uv_cmd = build_uv_sync_command(extras, args.passthrough)
 	code = _run(uv_cmd, dry_run=args.dry_run, cwd=root)
 	if code != 0:
 		return code

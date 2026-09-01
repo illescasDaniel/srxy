@@ -2,9 +2,15 @@
 
 Requires **Python 3.11+**.
 
-## Recommended
+## Desktop installers (preferred)
 
-Pick the extras for your machine (same table as the [README](../README.md#installation)):
+Linux AppImages, macOS `.app` / DMG wrappers, and a Windows offline Inno Setup installer are available. Short reference: [installers.md](installers.md).
+
+Download free builds from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), or [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build).
+
+## PyPI release (terminal)
+
+Pick the extras for your machine:
 
 | Hardware | Command |
 |----------|---------|
@@ -13,9 +19,39 @@ Pick the extras for your machine (same table as the [README](../README.md#instal
 | **Windows + NVIDIA GPU** | `uv tool install 'srxy[semantic]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130` |
 | **No GPU / core-only** | `uv tool install srxy` |
 
-`uv tool install` puts srxy in an isolated environment and adds the `srxy` command to your `PATH`. If the tool bin directory is not on `PATH`, run `uv tool update-shell`. On Windows, `pywin32` (Explorer tags) is a core dependency; PyPI’s torch is still **CPU-only**, so the GPU line uses `--with`/`--index` for CUDA wheels (`[tool.uv.sources]` only applies to checkout `uv sync` / `sync-dev`). Or use the [desktop installer](installers.md); details under [Windows](#windows).
+`uv tool install` puts srxy in an isolated environment and adds the `srxy` command to your `PATH`. If the tool bin directory is not on `PATH`, run `uv tool update-shell`. On Windows, `pywin32` (Explorer tags) is a core dependency; PyPI’s torch is still **CPU-only**, so the GPU line uses `--with`/`--index` for CUDA wheels (`[tool.uv.sources]` only applies to checkout sync). Details under [Windows](#windows).
 
-### pipx (alternate)
+## Latest development version
+
+Install the current `develop` branch as a standalone tool:
+
+```bash
+uv tool install "srxy @ git+https://github.com/illescasDaniel/srxy@develop"
+uv tool install "srxy[semantic] @ git+https://github.com/illescasDaniel/srxy@develop"   # GPU
+uv tool install --force "srxy @ git+https://github.com/illescasDaniel/srxy@develop"     # update in place
+```
+
+On **Windows + NVIDIA**, add CUDA wheels (checkout `[tool.uv.sources]` does not apply to `uv tool install`):
+
+```bash
+uv tool install "srxy[semantic] @ git+https://github.com/illescasDaniel/srxy@develop" \
+  --with torch --with torchvision --with torchaudio \
+  --index https://download.pytorch.org/whl/cu130
+```
+
+## Developing from a checkout
+
+Clone the repo, then run the platform-aware sync script (stdlib-only — no project venv required):
+
+```bash
+uv run --no-project python scripts/dev/sync.py                     # dev env (pytest, ruff, …)
+uv run --no-project python scripts/dev/sync.py --group uploader    # dev + twine
+uv run --no-project python scripts/dev/sync.py --no-default-groups # runtime only
+```
+
+Wrappers: `./scripts/dev/sync.sh` (Unix) or `powershell -File .\scripts\dev\sync.ps1` (Windows). Once `.venv` exists, `uv run task sync-dev` is a thin alias. Full details: [development.md → Sync](development.md#sync).
+
+### pipx (alternate PyPI install)
 
 ```bash
 pipx install 'srxy[semantic]'   # GPU machines only
@@ -30,11 +66,9 @@ pip install srxy                 # core only (no PyTorch / semantic / transcript
 
 `[semantic]` adds sentence-transformers (text + CLIP), faster-whisper, rawpy, explicit torch/torchaudio/torchvision, and on Linux and Windows `nvidia-cublas-cu12` for GPU transcription with faster-whisper. Use it only when you have a GPU (NVIDIA CUDA or Apple Silicon MPS) — CPU-only semantic is too slow for most users. On **Windows**, default installs pull the **CPU-only** PyTorch wheel — install CUDA PyTorch via the GPU line above ([Windows installation](#windows)). Models download on first use ([Model prefetch](power-ups.md#model-prefetch)). To clear cache, see [Managing cache](power-ups.md#managing-cache).
 
-## Desktop installers (optional)
+## Desktop installer details (optional)
 
-Linux AppImages, macOS `.app` / DMG wrappers, and a Windows offline Inno Setup installer are available. Short reference: [installers.md](installers.md).
-
-PyPI / `uv tool install` remain the primary install paths. On Linux you can also use a **desktop installer AppImage**:
+PyPI / `uv tool install` remain supported on every platform. On Linux you can also use a **desktop installer AppImage**:
 
 ### Offline wizard (full)
 
@@ -205,7 +239,7 @@ uv tool install srxy
    # or: pipx install srxy
    ```
 
-   **GPU** (semantic search and transcription): default Windows **tool**/pip installs of `[semantic]` pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first. **Developers:** use `uv run task sync-dev` ([development.md → Sync](development.md#sync)) — on NVIDIA machines it syncs `--extra semantic` (CUDA `torch`/`torchvision`/`torchaudio` from the lockfile via `[tool.uv.sources]` + the pytorch-cu130 index) and then runs `ensure-windows-cuda-torch.ps1` as a safety net. A stderr line like `warning: no GPU found; CLIP image semantic search will use CPU` with a real GPU almost always means the venv still has `torch…+cpu`.
+   **GPU** (semantic search and transcription): default Windows **tool**/pip installs of `[semantic]` pull **CPU-only** PyTorch. Semantic search and transcription stay on CPU unless you install a CUDA build of PyTorch in the same environment first. **Developers:** use `uv run --no-project python scripts/dev/sync.py` ([development.md → Sync](development.md#sync)) — on NVIDIA machines it syncs `--extra semantic` (CUDA `torch`/`torchvision`/`torchaudio` from the lockfile via `[tool.uv.sources]` + the pytorch-cu130 index) and then runs `ensure-windows-cuda-torch.ps1` as a safety net. Once `.venv` exists, `uv run task sync-dev` is a thin alias. A stderr line like `warning: no GPU found; CLIP image semantic search will use CPU` with a real GPU almost always means the venv still has `torch…+cpu`.
 
    The **desktop / offline Windows installer** does this automatically when smarter-search (semantic) is selected and an NVIDIA GPU is detected: after `uv pip install 'srxy[semantic]'` it reinstalls CUDA torch into the prefix `.venv` (same `cu130` index, with `cu126` fallback). Override with `SRXY_SKIP_CUDA_TORCH=1` if needed.
 

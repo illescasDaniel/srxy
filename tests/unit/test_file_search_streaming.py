@@ -15,7 +15,7 @@ pytestmark = pytest.mark.unit
 
 
 class _FakeWalker:
-	"""Deterministic walker that marks when the generator is exhausted."""
+	"""Deterministic walker that marks when the main (non-probe) generator is exhausted."""
 
 	def __init__(self, paths: list[Path]):
 		self._paths = paths
@@ -35,6 +35,8 @@ class _FakeWalker:
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]:
+		import threading
+
 		_ = (
 			root,
 			skip_hidden_folders,
@@ -45,12 +47,14 @@ class _FakeWalker:
 			include_subdirectories,
 			skipped_files,
 		)
+		is_probe = threading.current_thread().name == "srxy-file-count-probe"
 		for path in self._paths:
 			if cancel_check is not None and cancel_check():
 				raise SearchCancelled()
 			self.yielded += 1
 			yield path
-		self.exhausted = True
+		if not is_probe:
+			self.exhausted = True
 
 	def collect_files(
 		self,
@@ -117,7 +121,7 @@ def test_given_streaming_walk_when_searching_then_results_arrive_before_walk_fin
 	assert [item.path.name for item in results] == ["beta.txt"]
 
 
-def test_given_streaming_walk_when_searching_then_progress_only_after_listing_completes(tmp_path: Path):
+def test_given_streaming_walk_when_searching_then_progress_reports_file_total(tmp_path: Path):
 	# given
 	paths = [tmp_path / f"f{index}.txt" for index in range(4)]
 	for path in paths:
@@ -126,7 +130,6 @@ def test_given_streaming_walk_when_searching_then_progress_only_after_listing_co
 	progress_calls: list[tuple[int, int]] = []
 
 	def on_progress(current: int, total: int):
-		assert walker.exhausted is True
 		progress_calls.append((current, total))
 
 	# when
@@ -137,8 +140,9 @@ def test_given_streaming_walk_when_searching_then_progress_only_after_listing_co
 		on_progress=on_progress,
 	)
 
-	# then
-	assert progress_calls == [(4, 4)]
+	# then — probe may emit (0, 4) before the main walk finishes; final count is authoritative.
+	assert progress_calls[-1] == (4, 4)
+	assert any(total == 4 for _current, total in progress_calls)
 
 
 def test_given_streaming_walk_when_cancelled_midway_then_keeps_partial_results(tmp_path: Path):

@@ -29,7 +29,7 @@ for arg in "$@"; do
 Usage: copy-venv.sh [--force|-f]
 
 Copy .venv from the primary srxy checkout into this worktree, rewrite
-shebangs and editable paths, then run scripts/dev/sync.py --dev --offline
+shebangs and editable paths, then run scripts/dev/sync.py --offline
 --reinstall-package srxy.
 EOF
 		exit 0
@@ -144,9 +144,9 @@ echo "copy-venv: rewriting venv paths (shebangs, editable .pth, direct_url)..."
 echo ""
 echo "copy-venv: running platform-aware sync-dev (offline, reinstall srxy)..."
 cd "${dest_root}"
-if ! "${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --dev --offline --reinstall-package srxy; then
+if ! "${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --offline --reinstall-package srxy; then
 	echo "copy-venv: offline sync failed (extras may need downloads); retrying online..."
-	"${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --dev --reinstall-package srxy
+	"${dst_venv}/bin/python" "${dest_root}/scripts/dev/sync.py" --reinstall-package srxy
 fi
 
 # ---------------------------------------------------------------------------

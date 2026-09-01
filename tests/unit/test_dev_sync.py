@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -129,80 +130,92 @@ def test_given_empty_cuda_visible_devices_when_resolving_linux_extras_then_omits
 	assert extras == []
 
 
-def test_given_runtime_mode_when_building_uv_command_then_omits_default_groups():
+def test_given_no_extras_when_building_uv_command_then_only_uv_sync():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	cmd = sync.build_uv_sync_command(sync.MODE_RUNTIME, ["semantic"])
-
-	# then
-	assert cmd == ["uv", "sync", "--no-default-groups", "--extra", "semantic"]
-
-
-def test_given_dev_mode_without_extras_when_building_uv_command_then_only_uv_sync():
-	# given
-	sync = _load_sync_module()
-
-	# when
-	cmd = sync.build_uv_sync_command(sync.MODE_DEV, [])
+	cmd = sync.build_uv_sync_command([], [])
 
 	# then
 	assert cmd == ["uv", "sync"]
 
 
-def test_given_dev_mode_when_building_uv_command_then_keeps_default_groups():
+def test_given_semantic_extra_when_building_uv_command_then_adds_extra_flag():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	cmd = sync.build_uv_sync_command(sync.MODE_DEV, ["semantic"])
+	cmd = sync.build_uv_sync_command(["semantic"])
 
 	# then
 	assert cmd == ["uv", "sync", "--extra", "semantic"]
 
 
-def test_given_uploader_mode_when_building_uv_command_then_adds_uploader_group():
+def test_given_passthrough_flags_when_building_uv_command_then_appends_them():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	cmd = sync.build_uv_sync_command(sync.MODE_UPLOADER, ["semantic"], ["--offline"])
+	cmd = sync.build_uv_sync_command(["semantic"], ["--group", "uploader", "--offline"])
 
 	# then
 	assert cmd == ["uv", "sync", "--extra", "semantic", "--group", "uploader", "--offline"]
 
 
-def test_given_dev_flag_when_parsing_args_then_mode_is_dev_and_passthrough_is_forwarded():
+def test_given_pruning_flag_when_parsing_args_then_passthrough_is_forwarded():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	args = sync.parse_args(["--dev", "--offline", "--reinstall-package", "srxy"])
+	args = sync.parse_args(["--no-default-groups", "--offline"])
 
 	# then
-	assert args.mode == sync.MODE_DEV
+	assert args.passthrough == ["--no-default-groups", "--offline"]
+	assert args.force is False
+
+
+def test_given_extra_flags_when_parsing_args_then_passthrough_is_forwarded():
+	# given
+	sync = _load_sync_module()
+
+	# when
+	args = sync.parse_args(["--offline", "--reinstall-package", "srxy"])
+
+	# then
 	assert args.passthrough == ["--offline", "--reinstall-package", "srxy"]
-	assert args.dry_run is False
 
 
-def test_given_no_mode_flag_when_parsing_args_then_mode_is_runtime():
+def test_given_project_venv_prefix_when_running_inside_then_detects():
+	# given
+	sync = _load_sync_module()
+	venv = sync.project_venv_path()
+
+	# when / then
+	with patch.object(sync, "project_venv_path", return_value=venv):
+		with patch.object(sync.sys, "prefix", str(venv)):
+			assert sync.running_inside_project_venv() is True
+
+
+def test_given_pruning_sync_from_project_venv_when_main_then_refuses():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	args = sync.parse_args([])
+	with patch.object(sync, "running_inside_project_venv", return_value=True):
+		code = sync.main(["--no-default-groups", "--dry-run"])
 
 	# then
-	assert args.mode == sync.MODE_RUNTIME
+	assert code == 1
 
 
-def test_given_uploader_flag_when_parsing_args_then_mode_is_uploader():
+def test_given_pruning_sync_from_project_venv_with_force_when_main_then_runs():
 	# given
 	sync = _load_sync_module()
 
 	# when
-	args = sync.parse_args(["--uploader"])
+	with patch.object(sync, "running_inside_project_venv", return_value=True):
+		code = sync.main(["--no-default-groups", "--force", "--dry-run"])
 
 	# then
-	assert args.mode == sync.MODE_UPLOADER
+	assert code == 0

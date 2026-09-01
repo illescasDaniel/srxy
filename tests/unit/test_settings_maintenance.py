@@ -74,6 +74,39 @@ def test_given_kind_when_clearing_then_dispatches_to_model_store():
 		clear_all.assert_called_once_with()
 
 
+def test_given_installed_models_when_building_snapshot_then_all_row_reuses_size_cache(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	size_calls: list[str] = []
+
+	def _fake_model_size(kind: str, *, size_cache: dict[str, int] | None = None) -> int:
+		if kind in {"semantic_text", "semantic_image", "transcribe"}:
+			if size_cache is not None and kind in size_cache:
+				return size_cache[kind]
+			size_calls.append(kind)
+			if size_cache is not None:
+				size_cache[kind] = 1024
+			return 1024
+		if kind == "all" and size_cache is not None:
+			return sum(size_cache.get(single, 0) for single in ("semantic_text", "semantic_image", "transcribe"))
+		raise ValueError(kind)
+
+	# when
+	with (
+		patch("srxy.application.settings_maintenance._model_size_bytes", side_effect=_fake_model_size),
+		patch("srxy.application.settings_maintenance._cache_size_bytes", return_value=0),
+		patch("srxy.application.settings_maintenance._model_installed", return_value=True),
+	):
+		build_settings_snapshot(busy=False)
+
+	# then — one size lookup per installed model kind; the all row reuses cached sizes.
+	assert size_calls.count("semantic_text") == 1
+	assert size_calls.count("semantic_image") == 1
+	assert size_calls.count("transcribe") == 1
+
+
 def test_given_all_kind_when_pending_downloads_then_queues_three_kinds():
 	# given / when
 	items = pending_downloads_for_kind("all")

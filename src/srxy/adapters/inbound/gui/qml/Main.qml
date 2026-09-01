@@ -34,7 +34,8 @@ ApplicationWindow {
 	component SettingsModelRow: RowLayout {
 		required property string kind
 		readonly property var row: root.settingsModelRow(kind)
-		readonly property bool busy: !!(root.settingsData && root.settingsData.busy)
+		readonly property bool settingsLoading: !!(root.settingsData && root.settingsData.loading)
+		readonly property bool busy: settingsLoading || !!(root.settingsData && root.settingsData.busy)
 		spacing: 8
 		ColumnLayout {
 			Layout.fillWidth: true
@@ -84,6 +85,7 @@ ApplicationWindow {
 			root.settingsData = JSON.parse(controller.settingsJson)
 		} catch (e) {
 			root.settingsData = {
+				loading: false,
 				models: [],
 				cache: { path: "", present: false, statusText: "", pathLabel: "" },
 				preferences: { path: "", present: false, statusText: "", pathLabel: "" },
@@ -967,13 +969,27 @@ ApplicationWindow {
 						ColumnLayout {
 							anchors.fill: parent
 							Label { text: root.t("gui.matches_in_file"); font.bold: true }
-							RowLayout {
+							Item {
 								Layout.fillWidth: true
-								spacing: 0
-								Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
-								Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
-								Label { text: root.t("gui.col.location"); font.bold: true; Layout.preferredWidth: 120; padding: 6 }
-								Label { text: root.t("gui.col.text"); font.bold: true; Layout.fillWidth: true; padding: 6 }
+								height: matchesHeader.implicitHeight
+								clip: true
+								RowLayout {
+									id: matchesHeader
+									x: -matchesView.contentX
+									width: matchesView.contentWidth
+									spacing: 0
+									Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
+									Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
+									Label { text: root.t("gui.col.location"); font.bold: true; Layout.preferredWidth: 120; padding: 6 }
+									Label { text: root.t("gui.col.text"); font.bold: true; Layout.fillWidth: true; padding: 6 }
+								}
+							}
+							TextMetrics {
+								id: matchCharMetrics
+								font.family: Qt.platform.os === "windows"
+									? "Consolas"
+									: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+								text: "0"
 							}
 							ListView {
 								id: matchesView
@@ -982,12 +998,28 @@ ApplicationWindow {
 								Layout.fillHeight: true
 								clip: true
 								cacheBuffer: 400
+								flickableDirection: Flickable.HorizontalAndVerticalFlick
 								model: controller ? controller.matchesModel : null
+								readonly property int fixedColumnsWidth: 212
+								readonly property int textPadding: 12
+								contentWidth: Math.max(
+									width,
+									fixedColumnsWidth
+										+ (controller && controller.matchesModel
+											? matchCharMetrics.advanceWidth * controller.matchesModel.maxTextLength
+											: 0)
+										+ textPadding)
 								ScrollBar.vertical: ScrollBar {
 									objectName: "matchesScrollBar"
 									policy: ScrollBar.AlwaysOn
 									visible: matchesView.count > 0
 										&& matchesView.contentHeight > matchesView.height + 1
+								}
+								ScrollBar.horizontal: ScrollBar {
+									objectName: "matchesHScrollBar"
+									policy: ScrollBar.AsNeeded
+									visible: matchesView.count > 0
+										&& matchesView.contentWidth > matchesView.width + 1
 								}
 								delegate: Item {
 									id: matchRow
@@ -996,7 +1028,7 @@ ApplicationWindow {
 									required property string location
 									required property string text
 									required property int lineNumber
-									width: matchesView.width
+									width: matchesView.contentWidth
 									height: matchRowLayout.implicitHeight
 									Rectangle {
 										anchors.fill: parent
@@ -1021,7 +1053,6 @@ ApplicationWindow {
 												: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 											Layout.fillWidth: true
 											padding: 6
-											elide: Text.ElideRight
 											wrapMode: Text.NoWrap
 										}
 									}
@@ -1204,6 +1235,7 @@ ApplicationWindow {
 										id: previewTextArea
 										objectName: "previewText"
 										readOnly: true
+										verticalAlignment: TextEdit.AlignTop
 										wrapMode: TextEdit.NoWrap
 										textFormat: TextEdit.PlainText
 										font.family: Qt.platform.os === "windows"
@@ -1749,9 +1781,16 @@ ApplicationWindow {
 				onClicked: settingsDialog.accept()
 			}
 		}
+		BusyIndicator {
+			objectName: "settingsBusyIndicator"
+			anchors.centerIn: parent
+			running: !!(root.settingsData && root.settingsData.loading)
+			visible: running
+		}
 		ScrollView {
 			anchors.fill: parent
 			clip: true
+			visible: !(root.settingsData && root.settingsData.loading)
 			ColumnLayout {
 				width: settingsDialog.availableWidth - 24
 				spacing: 12
@@ -1805,7 +1844,8 @@ ApplicationWindow {
 					text: root.t("settings.action.clear_cache")
 					enabled: !!(root.settingsData && root.settingsData.cache
 						&& root.settingsData.cache.present
-						&& !root.settingsData.busy)
+						&& !root.settingsData.busy
+						&& !root.settingsData.loading)
 					Layout.alignment: Qt.AlignLeft
 					onClicked: if (controller) controller.confirmClearCache()
 				}
@@ -1834,7 +1874,8 @@ ApplicationWindow {
 					objectName: "settingsResetPreferences"
 					text: root.t("settings.action.reset_preferences")
 					enabled: !!(root.settingsData && root.settingsData.preferences
-						&& root.settingsData.preferences.present)
+						&& root.settingsData.preferences.present
+						&& !root.settingsData.loading)
 					Layout.alignment: Qt.AlignLeft
 					onClicked: if (controller) controller.confirmResetPreferences()
 				}

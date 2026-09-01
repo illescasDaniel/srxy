@@ -697,7 +697,8 @@ def test_given_directory_when_searching_with_callbacks_then_streams_progress_and
 
 	# then — determinate progress is emitted only after the walk finishes (catch-up
 	# once for sequential search-as-you-list; all work already completed during listing).
-	assert progress_calls == [(3, 3)]
+	assert progress_calls[-1] == (3, 3)
+	assert any(total == 3 for _current, total in progress_calls)
 	assert streamed_paths == ["beta.txt"]
 	assert len(results) == 1
 	assert results[0].path.name == "beta.txt"

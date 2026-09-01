@@ -1378,10 +1378,17 @@ def test_given_settings_when_opening_then_snapshot_is_available(
 
 	# when
 	controller.openSettings()
+	loading_payload = json.loads(str(controller.settingsJson))
+	assert loading_payload.get("loading") is True
+
+	while controller._snapshot_loading:  # pyright: ignore[reportPrivateUsage]
+		qapp.processEvents()
 
 	# then
 	assert controller.settingsOpen is True
 	payload = json.loads(str(controller.settingsJson))
+	assert payload.get("loading") is not True
+	assert payload.get("busy") is False
 	assert [row["kind"] for row in payload["models"]] == [
 		"semantic_text",
 		"semantic_image",
@@ -1390,6 +1397,11 @@ def test_given_settings_when_opening_then_snapshot_is_available(
 	]
 	controller.closeSettings()
 	assert controller.settingsOpen is False
+
+
+def _wait_for_settings_snapshot(controller: SearchController, qapp: QCoreApplication):
+	while controller._snapshot_loading:  # pyright: ignore[reportPrivateUsage]
+		qapp.processEvents()
 
 
 def test_given_clear_confirm_when_accepted_then_clears_model(
@@ -1405,6 +1417,7 @@ def test_given_clear_confirm_when_accepted_then_clears_model(
 	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	controller.openSettings()
+	_wait_for_settings_snapshot(controller, qapp)
 	controller.confirmClearModel("semantic_image")
 	assert controller.settingsConfirmOpen is True
 
@@ -1552,6 +1565,7 @@ def test_given_preferences_file_when_reset_then_deletes_and_refreshes_language(
 	# when
 	controller.confirmResetPreferences()
 	controller.acceptSettingsConfirm()
+	_wait_for_settings_snapshot(controller, qapp)
 
 	# then — file gone, language cleared, session options/filters back to factory
 	assert not settings_path().exists()
