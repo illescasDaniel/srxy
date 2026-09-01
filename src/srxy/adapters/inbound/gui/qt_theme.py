@@ -398,6 +398,8 @@ def _is_dark_color_scheme(app: QCoreApplication) -> bool:
 	falls back to window-palette lightness when the scheme is unknown (common
 	under offscreen / headless tests).
 	"""
+	if not isinstance(app, QGuiApplication):
+		return False
 	hints = app.styleHints()
 	color_scheme = getattr(Qt, "ColorScheme", None)
 	if color_scheme is not None:
@@ -409,8 +411,6 @@ def _is_dark_color_scheme(app: QCoreApplication) -> bool:
 			return True
 		if current is not None and current == light:
 			return False
-	if not isinstance(app, QGuiApplication):
-		return False
 	try:
 		window = app.palette().color(QPalette.ColorRole.Window)
 	except AttributeError:
