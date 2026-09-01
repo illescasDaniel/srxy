@@ -79,16 +79,18 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Preview vertical alignment — `verticalAlignment: TextEdit.AlignTop` on `previewTextArea` (overrides FluentWinUI3 `AlignVCenter`).
 - [x] Gate — `checks-win.ps1 -Fix -Quiet -Scope core,gui` + verify PASSED.
 
+- [x] **Manual QA (user):** Windows Inno installer — disk-space label updates with components/tessdata; cancel during CUDA torch; uninstall extras checkboxes; English installer → English GUI on first launch. Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active. Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media. Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…). Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download. Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** GUI persist — check Persist on Options/Filters, OK, quit, relaunch; Reset draft; unpersist clears `settings.json` payload; Filters live validation greys OK on bad input. Confirmed by user 2026-09-01.
+- [x] **Manual QA (user):** Reset All Settings with Persist on — options/filters snap to factory defaults immediately; quit leaves `settings.json` absent. Confirmed by user 2026-09-01.
+
 ### Open
 
 - [ ] **Windows installer migration (planned):** (1) PySide offline wrapper for Windows (parity with macOS `.app` / Linux AppImage offline wizard). (2) Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution). Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
-- [ ] **Manual QA (user):** Windows Inno installer — disk-space label updates with components/tessdata; cancel during CUDA torch; uninstall extras checkboxes; English installer → English GUI on first launch.
-- [ ] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active.
-- [ ] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media.
-- [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).
-- [ ] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download.
-- [ ] **Manual QA (user):** GUI persist — check Persist on Options/Filters, OK, quit, relaunch; Reset draft; unpersist clears `settings.json` payload; Filters live validation greys OK on bad input.
-- [ ] **Manual QA (user):** Reset All Settings with Persist on — options/filters snap to factory defaults immediately; quit leaves `settings.json` absent.
+- [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works (parity check alongside Windows packaging work).
 
 ## Bugs / sub-tasks discovered
 
