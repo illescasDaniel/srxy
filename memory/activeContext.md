@@ -8,7 +8,7 @@ _Last updated: 2026-09-01_
 
 ## Current focus
 
-Windows installer UX improvements — **shipped** (disk space, step titles, cancel/progress, language persist, uninstall cleanup). Build verified locally (`build-windows-installer-offline`).
+Manual QA items from `progress.md` — **confirmed done by user (2026-09-01)**.
 
 ## Planned (Windows packaging)
 
@@ -28,8 +28,8 @@ Inno Setup remains fine **for now** — no sales/donations yet (non-commercial u
 
 ## Next steps
 
-1. Manual QA on built `dist/srxy-*-installer-*-x86_64.exe` (disk space, cancel, uninstall extras, language persist).
-2. When starting packaging work: PySide Windows offline wrapper (step 1 above).
+1. **Windows installer migration** — PySide offline wrapper + NSIS (see Planned).
+2. **Check macOS installer** — verify build/signing/install path still works.
 
 ## Memory protocol (2026-09-01)
 
