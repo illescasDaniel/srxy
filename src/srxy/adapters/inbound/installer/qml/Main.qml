@@ -533,6 +533,21 @@ ApplicationWindow {
 					font.pixelSize: 12
 					Layout.fillWidth: true
 				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_cache")
+					checked: c.uninstallRemoveCache
+					onToggled: function() { c.setUninstallRemoveCache(checked) }
+				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_settings")
+					checked: c.uninstallRemoveSettings
+					onToggled: function() { c.setUninstallRemoveSettings(checked) }
+				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_models")
+					checked: c.uninstallRemoveModels
+					onToggled: function() { c.setUninstallRemoveModels(checked) }
+				}
 			}
 
 			// 7 progress

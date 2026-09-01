@@ -66,7 +66,7 @@ def _adhoc_codesign(path: Path):
 		pass
 
 
-def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Path:
+def install_uv(prefix: Path, *, progress: ProgressCallback | None = None, cancel_file: str | None = None) -> Path:
 	item = artifact("uv")
 	vendor = prefix / "vendor" / "uv"
 	vendor.mkdir(parents=True, exist_ok=True)
@@ -77,6 +77,7 @@ def install_uv(prefix: Path, *, progress: ProgressCallback | None = None) -> Pat
 		sha256=item.sha256,
 		label=f"uv {item.version}",
 		progress=progress,
+		cancel_file=cancel_file,
 	)
 	try:
 		extract_dir = vendor / "_extract"

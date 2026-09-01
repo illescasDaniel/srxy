@@ -74,7 +74,7 @@ DirExistsWarning=no
 UsePreviousAppDir=yes
 AllowNoIcons=yes
 UsePreviousSetupType=no
-ShowComponentSizes=no
+ShowComponentSizes=yes
 
 [Languages]
 Name: "english"; MessagesFile: "compiler:Default.isl"
@@ -110,6 +110,12 @@ english.PrivacyPageDescription=Please review and acknowledge before continuing.
 english.PrivacyAck=I understand and want to continue
 english.PrivacyMissing=Privacy notice file missing from the installer payload.
 english.PrivacyNeedAck=Please acknowledge the privacy notice to continue.
+english.DiskSpaceRequired=The current selection requires at least %1 of disk space.
+english.UninstallExtrasCaption=Remove user data
+english.UninstallRemoveCache=Remove cache and temporary files
+english.UninstallRemoveSettings=Remove settings
+english.UninstallRemoveModels=Remove downloaded AI models
+english.ProgressCancelled=Installation cancelled.
 english.ProgressCaption=Installing Srxy
 english.ProgressDescription=Please wait while Srxy is installed.
 english.ProgressRunning=Running install engine...
@@ -163,6 +169,12 @@ spanish.PrivacyPageDescription=Revisa y confirma el aviso antes de continuar.
 spanish.PrivacyAck=Entiendo y quiero continuar
 spanish.PrivacyMissing=Falta el aviso de privacidad en el contenido del instalador.
 spanish.PrivacyNeedAck=Confirma el aviso de privacidad para continuar.
+spanish.DiskSpaceRequired=La seleccion actual requiere al menos %1 de espacio en disco.
+spanish.UninstallExtrasCaption=Eliminar datos de usuario
+spanish.UninstallRemoveCache=Eliminar cache y archivos temporales
+spanish.UninstallRemoveSettings=Eliminar ajustes
+spanish.UninstallRemoveModels=Eliminar modelos de IA descargados
+spanish.ProgressCancelled=Instalacion cancelada.
 spanish.ProgressCaption=Instalando Srxy
 spanish.ProgressDescription=Espera mientras se instala Srxy.
 spanish.ProgressRunning=Ejecutando el motor de instalación...
@@ -198,11 +210,11 @@ Name: "complete"; Description: "{cm:TypeComplete}"
 Name: "custom"; Description: "{cm:TypeCustom}"; Flags: iscustom
 
 [Components]
-Name: "core"; Description: "{cm:CompCore}"; Types: recommendedcpu recommendedgpu simple complete custom; Flags: fixed
-Name: "tesseract"; Description: "{cm:CompTesseract}"; Types: recommendedcpu recommendedgpu complete custom
-Name: "ffmpeg"; Description: "{cm:CompFfmpeg}"; Types: recommendedcpu recommendedgpu complete custom
-Name: "semantic"; Description: "{cm:CompSemantic}"; Types: recommendedgpu complete custom
-Name: "models"; Description: "{cm:CompModels}"; Types: complete custom
+Name: "core"; Description: "{cm:CompCore}"; Types: recommendedcpu recommendedgpu simple complete custom; Flags: fixed; ExtraDiskSpaceRequired: 734003200
+Name: "tesseract"; Description: "{cm:CompTesseract}"; Types: recommendedcpu recommendedgpu complete custom; ExtraDiskSpaceRequired: 89128960
+Name: "ffmpeg"; Description: "{cm:CompFfmpeg}"; Types: recommendedcpu recommendedgpu complete custom; ExtraDiskSpaceRequired: 125829120
+Name: "semantic"; Description: "{cm:CompSemantic}"; Types: recommendedgpu complete custom; ExtraDiskSpaceRequired: 3221225472
+Name: "models"; Description: "{cm:CompModels}"; Types: complete custom; ExtraDiskSpaceRequired: 4294967296
 
 [Tasks]
 Name: "addpath"; Description: "{cm:TaskAddPath}"; GroupDescription: "{cm:TasksGroup}"; Flags: checkedonce
@@ -238,6 +250,11 @@ var
   TessLangPage: TWizardPage;
   TessLangList: TNewCheckListBox;
   TessLangCodes: TStringList;
+  TessLangBytes: TStringList;
+  UninstallExtrasPage: TWizardPage;
+  UninstallRemoveCacheCheck: TNewCheckBox;
+  UninstallRemoveSettingsCheck: TNewCheckBox;
+  UninstallRemoveModelsCheck: TNewCheckBox;
   ProgressPage: TOutputProgressWizardPage;
   SelectedMode: Integer; { 0=install/update, 1=reinstall, 2=uninstall }
   DetectedGpu: Boolean;
@@ -250,6 +267,8 @@ var
   EngineProgressLabel: String;
   EngineProgressDone: Int64;
   EngineProgressTotal: Int64;
+  EngineCancelFile: String;
+  EngineCancelRequested: Boolean;
 
 function IsUninstallMode: Boolean;
 begin
@@ -274,6 +293,52 @@ begin
     Exit;
   end;
   Result := IntToStr(N div (Int64(1024) * Int64(1024) * Int64(1024))) + ' GB';
+end;
+
+function ComputeTessdataExtraBytes: Int64;
+var
+  I, BytesValue: Int64;
+begin
+  Result := 0;
+  if (TessLangList = nil) or (TessLangCodes = nil) or (TessLangBytes = nil) then
+    Exit;
+  for I := 0 to TessLangList.Items.Count - 1 do
+  begin
+    if not TessLangList.Checked[I] then
+      Continue;
+    if (I >= TessLangCodes.Count) or (I >= TessLangBytes.Count) then
+      Continue;
+    if TessLangList.ItemEnabled[I] = False then
+      Continue;
+    BytesValue := StrToInt64Def(TessLangBytes[I], 0);
+    Result := Result + BytesValue;
+  end;
+end;
+
+function ComputeRequiredInstallBytes: Int64;
+begin
+  Result := Int64(734003200);
+  if WizardIsComponentSelected('tesseract') then
+    Result := Result + Int64(89128960) + ComputeTessdataExtraBytes;
+  if WizardIsComponentSelected('ffmpeg') then
+    Result := Result + Int64(125829120);
+  if WizardIsComponentSelected('semantic') then
+    Result := Result + Int64(3221225472);
+  if WizardIsComponentSelected('models') then
+    Result := Result + Int64(4294967296);
+end;
+
+procedure RefreshDiskSpaceLabel;
+begin
+  if WizardForm.DiskSpaceLabel = nil then
+    Exit;
+  WizardForm.DiskSpaceLabel.Caption :=
+    FmtMessage(CustomMessage('DiskSpaceRequired'), [FormatBytes(ComputeRequiredInstallBytes)]);
+end;
+
+procedure TessLangListClickCheck(Sender: TObject);
+begin
+  RefreshDiskSpaceLabel;
 end;
 
 function TabField(const S: String; Index: Integer): String;
@@ -309,7 +374,7 @@ begin
   if Primary = '' then
     Primary := CustomMessage('ProgressRunning');
   if (EnginePhaseTotal > 0) and (EnginePhaseIndex > 0) then
-    Primary := Primary + ' (' + IntToStr(EnginePhaseIndex) + '/' + IntToStr(EnginePhaseTotal) + ')';
+    Primary := IntToStr(EnginePhaseIndex) + '/' + IntToStr(EnginePhaseTotal) + ' - ' + Primary;
   Secondary := '';
   if (EngineProgressTotal > 1) and (EngineProgressLabel <> '') then
     Secondary := EngineProgressLabel + ' - ' +
@@ -398,6 +463,11 @@ begin
     if LabelText <> '' then
       EngineProgressLabel := LabelText;
     ApplyEngineProgressUI;
+    Exit;
+  end;
+  if Kind = 'CANCEL' then
+  begin
+    EngineCancelRequested := True;
     Exit;
   end;
 end;
@@ -648,7 +718,24 @@ begin
       Args := Args + ' --add-path'
     else
       Args := Args + ' --no-add-path';
+  end
+  else
+  begin
+    if (UninstallRemoveCacheCheck <> nil) and UninstallRemoveCacheCheck.Checked then
+      Args := Args + ' --remove-cache'
+    else
+      Args := Args + ' --no-remove-cache';
+    if (UninstallRemoveSettingsCheck <> nil) and UninstallRemoveSettingsCheck.Checked then
+      Args := Args + ' --remove-settings'
+    else
+      Args := Args + ' --no-remove-settings';
+    if (UninstallRemoveModelsCheck <> nil) and UninstallRemoveModelsCheck.Checked then
+      Args := Args + ' --remove-models'
+    else
+      Args := Args + ' --no-remove-models';
   end;
+  if EngineCancelFile <> '' then
+    Args := Args + ' --cancel-file "' + EngineCancelFile + '"';
   Result := Args;
 end;
 
@@ -687,6 +774,9 @@ begin
   Args := BuildEngineArgs(Action);
   ForceDirectories(ExpandConstant('{app}\logs'));
   EngineLogFile := ExpandConstant('{app}\logs\installer-engine.log');
+  EngineCancelFile := ExpandConstant('{app}\logs\installer-cancel.request');
+  DeleteFile(EngineCancelFile);
+  EngineCancelRequested := False;
   DeleteFile(EngineLogFile);
   EnginePhaseLabel := ProgressRunningMessage(Action);
   EnginePhaseIndex := 0;
@@ -725,6 +815,13 @@ begin
     Exit;
   end;
   Log('Install engine exit code: ' + IntToStr(ResultCode));
+  if EngineCancelRequested or ((ResultCode <> 0) and FileExists(EngineCancelFile)) then
+  begin
+    if not WizardSilent then
+      MsgBox(CustomMessage('ProgressCancelled'), mbInformation, MB_OK);
+    Result := False;
+    Exit;
+  end;
   if ResultCode <> 0 then
   begin
     if not WizardSilent then
@@ -739,13 +836,16 @@ end;
 procedure LoadTessLangList;
 var
   Lines: TArrayOfString;
-  I, P1, P2: Integer;
-  Line, Code, Req, LabelText: String;
+  I, P1, P2, P3: Integer;
+  Line, Code, Req, LabelText, BytesText: String;
   Required, Checked, EnabledFlag: Boolean;
 begin
   if TessLangCodes = nil then
     TessLangCodes := TStringList.Create;
+  if TessLangBytes = nil then
+    TessLangBytes := TStringList.Create;
   TessLangCodes.Clear;
+  TessLangBytes.Clear;
   ExtractTemporaryFile('tessdata-langs.txt');
   if not LoadStringsFromFile(ExpandConstant('{tmp}\tessdata-langs.txt'), Lines) then
     Exit;
@@ -763,7 +863,18 @@ begin
     if P2 = 0 then
       Continue;
     Req := Copy(Line, 1, P2 - 1);
-    LabelText := Copy(Line, P2 + 1, MaxInt);
+    Line := Copy(Line, P2 + 1, MaxInt);
+    P3 := Pos('|', Line);
+    if P3 = 0 then
+    begin
+      LabelText := Line;
+      BytesText := '0';
+    end
+    else
+    begin
+      LabelText := Copy(Line, 1, P3 - 1);
+      BytesText := Copy(Line, P3 + 1, MaxInt);
+    end;
     Required := Req = '1';
     EnabledFlag := not Required;
     Checked := Required;
@@ -771,6 +882,7 @@ begin
       Checked := True;
     TessLangList.AddCheckBox(LabelText + ' (' + Code + ')', '', 0, Checked, EnabledFlag, False, True, nil);
     TessLangCodes.Add(Code);
+    TessLangBytes.Add(BytesText);
   end;
 end;
 
@@ -825,10 +937,46 @@ begin
   TessLangList.Width := TessLangPage.SurfaceWidth;
   TessLangList.Height := TessLangPage.SurfaceHeight;
   LoadTessLangList;
+  TessLangList.OnClickCheck := @TessLangListClickCheck;
+
+  UninstallExtrasPage := CreateCustomPage(
+    wpSelectDir,
+    CustomMessage('UninstallExtrasCaption'),
+    '');
+  UninstallRemoveCacheCheck := TNewCheckBox.Create(UninstallExtrasPage);
+  UninstallRemoveCacheCheck.Parent := UninstallExtrasPage.Surface;
+  UninstallRemoveCacheCheck.Caption := CustomMessage('UninstallRemoveCache');
+  UninstallRemoveCacheCheck.Left := 0;
+  UninstallRemoveCacheCheck.Top := 0;
+  UninstallRemoveCacheCheck.Width := UninstallExtrasPage.SurfaceWidth;
+  UninstallRemoveCacheCheck.Checked := True;
+  UninstallRemoveSettingsCheck := TNewCheckBox.Create(UninstallExtrasPage);
+  UninstallRemoveSettingsCheck.Parent := UninstallExtrasPage.Surface;
+  UninstallRemoveSettingsCheck.Caption := CustomMessage('UninstallRemoveSettings');
+  UninstallRemoveSettingsCheck.Left := 0;
+  UninstallRemoveSettingsCheck.Top := UninstallRemoveCacheCheck.Top + UninstallRemoveCacheCheck.Height + ScaleY(4);
+  UninstallRemoveSettingsCheck.Width := UninstallExtrasPage.SurfaceWidth;
+  UninstallRemoveSettingsCheck.Checked := True;
+  UninstallRemoveModelsCheck := TNewCheckBox.Create(UninstallExtrasPage);
+  UninstallRemoveModelsCheck.Parent := UninstallExtrasPage.Surface;
+  UninstallRemoveModelsCheck.Caption := CustomMessage('UninstallRemoveModels');
+  UninstallRemoveModelsCheck.Left := 0;
+  UninstallRemoveModelsCheck.Top := UninstallRemoveSettingsCheck.Top + UninstallRemoveSettingsCheck.Height + ScaleY(4);
+  UninstallRemoveModelsCheck.Width := UninstallExtrasPage.SurfaceWidth;
+  UninstallRemoveModelsCheck.Checked := True;
 
   ProgressPage := CreateOutputProgressPage(
     CustomMessage('ProgressCaption'),
     CustomMessage('ProgressDescription'));
+end;
+
+procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);
+begin
+  if EngineShowProgress and (EngineCancelFile <> '') then
+  begin
+    EngineCancelRequested := True;
+    SaveStringToFile(EngineCancelFile, '1', False);
+  end;
 end;
 
 procedure CurPageChanged(CurPageID: Integer);
@@ -840,6 +988,10 @@ begin
     DefaultTypeApplied := True;
     ApplyRecommendedSetupType;
   end;
+
+  if (CurPageID = wpSelectDir) or (CurPageID = wpSelectComponents) or
+     ((TessLangPage <> nil) and (CurPageID = TessLangPage.ID)) then
+    RefreshDiskSpaceLabel;
 
   { Ready / Installing pages still say Install by default; retarget for uninstall/reinstall. }
   if CurPageID = wpReady then
@@ -918,7 +1070,9 @@ begin
       Result := True;
     if (TessLangPage <> nil) and (PageID = TessLangPage.ID) then
       Result := True;
-  end;
+  end
+  else if (UninstallExtrasPage <> nil) and (PageID = UninstallExtrasPage.ID) then
+    Result := True;
   { Silent installs skip the interactive privacy page; engine still gets --privacy-ack. }
   if WizardSilent and (PageID = PrivacyPage.ID) then
     Result := True;

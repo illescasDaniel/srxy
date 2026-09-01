@@ -22,12 +22,12 @@ def _stub_windows_install(monkeypatch: pytest.MonkeyPatch, *, captured_cmds: lis
 	# Keep default stubs free of host GPU: dedicated tests cover the CUDA step.
 	monkeypatch.setattr(install_mod, "should_ensure_windows_cuda_torch", lambda **_k: False)
 
-	def fake_run(cmd: list[str], env: dict[str, str] | None = None):
-		_ = env
+	def fake_run(cmd: list[str], env: dict[str, str] | None = None, cancel_file: str | None = None):
+		_ = env, cancel_file
 		captured_cmds.append(list(cmd))
 
-	def fake_install_uv(prefix: Path, progress: object | None = None):
-		_ = progress
+	def fake_install_uv(prefix: Path, progress: object | None = None, cancel_file: str | None = None):
+		_ = progress, cancel_file
 		uv = prefix / "vendor" / "uv" / "uv.exe"
 		uv.parent.mkdir(parents=True, exist_ok=True)
 		uv.write_bytes(b"uv")
@@ -38,6 +38,15 @@ def _stub_windows_install(monkeypatch: pytest.MonkeyPatch, *, captured_cmds: lis
 		return SimpleNamespace(returncode=0, stdout="", stderr="")
 
 	monkeypatch.setattr(install_mod, "_run", fake_run)
+	monkeypatch.setattr(
+		install_mod,
+		"_run_with_stdout_progress",
+		lambda cmd, **kwargs: fake_run(
+			cmd,
+			env=kwargs.get("env"),
+			cancel_file=kwargs.get("cancel_file"),
+		),
+	)
 	monkeypatch.setattr(install_mod, "install_uv", fake_install_uv)
 	monkeypatch.setattr(install_mod.subprocess, "run", fake_subprocess_run)
 	monkeypatch.setattr(install_mod, "write_launcher", lambda _prefix: None)
@@ -224,18 +233,27 @@ def test_given_unix_host_when_install_srxy_then_omits_windows_extra(
 	monkeypatch.setattr(install_mod, "_is_windows", lambda: False)
 	monkeypatch.setattr(install_mod, "_is_linux", lambda: True)
 
-	def fake_run(cmd: list[str], env: dict[str, str] | None = None):
-		_ = env
+	def fake_run(cmd: list[str], env: dict[str, str] | None = None, cancel_file: str | None = None):
+		_ = env, cancel_file
 		captured.append(list(cmd))
 
-	def fake_install_uv(prefix: Path, progress: object | None = None):
-		_ = progress
+	def fake_install_uv(prefix: Path, progress: object | None = None, cancel_file: str | None = None):
+		_ = progress, cancel_file
 		uv = prefix / "vendor" / "uv" / "uv"
 		uv.parent.mkdir(parents=True, exist_ok=True)
 		uv.write_bytes(b"uv")
 		return uv
 
 	monkeypatch.setattr(install_mod, "_run", fake_run)
+	monkeypatch.setattr(
+		install_mod,
+		"_run_with_stdout_progress",
+		lambda cmd, **kwargs: fake_run(
+			cmd,
+			env=kwargs.get("env"),
+			cancel_file=kwargs.get("cancel_file"),
+		),
+	)
 	monkeypatch.setattr(install_mod, "install_uv", fake_install_uv)
 	monkeypatch.setattr(
 		install_mod.subprocess,
@@ -263,3 +281,48 @@ def test_given_unix_host_when_install_srxy_then_omits_windows_extra(
 	pip_cmds = [cmd for cmd in captured if len(cmd) >= 4 and cmd[1:3] == ["pip", "install"]]
 	assert pip_cmds[0][3] == "srxy[semantic]==1.6.4"
 	assert manifest.extra["srxy_spec"] == "srxy[semantic]==1.6.4"
+
+
+def test_given_no_settings_when_install_with_ui_language_then_writes_prefix_settings(
+	monkeypatch: pytest.MonkeyPatch,
+	tmp_path: Path,
+):
+	captured: list[list[str]] = []
+	_stub_windows_install(monkeypatch, captured_cmds=captured)
+	monkeypatch.delenv("SRXY_SETTINGS_PATH", raising=False)
+	set_language("es")
+
+	prefix = tmp_path / "Programs" / "srxy"
+	options = InstallOptions(
+		prefix=prefix,
+		download_tesseract=False,
+		download_ffmpeg=False,
+		install_semantic=False,
+		add_to_path=False,
+		srxy_spec="srxy==1.6.4",
+		confirm_unsafe=True,
+		ui_language="en",
+	)
+
+	install_srxy(options)
+
+	settings_path = prefix / "settings.json"
+	assert settings_path.is_file()
+	data = settings_path.read_text(encoding="utf-8")
+	assert '"language": "en"' in data
+
+
+def test_given_existing_settings_when_persist_installer_language_then_preserves_language(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	from srxy.adapters.inbound.installer.install import _persist_installer_language
+
+	prefix = tmp_path / "Programs" / "srxy"
+	prefix.mkdir(parents=True)
+	(prefix / "settings.json").write_text('{"language": "es"}\n', encoding="utf-8")
+
+	_persist_installer_language(prefix, "en")
+
+	data = (prefix / "settings.json").read_text(encoding="utf-8")
+	assert '"language": "es"' in data

@@ -13,7 +13,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Quality type checker `basedpyright` → `ty` (Unix + Windows gate).
 - [x] Windows GUI (PR #28) — FluentWinUI3 theme, fallback Universal → Windows.
 - [x] Shared `AccentButton` + button GUI improvements.
-- [x] Windows offline Inno Setup installer + download-based tessdata packs.
+- [x] Windows installer UX — dynamic disk-space estimates, `n/m - step` progress titles, pip/CUDA progress heartbeats + cancel-file, installer language → prefix `settings.json`, uninstall cleanup checkboxes (cache/settings/models default on). Inno + shared engine + PySide parity.
 - [x] macOS installer/signing path hardening + icon regen.
 - [x] OCR orientation fixtures + orientation-aware OCR text.
 - [x] GPU availability + installer (catalog/vendor/path-setup) refactors.
@@ -81,7 +81,8 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Open
 
-- [ ] **Manual QA (user):** Linux Material — dialog Cancel matches Options/Filter (gray contained button, neutral text); OK/Search still accent-filled.
+- [ ] **Windows installer migration (planned):** (1) PySide offline wrapper for Windows (parity with macOS `.app` / Linux AppImage offline wizard). (2) Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution). Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
+- [ ] **Manual QA (user):** Windows Inno installer — disk-space label updates with components/tessdata; cancel during CUDA torch; uninstall extras checkboxes; English installer → English GUI on first launch.
 - [ ] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active.
 - [ ] **Manual QA (user):** OCR/content search on a mixed folder (images + txt) — confirm txt hits appear while status shows `OCR ·` / `CLIP ·` for media.
 - [ ] **Manual QA (user):** OCR/content search on a small folder — confirm `progressCount` `1/2`… and status `OCR · file` (not stuck on Searching…).

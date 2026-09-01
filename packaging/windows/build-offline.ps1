@@ -166,6 +166,25 @@ write_privacy_notice_utf8(Path(sys.argv[2]), language='es')
 		throw "privacy notice export failed"
 	}
 
+	Write-Host "Exporting tessdata language list for Inno..."
+	$TessLangs = Join-Path $Root "packaging\windows\tessdata-langs.txt"
+	uv run python -c @"
+from pathlib import Path
+import sys
+from srxy.adapters.inbound.installer.tessdata_langs import selectable_tessdata_languages
+
+out = Path(sys.argv[1])
+lines = []
+for lang in selectable_tessdata_languages():
+    req = '1' if lang.required else '0'
+    lines.append(f'{lang.code}|{req}|{lang.display_name}|{lang.bytes_size}')
+out.write_text('\n'.join(lines) + '\n', encoding='utf-8')
+print(f'wrote {out} ({len(lines)} languages)')
+"@ $TessLangs
+	if ($LASTEXITCODE -ne 0) {
+		throw "tessdata language export failed"
+	}
+
 	Write-Host "Building Windows GUI launcher + installer icons..."
 	$WinShare = Join-Path $Payload "share\srxy\windows"
 	New-Item -ItemType Directory -Force -Path $WinShare | Out-Null

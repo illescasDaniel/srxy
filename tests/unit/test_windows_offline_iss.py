@@ -95,3 +95,24 @@ def test_given_offline_iss_when_reading_then_silent_skips_recommended_type_overr
 	apply = iss_text.index("ApplyRecommendedSetupType;", cur)
 	silent_guard = iss_text.index("and (not WizardSilent) then", cur)
 	assert silent_guard < apply
+
+
+def test_given_offline_iss_when_reading_then_components_have_extra_disk_space(iss_text: str):
+	assert "ExtraDiskSpaceRequired: 734003200" in iss_text
+	assert 'Name: "tesseract"' in iss_text and "ExtraDiskSpaceRequired: 89128960" in iss_text
+	assert "RefreshDiskSpaceLabel" in iss_text
+	assert "ComputeRequiredInstallBytes" in iss_text
+
+
+def test_given_offline_iss_when_reading_then_progress_uses_step_prefix_format(iss_text: str):
+	assert "Primary := IntToStr(EnginePhaseIndex) + '/' + IntToStr(EnginePhaseTotal) + ' - ' + Primary" in iss_text
+
+
+def test_given_offline_iss_when_reading_then_uninstall_cleanup_flags_exist(iss_text: str):
+	assert "--remove-cache" in iss_text
+	assert "--remove-settings" in iss_text
+	assert "--remove-models" in iss_text
+	assert "--cancel-file" in iss_text
+	assert "UninstallExtrasPage" in iss_text
+	assert "procedure CancelButtonClick(CurPageID: Integer; var Cancel, Confirm: Boolean);" in iss_text
+	assert "OnCancelButtonClick" not in iss_text

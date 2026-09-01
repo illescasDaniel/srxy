@@ -5,15 +5,20 @@ from __future__ import annotations
 import os
 import platform
 import plistlib
+import queue
+import re
 import shlex
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+import threading
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path
 
+from srxy.adapters.inbound.installer.cancel import InstallCancelledError, raise_if_cancelled
 from srxy.adapters.inbound.installer.cuda_torch import (
 	ensure_windows_cuda_torch,
 	should_ensure_windows_cuda_torch,
@@ -42,6 +47,9 @@ StatusCallback = Callable[[str], None]
 # index (1-based current phase), total phases, phase label
 TaskCallback = Callable[[int, int, str], None]
 
+_PIP_PROGRESS_RE = re.compile(r"(\d+)\s*%|(\d+)\s*/\s*(\d+)")
+_HEARTBEAT_SECONDS = 2.0
+
 
 @dataclass(slots=True)
 class InstallOptions:
@@ -54,6 +62,7 @@ class InstallOptions:
 	srxy_spec: str = ""
 	confirm_unsafe: bool = False
 	tessdata_langs: tuple[str, ...] = ()
+	ui_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -102,7 +111,12 @@ def _task(
 		callback(index, total, label)
 
 
-def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+def _raise_if_cancelled(cancel_file: str | None):
+	raise_if_cancelled(cancel_file, tr("installer.status.cancelled"))
+
+
+def _run(cmd: list[str], *, env: dict[str, str] | None = None, cancel_file: str | None = None) -> None:
+	_raise_if_cancelled(cancel_file)
 	result = subprocess.run(  # noqa: S603
 		cmd,
 		capture_output=True,
@@ -115,13 +129,106 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
 		raise RuntimeError(f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
 
 
+def _emit_pip_line_progress(
+	line: str,
+	*,
+	progress: ProgressCallback | None,
+	default_label: str,
+) -> None:
+	if progress is None:
+		return
+	text = line.strip()
+	if not text:
+		return
+	match = _PIP_PROGRESS_RE.search(text)
+	if match is None:
+		return
+	if match.group(1) is not None:
+		done = int(match.group(1))
+		progress(done, 100, default_label)
+		return
+	if match.group(2) is not None and match.group(3) is not None:
+		done = int(match.group(2))
+		total = int(match.group(3))
+		if total > 0:
+			progress(done, total, default_label)
+
+
+def _run_with_stdout_progress(
+	cmd: list[str],
+	*,
+	env: dict[str, str] | None = None,
+	progress: ProgressCallback | None = None,
+	cancel_file: str | None = None,
+	heartbeat_label: str = "",
+) -> None:
+	_raise_if_cancelled(cancel_file)
+	proc = subprocess.Popen(  # noqa: S603
+		cmd,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		text=True,
+		env=env,
+	)
+	stdout = proc.stdout
+	stderr = proc.stderr
+	if stdout is None or stderr is None:
+		raise RuntimeError("command failed: missing stdout/stderr pipes")
+
+	out_q: queue.Queue[tuple[str, str]] = queue.Queue()
+
+	def pump(stream: Iterator[str], name: str):
+		for line in stream:
+			out_q.put((name, line))
+		out_q.put((name, ""))
+
+	threads = [
+		threading.Thread(target=pump, args=(stdout, "stdout"), daemon=True),
+		threading.Thread(target=pump, args=(stderr, "stderr"), daemon=True),
+	]
+	for thread in threads:
+		thread.start()
+
+	label = heartbeat_label or " ".join(cmd)
+	stderr_chunks: list[str] = []
+	open_streams = 2
+	last_heartbeat = time.monotonic()
+
+	while open_streams > 0:
+		_raise_if_cancelled(cancel_file)
+		try:
+			name, line = out_q.get(timeout=0.2)
+		except queue.Empty:
+			if progress is not None and heartbeat_label and time.monotonic() - last_heartbeat >= _HEARTBEAT_SECONDS:
+				progress(0, 0, heartbeat_label)
+				last_heartbeat = time.monotonic()
+			if proc.poll() is not None and out_q.empty():
+				open_streams = 0
+			continue
+		if line == "":
+			open_streams -= 1
+			continue
+		last_heartbeat = time.monotonic()
+		if name == "stderr":
+			stderr_chunks.append(line)
+		else:
+			_emit_pip_line_progress(line, progress=progress, default_label=label)
+
+	code = proc.wait()
+	if code != 0:
+		detail = "".join(stderr_chunks).strip()
+		raise RuntimeError(f"command failed ({code}): {' '.join(cmd)}\n{detail}")
+
+
 def _run_with_progress(
 	cmd: list[str],
 	*,
 	env: dict[str, str] | None = None,
 	progress: ProgressCallback | None = None,
+	cancel_file: str | None = None,
 ) -> None:
 	"""Run a command and forward ``__SRXY_PROGRESS__`` stdout lines to ``progress``."""
+	_raise_if_cancelled(cancel_file)
 	proc = subprocess.Popen(  # noqa: S603
 		cmd,
 		stdout=subprocess.PIPE,
@@ -135,6 +242,7 @@ def _run_with_progress(
 		raise RuntimeError("command failed: missing stdout/stderr pipes")
 	stderr_chunks: list[str] = []
 	for line in stdout:
+		_raise_if_cancelled(cancel_file)
 		parsed = parse_progress_line(line)
 		if parsed is not None:
 			done, total, label = parsed
@@ -514,6 +622,29 @@ def _complete_phase(*, progress: ProgressCallback | None, label: str):
 		progress(1, 1, label)
 
 
+def _persist_installer_language(prefix: Path, ui_language: str | None):
+	"""Write installer UI language to prefix settings when no settings file exists yet."""
+	if not ui_language:
+		return
+	from srxy.application.settings import set_language_setting
+	from srxy.i18n import resolve_language
+
+	prefix_settings = prefix / "settings.json"
+	if prefix_settings.is_file():
+		return
+
+	code = resolve_language(ui_language)
+	prior_home = os.environ.get("SRXY_HOME")
+	os.environ["SRXY_HOME"] = str(prefix)
+	try:
+		set_language_setting(code)
+	finally:
+		if prior_home is None:
+			os.environ.pop("SRXY_HOME", None)
+		else:
+			os.environ["SRXY_HOME"] = prior_home
+
+
 def install_srxy(
 	options: InstallOptions,
 	*,
@@ -522,6 +653,7 @@ def install_srxy(
 	task: TaskCallback | None = None,
 	task_offset: int = 0,
 	task_total: int | None = None,
+	cancel_file: str | None = None,
 ) -> InstallManifest:
 	"""Install srxy into ``options.prefix``.
 
@@ -529,6 +661,38 @@ def install_srxy(
 	keeping a single overall k/n counter.
 	"""
 	prefix = options.prefix.expanduser().resolve()
+	prior_cancel_env = os.environ.get("SRXY_INSTALLER_CANCEL_FILE")
+	if cancel_file:
+		os.environ["SRXY_INSTALLER_CANCEL_FILE"] = cancel_file
+	try:
+		return _install_srxy_body(
+			options,
+			prefix=prefix,
+			status=status,
+			progress=progress,
+			task=task,
+			task_offset=task_offset,
+			task_total=task_total,
+			cancel_file=cancel_file,
+		)
+	finally:
+		if prior_cancel_env is None:
+			os.environ.pop("SRXY_INSTALLER_CANCEL_FILE", None)
+		else:
+			os.environ["SRXY_INSTALLER_CANCEL_FILE"] = prior_cancel_env
+
+
+def _install_srxy_body(
+	options: InstallOptions,
+	*,
+	prefix: Path,
+	status: StatusCallback | None = None,
+	progress: ProgressCallback | None = None,
+	task: TaskCallback | None = None,
+	task_offset: int = 0,
+	task_total: int | None = None,
+	cancel_file: str | None = None,
+) -> InstallManifest:
 	_validate_install_prefix(prefix, confirm_unsafe=options.confirm_unsafe)
 	if looks_like_partial_srxy_prefix(prefix):
 		_status(status, tr("installer.status.reclaiming_partial"))
@@ -542,6 +706,7 @@ def install_srxy(
 	overall_total = task_total if task_total is not None else len(phases)
 
 	def emit_task(local_index: int, label: str):
+		_raise_if_cancelled(cancel_file)
 		overall_index = task_offset + local_index
 		_status(status, label)
 		_task(task, index=overall_index, total=overall_total, label=label)
@@ -550,14 +715,14 @@ def install_srxy(
 
 	# --- 1. uv ---
 	emit_task(1, phases[0].label)
-	install_uv(prefix, progress=progress)
+	install_uv(prefix, progress=progress, cancel_file=cancel_file)
 	_complete_phase(progress=progress, label=phases[0].label)
 	uv = _resolve_uv(prefix)
 
 	# --- 2. venv ---
 	emit_task(2, phases[1].label)
 	venv = prefix / ".venv"
-	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)])
+	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)], cancel_file=cancel_file)
 	_complete_phase(progress=progress, label=phases[1].label)
 
 	env = os.environ.copy()
@@ -574,7 +739,13 @@ def install_srxy(
 	# --- 3. package ---
 	package_label = tr("installer.status.installing_package", spec=spec)
 	emit_task(3, package_label)
-	_run([str(uv), "pip", "install", spec], env=env)
+	_run_with_stdout_progress(
+		[str(uv), "pip", "install", spec],
+		env=env,
+		progress=progress,
+		cancel_file=cancel_file,
+		heartbeat_label=package_label,
+	)
 	_complete_phase(progress=progress, label=package_label)
 
 	probe = subprocess.run(  # noqa: S603
@@ -596,11 +767,21 @@ def install_srxy(
 	if "cuda_torch" in phase_by_key:
 		local_index, phase = phase_by_key["cuda_torch"]
 		emit_task(local_index, phase.label)
+
+		def cuda_run(cmd: list[str], env: dict[str, str] | None = None):
+			_run_with_stdout_progress(
+				cmd,
+				env=env,
+				progress=progress,
+				cancel_file=cancel_file,
+				heartbeat_label=phase.label,
+			)
+
 		ensure_windows_cuda_torch(
 			uv=uv,
 			python=_venv_python(venv),
 			env=env,
-			run=_run,
+			run=cuda_run,
 		)
 		_complete_phase(progress=progress, label=phase.label)
 
@@ -635,6 +816,7 @@ def install_srxy(
 			],
 			env=env,
 			progress=progress,
+			cancel_file=cancel_file,
 		)
 		_complete_phase(progress=progress, label=phase.label)
 		models_prefetched = True
@@ -679,11 +861,13 @@ def install_srxy(
 		},
 	)
 	write_manifest(prefix, manifest)
+	_persist_installer_language(prefix, options.ui_language)
 	_status(status, tr("installer.status.install_complete"))
 	return manifest
 
 
 __all__ = [
+	"InstallCancelledError",
 	"InstallOptions",
 	"InstallPhase",
 	"TaskCallback",

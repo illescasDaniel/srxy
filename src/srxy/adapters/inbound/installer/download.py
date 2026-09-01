@@ -54,6 +54,7 @@ def _stream_to_file(
 	display: str,
 	progress: ProgressCallback | None,
 	headers: Mapping[str, str] | None,
+	cancel_file: str | None = None,
 ) -> str:
 	"""Stream ``url`` into ``target`` and return the hex SHA-256 of the bytes written."""
 	request_headers = {"User-Agent": "srxy-installer"}
@@ -68,6 +69,9 @@ def _stream_to_file(
 			total = int(response.headers.get("Content-Length") or 0)
 			with target.open("wb") as handle:
 				while True:
+					from srxy.adapters.inbound.installer.cancel import raise_if_cancelled
+
+					raise_if_cancelled(cancel_file)
 					chunk = response.read(_CHUNK_SIZE)
 					if not chunk:
 						break
@@ -129,6 +133,7 @@ def download_file(
 	progress: ProgressCallback | None = None,
 	headers: Mapping[str, str] | None = None,
 	require_digest: bool = True,
+	cancel_file: str | None = None,
 ) -> Path:
 	display = label or destination.name
 	expected = sha256.strip().lower()
@@ -138,7 +143,14 @@ def download_file(
 	partial = _partial_path(destination)
 	partial.unlink(missing_ok=True)
 	try:
-		digest = _stream_to_file(url, partial, display=display, progress=progress, headers=headers)
+		digest = _stream_to_file(
+			url,
+			partial,
+			display=display,
+			progress=progress,
+			headers=headers,
+			cancel_file=cancel_file,
+		)
 		if expected and digest != expected:
 			raise RuntimeError(f"SHA-256 mismatch for {display}: got {digest}, expected {expected}")
 		os.replace(partial, destination)
@@ -186,6 +198,7 @@ def download_to_temp(
 	progress: ProgressCallback | None = None,
 	headers: Mapping[str, str] | None = None,
 	require_digest: bool = True,
+	cancel_file: str | None = None,
 ) -> Path:
 	handle = tempfile.NamedTemporaryFile(prefix="srxy-dl-", suffix=suffix, delete=False)
 	handle.close()
@@ -199,6 +212,7 @@ def download_to_temp(
 			progress=progress,
 			headers=headers,
 			require_digest=require_digest,
+			cancel_file=cancel_file,
 		)
 	except BaseException:
 		path.unlink(missing_ok=True)

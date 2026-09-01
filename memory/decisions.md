@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-01 — Windows installer: Inno for now; migrate to PySide wrapper + NSIS
+
+- **Context:** Windows offline installer uses Inno Setup (free for non-commercial use). Paid website bundles may include Mac/Linux installers; Inno commercial license applies when srxy for-profit revenue exceeds ~USD 5k/year (donations count). Currently zero sales.
+- **Decision:** (1) Keep Inno-based Windows builds until revenue warrants a commercial Inno license or migration completes. (2) Planned migration order: PySide offline wrapper on Windows (parity with macOS/Linux offline wizards), then replace Inno outer shell with NSIS (permissive license).
+- **Rationale:** Aligns Windows with existing PySide installer stack; NSIS avoids Inno commercial licensing for future paid distribution; Inno is acceptable short-term at current revenue.
+
 ## 2026-09-01 — Checkout sync bootstrap via `uv run --no-project`
 
 - **Context:** `uv run task sync` (runtime-only, `--no-default-groups`) runs through Taskipy from `.venv`, which loads dev-only deps like `psutil`. Windows refuses to unlink the loaded `.pyd` (os error 5); on Unix the dev group would be ripped out mid-run.

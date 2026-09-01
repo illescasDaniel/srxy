@@ -4,26 +4,29 @@ _Last updated: 2026-09-01_
 
 ## Branch
 
-- Worktree on `develop`.
+- Worktree on `feature/improve_buttons` (develop-oriented work).
 
 ## Current focus
 
-Windows fixes batch — **complete**. Install/sync docs, async settings, matches h-scroll, file-total probe, preview alignment.
+Windows installer UX improvements — **shipped** (disk space, step titles, cancel/progress, language persist, uninstall cleanup). Build verified locally (`build-windows-installer-offline`).
 
-## Implemented (this batch)
+## Planned (Windows packaging)
 
-- **Sync:** `scripts/dev/sync.py` mirrors uv flags; pruning guard for `--no-default-groups` inside `.venv`; deleted `sync`/`sync-win` tasks and wrappers; docs/README/AGENTS restructured around three install paths.
-- **Settings:** async snapshot via stdlib `threading.Thread` + loading spinner; per-kind size cache in `build_settings_snapshot`; torch removed from snapshot hot path.
-- **Matches:** horizontal scroll via `maxTextLength` + `TextMetrics`; header tracks scroll.
-- **Search progress:** parallel file-count probe thread; `0/N` as soon as probe finishes.
-- **Preview:** `verticalAlignment: TextEdit.AlignTop` on `previewTextArea` (FluentWinUI3 fix).
+Migrate away from Inno Setup commercial-license constraints before srxy revenue matters:
 
-## Verified
+1. **PySide offline wrapper for Windows** — same model as macOS offline `.app` and Linux offline AppImage (full QML wizard; bootstrap Python + wheel in payload).
+2. **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng; no commercial license). Likely after or alongside step 1 depending on whether NSIS wraps the PySide launcher or the headless engine.
 
-- `checks-win.ps1 -Fix -Quiet -Scope core,gui` PASSED
-- `checks-win.ps1 -Quiet -Scope core,gui` PASSED
+Inno Setup remains fine **for now** — no sales/donations yet (non-commercial under Inno's ~$5k revenue threshold).
+
+## Implemented (2026-09-01 session)
+
+- Inno: `ExtraDiskSpaceRequired`, tessdata byte sizes, `RefreshDiskSpaceLabel`, `n/m - title` steps, uninstall extras page, `--cancel-file`, `CancelButtonClick` procedure (ISCC compile fix).
+- Engine: `InstallOptions.ui_language`, prefix `settings.json` on first install, pip/CUDA heartbeats + cooperative cancel (`cancel.py`), `cleanup_user_data()` on uninstall.
+- PySide installer: uninstall checkboxes (cache/settings/models, default on).
+- Tests: `test_installer_cancel_cleanup.py`, ISS contract tests, install-flow language tests.
 
 ## Next steps
 
-1. Manual QA: All Settings opens instantly with spinner; file total appears within seconds on OCR search; matches panel scrolls horizontally; preview text top-aligned on Windows.
-2. Manual QA: `uv run --no-project python scripts/dev/sync.py --no-default-groups` from outside activated venv for runtime-only sync.
+1. Manual QA on built `dist/srxy-*-installer-*-x86_64.exe` (disk space, cancel, uninstall extras, language persist).
+2. When starting packaging work: PySide Windows offline wrapper (step 1 above).

@@ -1,128 +1,128 @@
-afr|0|Afrikaans
-amh|0|Amharic
-ara|0|Arabic
-asm|0|Assamese
-aze|0|Azerbaijani
-aze_cyrl|0|Azerbaijani (Cyrillic)
-bel|0|Belarusian
-ben|0|Bengali
-bod|0|Tibetan
-bos|0|Bosnian
-bre|0|Breton
-bul|0|Bulgarian
-cat|0|Catalan
-ceb|0|Cebuano
-ces|0|Czech
-chi_sim|0|Chinese (Simplified)
-chi_sim_vert|0|Chinese (Simplified, vertical)
-chi_tra|0|Chinese (Traditional)
-chi_tra_vert|0|Chinese (Traditional, vertical)
-chr|0|Cherokee
-cos|0|Corsican
-cym|0|Welsh
-dan|0|Danish
-dan_frak|0|Danish (Fraktur)
-deu|0|German
-deu_frak|0|German (Fraktur)
-div|0|Dhivehi
-dzo|0|Dzongkha
-ell|0|Greek
-eng|1|English
-enm|0|English (Middle)
-epo|0|Esperanto
-est|0|Estonian
-eus|0|Basque
-fao|0|Faroese
-fas|0|Persian
-fil|0|Filipino
-fin|0|Finnish
-fra|0|French
-frk|0|Frankish
-frm|0|French (Middle)
-fry|0|Frisian
-gla|0|Scottish Gaelic
-gle|0|Irish
-glg|0|Galician
-grc|0|Greek (Ancient)
-guj|0|Gujarati
-hat|0|Haitian
-heb|0|Hebrew
-hin|0|Hindi
-hrv|0|Croatian
-hun|0|Hungarian
-hye|0|Armenian
-iku|0|Inuktitut
-ind|0|Indonesian
-isl|0|Icelandic
-ita|0|Italian
-ita_old|0|Italian (Old)
-jav|0|Javanese
-jpn|0|Japanese
-jpn_vert|0|Japanese (vertical)
-kan|0|Kannada
-kat|0|Georgian
-kat_old|0|Georgian (Old)
-kaz|0|Kazakh
-khm|0|Khmer
-kir|0|Kyrgyz
-kmr|0|Kurmanji (Kurdish)
-kor|0|Korean
-kor_vert|0|Korean (vertical)
-lao|0|Lao
-lat|0|Latin
-lav|0|Latvian
-lit|0|Lithuanian
-ltz|0|Luxembourgish
-mal|0|Malayalam
-mar|0|Marathi
-mkd|0|Macedonian
-mlt|0|Maltese
-mon|0|Mongolian
-mri|0|Maori
-msa|0|Malay
-mya|0|Burmese
-nep|0|Nepali
-nld|0|Dutch
-nor|0|Norwegian
-oci|0|Occitan
-ori|0|Odia
-osd|1|Orientation detection
-pan|0|Punjabi
-pol|0|Polish
-por|0|Portuguese
-pus|0|Pashto
-que|0|Quechua
-ron|0|Romanian
-rus|0|Russian
-san|0|Sanskrit
-sin|0|Sinhala
-slk|0|Slovak
-slk_frak|0|Slovak (Fraktur)
-slv|0|Slovenian
-snd|0|Sindhi
-spa|0|Spanish
-spa_old|0|Spanish (Old)
-sqi|0|Albanian
-srp|0|Serbian
-srp_latn|0|Serbian (Latin)
-sun|0|Sundanese
-swa|0|Swahili
-swe|0|Swedish
-syr|0|Syriac
-tam|0|Tamil
-tat|0|Tatar
-tel|0|Telugu
-tgk|0|Tajik
-tgl|0|Tagalog
-tha|0|Thai
-tir|0|Tigrinya
-ton|0|Tonga
-tur|0|Turkish
-uig|0|Uyghur
-ukr|0|Ukrainian
-urd|0|Urdu
-uzb|0|Uzbek
-uzb_cyrl|0|Uzbek (Cyrillic)
-vie|0|Vietnamese
-yid|0|Yiddish
-yor|0|Yoruba
+afr|0|Afrikaans|7851157
+amh|0|Amharic|8423467
+ara|0|Arabic|2494806
+asm|0|Assamese|2045457
+aze|0|Azerbaijani|10139884
+aze_cyrl|0|Azerbaijani (Cyrillic)|4726411
+bel|0|Belarusian|11185811
+ben|0|Bengali|1789439
+bod|0|Tibetan|1966470
+bos|0|Bosnian|7930443
+bre|0|Breton|6335020
+bul|0|Bulgarian|8371797
+cat|0|Catalan|6502025
+ceb|0|Cebuano|2402839
+ces|0|Czech|16238266
+chi_sim|0|Chinese (Simplified)|44366093
+chi_sim_vert|0|Chinese (Simplified, vertical)|2470991
+chi_tra|0|Chinese (Traditional)|59025073
+chi_tra_vert|0|Chinese (Traditional, vertical)|2368306
+chr|0|Cherokee|1458011
+cos|0|Corsican|2299112
+cym|0|Welsh|5998144
+dan|0|Danish|10578171
+dan_frak|0|Danish (Fraktur)|1622858
+deu|0|German|15437534
+deu_frak|0|German (Fraktur)|1978741
+div|0|Dhivehi|1774548
+dzo|0|Dzongkha|449626
+ell|0|Greek|7543380
+eng|1|English|23466654
+enm|0|English (Middle)|5207312
+epo|0|Esperanto|11330444
+est|0|Estonian|15301628
+eus|0|Basque|10145441
+fao|0|Faroese|3439785
+fas|0|Persian|561272
+fil|0|Filipino|2509440
+fin|0|Finnish|21140513
+fra|0|French|14213351
+frk|0|Frankish|22874034
+frm|0|French (Middle)|17856636
+fry|0|Frisian|1906031
+gla|0|Scottish Gaelic|3068320
+gle|0|Irish|4664254
+glg|0|Galician|8074927
+grc|0|Greek (Ancient)|7428728
+guj|0|Gujarati|1963128
+hat|0|Haitian|3326722
+heb|0|Hebrew|5413459
+hin|0|Hindi|1651010
+hrv|0|Croatian|13797409
+hun|0|Hungarian|18051690
+hye|0|Armenian|3594112
+iku|0|Inuktitut|3797385
+ind|0|Indonesian|8279230
+isl|0|Icelandic|9037703
+ita|0|Italian|15951669
+ita_old|0|Italian (Old)|17345259
+jav|0|Javanese|7386965
+jpn|0|Japanese|35659159
+jpn_vert|0|Japanese (vertical)|3039939
+kan|0|Kannada|3608311
+kat|0|Georgian|8744377
+kat_old|0|Georgian (Old)|1082383
+kaz|0|Kazakh|9263539
+khm|0|Khmer|1446906
+kir|0|Kyrgyz|15430595
+kmr|0|Kurmanji (Kurdish)|3568645
+kor|0|Korean|15317715
+kor_vert|0|Korean (vertical)|1128590
+lao|0|Lao|7055204
+lat|0|Latin|9215366
+lav|0|Latvian|10635271
+lit|0|Lithuanian|12629538
+ltz|0|Luxembourgish|2606439
+mal|0|Malayalam|5953416
+mar|0|Marathi|3193116
+mkd|0|Macedonian|5323418
+mlt|0|Maltese|7426902
+mon|0|Mongolian|2137055
+mri|0|Maori|862986
+msa|0|Malay|8243366
+mya|0|Burmese|4640591
+nep|0|Nepali|2189424
+nld|0|Dutch|23163950
+nor|0|Norwegian|12397893
+oci|0|Occitan|6322100
+ori|0|Odia|1480096
+osd|1|Orientation detection|10562874
+pan|0|Punjabi|1698789
+pol|0|Polish|19344135
+por|0|Portuguese|15336931
+pus|0|Pashto|1772117
+que|0|Quechua|5026349
+ron|0|Romanian|11008634
+rus|0|Russian|19920885
+san|0|Sanskrit|12404680
+sin|0|Sinhala|1727443
+slk|0|Slovak|14100356
+slk_frak|0|Slovak (Fraktur)|845398
+slv|0|Slovenian|9942454
+snd|0|Sindhi|1694065
+spa|0|Spanish|18256019
+spa_old|0|Spanish (Old)|19628379
+sqi|0|Albanian|8575759
+srp|0|Serbian|7434267
+srp_latn|0|Serbian (Latin)|9375025
+sun|0|Sundanese|1369513
+swa|0|Swahili|6029030
+swe|0|Swedish|13627152
+syr|0|Syriac|2207238
+tam|0|Tamil|3353079
+tat|0|Tatar|1072909
+tel|0|Telugu|3315170
+tgk|0|Tajik|3721580
+tgl|0|Tagalog|7321367
+tha|0|Thai|1072519
+tir|0|Tigrinya|2184930
+ton|0|Tonga|947262
+tur|0|Turkish|18750612
+uig|0|Uyghur|2794302
+ukr|0|Ukrainian|12408644
+urd|0|Urdu|1398748
+uzb|0|Uzbek|10757098
+uzb_cyrl|0|Uzbek (Cyrillic)|4905658
+vie|0|Vietnamese|7763728
+yid|0|Yiddish|4882707
+yor|0|Yoruba|963413
