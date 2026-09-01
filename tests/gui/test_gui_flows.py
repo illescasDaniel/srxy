@@ -3,13 +3,16 @@
 from __future__ import annotations
 
 import json
+import re
 from pathlib import Path
 
 import pytest
 from tests.gui.helpers import ensure_qapp, load_main
+from tests.helpers import OCR_FIXTURES_DIR
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.outbound.ocr.ocr_text import tesseract_available
 
 
 pytestmark = [pytest.mark.integration, pytest.mark.gui]
@@ -143,4 +146,40 @@ def test_given_invalid_threshold_when_filters_ok_clicked_then_ok_disabled_and_er
 	assert bool(harness.prop("filtersError", "visible")) is False
 
 	harness.click("filtersOkButton")  # close cleanly if still open
+	harness.shutdown()
+
+
+@pytest.mark.skipif(not tesseract_available(), reason="tesseract binary not on PATH")
+def test_given_ocr_folder_when_searching_then_progress_count_appears(qapp):
+	# given
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(OCR_FIXTURES_DIR))
+	harness.set_text("simpleQueryField", "revenue")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", False)
+	harness.set_checked("optContents", True)
+	harness.set_checked("optOcr", True)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_until(
+		lambda: bool(controller.hasSearched) or bool(controller.searching),
+		timeout_ms=10_000,
+		message="search never started",
+	)
+
+	# then — listing catch-up must surface file totals (e.g. 0/N) during OCR search
+	harness.wait_until(
+		lambda: bool(re.fullmatch(r"\d+/\d+", str(harness.prop("progressCount", "text")).strip())),
+		timeout_ms=30_000,
+		message="progressCount never showed determinate file totals",
+	)
+
+	harness.wait_search_finished(timeout_ms=120_000)
 	harness.shutdown()

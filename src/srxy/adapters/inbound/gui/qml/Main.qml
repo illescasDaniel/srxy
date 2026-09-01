@@ -1414,6 +1414,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optOcr
+					objectName: "optOcr"
 					text: root.t("gui.options.ocr")
 					enabled: optContents.checked
 						&& !!(controller && controller.capabilitiesJson)

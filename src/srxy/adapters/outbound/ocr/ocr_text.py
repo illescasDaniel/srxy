@@ -14,13 +14,16 @@ from typing import TYPE_CHECKING
 if TYPE_CHECKING:
 	from PIL import Image
 
+	from srxy.domain.models import SkippedFile
+
 from srxy.adapters.outbound.documents.image_formats import DECODABLE_IMAGE_SUFFIXES, open_image
 from srxy.application.install_paths import resolve_tessdata_prefix, resolve_tesseract_binary
 from srxy.application.search_defaults import DEFAULT_OCR_MAX_FILE_SIZE
 
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
-DEFAULT_MAX_IMAGE_DIMENSION = 4000
+DEFAULT_MAX_IMAGE_DIMENSION = 2000
+DEFAULT_TESSERACT_TIMEOUT_S = 60
 MIN_OCR_QUALITY_SCORE = 80.0
 MIN_PDF_IMAGE_OCR_BYTES = 20_000
 SPARSE_TEXT_THRESHOLD = 20
@@ -51,6 +54,10 @@ def _ocr_unavailable_message() -> str:
 	from srxy.i18n import tr
 
 	return tr("unavailable.ocr", hint=ocr_enable_hint())
+
+
+class OcrRecognizeTimeout(Exception):
+	"""Raised when a Tesseract recognize() call exceeds the configured timeout."""
 
 
 class OcrEngine(ABC):
@@ -131,18 +138,47 @@ def _upright_image(image: Image.Image) -> tuple[Image.Image, bool]:
 	return image.rotate(degrees, expand=True), trusted
 
 
+def _tesseract_timeout_seconds() -> int | None:
+	raw = os.environ.get("SRXY_OCR_TESSERACT_TIMEOUT", "").strip()
+	if not raw:
+		return DEFAULT_TESSERACT_TIMEOUT_S
+	lowered = raw.lower()
+	if lowered in {"0", "none", "off", "false", "no"}:
+		return None
+	try:
+		return max(1, int(raw))
+	except ValueError:
+		return DEFAULT_TESSERACT_TIMEOUT_S
+
+
+def _recognize_timed_out(error: BaseException) -> bool:
+	import subprocess
+
+	if isinstance(error, (TimeoutError, subprocess.TimeoutExpired)):
+		return True
+	message = str(error).lower()
+	return "tesseract process timeout" in message or "timed out after" in message
+
+
 class TesseractEngine(OcrEngine):
 	def recognize(self, image: Image.Image) -> str:
 		import pytesseract
 
 		_configure_pytesseract(pytesseract)
 		lang = discover_ocr_languages()
+		timeout = _tesseract_timeout_seconds()
 		best_text = ""
 		best_rank = (-1.0, 0)
+		saw_timeout = False
 		for priority, psm in enumerate(_PSM_CANDIDATES):
 			try:
-				text = str(pytesseract.image_to_string(image, lang=lang, config=f"--psm {psm}")).strip()
-			except Exception:  # noqa: S112 — try next PSM when a mode fails
+				kwargs: dict[str, object] = {"lang": lang, "config": f"--psm {psm}"}
+				if timeout is not None:
+					kwargs["timeout"] = timeout
+				text = str(pytesseract.image_to_string(image, **kwargs)).strip()
+			except Exception as error:  # noqa: S112 — try next PSM when a mode fails
+				if _recognize_timed_out(error):
+					saw_timeout = True
 				continue
 			if not text:
 				continue
@@ -151,6 +187,8 @@ class TesseractEngine(OcrEngine):
 			if rank > best_rank:
 				best_rank = rank
 				best_text = text
+		if saw_timeout and not best_text:
+			raise OcrRecognizeTimeout()
 		return best_text
 
 
@@ -324,10 +362,22 @@ def _iter_ocr_regions(image: Image.Image) -> Iterator[Image.Image]:
 			yield image.crop((left, top, right, bottom))
 
 
-def _collect_region_texts(engine: OcrEngine, image: Image.Image) -> list[str]:
+def _collect_region_texts(
+	engine: OcrEngine,
+	image: Image.Image,
+	*,
+	leading: str = "",
+) -> list[str]:
 	parts: list[str] = []
 	seen: set[str] = set()
+	if leading:
+		key = " ".join(leading.split())
+		if key:
+			seen.add(key)
+			parts.append(leading)
 	for region in _iter_ocr_regions(image):
+		if leading and region.size == image.size:
+			continue
 		text = engine.recognize(region).strip()
 		if not text:
 			continue
@@ -343,7 +393,10 @@ def ocr_pil_image(image: Image.Image) -> str:
 	engine = get_ocr_engine()
 	processed = preprocess_image(image)
 	upright, osd_trusted = _upright_image(processed)
-	parts = _collect_region_texts(engine, upright)
+	full_text = engine.recognize(upright).strip()
+	if _ocr_looks_reliable(full_text) and osd_trusted:
+		return full_text
+	parts = _collect_region_texts(engine, upright, leading=full_text)
 	best = "\n".join(parts)
 	best_score = _ocr_quality_score(best)
 	# Trusted OSD + lexical text: accept without probes (fast path).
@@ -427,7 +480,11 @@ def ocr_image_bytes(data: bytes) -> str:
 	return _cached_ocr_text(CACHE_KIND_OCR_PDF_BLOB, content_hash, recognize)
 
 
-def iter_image_ocr_lines(path: Path) -> Iterator[tuple[int, str]]:
+def iter_image_ocr_lines(
+	path: Path,
+	*,
+	skipped_files: list[SkippedFile] | None = None,
+) -> Iterator[tuple[int, str]]:
 	from srxy.adapters.outbound.cache.cache import CACHE_KIND_OCR_IMAGE, get_file_content_hash
 
 	try:
@@ -438,6 +495,16 @@ def iter_image_ocr_lines(path: Path) -> Iterator[tuple[int, str]]:
 				return ocr_pil_image(image)
 
 		text = _cached_ocr_text(CACHE_KIND_OCR_IMAGE, content_hash, recognize)
+	except OcrRecognizeTimeout:
+		if skipped_files is not None:
+			from srxy.domain.models import SkippedFile
+
+			try:
+				file_size = path.stat().st_size
+			except OSError:
+				file_size = 0
+			skipped_files.append(SkippedFile(path=path, size_bytes=file_size, reason="ocr_timeout"))
+		return
 	except Exception:
 		return
 	text = text.strip()

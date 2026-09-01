@@ -8,6 +8,7 @@ from PIL import Image
 
 from srxy.adapters.outbound.ocr.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
+	OcrRecognizeTimeout,
 	TesseractEngine,
 	ensure_ocr_available,
 	has_lexical_ocr_content,
@@ -23,6 +24,7 @@ from srxy.adapters.outbound.ocr.ocr_text import (
 	preprocess_image,
 	reset_ocr_engine,
 )
+from srxy.domain.models import SkippedFile
 
 
 pytestmark = pytest.mark.unit
@@ -181,7 +183,7 @@ def test_given_multiple_tesseract_outputs_when_selecting_best_then_prefers_reada
 	garbage = "-\n\nA\n\nf\\\n"
 	good = "MUSIC COMPOSED BY\nBRIAN TYLER"
 
-	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "", **_kwargs) -> str:
 		if "--psm 1" in config:
 			return good
 		return garbage
@@ -202,7 +204,7 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 	engine = TesseractEngine()
 	image = Image.new("RGB", (8, 8))
 
-	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "", **_kwargs) -> str:
 		if "--psm 1" in config:
 			return "MUSIC COMPOSED BY\nBRIAN TYLER"
 		return "-\n\nA\n\nf\\\n"
@@ -402,3 +404,34 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 
 	# then
 	assert text == "classifier layer"
+
+
+def test_given_tesseract_timeout_when_recognizing_then_raises_without_text():
+	image = Image.new("RGB", (40, 40), color=(255, 255, 255))
+
+	class FakePytesseract:
+		class pytesseract:
+			tesseract_cmd = "tesseract"
+
+		@staticmethod
+		def image_to_string(*_args, **_kwargs):
+			raise RuntimeError("Tesseract process timeout")
+
+	with patch("srxy.adapters.outbound.ocr.ocr_text.discover_ocr_languages", return_value="eng"):
+		engine = TesseractEngine()
+		with patch.dict("sys.modules", {"pytesseract": FakePytesseract}):
+			with pytest.raises(OcrRecognizeTimeout):
+				engine.recognize(image)
+
+
+def test_given_ocr_timeout_when_iterating_lines_then_records_skip(tmp_path: Path):
+	image_path = tmp_path / "slow.png"
+	Image.new("L", (20, 20), color=255).save(image_path)
+	skipped: list[SkippedFile] = []
+
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", side_effect=OcrRecognizeTimeout()):
+		lines = list(iter_image_ocr_lines(image_path, skipped_files=skipped))
+
+	assert lines == []
+	assert len(skipped) == 1
+	assert skipped[0].reason == "ocr_timeout"

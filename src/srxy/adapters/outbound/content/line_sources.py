@@ -143,7 +143,7 @@ def _yield_media_units(
 		else:
 			emit_activity(on_activity, f"OCR · {path.name}")
 			try:
-				for line_number, raw_line in iter_image_ocr_lines(path):
+				for line_number, raw_line in iter_image_ocr_lines(path, skipped_files=skipped_files):
 					yield line_number, raw_line, "ocr"
 			finally:
 				clear_activity(on_activity)
@@ -204,10 +204,14 @@ def _iter_body_searchable_lines(
 		yield line_number, raw_line, "line"
 
 
-def _append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None):
+def _append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None, *, reason: str = "ocr_too_large"):
 	if skipped_files is None:
 		return
-	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes(path), reason="ocr_too_large"))
+	skipped_files.append(SkippedFile(path=path, size_bytes=size_bytes(path), reason=reason))
+
+
+def append_ocr_skip(path: Path, skipped_files: list[SkippedFile] | None, *, reason: str = "ocr_too_large"):
+	_append_ocr_skip(path, skipped_files, reason=reason)
 
 
 def _append_transcribe_skip(

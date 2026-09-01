@@ -64,6 +64,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`). Applied from `cursor/5648e20a`.
 - [x] Reset All Settings also clears live options/filters + persist flags (and quit does not recreate `settings.json` when file absent / persist off).
 - [x] QML click-driven GUI flow tests — `tests/gui/helpers.py` + `test_gui_flows.py` (full path/query/options/filters/search, names-only via Options UI, filters live validation via click). ~1.6s for 3 tests offscreen; gui bucket.
+- [x] OCR screenshot slowness + flaky `0/N` progress — full-frame OCR fast path (skips redundant region grid when OSD+lexical OK); OCR max dimension 2000px; Tesseract per-call timeout (60s default, `SRXY_OCR_TESSERACT_TIMEOUT`); `ocr_timeout` skip + warning; listing catch-up `(0,N)` always emitted through progress throttle; GUI flow test for OCR `progressCount`; gate passed (core+gui).
 
 ### Open
 

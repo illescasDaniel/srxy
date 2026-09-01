@@ -583,6 +583,16 @@ def test_given_ocr_skip_when_formatting_warning_then_shows_ocr_limit(tmp_path: P
 	assert "--max-ocr-file-size" in warning
 
 
+def test_given_ocr_timeout_skip_when_formatting_warning_then_shows_timeout(tmp_path: Path):
+	skipped = SkippedFile(path=tmp_path / "slow.png", size_bytes=1234, reason="ocr_timeout")
+
+	warning = format_skipped_file_warning(skipped, max_file_size=1_048_576)
+
+	assert "skipped OCR" in warning
+	assert "timed out" in warning
+	assert "SRXY_OCR_TESSERACT_TIMEOUT" in warning
+
+
 def test_given_transcribe_no_speech_skip_when_formatting_warning_then_shows_no_speech(tmp_path: Path):
 	# given
 	skipped = SkippedFile(path=tmp_path / "silent.mp3", size_bytes=12_345, reason="transcribe_no_speech")

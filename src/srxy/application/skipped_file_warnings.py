@@ -17,6 +17,11 @@ def format_skipped_file_warning(skipped: SkippedFile, max_file_size: int | None)
 			f"({skipped.size_bytes:,} bytes > --max-ocr-file-size {limit_label})\n"
 			f"  hint: increase --max-ocr-file-size or unset SRXY_OCR_MAX_FILE_SIZE"
 		)
+	if skipped.reason == "ocr_timeout":
+		return (
+			f"warning: skipped OCR in {skipped.path.as_posix()} (Tesseract timed out)\n"
+			f"  hint: increase SRXY_OCR_TESSERACT_TIMEOUT or unset it to use the default"
+		)
 	if skipped.reason == "transcribe_too_large":
 		from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_max_file_size
 

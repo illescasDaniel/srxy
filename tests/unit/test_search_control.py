@@ -65,3 +65,14 @@ def test_given_progress_burst_when_emit_progress_if_due_then_paces_emits():
 	emit_progress_if_due(2, 10, state, lambda c, t: emitted.append((c, t)))
 
 	assert len(emitted) == 1
+
+
+def test_given_listing_catch_up_when_emit_progress_if_due_then_always_emits_zero_of_total():
+	state = ProgressiveEmitState()
+	emitted: list[tuple[int, int]] = []
+
+	emit_progress_if_due(0, 12, state, lambda c, t: emitted.append((c, t)))
+	emit_progress_if_due(1, 12, state, lambda c, t: emitted.append((c, t)))
+
+	assert emitted[0] == (0, 12)
+	assert len(emitted) == 1
