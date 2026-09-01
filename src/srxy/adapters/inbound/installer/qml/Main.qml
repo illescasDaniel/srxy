@@ -728,10 +728,23 @@ ApplicationWindow {
 		objectName: "unsafePrefixDialog"
 		title: root.t("installer.confirm.unsafe_prefix_title")
 		modal: true
-		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
 		width: Math.min(root.width - 40, 480)
 		closePolicy: Popup.NoAutoClose
+		footer: DialogButtonBox {
+			defaultButton: unsafePrefixContinue
+			Button {
+				text: root.t("common.cancel")
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: unsafePrefixDialog.reject()
+			}
+			AccentButton {
+				id: unsafePrefixContinue
+				text: root.t("installer.confirm.button.continue")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: unsafePrefixDialog.accept()
+			}
+		}
 		Label {
 			wrapMode: Text.WordWrap
 			width: parent ? parent.width : implicitWidth

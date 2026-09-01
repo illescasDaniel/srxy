@@ -220,6 +220,46 @@ def _set_quick_style(name: str) -> bool:
 	return True
 
 
+def vulkan_runtime_available() -> bool:
+	"""Return True when the Vulkan loader can be loaded (cheap pre-Qt probe)."""
+	import ctypes
+
+	for lib in ("libvulkan.so.1", "libvulkan.so", "vulkan-1"):
+		try:
+			ctypes.CDLL(lib)
+			return True
+		except OSError:
+			continue
+	return False
+
+
+def prefer_stable_wayland_rendering():
+	"""Prefer a stable Qt Quick rendering path on Linux Wayland.
+
+	On Wayland the default OpenGL/EGL path uses ``eglSwapBuffers``; threaded Scene
+	Graph rendering there can freeze the UI (notably on NVIDIA — QTBUG-95817).
+	When Vulkan is available, use the Vulkan RHI backend to bypass EGL. Otherwise
+	fall back to a single-threaded OpenGL render loop.
+
+	Must run before ``QGuiApplication`` is constructed. Skips when the user already
+	set ``QSG_RHI_BACKEND``, ``QSG_RENDER_LOOP``, or ``QT_QPA_PLATFORM``.
+	"""
+	if not sys.platform.startswith("linux"):
+		return
+	if not os.environ.get("WAYLAND_DISPLAY", "").strip():
+		return
+	if os.environ.get("QSG_RHI_BACKEND", "").strip():
+		return
+	if os.environ.get("QSG_RENDER_LOOP", "").strip():
+		return
+	if os.environ.get("QT_QPA_PLATFORM", "").strip():
+		return
+	if vulkan_runtime_available():
+		os.environ.setdefault("QSG_RHI_BACKEND", "vulkan")
+	else:
+		os.environ.setdefault("QSG_RENDER_LOOP", "basic")
+
+
 def prefer_native_file_dialogs():
 	"""Route Qt Quick file/folder dialogs through the XDG desktop portal on Linux.
 
@@ -513,6 +553,8 @@ __all__ = [
 	"contrast_text_on",
 	"follow_system_color_scheme",
 	"prefer_native_file_dialogs",
+	"prefer_stable_wayland_rendering",
 	"resolve_button_accent",
 	"shared_qml_import_path",
+	"vulkan_runtime_available",
 ]

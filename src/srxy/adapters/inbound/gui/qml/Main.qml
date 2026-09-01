@@ -1708,7 +1708,7 @@ ApplicationWindow {
 		footer: DialogButtonBox {
 			defaultButton: updateYesButton
 			Button {
-				text: root.t("update.no")
+				text: root.t("common.cancel")
 				visible: controller && controller.updateDialogMode === "prompt"
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: updateDialog.reject()
@@ -1793,7 +1793,7 @@ ApplicationWindow {
 					text: root.settingsData && root.settingsData.cache
 						? root.settingsData.cache.pathLabel
 						: ""
-					wrapMode: Text.WrapAnywhere
+					wrapMode: Text.WordWrap
 					Layout.fillWidth: true
 				}
 				Label {
@@ -1823,7 +1823,7 @@ ApplicationWindow {
 					text: root.settingsData && root.settingsData.preferences
 						? root.settingsData.preferences.pathLabel
 						: ""
-					wrapMode: Text.WrapAnywhere
+					wrapMode: Text.WordWrap
 					Layout.fillWidth: true
 				}
 				Label {
@@ -1848,27 +1848,29 @@ ApplicationWindow {
 	Dialog {
 		id: settingsConfirmDialog
 		objectName: "settingsConfirmDialog"
-		title: root.t("settings.confirm.title")
+		title: controller && controller.settingsConfirmTitle
+			? controller.settingsConfirmTitle
+			: root.t("settings.confirm.title")
 		modal: true
 		anchors.centerIn: parent
 		width: Math.min(480, parent.width - 40)
 		closePolicy: Popup.NoAutoClose
 		footer: DialogButtonBox {
-			defaultButton: settingsConfirmYes
+			defaultButton: settingsConfirmAccept
 			Button {
-				text: root.t("common.no")
+				text: root.t("common.cancel")
 				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: settingsConfirmDialog.reject()
 			}
 			AccentButton {
-				id: settingsConfirmYes
-				text: root.t("common.yes")
+				id: settingsConfirmAccept
+				text: controller ? controller.settingsConfirmAcceptLabel : ""
 				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: settingsConfirmDialog.accept()
 			}
 		}
 		Label {
-			wrapMode: Text.WrapAnywhere
+			wrapMode: Text.WordWrap
 			width: settingsConfirmDialog.availableWidth > 0
 				? settingsConfirmDialog.availableWidth - 24
 				: 456
@@ -1957,14 +1959,27 @@ ApplicationWindow {
 		objectName: "downloadConfirmDialog"
 		title: root.t("gui.download_model")
 		modal: true
-		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
 		width: Math.min(480, parent.width - 40)
 		implicitWidth: 480
 		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
+		footer: DialogButtonBox {
+			defaultButton: downloadConfirmAccept
+			Button {
+				text: root.t("common.cancel")
+				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
+				onClicked: downloadConfirmDialog.reject()
+			}
+			AccentButton {
+				id: downloadConfirmAccept
+				text: root.t("settings.action.download")
+				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
+				onClicked: downloadConfirmDialog.accept()
+			}
+		}
 		Label {
-			wrapMode: Text.WrapAnywhere
+			wrapMode: Text.WordWrap
 			width: downloadConfirmDialog.availableWidth > 0
 				? downloadConfirmDialog.availableWidth - 24
 				: 456
@@ -1991,7 +2006,7 @@ ApplicationWindow {
 				: 396
 			Label {
 				text: controller ? controller.downloadStatus : ""
-				wrapMode: Text.WrapAnywhere
+				wrapMode: Text.WordWrap
 				Layout.fillWidth: true
 				Layout.maximumWidth: downloadProgressDialog.availableWidth - 24
 			}

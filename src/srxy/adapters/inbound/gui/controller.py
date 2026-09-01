@@ -376,6 +376,8 @@ class SearchController(QObject):
 		self._settings_json = "{}"
 		self._settings_confirm_open = False
 		self._settings_confirm_message = ""
+		self._settings_confirm_title = ""
+		self._settings_confirm_accept_label = ""
 		self._settings_confirm_action: str | None = None  # clear_model:<kind> | clear_cache
 		self._settings_redownload = False
 		self._update_thread: QThread | None = None
@@ -2164,6 +2166,14 @@ class SearchController(QObject):
 	def settingsConfirmMessage(self) -> str:  # noqa: N802
 		return self._settings_confirm_message
 
+	@Property(str, notify=settingsConfirmChanged)
+	def settingsConfirmTitle(self) -> str:  # noqa: N802
+		return self._settings_confirm_title
+
+	@Property(str, notify=settingsConfirmChanged)
+	def settingsConfirmAcceptLabel(self) -> str:  # noqa: N802
+		return self._settings_confirm_accept_label
+
 	@Slot()
 	def openSettings(self):  # noqa: N802
 		self._settings_open = True
@@ -2179,15 +2189,26 @@ class SearchController(QObject):
 	def refreshSettings(self):  # noqa: N802
 		self._emit_settings_snapshot()
 
-	def _set_settings_confirm(self, open_: bool, message: str = "", action: str | None = None):
+	def _set_settings_confirm(self, open_: bool, action: str | None = None):
+		from srxy.application.settings_maintenance import settings_confirm_ui
+
 		self._settings_confirm_open = open_
-		self._settings_confirm_message = message
-		self._settings_confirm_action = action if open_ else None
+		if open_ and action:
+			ui = settings_confirm_ui(action)
+			self._settings_confirm_message = ui["message"]
+			self._settings_confirm_title = ui["title"]
+			self._settings_confirm_accept_label = ui["acceptLabel"]
+			self._settings_confirm_action = action
+		else:
+			self._settings_confirm_message = ""
+			self._settings_confirm_title = ""
+			self._settings_confirm_accept_label = ""
+			self._settings_confirm_action = None
 		self.settingsConfirmChanged.emit()
 
 	@Slot(str)
 	def confirmClearModel(self, kind: str):  # noqa: N802
-		from srxy.application.settings_maintenance import SETTINGS_MODEL_KINDS, clear_confirm_message
+		from srxy.application.settings_maintenance import SETTINGS_MODEL_KINDS
 		from srxy.i18n import tr as translate
 
 		if kind not in SETTINGS_MODEL_KINDS:
@@ -2196,33 +2217,29 @@ class SearchController(QObject):
 		if self._settings_maintenance_busy():
 			self.errorOccurred.emit(translate("settings.error.busy"))
 			return
-		self._set_settings_confirm(True, clear_confirm_message(kind), f"clear_model:{kind}")
+		self._set_settings_confirm(True, f"clear_model:{kind}")
 
 	@Slot()
 	def confirmClearCache(self):  # noqa: N802
-		from srxy.application.settings_maintenance import cache_clear_confirm_message
 		from srxy.i18n import tr as translate
 
 		if self._settings_maintenance_busy():
 			self.errorOccurred.emit(translate("settings.error.busy"))
 			return
-		self._set_settings_confirm(True, cache_clear_confirm_message(), "clear_cache")
+		self._set_settings_confirm(True, "clear_cache")
 
 	@Slot()
 	def confirmDownloadAllModels(self):  # noqa: N802
-		from srxy.application.settings_maintenance import download_all_confirm_message
 		from srxy.i18n import tr as translate
 
 		if self._settings_maintenance_busy():
 			self.errorOccurred.emit(translate("settings.error.busy"))
 			return
-		self._set_settings_confirm(True, download_all_confirm_message(), "download_all")
+		self._set_settings_confirm(True, "download_all")
 
 	@Slot()
 	def confirmResetPreferences(self):  # noqa: N802
-		from srxy.application.settings_maintenance import preferences_reset_confirm_message
-
-		self._set_settings_confirm(True, preferences_reset_confirm_message(), "reset_preferences")
+		self._set_settings_confirm(True, "reset_preferences")
 
 	@Slot()
 	def acceptSettingsConfirm(self):  # noqa: N802

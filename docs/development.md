@@ -182,3 +182,17 @@ uv run python scripts/bench_file_search.py --iters 5       # more iterations for
 ```
 
 Results and design rationale for the parallel execution strategy (thread pool vs process pool) are documented in [docs/multi-process-benchmark.md](multi-process-benchmark.md).
+
+## Linux Wayland GUI freezes
+
+On Wayland, Qt Quick may present OpenGL frames through EGL (`eglSwapBuffers`). Threaded Scene Graph rendering on that path can freeze the UI on some drivers (notably NVIDIA). srxy tries **Vulkan** (`QSG_RHI_BACKEND=vulkan`) when the Vulkan loader is available; otherwise it sets `QSG_RENDER_LOOP=basic` on the OpenGL path.
+
+If the GUI still stops responding to mouse input, override before launch:
+
+```bash
+QSG_RHI_BACKEND=opengl QSG_RENDER_LOOP=basic uv run task gui
+# or force XWayland:
+QT_QPA_PLATFORM=xcb uv run task gui
+```
+
+User-set `QSG_RHI_BACKEND`, `QSG_RENDER_LOOP`, or `QT_QPA_PLATFORM` values are left unchanged.
