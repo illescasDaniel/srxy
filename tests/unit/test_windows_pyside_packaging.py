@@ -145,6 +145,30 @@ def test_given_windows_ci_workflow_when_checking_then_has_pyside_job():
 	assert "build-offline.ps1" in workflow
 
 
+def test_given_windows_ci_workflow_when_checking_triggers_then_runs_on_develop():
+	"""The build-offline-pyside job must actually run on PRs/pushes targeting develop
+	(not just main) — this is where feature branches for this workstream land.
+
+	No YAML lib dependency in this project's test env — extract the `on:` block by
+	line range (up to the next top-level key) and check both branch lists textually.
+	"""
+	# given
+	lines = (_REPO / ".github" / "workflows" / "windows-installer.yml").read_text(encoding="utf-8").splitlines()
+	on_start = next(i for i, line in enumerate(lines) if line.strip() == "on:")
+	on_end = next(i for i in range(on_start + 1, len(lines)) if lines[i] and not lines[i][0].isspace())
+	on_block = "\n".join(lines[on_start:on_end])
+
+	# when
+	push_start = on_block.index("push:")
+	pull_request_start = on_block.index("pull_request:")
+	push_block = on_block[push_start:pull_request_start]
+	pull_request_block = on_block[pull_request_start:]
+
+	# then
+	assert "branches: [main, develop]" in push_block
+	assert "branches: [main, develop]" in pull_request_block
+
+
 def test_given_taskipy_tasks_when_checking_then_pyside_windows_tasks_registered():
 	# given
 	pyproject = (_REPO / "pyproject.toml").read_text(encoding="utf-8")
