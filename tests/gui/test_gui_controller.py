@@ -1411,6 +1411,8 @@ def test_given_clear_confirm_when_accepted_then_clears_model(
 	# when
 	with patch.object(maintenance, "clear_model_kind") as clear_kind:
 		controller.acceptSettingsConfirm()
+		while controller._maintenance_worker is not None:  # pyright: ignore[reportPrivateUsage]
+			qapp.processEvents()
 
 	# then
 	assert controller.settingsConfirmOpen is False
@@ -1484,6 +1486,8 @@ def test_given_cache_present_when_clearing_then_removes_db(
 
 	# when
 	controller.clearResultsCache()
+	while controller._maintenance_worker is not None:  # pyright: ignore[reportPrivateUsage]
+		qapp.processEvents()
 
 	# then
 	assert not db.exists()

@@ -46,6 +46,8 @@
   "settings.status.cleared_model": "Cleared {label}",
   "settings.status.cleared_all_models": "Cleared all AI models",
   "settings.status.cleared_cache": "Cleared results cache",
+  "settings.status.clearing_cache": "Clearing results cache…",
+  "settings.status.clearing_model": "Clearing {label}…",
   "settings.status.redownload_done": "Model download finished",
   "settings.status.reset_preferences": "App settings reset",
   "settings.cache.path": "Location: {path}",

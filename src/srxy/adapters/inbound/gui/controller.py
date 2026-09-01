@@ -155,6 +155,53 @@ class _SearchWorker(QObject):
 		asyncio.run(_consume())
 
 
+class _SettingsMaintenanceWorker(QObject):
+	"""Clear results cache or model dirs off the GUI thread."""
+
+	finished = Signal(bool, str, str, str)  # ok, error, settings_json, status_payload_json
+
+	def __init__(self, action: str, label: str = ""):
+		super().__init__()
+		self._action = action
+		self._label = label
+
+	@Slot()
+	def run(self):
+		from srxy.adapters.outbound.cache.cache import clear_results_cache
+		from srxy.application.settings_maintenance import (
+			SETTINGS_MODEL_KINDS,
+			build_settings_snapshot,
+			clear_model_kind,
+		)
+
+		try:
+			status_key = ""
+			status_kwargs: dict[str, str] = {}
+			if self._action == "clear_cache":
+				clear_results_cache()
+				status_key = "settings.status.cleared_cache"
+			elif self._action.startswith("clear_model:"):
+				kind = self._action.split(":", 1)[1]
+				if kind not in SETTINGS_MODEL_KINDS:
+					raise ValueError(f"Unknown model kind: {kind}")
+				clear_model_kind(kind)
+				if kind == "all":
+					status_key = "settings.status.cleared_all_models"
+				else:
+					status_key = "settings.status.cleared_model"
+					status_kwargs = {"label": self._label}
+			else:
+				raise ValueError(f"Unknown settings maintenance action: {self._action}")
+			snapshot_json = json.dumps(
+				build_settings_snapshot(busy=False),
+				sort_keys=True,
+			)
+			status_payload = json.dumps({"key": status_key, "kwargs": status_kwargs}, sort_keys=True)
+			self.finished.emit(True, "", snapshot_json, status_payload)
+		except Exception as error:  # noqa: BLE001 — surface maintenance failures to UI
+			self.finished.emit(False, str(error), "", "")
+
+
 class _DownloadWorker(QObject):
 	progress = Signal(int, int, str)
 	finished = Signal(bool, str)
@@ -357,6 +404,8 @@ class SearchController(QObject):
 		self._default_result_limit_applied = False
 		self._download_thread: QThread | None = None
 		self._download_worker: _DownloadWorker | None = None
+		self._maintenance_thread: QThread | None = None
+		self._maintenance_worker: _SettingsMaintenanceWorker | None = None
 		self._download_queue: list[PendingModelDownload] = []
 		self._pending_search_args: argparse.Namespace | None = None
 		self._download_confirm_open = False
@@ -1285,6 +1334,14 @@ class SearchController(QObject):
 		self._stop_qthread(thread, wait_ms=wait_ms)
 		self._release_worker_on_main_thread(worker)
 
+	def _dispose_maintenance_worker(self, *, wait_ms: int):
+		thread = self._maintenance_thread
+		worker = self._maintenance_worker
+		self._maintenance_thread = None
+		self._maintenance_worker = None
+		self._stop_qthread(thread, wait_ms=wait_ms)
+		self._release_worker_on_main_thread(worker)
+
 	def _dispose_update_worker(self, *, wait_ms: int):
 		thread = self._update_thread
 		worker = self._update_worker
@@ -1324,6 +1381,28 @@ class SearchController(QObject):
 		self._download_worker = None
 		self._download_thread = None
 		self._release_worker_on_main_thread(worker)
+
+	@Slot()
+	def _on_maintenance_thread_finished(self):
+		finished = self.sender()
+		if self._maintenance_thread is not None and finished is not self._maintenance_thread:
+			return
+		worker = self._maintenance_worker
+		self._maintenance_worker = None
+		self._maintenance_thread = None
+		self._release_worker_on_main_thread(worker)
+
+	@Slot(bool, str, str, str)
+	def _on_settings_maintenance_finished(self, ok: bool, error: str, snapshot_json: str, status_payload_json: str):
+		if ok:
+			if snapshot_json:
+				self._settings_json = snapshot_json
+				self.settingsUiChanged.emit()
+			if status_payload_json:
+				payload = json.loads(status_payload_json)
+				self._set_status_tr(payload["key"], **payload.get("kwargs", {}))
+		elif error:
+			self.errorOccurred.emit(error)
 
 	@Slot()
 	def cancelSearch(self):  # noqa: N802
@@ -2138,7 +2217,11 @@ class SearchController(QObject):
 
 	def _settings_maintenance_busy(self) -> bool:
 		return bool(
-			self._searching or self._download_progress_open or self._download_queue or self._download_worker is not None
+			self._searching
+			or self._download_progress_open
+			or self._download_queue
+			or self._download_worker is not None
+			or self._maintenance_worker is not None
 		)
 
 	def _emit_settings_snapshot(self):
@@ -2302,13 +2385,26 @@ class SearchController(QObject):
 		self._emit_settings_snapshot()
 		self._set_status_tr("settings.status.reset_preferences")
 
+	def _start_settings_maintenance(self, action: str, *, label: str = ""):
+		self._dispose_maintenance_worker(wait_ms=3000)
+		if action == "clear_cache":
+			self._set_status_tr("settings.status.clearing_cache")
+		elif action.startswith("clear_model:"):
+			self._set_status_tr("settings.status.clearing_model", label=label or action.split(":", 1)[1])
+		thread = QThread(self)
+		worker = _SettingsMaintenanceWorker(action, label=label)
+		worker.moveToThread(thread)
+		thread.started.connect(worker.run)
+		worker.finished.connect(self._on_settings_maintenance_finished)
+		worker.finished.connect(thread.quit)
+		thread.finished.connect(self._on_maintenance_thread_finished, Qt.ConnectionType.QueuedConnection)
+		self._maintenance_thread = thread
+		self._maintenance_worker = worker
+		thread.start()
+
 	@Slot(str)
 	def clearModel(self, kind: str):  # noqa: N802
-		from srxy.application.settings_maintenance import (
-			SETTINGS_MODEL_KINDS,
-			build_settings_snapshot,
-			clear_model_kind,
-		)
+		from srxy.application.settings_maintenance import SETTINGS_MODEL_KINDS, _model_label
 		from srxy.i18n import tr as translate
 
 		if kind not in SETTINGS_MODEL_KINDS:
@@ -2317,37 +2413,16 @@ class SearchController(QObject):
 		if self._settings_maintenance_busy():
 			self.errorOccurred.emit(translate("settings.error.busy"))
 			return
-		label = kind
-		for row in build_settings_snapshot(busy=False)["models"]:
-			if row["kind"] == kind:
-				label = row["label"]
-				break
-		try:
-			clear_model_kind(kind)
-		except Exception as error:  # noqa: BLE001
-			self.errorOccurred.emit(str(error))
-			return
-		self._emit_settings_snapshot()
-		if kind == "all":
-			self._set_status_tr("settings.status.cleared_all_models")
-		else:
-			self._set_status_tr("settings.status.cleared_model", label=label)
+		self._start_settings_maintenance(f"clear_model:{kind}", label=_model_label(kind))
 
 	@Slot()
 	def clearResultsCache(self):  # noqa: N802
-		from srxy.adapters.outbound.cache.cache import clear_results_cache
 		from srxy.i18n import tr as translate
 
 		if self._settings_maintenance_busy():
 			self.errorOccurred.emit(translate("settings.error.busy"))
 			return
-		try:
-			clear_results_cache()
-		except Exception as error:  # noqa: BLE001
-			self.errorOccurred.emit(str(error))
-			return
-		self._emit_settings_snapshot()
-		self._set_status_tr("settings.status.cleared_cache")
+		self._start_settings_maintenance("clear_cache")
 
 	@Slot(str)
 	def redownloadModel(self, kind: str):  # noqa: N802
@@ -2617,6 +2692,7 @@ class SearchController(QObject):
 		self._write_persisted_search_prefs()
 		self._dispose_search_worker(wait_ms=thread_wait_ms)
 		self._dispose_download_worker(wait_ms=thread_wait_ms)
+		self._dispose_maintenance_worker(wait_ms=thread_wait_ms)
 		self._dispose_update_worker(wait_ms=thread_wait_ms)
 		self._dispose_preview_worker(wait_ms=thread_wait_ms)
 

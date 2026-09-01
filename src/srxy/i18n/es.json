@@ -46,6 +46,8 @@
   "settings.status.cleared_model": "Se borró {label}",
   "settings.status.cleared_all_models": "Se borraron todos los modelos de IA",
   "settings.status.cleared_cache": "Se borró la caché de resultados",
+  "settings.status.clearing_cache": "Borrando la caché de resultados…",
+  "settings.status.clearing_model": "Borrando {label}…",
   "settings.status.redownload_done": "Descarga del modelo finalizada",
   "settings.status.reset_preferences": "Ajustes de la aplicación restablecidos",
   "settings.cache.path": "Ubicación: {path}",
