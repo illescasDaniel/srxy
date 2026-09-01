@@ -24,7 +24,21 @@ jobs:
         run: uv sync --frozen
 
       - name: Probe installer catalog URLs
+        id: probe_catalog
+        # Advisory health check for third-party vendor download URLs (GitHub
+        # releases, Homebrew, martin-riedl) — not part of the code quality gate.
+        # continue-on-error keeps a transient upstream 5xx/timeout from blocking
+        # the real quality gate below; failures are still visible in this step's
+        # own logs/annotation and in the summary step underneath.
+        continue-on-error: true
         run: uv run python -m srxy.adapters.inbound.installer.probe_catalog
+
+      - name: Report catalog probe outcome
+        if: always()
+        run: |
+          if [ "${{ steps.probe_catalog.outcome }}" != "success" ]; then
+            echo "::warning::Installer catalog probe failed (advisory, non-blocking) — see 'Probe installer catalog URLs' step logs above. This checks third-party vendor download URLs, not code quality; it does not affect this job's pass/fail status."
+          fi
 
       - name: Install shell linting tools
         run: |
