@@ -78,6 +78,40 @@ jobs:
           if-no-files-found: error
           retention-days: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && 90 || 7 }}
 
+  # PySide offline wrapper (parity with macOS .app / Linux AppImage offline wizard).
+  # Does not replace the Inno job above — see packaging/windows/README.md.
+  build-offline-pyside:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
+        with:
+          enable-cache: true
+
+      - name: Sync dependencies
+        run: uv sync --frozen
+
+      - name: Build offline Windows PySide installer wrapper
+        shell: pwsh
+        run: .\packaging\windows\build-offline-pyside.ps1
+
+      - name: Smoke PySide installer wrapper payload
+        shell: pwsh
+        run: .\packaging\windows\smoke-offline-pyside.ps1
+
+      - name: Upload offline Windows PySide installer artifact
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: srxy-installer-offline-windows-pyside-${{ github.sha }}
+          path: |
+            dist/srxy-*-installer-*-pyside-x86_64.zip
+            dist/srxy-*-installer-*-pyside-x86_64.zip.sha256
+            dist/SHA256SUMS-windows-offline-pyside
+          if-no-files-found: error
+          retention-days: ${{ github.event_name == 'push' && startsWith(github.ref, 'refs/tags/') && 90 || 7 }}
+
   release-attach:
     if: github.event_name == 'push' && startsWith(github.ref, 'refs/tags/')
     needs: [build-offline]
