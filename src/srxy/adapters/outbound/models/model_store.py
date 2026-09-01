@@ -124,7 +124,7 @@ def download_model(
 	kwargs: dict[str, object] = {"repo_id": model_id, "local_dir": str(target_dir)}
 	if on_progress is not None:
 		kwargs["tqdm_class"] = _make_progress_tqdm(on_progress, label=progress_label)
-	snapshot_download(**kwargs)  # ty: ignore[no-matching-overload]
+	snapshot_download(**kwargs)
 
 
 def _make_progress_tqdm(on_progress: Callable[[int, int, str], None], *, label: str = ""):

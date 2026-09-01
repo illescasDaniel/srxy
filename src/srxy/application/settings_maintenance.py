@@ -229,6 +229,43 @@ def download_all_confirm_message() -> str:
 	return tr("settings.confirm.download_all")
 
 
+def settings_confirm_ui(action: str) -> dict[str, str]:
+	"""Title, body, and accept-button label for a settings maintenance confirm."""
+	if action == "clear_cache":
+		return {
+			"title": tr("settings.confirm.title.clear_cache"),
+			"message": cache_clear_confirm_message(),
+			"acceptLabel": tr("settings.confirm.button.reset"),
+		}
+	if action == "download_all":
+		return {
+			"title": tr("settings.confirm.title.download_all"),
+			"message": download_all_confirm_message(),
+			"acceptLabel": tr("settings.action.download"),
+		}
+	if action == "reset_preferences":
+		return {
+			"title": tr("settings.confirm.title.reset_preferences"),
+			"message": preferences_reset_confirm_message(),
+			"acceptLabel": tr("settings.confirm.button.reset"),
+		}
+	if action.startswith("clear_model:"):
+		kind = action.split(":", 1)[1]
+		if kind == "all":
+			return {
+				"title": tr("settings.confirm.title.clear_all_models"),
+				"message": clear_confirm_message(kind),
+				"acceptLabel": tr("settings.confirm.button.delete"),
+			}
+		label = _model_label(kind)
+		return {
+			"title": tr("settings.confirm.title.clear_model", label=label),
+			"message": clear_confirm_message(kind),
+			"acceptLabel": tr("settings.confirm.button.delete"),
+		}
+	raise ValueError(f"Unknown settings confirm action: {action!r}")
+
+
 __all__ = [
 	"SETTINGS_MODEL_KINDS",
 	"build_settings_snapshot",
@@ -238,4 +275,5 @@ __all__ = [
 	"download_all_confirm_message",
 	"pending_downloads_for_kind",
 	"preferences_reset_confirm_message",
+	"settings_confirm_ui",
 ]

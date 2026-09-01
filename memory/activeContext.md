@@ -4,38 +4,26 @@ _Last updated: 2026-09-01_
 
 ## Branch
 
-- Worktree `gvl5` on `develop` — OCR hang + progress fix.
+- Worktree `fwvd` on `develop` — dialog UX + Wayland stability.
 
 ## Current focus
 
-OCR activity label sync during parallel heavy search — **done** (aggregate concurrent OCR/CLIP labels).
-
-## Implemented (activity sync)
-
-- [`progress.py`](src/srxy/domain/progress.py): `summarize_concurrent_activities()` — parallel workers show `OCR · N files` instead of one stale filename while other files finish and stream results.
-
-## Next steps
-
-## Diagnosis (Screenshot_20260807_113713.png)
-
-- Not a true Tesseract hang (direct `tesseract` ~2s; full app path was ~15s / 10 `recognize()` calls before fix).
-- Root cause: redundant full-frame + 9-region grid OCR at 2560×1600 even when upright OSD + lexical text already good.
-- With OCR + semantic-image, folder search completes ~40s (12 PNGs).
+Dialog UX, reset copy, and Wayland rendering stability — **done**.
 
 ## Implemented
 
-- [`ocr_text.py`](src/srxy/adapters/outbound/ocr/ocr_text.py): full-frame fast path before region grid; `DEFAULT_MAX_IMAGE_DIMENSION` 4000→2000; per-call Tesseract timeout (default 60s, `SRXY_OCR_TESSERACT_TIMEOUT`); `OcrRecognizeTimeout` → skip with `ocr_timeout`.
-- [`search_control.py`](src/srxy/application/search_control.py): always emit listing catch-up `(0, N)` through throttle.
-- [`Main.qml`](src/srxy/adapters/inbound/gui/qml/Main.qml): `objectName: "optOcr"` for flow tests.
-- Tests: `test_search_control.py`, `test_ocr_text.py`, `test_cli.py`, `test_gui_flows.py` (OCR progress count).
+- i18n: `Reset app settings…` menu label; friendlier cache/settings confirm copy (EN/ES).
+- Settings confirm: action-specific titles + Cancel / Delete|Reset|Download buttons (`settings_confirm_ui`, controller properties, QML).
+- Download confirm + update prompt + installer unsafe-prefix dialog: Cancel + action footers.
+- Wayland: `prefer_stable_wayland_rendering()` — Vulkan when loader available, else `QSG_RENDER_LOOP=basic` (GUI + installer).
+- Tests: `test_qt_theme_wayland.py`, `test_settings_confirm_ui.py`; GUI snapshot updated.
+- Docs: Wayland troubleshooting in `docs/development.md`.
 
 ## Verified
 
-- Stuck file OCR: **~5.6s**, **1** `recognize()` call (was ~15s / 10 calls).
-- `checks.sh --quiet --scope=core,gui --no-cache` PASSED.
-- Explicit pytest on changed tests: **37 passed** (~77s, includes GUI OCR flow).
+- `checks.sh --quiet --fix --scope=core,gui --no-cache` PASSED (959 tests).
 
 ## Next steps
 
-1. Manual QA: search `/home/daniel/Pictures/Screenshots/` with Contents + OCR + Image — confirm `0/12` shows promptly and Aug 7 file no longer feels stuck.
-2. Open manual QA items in `progress.md` when ready.
+1. Manual QA on Wayland: `uv run task gui` — confirm no EGL freeze; Settings → Reset Cache / Reset app settings dialogs read well.
+2. Carry forward open manual QA items in `progress.md` when ready.
