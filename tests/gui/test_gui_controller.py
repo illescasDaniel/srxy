@@ -319,6 +319,23 @@ def test_given_determinate_activity_when_handling_event_then_status_shows_percen
 	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
 
 
+def test_given_aggregated_ocr_activity_when_handling_event_then_status_shows_file_count(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	from PySide6.QtTest import QTest
+
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller._set_searching(True)  # pyright: ignore[reportPrivateUsage]
+	controller.handle_search_event_for_tests(SearchActivityEvent(ActivityUpdate(label="OCR · 3 files")))
+	QTest.qWait(300)
+	qapp.processEvents()
+
+	assert "OCR · 3 files" in str(controller.status)
+	assert str(controller.activitySpinner) in ACTIVITY_SPINNER_FRAMES
+	controller._set_searching(False)  # pyright: ignore[reportPrivateUsage]
+
+
 def test_given_search_finished_when_activity_active_then_clears_status_spinner(qapp: QCoreApplication, tmp_path: Path):
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)

@@ -8,7 +8,13 @@ _Last updated: 2026-09-01_
 
 ## Current focus
 
-OCR performance + flaky `0/N` progress — **done** in this session.
+OCR activity label sync during parallel heavy search — **done** (aggregate concurrent OCR/CLIP labels).
+
+## Implemented (activity sync)
+
+- [`progress.py`](src/srxy/domain/progress.py): `summarize_concurrent_activities()` — parallel workers show `OCR · N files` instead of one stale filename while other files finish and stream results.
+
+## Next steps
 
 ## Diagnosis (Screenshot_20260807_113713.png)
 

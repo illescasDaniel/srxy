@@ -63,7 +63,7 @@ def concurrent_activity_fan_in(downstream: ActivityCallback) -> ActivityCallback
 			if not by_thread:
 				downstream(None)
 			else:
-				downstream(next(reversed(by_thread.values())))
+				downstream(summarize_concurrent_activities(list(by_thread.values())))
 
 	return _fan_in
 
@@ -72,6 +72,42 @@ def activity_short_label(label: str) -> str:
 	if " · " in label:
 		return label.split(" · ", 1)[0]
 	return label
+
+
+def _activity_task_kind(label: str) -> str:
+	return activity_short_label(label)
+
+
+def summarize_concurrent_activities(updates: list[ActivityUpdate]) -> ActivityUpdate:
+	"""Merge parallel worker activity into one status line.
+
+	When several threads OCR/CLIP different files at once, showing the last
+	updated filename is misleading (results from other files may already be
+	streaming). Summarize same-kind work as ``OCR · N files`` instead.
+	"""
+	if len(updates) == 1:
+		return updates[0]
+
+	by_kind: dict[str, list[ActivityUpdate]] = {}
+	for update in updates:
+		if update.label is None:
+			continue
+		kind = _activity_task_kind(update.label)
+		by_kind.setdefault(kind, []).append(update)
+
+	parts: list[str] = []
+	for kind, group in by_kind.items():
+		if len(group) == 1:
+			update = group[0]
+			if update.determinate and update.current is not None and update.total is not None:
+				percent = int((update.current / update.total) * 100)
+				parts.append(f"{percent}% {update.label}")
+			else:
+				parts.append(update.label or kind)
+		else:
+			parts.append(f"{kind} · {len(group)} files")
+
+	return ActivityUpdate(label=" · ".join(parts))
 
 
 def format_activity_status(
@@ -114,4 +150,5 @@ __all__ = [
 	"format_activity_status",
 	"format_activity_status_body",
 	"is_generic_searching_activity",
+	"summarize_concurrent_activities",
 ]

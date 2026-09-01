@@ -112,9 +112,36 @@ def test_given_concurrent_fan_in_when_two_threads_emit_then_clear_keeps_other_la
 		thread.join(timeout=5)
 
 	labels = [update.label if update is not None else None for update in received]
+	assert "OCR · 2 files" in labels
 	assert "OCR · a.png" in labels
-	assert "OCR · b.png" in labels
 	assert labels[-1] is None
+
+
+def test_given_concurrent_fan_in_when_two_kinds_active_then_summarizes_each_kind():
+	import threading
+
+	from srxy.domain.progress import concurrent_activity_fan_in, emit_activity
+
+	received: list[ActivityUpdate | None] = []
+	fan_in = concurrent_activity_fan_in(received.append)
+	ready = threading.Barrier(2)
+
+	def worker_ocr():
+		emit_activity(fan_in, "OCR · scan.png")
+		ready.wait()
+
+	def worker_clip():
+		ready.wait()
+		emit_activity(fan_in, "CLIP · photo.png")
+
+	threads = [threading.Thread(target=worker_ocr), threading.Thread(target=worker_clip)]
+	for thread in threads:
+		thread.start()
+	for thread in threads:
+		thread.join(timeout=5)
+
+	labels = [update.label for update in received if update is not None]
+	assert any(label == "OCR · scan.png · CLIP · photo.png" for label in labels)
 
 
 def test_given_faster_whisper_segments_when_transcribing_then_emits_duration_progress():

@@ -948,7 +948,7 @@ def _execute_file_search(
 	if _use_threads and on_activity is not None:
 		file_activity = concurrent_activity_fan_in(on_activity)
 
-	emit_activity(file_activity, tr("activity.searching"))
+	emit_activity(on_activity, tr("activity.searching"))
 	completed = 0
 	listed = 0
 	listing_done = False
@@ -1025,7 +1025,7 @@ def _execute_file_search(
 
 	def _emit_listing_activity():
 		if listed % _LISTING_ACTIVITY_INTERVAL == 0:
-			emit_activity(file_activity, tr("activity.searching"), current=listed)
+			emit_activity(on_activity, tr("activity.searching"), current=listed)
 
 	def _catch_up_progress():
 		# Emit as soon as the walk finishes — including 0/N — so the UI can show
