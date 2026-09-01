@@ -18,6 +18,7 @@ packaging/macos/signing/
 .srxy-quality-gate.lock
 .gate-cache/
 .gate-baseline/
+.sandbox/
 .coverage
 .coverage.*
 htmlcov/
