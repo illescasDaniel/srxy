@@ -17,3 +17,7 @@ Per-branch project state used as an AI agent memory bank. The folder is **tracke
 - New branch: give `progress.md` a fresh section for the feature/version, clear the Done list, and carry forward only Open items still relevant to the new branch.
 - `activeContext.md`: rewrite with the branch name, the new feature as current focus, no blockers, and only relevant next steps carried over.
 - You can do this manually or just ask the AI agent — it knows the exact steps from `.cursor/rules/agent-memory.mdc` and will commit the initialization with the branch's first commit.
+
+## Out of scope for memory
+
+Do not track worktree cleanup or deletion in `progress.md` / `activeContext.md` — that is local per-developer hygiene and creates merge noise when committed. See `.cursor/rules/agent-memory.mdc`.

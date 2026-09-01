@@ -30,6 +30,9 @@ alwaysApply: true
 ### Append to `memory/decisions.md` ONLY when:
 - **Making Significant Choices:** You make a significant technical, structural, or dependency decision. You MUST explicitly record the context, the decision made, and the rationale behind it.
 
+### Never write to memory:
+- **Worktree cleanup / deletion** — do not add, check off, or carry forward tasks about deleting unused project worktrees (e.g. `/delete-worktree-srxy`, `git worktree remove`, or "clean up worktree X when ready"). That is per-developer local hygiene; recording it in tracked `memory/` causes needless merge conflicts across teammates. If the user asks to delete a worktree, do it (or guide them) without touching `memory/`.
+
 ---
 
 ## 3. Hand-off Protocol

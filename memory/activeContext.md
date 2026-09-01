@@ -30,3 +30,8 @@ Inno Setup remains fine **for now** — no sales/donations yet (non-commercial u
 
 1. Manual QA on built `dist/srxy-*-installer-*-x86_64.exe` (disk space, cancel, uninstall extras, language persist).
 2. When starting packaging work: PySide Windows offline wrapper (step 1 above).
+
+## Memory protocol (2026-09-01)
+
+- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory (avoids teammate merge conflicts).
+- Removed stale `/delete-worktree-srxy` open items from `progress.md`.

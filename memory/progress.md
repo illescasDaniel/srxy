@@ -89,8 +89,6 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [ ] **Manual QA (user):** Settings menu shortcuts + All Settings dialog — download all / reset cache / reset preferences; confirm busy guard during search/download.
 - [ ] **Manual QA (user):** GUI persist — check Persist on Options/Filters, OK, quit, relaunch; Reset draft; unpersist clears `settings.json` payload; Filters live validation greys OK on bad input.
 - [ ] **Manual QA (user):** Reset All Settings with Persist on — options/filters snap to factory defaults immediately; quit leaves `settings.json` absent.
-- [ ] `/delete-worktree-srxy` for `cursor/5852d6f1` (`0svx`) when ready.
-- [ ] `/delete-worktree-srxy` for `cursor/5648e20a` (`699q`) when ready.
 
 ## Bugs / sub-tasks discovered
 
