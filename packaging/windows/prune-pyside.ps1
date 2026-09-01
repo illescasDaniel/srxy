@@ -115,35 +115,60 @@ Get-ChildItem -LiteralPath $pside -Filter "*.pyd" -File -ErrorAction SilentlyCon
 		}
 	}
 
-# Qt6*.dll ship directly under PySide6\ on Windows (no nested Qt\lib\).
-$keepDllPatterns = @(
-	"Qt6Core.dll", "Qt6Gui.dll", "Qt6Network.dll", "Qt6OpenGL.dll",
-	"Qt6Qml.dll", "Qt6QmlMeta.dll", "Qt6QmlModels.dll", "Qt6QmlWorkerScript.dll", "Qt6QmlNetwork.dll",
-	"Qt6Quick.dll", "Qt6QuickControls2.dll", "Qt6QuickControls2Impl.dll",
-	"Qt6QuickControls2Basic.dll", "Qt6QuickControls2BasicStyleImpl.dll",
-	"Qt6QuickControls2Fusion.dll", "Qt6QuickControls2FusionStyleImpl.dll",
-	"Qt6QuickControls2Material.dll", "Qt6QuickControls2MaterialStyleImpl.dll",
-	"Qt6QuickControls2Imagine.dll", "Qt6QuickControls2ImagineStyleImpl.dll",
-	"Qt6QuickControls2Universal.dll", "Qt6QuickControls2UniversalStyleImpl.dll",
-	"Qt6QuickControls2FluentWinUI3StyleImpl.dll", "Qt6QuickControls2WindowsStyleImpl.dll",
-	"Qt6QuickTemplates2.dll", "Qt6QuickLayouts.dll",
-	"Qt6QuickDialogs2.dll", "Qt6QuickDialogs2Utils.dll", "Qt6QuickDialogs2QuickImpl.dll",
-	"Qt6QuickEffects.dll", "Qt6QuickShapes.dll",
-	"Qt6LabsFolderListModel.dll", "Qt6LabsQmlModels.dll",
-	"Qt6ShaderTools.dll", "Qt6Svg.dll", "Qt6Concurrent.dll",
-	"pyside6.abi3.dll", "shiboken6.abi3.dll", "MSVCP*.dll", "VCRUNTIME*.dll", "concrt140.dll"
+# Qt6*.dll ship directly under PySide6\ on Windows (no nested Qt\lib\), and newer
+# Qt (6.8+) splits modules further than macOS/Linux framework/lib bundles suggest
+# (e.g. QtQml itself now needs Qt6QmlCore.dll / Qt6QmlCompiler.dll alongside
+# Qt6Qml.dll). An allowlist of "known-needed" DLLs is fragile against that kind of
+# split (an incomplete list breaks DLL loading with an opaque "specified module
+# could not be found" error rather than a helpful missing-symbol message, and
+# this script cannot be iterated against a real Windows PySide6 install). Use a
+# DENYLIST of clearly-unused module families instead — everything not matched
+# (Core/Gui/Qml*/Quick*/Network/OpenGL/Widgets/Svg/Concurrent/ShaderTools, ANGLE
+# (libEGL/libGLESv2/d3dcompiler_47), ICU, and MSVC runtime DLLs) is kept.
+$denyDllPatterns = @(
+	"Qt63D*.dll",
+	"Qt6Bluetooth*.dll",
+	"Qt6Charts*.dll",
+	"Qt6DataVisualization*.dll",
+	"Qt6Designer*.dll",
+	"Qt6Graphs*.dll",
+	"Qt6Help*.dll",
+	"Qt6Location*.dll",
+	"Qt6Multimedia*.dll",
+	"Qt6NetworkAuth*.dll",
+	"Qt6Nfc*.dll",
+	"Qt6OpcUa*.dll",
+	"Qt6Pdf*.dll",
+	"Qt6Positioning*.dll",
+	"Qt6PrintSupport*.dll",
+	"Qt6Quick3D*.dll",
+	"Qt6RemoteObjects*.dll",
+	"Qt6Scxml*.dll",
+	"Qt6Sensors*.dll",
+	"Qt6SerialBus*.dll",
+	"Qt6SerialPort*.dll",
+	"Qt6Sql*.dll",
+	"Qt6StateMachine*.dll",
+	"Qt6Test*.dll",
+	"Qt6TextToSpeech*.dll",
+	"Qt6UiTools*.dll",
+	"Qt6VirtualKeyboard*.dll",
+	"Qt6WebChannel*.dll",
+	"Qt6WebEngine*.dll",
+	"Qt6WebSockets*.dll",
+	"Qt6WebView*.dll"
 )
 Get-ChildItem -LiteralPath $pside -Filter "*.dll" -File -ErrorAction SilentlyContinue |
 	ForEach-Object {
 		$name = $_.Name
-		$keep = $false
-		foreach ($pattern in $keepDllPatterns) {
+		$deny = $false
+		foreach ($pattern in $denyDllPatterns) {
 			if ($name -like $pattern) {
-				$keep = $true
+				$deny = $true
 				break
 			}
 		}
-		if (-not $keep) {
+		if ($deny) {
 			Remove-Item -LiteralPath $_.FullName -Force
 		}
 	}
@@ -195,7 +220,12 @@ if (Test-Path -LiteralPath $qml) {
 	}
 }
 
-# Unused plugins (also top-level under PySide6\plugins\ on Windows).
+# Unused plugins (also top-level under PySide6\plugins\ on Windows). Kept
+# conservative — matches the already-proven macOS/Linux plugin removal lists
+# (e.g. "tls" and "networkinformation" are deliberately NOT removed here,
+# same as those scripts, since this repo has no Windows host to verify a wider
+# list against; the installer uses Python urllib for downloads, not Qt network,
+# so this list only trims plugins with no runtime dependency at all).
 $plugins = Join-Path $pside "plugins"
 if (Test-Path -LiteralPath $plugins) {
 	Remove-IfExists @(
@@ -206,7 +236,6 @@ if (Test-Path -LiteralPath $plugins) {
 		Join-Path $plugins "geometryloaders"
 		Join-Path $plugins "geoservices"
 		Join-Path $plugins "multimedia"
-		Join-Path $plugins "networkinformation"
 		Join-Path $plugins "position"
 		Join-Path $plugins "printsupport"
 		Join-Path $plugins "qmltooling"
@@ -217,7 +246,6 @@ if (Test-Path -LiteralPath $plugins) {
 		Join-Path $plugins "sensors"
 		Join-Path $plugins "sqldrivers"
 		Join-Path $plugins "texttospeech"
-		Join-Path $plugins "tls"
 		Join-Path $plugins "video"
 		Join-Path $plugins "webview"
 	)

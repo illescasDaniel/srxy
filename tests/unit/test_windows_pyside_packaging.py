@@ -99,12 +99,20 @@ def test_given_prune_script_when_reading_then_targets_windows_pyside_layout():
 
 	# when / then — Windows PySide6 wheel layout differs from macOS/Linux (no "Qt\" prefix).
 	assert "PySide6" in text
-	assert "Qt6Core.dll" in text
-	assert "Qt6QuickControls2.dll" in text
 	assert '"qml"' in text
 	assert '"plugins"' in text
 	assert 'Join-Path $pside "Qt\\lib"' not in text
 	assert 'Join-Path $pside "Qt/lib"' not in text
+	# DLL pruning is a DENYLIST (not an allowlist): an incomplete allowlist broke
+	# CI when Qt 6.11 split QtQml further (Qt6QmlCore.dll became a separate,
+	# required dependency of Qt6Qml.dll) — see denyDllPatterns comment. A denylist
+	# of clearly-unused module families (WebEngine, Multimedia, 3D, ...) keeps
+	# everything else (including any future Qt module splits) by default.
+	assert "denyDllPatterns" in text
+	assert "Qt6WebEngine*.dll" in text
+	assert "keepDllPatterns" not in text
+	deny_block = text[text.index("$denyDllPatterns = @(") : text.index(")", text.index("$denyDllPatterns = @("))]
+	assert "Qt6QmlCore" not in deny_block  # must not be denied — kept by default
 
 
 def test_given_smoke_script_when_reading_then_relocates_before_testing():
