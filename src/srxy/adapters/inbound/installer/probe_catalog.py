@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 from collections.abc import Callable
 
 from srxy.adapters.inbound.installer.catalog import (
@@ -25,7 +26,16 @@ from srxy.adapters.inbound.installer.resolve import (
 )
 
 
-_HasUrl = ResolvedArtifact | BrewBottle
+_ResolvedTarget = ResolvedArtifact | BrewBottle
+
+
+# This probe hits third-party APIs (GitHub releases, Homebrew, martin-riedl) purely
+# as an advisory health check — it is not part of the code quality gate. Upstream
+# hosts occasionally return transient 5xx/timeouts under load; retry generously here
+# (independent of resolve.py's own conservative install-time retry budget) so a
+# short blip does not flag a probe failure.
+_RESOLVE_RETRIES = 3
+_RESOLVE_RETRY_BACKOFF_SECONDS = 3.0
 
 
 def _probe_catalog_maps() -> list[tuple[str, str, dict[str, str] | None]]:
@@ -50,58 +60,53 @@ def _probe_catalog_maps() -> list[tuple[str, str, dict[str, str] | None]]:
 	return targets
 
 
-def _probe_resolvers() -> tuple[list[tuple[str, str, dict[str, str] | None]], list[str]]:
-	"""Resolve install-time artifact URLs; return (targets, unresolvable_labels).
-
-	Install-time resolvers depend on live upstream catalogs (Homebrew bottles,
-	GitHub releases) that prune/rename tags outside our control (see this
-	module's docstring). One resolver going stale should not hide probe
-	results for the others, so each resolve call is isolated — a failure here
-	is reported as a soft/informational skip, not a hard CI failure. The
-	static, sha256-pinned catalog URLs probed by `_probe_catalog_maps()` are
-	what actually gate correctness.
-	"""
-	targets: list[tuple[str, str, dict[str, str] | None]] = []
-	unresolvable: list[str] = []
-
-	def _resolve_url(label: str, fn: Callable[[], _HasUrl]) -> str | None:
-		try:
-			return fn().url
-		except RuntimeError as exc:
-			print(f"WARN resolve:{label} unresolvable (upstream catalog drift): {exc}", file=sys.stderr)
-			unresolvable.append(label)
-			return None
-
-	resolutions: list[tuple[str, Callable[[], ResolvedArtifact], dict[str, str] | None]] = [
-		("ffmpeg/linux", lambda: resolve_ffmpeg_btbn(system="linux", machine="x86_64"), None),
-		("ffmpeg/windows", lambda: resolve_ffmpeg_btbn(system="windows", machine="x86_64"), None),
-		("ffmpeg/darwin-arm64", lambda: resolve_ffmpeg_martin_riedl(arch="arm64"), None),
-		("ffmpeg/darwin-amd64", lambda: resolve_ffmpeg_martin_riedl(arch="amd64"), None),
-		("tesseract/linux", resolve_tesseract_linux, None),
-		("tesseract/windows", resolve_tesseract_windows, None),
+def _resolver_targets() -> list[tuple[str, Callable[[], _ResolvedTarget], dict[str, str] | None]]:
+	"""Lazy (label, resolver, probe_headers) triples — each resolved independently so
+	one upstream API hiccup (e.g. GitHub releases for BtbN) does not abort probing the
+	rest (Homebrew, UB-Mannheim, DanielMYT, ... are unrelated hosts/APIs)."""
+	return [
+		("resolve:ffmpeg/linux", lambda: resolve_ffmpeg_btbn(system="linux", machine="x86_64"), None),
+		("resolve:ffmpeg/windows", lambda: resolve_ffmpeg_btbn(system="windows", machine="x86_64"), None),
+		("resolve:ffmpeg/darwin-arm64", lambda: resolve_ffmpeg_martin_riedl(arch="arm64"), None),
+		("resolve:ffmpeg/darwin-amd64", lambda: resolve_ffmpeg_martin_riedl(arch="amd64"), None),
+		("resolve:tesseract/linux", resolve_tesseract_linux, None),
+		("resolve:tesseract/windows", resolve_tesseract_windows, None),
+		(
+			"resolve:tesseract/darwin-arm64",
+			lambda: resolve_tesseract_brew_bottles(machine="arm64")[0],
+			dict(GHCR_BOTTLE_HEADERS),
+		),
+		(
+			"resolve:tesseract/darwin-x86_64",
+			lambda: resolve_tesseract_brew_bottles(machine="x86_64")[0],
+			dict(GHCR_BOTTLE_HEADERS),
+		),
 	]
-	for label, fn, headers in resolutions:
-		url = _resolve_url(label, fn)
-		if url is not None:
-			targets.append((f"resolve:{label}", url, headers))
 
-	for machine, label in (("arm64", "darwin-arm64"), ("x86_64", "darwin-x86_64")):
 
-		def _resolve_bottles(machine: str = machine) -> BrewBottle:
-			return resolve_tesseract_brew_bottles(machine=machine)[0]
-
-		url = _resolve_url(f"tesseract/{label}", _resolve_bottles)
-		if url is not None:
-			targets.append((f"resolve:tesseract/{label}", url, dict(GHCR_BOTTLE_HEADERS)))
-	return targets, unresolvable
+def _resolve_with_retries(resolver: Callable[[], _ResolvedTarget], *, label: str) -> _ResolvedTarget:
+	last: Exception = RuntimeError(f"{label}: resolver never attempted")
+	for attempt in range(_RESOLVE_RETRIES):
+		try:
+			return resolver()
+		except Exception as exc:  # noqa: BLE001 — advisory probe: report and retry any resolver failure
+			last = exc
+			if attempt + 1 >= _RESOLVE_RETRIES:
+				break
+			print(
+				f"WARN {label}: resolve attempt {attempt + 1}/{_RESOLVE_RETRIES} failed ({exc}); retrying...",
+				file=sys.stderr,
+			)
+			time.sleep(_RESOLVE_RETRY_BACKOFF_SECONDS * (attempt + 1))
+	raise last
 
 
 def main(argv: list[str] | None = None) -> int:
 	_ = argv
 	failures: list[str] = []
 	seen: set[str] = set()
-	resolver_targets, unresolvable = _probe_resolvers()
-	for label, url, headers in _probe_catalog_maps() + resolver_targets:
+
+	for label, url, headers in _probe_catalog_maps():
 		if url in seen:
 			print(f"OK  {label} (duplicate url skipped)")
 			continue
@@ -112,16 +117,28 @@ def main(argv: list[str] | None = None) -> int:
 		except RuntimeError as exc:
 			print(f"FAIL {label}: {exc}", file=sys.stderr)
 			failures.append(label)
+
+	for label, resolver, probe_headers in _resolver_targets():
+		try:
+			resolved = _resolve_with_retries(resolver, label=label)
+		except Exception as exc:  # noqa: BLE001 — advisory probe: never let one target crash the run
+			print(f"FAIL {label}: could not resolve: {exc}", file=sys.stderr)
+			failures.append(label)
+			continue
+		if resolved.url in seen:
+			print(f"OK  {label} (duplicate url skipped)")
+			continue
+		seen.add(resolved.url)
+		try:
+			final = probe_url(resolved.url, headers=probe_headers)
+			print(f"OK  {label}\n    {final}")
+		except RuntimeError as exc:
+			print(f"FAIL {label}: {exc}", file=sys.stderr)
+			failures.append(label)
+
 	if failures:
-		print(f"{len(failures)} probe(s) failed", file=sys.stderr)
+		print(f"{len(failures)} probe(s) failed: {', '.join(failures)}", file=sys.stderr)
 		return 1
-	if unresolvable:
-		print(
-			f"note: {len(unresolvable)} resolver(s) skipped due to upstream catalog drift: {', '.join(unresolvable)}",
-			file=sys.stderr,
-		)
-		print("all catalog pins OK (some resolver probes skipped — see note above)")
-		return 0
 	print("all catalog/resolver probes OK")
 	return 0
 
