@@ -278,6 +278,28 @@ def prefer_native_file_dialogs():
 		os.environ.setdefault("QT_QPA_PLATFORMTHEME", "xdgdesktopportal")
 
 
+def silence_noisy_qt_logging():
+	"""Suppress known-harmless Qt log spam that floods the console.
+
+	``qt.qpa.mime: Retrying to obtain clipboard.`` is emitted when another
+	process briefly holds the clipboard (IDE, terminal, browser) while a ComboBox
+	or similar control queries it — a Qt bug (QTBUG-130316 / QTBUG-97930), not an
+	srxy fault. Silence that category unless the user already configured
+	``QT_LOGGING_RULES`` for ``qt.qpa.mime``.
+	"""
+	rule = "qt.qpa.mime=false"
+	existing = os.environ.get("QT_LOGGING_RULES", "").strip()
+	if "qt.qpa.mime" not in existing:
+		os.environ["QT_LOGGING_RULES"] = f"{existing};{rule}" if existing else rule
+	try:
+		from PySide6.QtCore import QLoggingCategory
+
+		QLoggingCategory.setFilterRules(rule)
+	except (ImportError, AttributeError, RuntimeError):
+		# Qt not importable / older build without the API — env rule still helps.
+		pass
+
+
 def _rgb01_to_hex(r: float, g: float, b: float) -> str | None:
 	"""Convert sRGB [0,1] components to ``#rrggbb``, or ``None`` if unset/out of range."""
 	if not all(0.0 <= c <= 1.0 for c in (r, g, b)):
@@ -556,5 +578,6 @@ __all__ = [
 	"prefer_stable_wayland_rendering",
 	"resolve_button_accent",
 	"shared_qml_import_path",
+	"silence_noisy_qt_logging",
 	"vulkan_runtime_available",
 ]

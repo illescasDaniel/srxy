@@ -536,3 +536,42 @@ def test_given_darwin_when_preferring_native_dialogs_then_does_not_set_env(
 
 	# then
 	assert "QT_QPA_PLATFORMTHEME" not in os.environ
+
+
+def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_rule(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.delenv("QT_LOGGING_RULES", raising=False)
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	assert "qt.qpa.mime=false" in os.environ["QT_LOGGING_RULES"]
+
+
+def test_given_existing_mime_rule_when_silencing_qt_then_preserves_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "qt.qpa.mime=true")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	assert os.environ["QT_LOGGING_RULES"] == "qt.qpa.mime=true"
+
+
+def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_rule(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "*.debug=false")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	assert os.environ["QT_LOGGING_RULES"] == "*.debug=false;qt.qpa.mime=false"

@@ -304,7 +304,7 @@ def privacy_disclaimer_text(*, language: str | None = None) -> str:
 
 
 def write_privacy_notice_utf8(path: Path, *, language: str):
-	"""Write a UTF-8 privacy notice with BOM (Inno Setup LoadStringsFromFile-friendly)."""
+	"""Write a UTF-8 privacy notice with BOM (Windows notepad / legacy readers)."""
 	text = privacy_disclaimer_text(language=language)
 	path.write_bytes(b"\xef\xbb\xbf" + text.encode("utf-8"))
 

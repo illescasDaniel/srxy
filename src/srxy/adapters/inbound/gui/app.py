@@ -23,6 +23,7 @@ from srxy.adapters.inbound.gui.qt_theme import (
 	prefer_native_file_dialogs,
 	prefer_stable_wayland_rendering,
 	shared_qml_import_path,
+	silence_noisy_qt_logging,
 )
 from srxy.adapters.inbound.gui.splash import SplashBridge
 from srxy.application.startup_timing import exit_after_qml, mark
@@ -78,6 +79,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	ensure_windows_app_user_model_id()
 	prefer_stable_wayland_rendering()
 	prefer_native_file_dialogs()
+	silence_noisy_qt_logging()
 	apply_app_identity("srxy")
 	# Opaque windows are cheaper to composite; must be set before any Quick window.
 	QQuickWindow.setDefaultAlphaBuffer(False)

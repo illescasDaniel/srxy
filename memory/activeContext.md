@@ -1,29 +1,23 @@
 # Active Context
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-07_
 
 ## Branch
 
-- `develop` is integration for 1.7.0. Release train **1.8.0** lives on `feature/1.8.0` (Unlimited OCR, media preview, NSIS, …). Topic branches fork from the matching train.
+- `cursor/windows-pyside-offline-installer-fb07` off `develop` — Windows fat PySide offline installer (Inno removed). PR targets `develop` (PR #35).
 
 ## Current focus
 
-**1.7.0 packaging** — Windows PySide offline wrapper (PR #35) + Check macOS installer.
+Suppress `qt.qpa.mime: Retrying to obtain clipboard` spam (Qt clipboard lock bug).
 
-## Planned (Windows packaging)
+## Just changed
 
-1. **PySide offline wrapper for Windows** — track: **1.7.0** (PR #35).
-2. **NSIS instead of Inno** — track: **1.8.0** (`feature/1.8.0`).
-
-Inno Setup remains fine **for now** — no sales/donations yet.
+- `silence_noisy_qt_logging()` in `qt_theme.py` — sets `QT_LOGGING_RULES` / `QLoggingCategory` for `qt.qpa.mime=false`
+- Called from GUI + installer `run_*` before `QGuiApplication`
+- Tests in `test_qt_theme.py`
 
 ## Next steps
 
-1. **Windows installer migration** — finish PySide offline wrapper (PR #35 / CI green).
-2. **Check macOS installer** — verify build/signing/install path still works.
-3. **1.8.0 work** — see `feature/1.8.0` (Unlimited OCR draft PR #38, media preview, NSIS).
-
-## Memory protocol (2026-09-01)
-
-- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory (avoids teammate merge conflicts).
-- Removed stale `/delete-worktree-srxy` open items from `progress.md`.
+1. Commit + push if desired (merge PR #35 once CI green).
+2. **Check macOS installer**.
+3. Optional: Authenticode signing.

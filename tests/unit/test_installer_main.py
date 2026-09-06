@@ -198,7 +198,7 @@ def test_given_language_flag_when_headless_install_then_sets_i18n(
 	assert "OK\tinstall" in capsys.readouterr().out
 
 
-def test_given_inno_spanish_language_name_when_headless_then_maps_to_es(
+def test_given_installer_spanish_language_name_when_headless_then_maps_to_es(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 ):
@@ -249,10 +249,10 @@ def test_given_ellipsis_in_progress_and_task_when_emitting_then_uses_ascii_dots(
 def test_given_accented_spanish_when_emitting_then_output_is_ascii_safe(
 	capsys: pytest.CaptureFixture[str],
 ):
-	"""Diamond-question glyphs must not appear in Inno's ANSI progress pipe.
+	"""Diamond-question glyphs must not appear in the ANSI progress pipe.
 
 	Accented characters (ñ, á, é, etc.) must be transliterated to their plain
-	ASCII base letters so the Inno Setup ExecAndLogOutput callback receives a
+	ASCII base letters so the progress callback receives a
 	valid ASCII byte sequence regardless of the Windows code page.
 	"""
 	from srxy.adapters.inbound.installer import __main__ as installer_main

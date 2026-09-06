@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-07_
 
 ## v1.7.0 — fixes and improvements
 
@@ -89,11 +89,33 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Open
 
-- [ ] **Windows installer migration (planned):** (1) PySide offline wrapper for Windows (parity with macOS `.app` / Linux AppImage offline wizard). (2) Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution). Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
 - [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works (parity check alongside Windows packaging work).
+- [ ] Optional: Authenticode signing for Windows fat `SrxyInstaller.exe` (SmartScreen).
+
+### Windows offline installer (PySide fat SFX; Inno removed 2026-09-07)
+
+- [x] Fat self-extracting `SrxyInstaller.exe` embeds python/venv/share; distribution zip contains only that exe.
+- [x] Removed Inno Setup packaging (`srxy-offline.iss`, Inno build/smoke scripts, tessdata-langs.txt, ISS tests, Inno CI job/tasks).
+- [x] CI `windows-installer.yml` builds/smokes/releases the fat PySide zip only.
+- [x] Docs + Taskipy point at `packaging/windows/build-offline.ps1` / `smoke-offline.ps1`.
+
+### Windows PySide offline wrapper (2026-09-01, branch `cursor/windows-pyside-offline-installer-fb07`)
+
+- [x] Windows PySide6 offline installer wrapper — parity with the macOS offline `.app` / Linux offline AppImage wizard, ADDED alongside (not replacing) the existing Inno Setup offline installer.
+  - `packaging/windows/build-offline-pyside.ps1` — stages a relocatable managed CPython 3.12 + a wizard-only venv (`PySide6>=6.6` + `srxy --no-deps`, same policy as macOS/Linux offline: no full search-stack deps) under `dist\windows-pyside-installer-stage\payload\`, a full srxy wheel under `payload\share\srxy\` (same `SRXY_INSTALLER_PAYLOAD` contract the Inno bootstrap already uses — `package_spec.py` / `meta.py` needed **no** engine changes), a prebuilt app launcher + icon under `payload\share\srxy\windows\` (reused by `install.py`'s existing `_write_windows_gui_exe` at prefix-install time), and a compiled `SrxyInstaller.exe` wrapper at the payload root (new `src/srxy/resources/windows/SrxyInstallerLauncher.cs`, sets `SRXY_INSTALLER_PAYLOAD` + execs `venv\Scripts\pythonw.exe -m srxy.adapters.inbound.installer`). Verifies venv relocatability (copy-elsewhere-and-import probe, mirroring the macOS/Linux offline relocation guards) before zipping `srxy-<ver>-installer-<installer_ver>-pyside-x86_64.zip` + sha256.
+  - `packaging/windows/prune-pyside.ps1` — Windows port of `packaging/macos/prune-pyside.sh` / `packaging/linux-appimage/prune_pyside.sh`, adapted for the Windows PySide6 wheel layout (`Qt6*.dll` directly under `site-packages\PySide6\`, no nested `Qt\lib\`; `qml\`/`plugins\`/`translations\`/`metatypes\` have no `Qt\` prefix — confirmed via Qt-for-Python `wheel_files.py` packaging source, since this repo's cloud agent environment only has the Linux PySide6 layout to inspect directly).
+  - `packaging/windows/smoke-offline-pyside.ps1` — relocates the built payload to a temp dir (same relocation-bug class as `packaging/macos/smoke-offline.sh`), re-runs the pruned QML smoke, then drives a full headless install + uninstall through the relocated payload with `SRXY_INSTALLER_PAYLOAD` set.
+  - CI: new `build-offline-pyside` job in `.github/workflows/windows-installer.yml` (windows-latest; builds, smokes, uploads a build artifact — not yet attached to GitHub Releases, deferred until the NSIS follow-up decides the final release artifact shape). Existing Inno `build-offline` job untouched.
+  - Taskipy: `build-windows-installer-offline-pyside`, `smoke-windows-installer-offline-pyside` (existing Inno tasks untouched).
+  - Docs: `packaging/windows/README.md` restructured into Inno + PySide sections; `docs/installers.md` Windows section + build-from-source table updated.
+  - Tests: `tests/unit/test_windows_pyside_packaging.py` — contract tests (script layout/content, Inno untouched, CI job present, taskipy tasks registered) mirroring `tests/unit/test_linux_appimage_packaging.py`'s pattern; runs on Linux CI (no Windows build needed). No shared-engine test changes were needed — `install.py` / `path_setup.py` / `controller.py` / the QML wizard were already Windows-aware (Windows launcher writers, per-user PATH via registry, FluentWinUI3 theming) before this PR.
+  - **Verified on Windows host (2026-09-06):** fat self-extracting `SrxyInstaller.exe` (embed python/venv/share via `SRXYISFX` trailer); distribution zip contains only that exe; headless install/uninstall via SFX exit 0; unit contract tests 13 passed.
+  - **Deferred to the NSIS follow-up PR:** wrapping the PySide payload in a single-file NSIS installer; deciding whether the PySide zip becomes the shipped Windows offline artifact (replacing Inno) or stays as a build-artifact-only parity check; attaching it to GitHub Releases.
 
 ## Bugs / sub-tasks discovered
 
+- [x] Windows PySide fat SFX extract failed with `Illegal characters in path` — `.NET Framework` `Directory.CreateDirectory` rejects `\\?\` long-path prefixes. Fixed by short cache `%LOCALAPPDATA%\srxy\is\<sha16>\p\` without `\\?\`. Verified install/uninstall exit 0 (2026-09-06).
+- [x] Windows PySide offline build QML smoke `SyntaxError: '(' was never closed` — PowerShell stripped double quotes from `python -c $QmlSmoke` (`raise SystemExit("…")`). Fixed with single-quoted Python strings in `build-offline-pyside.ps1` + `smoke-offline-pyside.ps1`. Build task exit 0 (2026-09-06).
 - [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
 - [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.

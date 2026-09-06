@@ -40,7 +40,7 @@ def _bundled_wheel_candidates() -> list[Path]:
 		share = Path(appdir) / "usr" / "share" / "srxy"
 		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
 		candidates.append(share / "srxy.whl")
-	# Windows Inno offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
+	# Windows offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
 	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
 	if payload:
 		share = Path(payload) / "share" / "srxy"

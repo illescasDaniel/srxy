@@ -106,6 +106,7 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 		patch("srxy.adapters.inbound.gui.app.apply_app_identity"),
 		patch("srxy.adapters.inbound.gui.app.apply_icon_to_windows"),
 		patch("srxy.adapters.inbound.gui.app.prefer_native_file_dialogs"),
+		patch("srxy.adapters.inbound.gui.app.silence_noisy_qt_logging"),
 		patch("srxy.adapters.inbound.gui.app.apply_qt_quick_theme", return_value=MagicMock()),
 		patch("srxy.adapters.inbound.gui.app.shared_qml_import_path", return_value="/fake/qml"),
 		patch("srxy.i18n.qt.install_qt_translator"),

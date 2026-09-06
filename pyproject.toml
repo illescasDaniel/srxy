@@ -17,7 +17,7 @@ dependencies = [
 	"openpyxl>=3.1",
 	"pillow>=12.3",
 	"pillow-heif>=1.4",
-	"pypdf>=6.15",
+	"pypdf>=6.16.1",
 	"pytesseract>=0.3",
 	"PySide6>=6.6",
 	"python-docx>=1.2",
@@ -213,8 +213,8 @@ build-macos-installer-offline = { cmd = "./packaging/macos/build-offline.sh", he
 build-macos-installer-online = { cmd = "./packaging/macos/build-online.sh", help = "build online macOS installer .app wrapper into dist/ (unsigned, matches CI)" }
 build-macos-installer-offline-signed = { cmd = "./packaging/macos/build-offline-signed.sh", help = "build + locally sign/notarize/staple the offline macOS installer (see packaging/macos/signing.env.example)" }
 build-macos-installer-online-signed = { cmd = "./packaging/macos/build-online-signed.sh", help = "build + locally sign/notarize/staple the online macOS installer (see packaging/macos/signing.env.example)" }
-build-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/build-offline.ps1", help = "build offline Windows Inno Setup installer into dist/" }
-smoke-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline.ps1", help = "smoke headless Windows install engine (or pass -InstallerExe)" }
+build-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/build-offline.ps1", help = "build offline Windows fat SrxyInstaller.exe (zipped) into dist/" }
+smoke-windows-installer-offline = { cmd = "powershell -ExecutionPolicy Bypass -File ./packaging/windows/smoke-offline.ps1", help = "smoke the built Windows fat SrxyInstaller.exe (or pass -InstallerExe)" }
 generate-installer-icons = { cmd = "uv run python scripts/generate_installer_icons.py", help = "regenerate packaged square + installer icons from assets/icons/srxy.png" }
 generate-macos-icons = { cmd = "uv run python scripts/generate_macos_icons.py", help = "regenerate squircle-masked macOS icons from assets/icons/srxy.png" }
 checks = { cmd = "./scripts/quality/checks.sh", help = "run quality gate (day-to-day; Unix; auto-scope)" }
