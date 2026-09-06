@@ -97,7 +97,8 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 #### v1.8.0 (`feature/1.8.0`)
 
 - [ ] **Unlimited OCR (semantic):** When `[semantic]` deps are installed, download/use [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR); else keep Tesseract. Benchmarks (quality+speed), unit + integration tests. Draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-- [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Topic branch off `feature/1.8.0`.
+- [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual smoke before undraft.
+- [ ] **Search by folder name:** Match folder/directory names in search across **GUI**, **TUI**, and **CLI**. Topic branch off `feature/1.8.0`; unit + GUI/TUI/CLI tests required. Team Lead marks PR ready-for-review when OK.
 - [ ] **Windows installer migration — NSIS:** Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution).
 
 ## Bugs / sub-tasks discovered
