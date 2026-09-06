@@ -4,28 +4,23 @@ _Last updated: 2026-09-06_
 
 ## Branch
 
-- `develop` is integration; feature work on topic branches. Windows PySide installer on PR #35 branch; Unlimited OCR on a new topic branch (Srxy Developer).
+- Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
 
 ## Current focus
 
-**Unlimited OCR** — if user has `[semantic]` dependency group, download/use `baidu/Unlimited-OCR`; else Tesseract. Benchmarks (quality + speed), unit + integration tests. **Stay draft** until Daniel GPU QA.
+1. **Unlimited OCR** (draft PR #38 → `feature/1.8.0`) — `[semantic]` → `baidu/Unlimited-OCR`, else Tesseract; benches + tests; **stay draft** until Daniel GPU QA.
+2. **Media preview panel** — preview images, video, and audio in the content preview panel (new topic branch off `feature/1.8.0`).
 
-## Planned (Windows packaging)
+## Planned (also 1.8.0)
 
-Migrate away from Inno Setup commercial-license constraints before srxy revenue matters:
-
-1. **PySide offline wrapper for Windows** — same model as macOS offline `.app` and Linux offline AppImage (full QML wizard; bootstrap Python + wheel in payload). Track: 1.7.0.
-2. **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng; no commercial license). Track: 1.8.
-
-Inno Setup remains fine **for now** — no sales/donations yet (non-commercial under Inno's ~$5k revenue threshold).
+- **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng).
 
 ## Next steps
 
-1. **Unlimited OCR** — implement + benchmarks + tests; draft PR; Daniel GPU QA before undraft.
-2. **Windows installer migration** — finish PySide offline wrapper (PR #35 / CI green) then NSIS later.
-3. **Check macOS installer** — verify build/signing/install path still works.
+1. Unlimited OCR — Daniel GPU QA; keep draft until then.
+2. Media preview (images / video / audio) — Srxy Developer implements on a branch off `feature/1.8.0`.
+3. NSIS Windows installer (later in 1.8.0).
 
 ## Memory protocol (2026-09-01)
 
-- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory (avoids teammate merge conflicts).
-- Removed stale `/delete-worktree-srxy` open items from `progress.md`.
+- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory.
