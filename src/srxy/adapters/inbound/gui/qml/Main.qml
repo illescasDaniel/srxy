@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtMultimedia
 import SrxyControls
 
 ApplicationWindow {
@@ -75,6 +76,15 @@ ApplicationWindow {
 	function t(key) {
 		const _ = root.langRev
 		return controller ? controller.i18nTr(key) : key
+	}
+
+	function formatMediaDuration(ms) {
+		if (!ms || ms <= 0)
+			return "0:00"
+		const totalSeconds = Math.floor(ms / 1000)
+		const minutes = Math.floor(totalSeconds / 60)
+		const seconds = totalSeconds % 60
+		return minutes + ":" + (seconds < 10 ? "0" + seconds : String(seconds))
 	}
 
 	function reloadSettingsData() {
@@ -1184,77 +1194,198 @@ ApplicationWindow {
 									onClicked: if (controller) controller.closePreviewFind()
 								}
 							}
-							RowLayout {
+							StackLayout {
+								id: previewBodyStack
+								objectName: "previewBodyStack"
 								Layout.fillWidth: true
 								Layout.fillHeight: true
-								spacing: 0
-								Item {
-									id: gutter
-									objectName: "previewGutter"
-									visible: controller && controller.previewLineCount > 0
+								readonly property string previewKind: controller ? controller.previewKind : "text"
+								currentIndex: (previewKind === "image" || previewKind === "audio" || previewKind === "video") ? 1 : 0
+
+								RowLayout {
+									Layout.fillWidth: true
 									Layout.fillHeight: true
-									Layout.preferredWidth: gutterText.implicitWidth + 12
-									clip: true
-									readonly property var flick: previewScroll.contentItem
-									Text {
-										id: gutterText
-										objectName: "previewGutterText"
-										width: gutter.width - 12
-										y: gutter.flick ? previewTextArea.topPadding - gutter.flick.contentY : 0
-										font: previewTextArea.font
-										color: controller ? controller.previewGutterColor : palette.text
-										horizontalAlignment: Text.AlignRight
-										text: controller ? controller.previewGutterText : ""
+									spacing: 0
+									Item {
+										id: gutter
+										objectName: "previewGutter"
+										visible: controller && controller.previewLineCount > 0
+										Layout.fillHeight: true
+										Layout.preferredWidth: gutterText.implicitWidth + 12
+										clip: true
+										readonly property var flick: previewScroll.contentItem
+										Text {
+											id: gutterText
+											objectName: "previewGutterText"
+											width: gutter.width - 12
+											y: gutter.flick ? previewTextArea.topPadding - gutter.flick.contentY : 0
+											font: previewTextArea.font
+											color: controller ? controller.previewGutterColor : palette.text
+											horizontalAlignment: Text.AlignRight
+											text: controller ? controller.previewGutterText : ""
+										}
+										WheelHandler {
+											onWheel: (event) => {
+												if (!gutter.flick || !controller)
+													return
+												const step = Math.max(1, controller.previewLineHeight) * 3 * (event.angleDelta.y / 120)
+												const maxY = Math.max(0, gutter.flick.contentHeight - gutter.flick.height)
+												gutter.flick.contentY = Math.max(0, Math.min(maxY, gutter.flick.contentY - step))
+											}
+										}
 									}
-									WheelHandler {
-										onWheel: (event) => {
-											if (!gutter.flick || !controller)
-												return
-											const step = Math.max(1, controller.previewLineHeight) * 3 * (event.angleDelta.y / 120)
-											const maxY = Math.max(0, gutter.flick.contentHeight - gutter.flick.height)
-											gutter.flick.contentY = Math.max(0, Math.min(maxY, gutter.flick.contentY - step))
+									ScrollView {
+										id: previewScroll
+										objectName: "previewScroll"
+										Layout.fillWidth: true
+										Layout.fillHeight: true
+										clip: true
+										// Keep the *default* attached bars (correctly anchored). Replacing
+										// ScrollBar.vertical with a bare ScrollBar {} drops Qt's anchors and
+										// parks the bar at (0,0) — looking "misplaced" over the text/gutter.
+										readonly property bool needsVScroll: previewTextArea.length > 0
+											&& previewTextArea.contentHeight > previewScroll.availableHeight + 1
+										readonly property bool needsHScroll: previewTextArea.length > 0
+											&& previewTextArea.contentWidth > previewScroll.availableWidth + 1
+										ScrollBar.vertical.policy: needsVScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+										ScrollBar.horizontal.policy: needsHScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+										TextArea {
+											id: previewTextArea
+											objectName: "previewText"
+											readOnly: true
+											verticalAlignment: TextEdit.AlignTop
+											wrapMode: TextEdit.NoWrap
+											textFormat: TextEdit.PlainText
+											font.family: Qt.platform.os === "windows"
+												? "Consolas"
+												: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+											// Content is owned by Python via attachPreviewDocument / setPlainText.
+											selectByMouse: true
+											Component.onCompleted: if (controller) controller.attachPreviewDocument(previewTextArea.textDocument)
+											MouseArea {
+												anchors.fill: parent
+												acceptedButtons: Qt.RightButton
+												onClicked: previewMenu.popup()
+											}
 										}
 									}
 								}
-								ScrollView {
-									id: previewScroll
-									objectName: "previewScroll"
+
+								Item {
+									id: previewMediaBody
+									objectName: "previewMediaBody"
 									Layout.fillWidth: true
 									Layout.fillHeight: true
-									clip: true
-									// Keep the *default* attached bars (correctly anchored). Replacing
-									// ScrollBar.vertical with a bare ScrollBar {} drops Qt's anchors and
-									// parks the bar at (0,0) — looking "misplaced" over the text/gutter.
-									readonly property bool needsVScroll: previewTextArea.length > 0
-										&& previewTextArea.contentHeight > previewScroll.availableHeight + 1
-									readonly property bool needsHScroll: previewTextArea.length > 0
-										&& previewTextArea.contentWidth > previewScroll.availableWidth + 1
-									ScrollBar.vertical.policy: needsVScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
-									ScrollBar.horizontal.policy: needsHScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
-									TextArea {
-										id: previewTextArea
-										objectName: "previewText"
-										readOnly: true
-										verticalAlignment: TextEdit.AlignTop
-										wrapMode: TextEdit.NoWrap
-										textFormat: TextEdit.PlainText
-										font.family: Qt.platform.os === "windows"
-											? "Consolas"
-											: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
-										// Content is owned by Python via attachPreviewDocument / setPlainText.
-										selectByMouse: true
-										Component.onCompleted: if (controller) controller.attachPreviewDocument(previewTextArea.textDocument)
-										MouseArea {
-											anchors.fill: parent
-											acceptedButtons: Qt.RightButton
-											onClicked: previewMenu.popup()
+									readonly property string kind: previewBodyStack.previewKind
+									readonly property string mediaSource: controller && controller.previewMediaUrl ? controller.previewMediaUrl : ""
+
+									Image {
+										id: previewImage
+										objectName: "previewImage"
+										visible: previewMediaBody.kind === "image"
+										anchors.fill: parent
+										anchors.margins: 8
+										fillMode: Image.PreserveAspectFit
+										asynchronous: true
+										cache: false
+										source: previewMediaBody.kind === "image" ? previewMediaBody.mediaSource : ""
+									}
+									Label {
+										objectName: "previewImageError"
+										visible: previewMediaBody.kind === "image" && previewImage.status === Image.Error
+										anchors.centerIn: parent
+										text: root.t("gui.preview.media_error")
+									}
+
+									ColumnLayout {
+										id: previewAvColumn
+										objectName: "previewAvPlayer"
+										visible: previewMediaBody.kind === "audio" || previewMediaBody.kind === "video"
+										anchors.fill: parent
+										anchors.margins: 8
+										spacing: 8
+
+										MediaPlayer {
+											id: previewMediaPlayer
+											objectName: "previewMediaPlayer"
+											source: previewAvColumn.visible ? previewMediaBody.mediaSource : ""
+											videoOutput: previewVideoOutput
+											audioOutput: AudioOutput {
+												id: previewAudioOutput
+												objectName: "previewAudioOutput"
+											}
+											onSourceChanged: if (source == "") stop()
+										}
+
+										VideoOutput {
+											id: previewVideoOutput
+											objectName: "previewVideoOutput"
+											visible: previewMediaBody.kind === "video"
+											Layout.fillWidth: true
+											Layout.fillHeight: true
+										}
+
+										Label {
+											objectName: "previewAudioLabel"
+											visible: previewMediaBody.kind === "audio"
+											Layout.fillWidth: true
+											Layout.alignment: Qt.AlignHCenter
+											horizontalAlignment: Text.AlignHCenter
+											elide: Text.ElideMiddle
+											text: controller ? controller.previewFilePath.split("/").pop() : ""
+										}
+
+										RowLayout {
+											Layout.fillWidth: true
+											spacing: 8
+
+											ToolButton {
+												objectName: "previewMediaPlayButton"
+												text: previewMediaPlayer.playbackState === MediaPlayer.PlayingState
+													? root.t("gui.preview.media_pause")
+													: root.t("gui.preview.media_play")
+												onClicked: {
+													if (previewMediaPlayer.playbackState === MediaPlayer.PlayingState)
+														previewMediaPlayer.pause()
+													else
+														previewMediaPlayer.play()
+												}
+											}
+											Slider {
+												id: previewSeekSlider
+												objectName: "previewMediaSeek"
+												Layout.fillWidth: true
+												from: 0
+												to: Math.max(previewMediaPlayer.duration, 1)
+												value: previewSeekSlider.pressed ? previewSeekSlider.value : previewMediaPlayer.position
+												onMoved: previewMediaPlayer.setPosition(value)
+											}
+											Label {
+												objectName: "previewMediaTime"
+												text: root.formatMediaDuration(previewMediaPlayer.position)
+													+ " / " + root.formatMediaDuration(previewMediaPlayer.duration)
+											}
+											ToolButton {
+												objectName: "previewMediaMuteButton"
+												text: previewAudioOutput.muted
+													? root.t("gui.preview.media_unmute")
+													: root.t("gui.preview.media_mute")
+												onClicked: previewAudioOutput.muted = !previewAudioOutput.muted
+											}
+										}
+										Label {
+											objectName: "previewMediaError"
+											visible: previewMediaPlayer.error !== MediaPlayer.NoError
+											Layout.fillWidth: true
+											wrapMode: Text.WordWrap
+											text: root.t("gui.preview.media_error")
 										}
 									}
 								}
 							}
 							Label {
 								objectName: "previewFooter"
-								visible: controller && controller.previewFooter.length > 0
+								visible: controller && controller.previewFooter.length > 0 && previewBodyStack.currentIndex === 0
 								text: controller ? controller.previewFooter : ""
 								opacity: 0.75
 								Layout.fillWidth: true

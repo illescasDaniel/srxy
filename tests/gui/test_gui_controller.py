@@ -910,6 +910,63 @@ def test_given_misnamed_media_when_previewing_then_content_type_shows_mismatch(q
 	controller.shutdown(thread_wait_ms=1000)
 
 
+def test_given_image_file_when_previewing_then_kind_is_image_with_media_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "minimal.jpg"
+	path = tmp_path / "photo.jpg"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["photo", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "image"
+	assert str(controller.previewMediaUrl).startswith("data:image/png;base64,")
+	assert str(controller.previewText) == ""
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_audio_file_when_previewing_then_kind_is_audio_with_file_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "content_kind" / "beep.ogg"
+	path = tmp_path / "beep.ogg"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["beep", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "audio"
+	assert str(controller.previewMediaUrl).startswith("file://")
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_video_file_when_previewing_then_kind_is_video_with_file_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "content_kind" / "clip.mp4"
+	path = tmp_path / "clip.mp4"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["clip", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "video"
+	assert str(controller.previewMediaUrl).startswith("file://")
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_text_file_when_previewing_then_kind_is_text_with_no_media_url(qapp: QCoreApplication, tmp_path: Path):
+	path = tmp_path / "note.txt"
+	path.write_text("alpha beta\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "text"
+	assert str(controller.previewMediaUrl) == ""
+	assert "alpha beta" in str(controller.previewText)
+	controller.shutdown(thread_wait_ms=1000)
+
+
 def test_given_selected_path_when_search_finishes_then_selection_is_preserved(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	first = tmp_path / "a.txt"
@@ -1309,7 +1366,7 @@ def test_given_deleted_preview_document_when_applying_then_still_emits_and_clear
 	# when
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		controller._preview_generation,  # pyright: ignore[reportPrivateUsage]
-		("alpha\n", path, "", False, "", "TXT", ".txt"),
+		("alpha\n", path, "", False, "", "TXT", ".txt", "", ""),
 	)
 
 	# then — must leave loading and not raise
@@ -1340,7 +1397,7 @@ def test_given_stale_preview_generation_when_worker_finishes_then_result_is_igno
 	controller._preview_generation = 5  # pyright: ignore[reportPrivateUsage]
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		4,
-		("stale text", path, "", False, "", "TXT", ".txt"),
+		("stale text", path, "", False, "", "TXT", ".txt", "", ""),
 	)
 
 	# then

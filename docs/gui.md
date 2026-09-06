@@ -56,6 +56,21 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 | **Benchmark without splash** | Same env, optionally with `SRXY_STARTUP_TIMING=1` and `SRXY_STARTUP_EXIT=1` (quit after `qml_loaded`; see [development.md](development.md)). |
 | **Remove the feature** | Delete or stop loading `src/srxy/adapters/inbound/gui/qml/Splash.qml` and `splash.py`; in `app.py`, drop the `splash_enabled` / `SplashBridge` path and keep a single `engine.load(Main.qml)` with `visible: true` (or reveal Main immediately). Drop splash assertions in `tests/gui/test_gui_qml_load.py` and `tests/unit/test_gui_splash.py`. |
 
+## Content preview
+
+The **Preview** pane (right side of Search Results) renders differently depending on the selected file's detected content type (Magika + extension heuristics — the same `resolve_content_route()` routing search uses):
+
+| Content kind | Preview |
+|--------------|---------|
+| Text / code / markdown / JSON | Syntax-highlighted plain text, line-number gutter, in-file Find (Ctrl+F, F3 / Shift+F3) |
+| **Image** (`.jpg`, `.png`, `.webp`, `.gif`, `.bmp`, `.heic`/`.heif`, camera RAW, `.svg`, …) | Scaled-to-fit image. Non-SVG formats are decoded once via Pillow (same path as OCR/semantic image search — handles HEIC and RAW without relying on Qt's native image plugins) and capped to 2048px on the long edge; SVG renders natively via Qt Svg. |
+| **Audio** (`.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, …) | `QtMultimedia` player: play/pause, seek slider, elapsed/duration, mute |
+| **Video** (`.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`, …) | Same player controls plus an embedded video surface (`VideoOutput`) |
+
+Detected type mismatches still show in the header (e.g. `OGG · named .txt`) regardless of preview mode. Binary files Magika cannot classify as a known media/document kind still fall back to the previous "(Binary file — showing matches only)" placeholder, with matched lines (if any) surfaced in the Matches pane above.
+
+Only the **main app** (`srxy`) ships the full PySide6 wheel with `QtMultimedia` — the separate `srxy-installer` wizard's PySide6 payload is pruned to a Quick/Controls/Dialogs-only subset (see `packaging/*/prune-pyside*.sh`) and does not need this module.
+
 ## Query modes
 
 | Mode | Use for |

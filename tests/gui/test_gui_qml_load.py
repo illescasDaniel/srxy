@@ -148,6 +148,93 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	assert not warnings, "Qt warnings:\n" + "\n".join(warnings)
 
 
+def test_given_media_results_when_selecting_then_preview_stack_switches_and_players_bind(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	"""Selecting image/audio/video results must switch ``previewBodyStack`` and
+
+	bind the ``Image`` / ``MediaPlayer`` sources; selecting a text file must
+	switch back to the text body with no media source.
+	"""
+	# given
+	fixtures = Path(__file__).resolve().parents[1] / "fixtures"
+	image_path = tmp_path / "photo.jpg"
+	image_path.write_bytes((fixtures / "minimal.jpg").read_bytes())
+	audio_path = tmp_path / "beep.ogg"
+	audio_path.write_bytes((fixtures / "content_kind" / "beep.ogg").read_bytes())
+	video_path = tmp_path / "clip.mp4"
+	video_path.write_bytes((fixtures / "content_kind" / "clip.mp4").read_bytes())
+	text_path = tmp_path / "note.txt"
+	text_path.write_text("hello world\n", encoding="utf-8")
+
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	srxy_theme = apply_qt_quick_theme(qapp)
+	engine = QQmlApplicationEngine()
+	engine.addImportPath(shared_qml_import_path())
+	engine.rootContext().setContextProperty("controller", controller)
+	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
+	roots = engine.rootObjects()
+	assert roots, "failed to load Main.qml"
+	window = roots[0]
+	window.setProperty("visible", True)
+
+	stack = window.findChild(QObject, "previewBodyStack")
+	preview_image = window.findChild(QObject, "previewImage")
+	media_player = window.findChild(QObject, "previewMediaPlayer")
+	assert stack is not None
+	assert preview_image is not None
+	assert media_player is not None
+
+	results = [
+		FileSearchResult(path=image_path, score=0.9, breakdown={"name": 0.9}, lines=[]),
+		FileSearchResult(path=audio_path, score=0.8, breakdown={"name": 0.8}, lines=[]),
+		FileSearchResult(path=video_path, score=0.7, breakdown={"name": 0.7}, lines=[]),
+		FileSearchResult(path=text_path, score=0.6, breakdown={"content": 0.6}, lines=[]),
+	]
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=results, skipped_files=[]))
+	qapp.processEvents()
+
+	# when / then — image
+	controller.selectResult(0)
+	controller.flush_preview_for_tests()
+	qapp.processEvents()
+	assert str(controller.previewKind) == "image"
+	assert QQmlProperty(stack, "currentIndex").read() == 1
+	assert QQmlProperty(preview_image, "source").read().toString().startswith("data:image/png;base64,")
+
+	# when / then — audio
+	controller.selectResult(1)
+	controller.flush_preview_for_tests()
+	qapp.processEvents()
+	assert str(controller.previewKind) == "audio"
+	assert QQmlProperty(stack, "currentIndex").read() == 1
+	assert QQmlProperty(media_player, "source").read().toString().startswith("file://")
+
+	# when / then — video
+	controller.selectResult(2)
+	controller.flush_preview_for_tests()
+	qapp.processEvents()
+	assert str(controller.previewKind) == "video"
+	assert QQmlProperty(stack, "currentIndex").read() == 1
+	assert QQmlProperty(media_player, "source").read().toString().startswith("file://")
+
+	# when / then — back to text
+	controller.selectResult(3)
+	controller.flush_preview_for_tests()
+	qapp.processEvents()
+	assert str(controller.previewKind) == "text"
+	assert QQmlProperty(stack, "currentIndex").read() == 0
+
+	controller.shutdown(thread_wait_ms=500)
+	for root in list(roots):
+		root.deleteLater()
+	engine.deleteLater()
+	qapp.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+	qapp.processEvents()
+
+
 def _color_name(value: object) -> str:
 	assert isinstance(value, QColor)
 	return value.name()

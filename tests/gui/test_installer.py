@@ -695,8 +695,11 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 		*,
 		status: Callable[[str], None] | None = None,
 		confirm_unsafe: bool = False,
+		remove_cache: bool = True,
+		remove_settings: bool = True,
+		remove_models: bool = True,
 	):
-		del path, confirm_unsafe
+		del path, confirm_unsafe, remove_cache, remove_settings, remove_models
 		if status is not None:
 			status("Removing srxy app…")
 		started.set()
@@ -894,8 +897,11 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 		*,
 		status: Callable[[str], None] | None = None,
 		confirm_unsafe: bool = False,
+		remove_cache: bool = True,
+		remove_settings: bool = True,
+		remove_models: bool = True,
 	):
-		del confirm_unsafe
+		del confirm_unsafe, remove_cache, remove_settings, remove_models
 		calls.append(f"uninstall:{path}")
 		if status is not None:
 			status("Removing srxy app…")
