@@ -91,12 +91,12 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 #### v1.7.0 (still on `develop` / PR #35)
 
-- [ ] **Windows installer migration — PySide offline wrapper:** parity with macOS `.app` / Linux AppImage offline wizard (PR #35).
-- [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works.
+- [ ] **Windows installer migration — PySide offline wrapper:** parity with macOS `.app` / Linux AppImage offline wizard (PR #35). Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
+- [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works (parity check alongside Windows packaging work).
 
 #### v1.8.0 (`feature/1.8.0`)
 
-- [ ] **Unlimited OCR (semantic):** When `[semantic]` deps are installed, download/use [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR); else keep Tesseract. Benchmarks (quality+speed), unit + integration tests. Draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
+- [ ] **Unlimited OCR (semantic) — GPU QA (Daniel, blocking undraft):** When `[semantic]` deps are installed, download/use [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR); else keep Tesseract. Benchmarks (quality+speed), unit + integration tests. Draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft. `get_ocr_engine()` picks `UnlimitedOcrEngine` (`baidu/Unlimited-OCR`, transformers `AutoModel`/`AutoTokenizer` + `trust_remote_code=True`) whenever `[semantic]` (torch + transformers) is importable, else keeps `TesseractEngine` exactly as before — no separate env flag, non-semantic installs unaffected. Model lazily downloads via `model_store.ensure_unlimited_ocr_model()` (cached under `~/.cache/srxy/unlimited-ocr-model`, `SRXY_UNLIMITED_OCR_MODEL_PATH` override; own `model_store` CLI target `unlimited-ocr`, not bundled into `all`). OCR cache key variant now tracks whichever backend is active (`TESSERACT_ENGINE_VARIANT` / `UNLIMITED_OCR_ENGINE_VARIANT`) so switching backends can't read stale cached text. Benchmark: `scripts/bench_ocr_unlimited_vs_tesseract.py` (`uv run task bench-ocr`) — quality (fixture token hit-rate) + speed A/B, skips the Unlimited side gracefully without `[semantic]`/model/GPU. Tests: unit (`tests/unit/test_ocr_text.py`, `tests/unit/test_model_store.py`) mock the Unlimited path and pass without torch/transformers installed; integration (`tests/integration/test_ocr_unlimited_backend.py`) is marked `semantic`/`ocr`/`integration` and skips unless both deps and a cached model are present — needs real GPU hardware to actually exercise. **Blocking:** Daniel to run real-model GPU QA (accuracy vs Tesseract, throughput) before marking the PR ready for review.
 - [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Topic branch off `feature/1.8.0`.
 - [ ] **Windows installer migration — NSIS:** Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution).
 
