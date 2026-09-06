@@ -252,14 +252,17 @@ def _build_unlimited_ocr_model() -> tuple[object, object]:
 	# The model card's transformers example always calls .cuda() + bfloat16; keep that
 	# on CUDA but fall back to a widely-supported dtype off-GPU (CI/no-GPU/no-CUDA).
 	dtype = torch.bfloat16 if device == "cuda" else torch.float32
-	load_kwargs: dict[str, object] = {"trust_remote_code": True, "torch_dtype": dtype}
-	if installed_locally:
-		os.environ.setdefault("HF_HUB_OFFLINE", "1")
-		os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
-		load_kwargs["local_files_only"] = True
-
-	tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
-	model = AutoModel.from_pretrained(source, **load_kwargs)
+	# local_files_only scopes "don't hit the network" to just these two calls. Do NOT
+	# use HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE env vars instead — those stick for the
+	# rest of the process and would silently break later *online* HF downloads (CLIP,
+	# semantic-text, transcribe) once this model is cached locally.
+	tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True, local_files_only=installed_locally)
+	model = AutoModel.from_pretrained(
+		source,
+		trust_remote_code=True,
+		torch_dtype=dtype,
+		local_files_only=installed_locally,
+	)
 	model = model.to(device).eval()
 	return model, tokenizer
 
@@ -287,13 +290,38 @@ class UnlimitedOcrEngine(OcrEngine):
 	``trust_remote_code=True``, per the model card) and downloaded on first use
 	through :mod:`srxy.adapters.outbound.models.model_store`, mirroring the CLIP /
 	semantic-text / transcribe loaders in this codebase.
+
+	Having torch + transformers importable only means Unlimited OCR *can* be
+	attempted, not that it will succeed (the model may not be downloaded yet,
+	the user may decline an interactive download prompt, or `trust_remote_code`
+	model code may fail to load on this machine). If that happens, fall back to
+	Tesseract — when available — instead of breaking OCR outright; only raise
+	when neither backend can serve.
 	"""
 
+	def __init__(self):
+		self._fallback: OcrEngine | None = None
+
+	def is_using_fallback(self) -> bool:
+		return self._fallback is not None
+
 	def recognize(self, image: Image.Image) -> str:
-		model, tokenizer = _load_unlimited_ocr_model()
-		infer = getattr(model, "infer", None)
-		if infer is None:
-			raise RuntimeError("Unlimited OCR model does not expose an infer() method")
+		if self._fallback is not None:
+			return self._fallback.recognize(image)
+		try:
+			model, tokenizer = _load_unlimited_ocr_model()
+			infer = getattr(model, "infer", None)
+			if infer is None:
+				raise RuntimeError("Unlimited OCR model does not expose an infer() method")
+		except Exception as exc:
+			if not tesseract_available():
+				raise
+			print(
+				f"warning: Unlimited OCR unavailable ({exc}); falling back to Tesseract OCR.",
+				file=sys.stderr,
+			)
+			self._fallback = TesseractEngine()
+			return self._fallback.recognize(image)
 		result = infer(tokenizer, image)
 		return str(result).strip()
 
@@ -358,7 +386,19 @@ def ensure_ocr_available():
 
 
 def current_ocr_engine_variant() -> str:
-	"""Cache-key variant for the OCR backend `get_ocr_engine` would select right now."""
+	"""Cache-key variant for whichever OCR backend is actually serving right now.
+
+	Prefers the live singleton engine's fallback state (set the first time
+	``UnlimitedOcrEngine.recognize`` falls back to Tesseract) over the static
+	deps probe, so a cache write after a runtime fallback is keyed correctly —
+	otherwise a later successful Unlimited OCR load could return stale
+	Tesseract text cached under the Unlimited variant. Note: the very first
+	call in a process still keys off the deps probe (the singleton engine
+	does not exist yet when ``_cached_ocr_text`` reads the variant before its
+	first ``recognize()`` call).
+	"""
+	if isinstance(_ocr_engine, UnlimitedOcrEngine):
+		return TESSERACT_ENGINE_VARIANT if _ocr_engine.is_using_fallback() else UNLIMITED_OCR_ENGINE_VARIANT
 	return UNLIMITED_OCR_ENGINE_VARIANT if is_unlimited_ocr_available() else TESSERACT_ENGINE_VARIANT
 
 
