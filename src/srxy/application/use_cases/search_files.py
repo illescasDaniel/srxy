@@ -663,6 +663,7 @@ def _search_single_file(
 			breakdown=breakdown,
 			lines=line_matches,
 			term_surfaces=term_surfaces,
+			is_dir=is_directory,
 		),
 		local_skipped,
 	)

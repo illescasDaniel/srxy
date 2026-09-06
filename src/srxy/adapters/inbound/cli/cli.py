@@ -44,7 +44,7 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 def format_json_result(result: FileSearchResult, *, query: str = "") -> dict[str, object]:
 	return {
 		"path": result.path.as_posix(),
-		"type": "directory" if result.path.is_dir() else "file",
+		"type": "directory" if result.is_dir else "file",
 		"score": result.score,
 		"breakdown": result.breakdown,
 		"term_surfaces": result.term_surfaces,

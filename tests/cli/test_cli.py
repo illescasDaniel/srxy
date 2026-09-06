@@ -293,13 +293,46 @@ def test_given_directory_result_when_formatting_json_then_marks_type_directory(t
 	# given
 	folder_path = tmp_path / "Invoices"
 	folder_path.mkdir()
-	result = FileSearchResult(path=folder_path, score=0.9, breakdown={"name": 0.9})
+	result = FileSearchResult(path=folder_path, score=0.9, breakdown={"name": 0.9}, is_dir=True)
 
 	# when
 	payload = json.loads(format_json([result], query="invoices"))
 
 	# then
 	assert payload[0]["type"] == "directory"
+
+
+def test_given_path_removed_after_search_when_formatting_json_then_type_reflects_captured_hit(
+	tmp_path: Path,
+):
+	# given — is_dir is captured on the result when the hit is produced (scan time),
+	# not re-derived from a live path.is_dir() stat at format time. Formatting must
+	# not race with a path that changed (or vanished) between scan and format.
+	folder_path = tmp_path / "Invoices"
+	folder_path.mkdir()
+	result = FileSearchResult(path=folder_path, score=0.9, breakdown={"name": 0.9}, is_dir=True)
+	folder_path.rmdir()
+	assert not folder_path.exists()
+
+	# when
+	payload = json.loads(format_json([result], query="invoices"))
+
+	# then — still reports "directory", matching what was actually matched during the scan
+	assert payload[0]["type"] == "directory"
+
+
+def test_given_file_result_when_formatting_json_then_defaults_to_type_file(tmp_path: Path):
+	# given — is_dir defaults to False, so a plain file result (constructed without
+	# passing is_dir) is never mistakenly reported as a directory.
+	file_path = tmp_path / "notes.txt"
+	file_path.write_text("hello", encoding="utf-8")
+	result = FileSearchResult(path=file_path, score=0.5, breakdown={"name": 0.5})
+
+	# when
+	payload = json.loads(format_json([result], query="notes"))
+
+	# then
+	assert payload[0]["type"] == "file"
 
 
 def test_given_names_only_flag_when_resolving_modes_then_disables_content_search():

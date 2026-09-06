@@ -70,6 +70,14 @@ class FileSearchResult:
 	breakdown: dict[str, float] = field(default_factory=dict)
 	lines: list[LineMatch] = field(default_factory=list)
 	term_surfaces: dict[str, dict[str, float]] = field(default_factory=dict)
+	is_dir: bool = False
+	"""Captured once, when the hit is produced (``path.is_dir()`` at scan time).
+
+	Prefer this over re-``stat``-ing ``path`` later (e.g. when formatting output):
+	the path can be renamed/deleted/replaced between scan and format time, so a
+	live ``is_dir()`` call at format time can race and disagree with what was
+	actually matched.
+	"""
 
 
 @dataclass(frozen=True)

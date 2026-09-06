@@ -82,6 +82,25 @@ def test_given_folder_name_matching_query_when_searching_names_then_returns_fold
 	assert folder_result.score >= 0.5
 	assert folder_result.breakdown.get("name", 0.0) >= 0.5
 	assert "content" not in folder_result.breakdown
+	assert folder_result.is_dir is True
+
+
+def test_given_folder_and_file_result_when_searching_names_then_is_dir_captured_per_hit(tmp_path: Path):
+	# given — is_dir is captured on FileSearchResult when the hit is produced, not
+	# re-derived later, so it must be correct for both a folder and a file hit
+	# returned from the same search.
+	budget_dir = tmp_path / "budget-reports"
+	budget_dir.mkdir()
+	(budget_dir / "budget-summary.md").write_text("figures", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "budget", search_contents=False, threshold=0.3)
+
+	# then
+	folder_result = next(result for result in results if result.path.name == "budget-reports")
+	file_result = next(result for result in results if result.path.name == "budget-summary.md")
+	assert folder_result.is_dir is True
+	assert file_result.is_dir is False
 
 
 def test_given_folder_and_file_both_matching_query_when_searching_names_then_returns_both(tmp_path: Path):
