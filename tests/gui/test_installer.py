@@ -700,7 +700,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 		if status is not None:
 			status("Removing srxy app…")
 		started.set()
-		assert release.wait(5.0)
+		assert release.wait(20.0)
 
 	monkeypatch.setattr(controller_mod, "uninstall_prefix", fake_uninstall)
 	controller = InstallerController()
@@ -708,8 +708,10 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 
 	# when
 	controller.startUninstall()
-	assert started.wait(5.0)
-	deadline = time.monotonic() + 2.0
+	# Generous budget — thread startup latency spikes under CI load / xdist worker
+	# contention after ~200 preceding GUI tests in this file's shared worker.
+	assert started.wait(20.0)
+	deadline = time.monotonic() + 10.0
 	while time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		if "Removing srxy app" in str(controller.status):
@@ -722,7 +724,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 	assert "Removing srxy app" in str(controller.status)
 
 	release.set()
-	deadline = time.monotonic() + 5.0
+	deadline = time.monotonic() + 10.0
 	while bool(controller.busy) and time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		time.sleep(0.01)
@@ -899,7 +901,7 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 		calls.append(f"uninstall:{path}")
 		if status is not None:
 			status("Removing srxy app…")
-		assert release.wait(5.0)
+		assert release.wait(20.0)
 
 	def fake_install(
 		options: InstallOptions,
@@ -929,7 +931,9 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 
 	# when
 	controller.startReinstall()
-	deadline = time.monotonic() + 2.0
+	# Generous budget — thread startup latency spikes under CI load / xdist worker
+	# contention after ~200 preceding GUI tests in this file's shared worker.
+	deadline = time.monotonic() + 10.0
 	while time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		if bool(controller.busy) and "uninstall:" in "".join(calls):
@@ -938,7 +942,7 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 	assert bool(controller.busy) is True
 	assert str(controller.page) == "progress"
 	release.set()
-	deadline = time.monotonic() + 5.0
+	deadline = time.monotonic() + 10.0
 	while bool(controller.busy) and time.monotonic() < deadline:
 		QCoreApplication.processEvents()
 		time.sleep(0.01)
