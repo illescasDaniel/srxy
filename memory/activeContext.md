@@ -4,26 +4,24 @@ _Last updated: 2026-09-06_
 
 ## Branch
 
-- `develop` is integration; feature work on topic branches. Windows PySide installer on PR #35 branch; Unlimited OCR on a new topic branch (Srxy Developer).
+- `develop` is integration for 1.7.0. Release train **1.8.0** lives on `feature/1.8.0` (Unlimited OCR, media preview, NSIS, …). Topic branches fork from the matching train.
 
 ## Current focus
 
-**Unlimited OCR** — if user has `[semantic]` dependency group, download/use `baidu/Unlimited-OCR`; else Tesseract. Benchmarks (quality + speed), unit + integration tests. **Stay draft** until Daniel GPU QA.
+**1.7.0 packaging** — Windows PySide offline wrapper (PR #35) + Check macOS installer.
 
 ## Planned (Windows packaging)
 
-Migrate away from Inno Setup commercial-license constraints before srxy revenue matters:
+1. **PySide offline wrapper for Windows** — track: **1.7.0** (PR #35).
+2. **NSIS instead of Inno** — track: **1.8.0** (`feature/1.8.0`).
 
-1. **PySide offline wrapper for Windows** — same model as macOS offline `.app` and Linux offline AppImage (full QML wizard; bootstrap Python + wheel in payload). Track: 1.7.0.
-2. **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng; no commercial license). Track: 1.8.
-
-Inno Setup remains fine **for now** — no sales/donations yet (non-commercial under Inno's ~$5k revenue threshold).
+Inno Setup remains fine **for now** — no sales/donations yet.
 
 ## Next steps
 
-1. **Unlimited OCR** — implement + benchmarks + tests; draft PR; Daniel GPU QA before undraft.
-2. **Windows installer migration** — finish PySide offline wrapper (PR #35 / CI green) then NSIS later.
-3. **Check macOS installer** — verify build/signing/install path still works.
+1. **Windows installer migration** — finish PySide offline wrapper (PR #35 / CI green).
+2. **Check macOS installer** — verify build/signing/install path still works.
+3. **1.8.0 work** — see `feature/1.8.0` (Unlimited OCR draft PR #38, media preview, NSIS).
 
 ## Memory protocol (2026-09-01)
 
