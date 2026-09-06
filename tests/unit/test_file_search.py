@@ -156,6 +156,37 @@ def test_given_nested_folder_when_subdirectories_disabled_then_deep_folder_not_m
 	assert all(result.path != nested for result in results)
 
 
+def test_given_top_level_folder_when_subdirectories_disabled_then_still_matched_as_directory_result(
+	tmp_path: Path,
+):
+	"""Symmetric to the deep-folder-excluded case above: root's immediate children
+	stay searchable by name even with include_subdirectories=False (the walker does
+	not recurse past them, but it does not hide them either) — same guarantee the
+	walker-level tests in test_file_walker_directories.py already assert directly,
+	exercised here through the full search-level API + real matcher/threshold."""
+	# given — a matching folder directly under root, and a matching folder that is
+	# one level deeper (must stay excluded with subdirectories disabled).
+	top_level = tmp_path / "targetfolder"
+	top_level.mkdir()
+	deep = tmp_path / "top" / "targetfolder"
+	deep.mkdir(parents=True)
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"targetfolder",
+		search_contents=False,
+		include_subdirectories=False,
+		threshold=0.5,
+	)
+
+	# then
+	assert any(result.path == top_level for result in results)
+	top_level_result = next(result for result in results if result.path == top_level)
+	assert top_level_result.is_dir is True
+	assert all(result.path != deep for result in results)
+
+
 def test_given_hidden_folder_when_searching_names_then_skipped_by_default(tmp_path: Path):
 	# given
 	hidden = tmp_path / ".gitrepo"
