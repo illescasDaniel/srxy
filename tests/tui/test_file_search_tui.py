@@ -77,6 +77,61 @@ def test_given_uppercase_readme_when_tui_names_search_completes_then_lists_file(
 	asyncio.run(run())
 
 
+def test_given_matching_folder_name_when_tui_names_search_completes_then_lists_folder(tmp_path: Path):
+	# given — real engine path; a folder whose name matches the query is a result too
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body", encoding="utf-8")
+	args = build_parser().parse_args(["invoices", str(tmp_path), "--names-only"])
+	app = SrxyApp(args, auto_start=True)
+	app.theme = "textual-light"
+
+	async def run():
+		with patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)):
+			async with app.run_test(size=(100, 30)) as pilot:
+				table = app.query_one("#results-table", DataTable)
+				for _ in range(60):
+					await pilot.pause(delay=0.05)
+					if table.row_count >= 1:
+						break
+					table = app.query_one("#results-table", DataTable)
+				assert table.row_count >= 1
+				assert app.exit_code == 0
+				paths = [str(table.get_row_at(row)[1]) for row in range(table.row_count)]
+				assert any(path.endswith("Invoices") for path in paths)
+
+	# when / then
+	asyncio.run(run())
+
+
+def test_given_matching_folder_name_when_tui_content_only_search_then_folder_excluded(tmp_path: Path):
+	# given — folders never have body content, so content-only search must exclude them
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures\n", encoding="utf-8")
+	args = build_parser().parse_args(["invoices", str(tmp_path), "--content-only"])
+	app = SrxyApp(args, auto_start=True)
+	app.theme = "textual-light"
+
+	async def run():
+		with patch("srxy.adapters.inbound.tui.app.run_tui_preflight", new=AsyncMock(return_value=None)):
+			async with app.run_test(size=(100, 30)) as pilot:
+				table = app.query_one("#results-table", DataTable)
+				for _ in range(60):
+					await pilot.pause(delay=0.05)
+					if table.row_count >= 1:
+						break
+					table = app.query_one("#results-table", DataTable)
+				assert table.row_count >= 1
+				assert app.exit_code == 0
+				paths = [str(table.get_row_at(row)[1]) for row in range(table.row_count)]
+				assert not any(path.endswith("/invoices") for path in paths)
+				assert any(path.endswith("notes.txt") for path in paths)
+
+	# when / then
+	asyncio.run(run())
+
+
 def test_given_name_match_when_tui_results_rendered_then_snapshot_includes_readme():
 	# given — fixed path so SVG text snapshots stay stable across runs
 	file_path = Path("/fixture/docs/README.md")

@@ -40,7 +40,7 @@ File names
 █
 ┌
 █
-Match the path and filename
+Match the path, filename, and folder names
 ▃▃
 █
 ┐
