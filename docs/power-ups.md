@@ -12,7 +12,11 @@ srxy "invoice" ./photos --ocr --content-only
 export SRXY_OCR=1
 ```
 
-Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` adds Tesseract on embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`) — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number. Installers can download extra **tessdata** language packs (English + orientation detection are always included); runtime passes installed packs to Tesseract as `-l eng+spa+…`.
+Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` recognizes embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`). PDF body text still from `pypdf`; matches show page number.
+
+**Backend:** Tesseract by default. If `srxy[semantic]` is installed (torch + transformers importable), OCR automatically uses **Unlimited OCR** (`baidu/Unlimited-OCR`) instead — no separate flag; the switch is transparent. Non-semantic installs are unaffected and keep Tesseract exactly as before — see [Installation](installation.md). Installers can download extra **tessdata** language packs for Tesseract (English + orientation detection are always included); runtime passes installed packs to Tesseract as `-l eng+spa+…`.
+
+Unlimited OCR model cached under `~/.cache/srxy/unlimited-ocr-model` (local path override: `SRXY_UNLIMITED_OCR_MODEL_PATH`); downloads on first OCR call once `[semantic]` is detected (or prefetch it — see [Model prefetch](#model-prefetch)). Device order follows the same CUDA → MPS → CPU rule as the other semantic models (`SRXY_SEMANTIC_DEVICE`). Compare both backends with `uv run task bench-ocr` (see [`scripts/bench_ocr_unlimited_vs_tesseract.py`](../scripts/bench_ocr_unlimited_vs_tesseract.py)).
 
 Cache: encrypted `~/.cache/srxy/cache.db` on Linux/macOS, or `%LOCALAPPDATA%\srxy\cache.db` on Windows (`SRXY_CACHE_DIR`). Key file: `.cache_key` beside `cache.db` (mode `600` on Unix). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage/Inno installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
 
@@ -77,9 +81,10 @@ python -m srxy.adapters.outbound.models.model_store semantic-text
 python -m srxy.adapters.outbound.models.model_store semantic-image
 python -m srxy.adapters.outbound.models.model_store transcribe
 python -m srxy.adapters.outbound.models.model_store all
+python -m srxy.adapters.outbound.models.model_store unlimited-ocr  # ~6 GB; needs srxy[semantic]
 ```
 
-`SRXY_AUTO_DOWNLOAD=1` for non-interactive download.
+`SRXY_AUTO_DOWNLOAD=1` for non-interactive download. `unlimited-ocr` is not included in the `all` bundle (it downloads lazily the first time OCR runs with `[semantic]` installed) — fetch it explicitly to warm the cache ahead of time.
 
 ## Managing cache
 
@@ -90,10 +95,11 @@ Downloaded model weights and scan results are stored separately under `~/.cache/
 | `semantic-model/` | Text semantic model weights |
 | `semantic-image-model/` | CLIP model weights |
 | `transcribe-model/` | Whisper / faster-whisper weights |
+| `unlimited-ocr-model/` | Unlimited OCR (baidu/Unlimited-OCR) weights |
 | `cache.db` | Encrypted OCR, transcripts, embeddings, document-text cache |
 | `.cache_key` | Fernet key for `cache.db` payloads (created on first use) |
 
-Custom model paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`, and `SRXY_CACHE_DIR`. LRU cap: `SRXY_CACHE_MAX_BYTES`.
+Custom model paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`, `SRXY_UNLIMITED_OCR_MODEL_PATH`, and `SRXY_CACHE_DIR`. LRU cap: `SRXY_CACHE_MAX_BYTES`.
 
 Upgrading from older srxy versions clears unencrypted cache entries on first open (schema v2).
 
@@ -108,6 +114,7 @@ Removes model weights only. Models re-download on next use (or run [Model prefet
 ./scripts/clear_models.sh semantic-text
 ./scripts/clear_models.sh semantic-image
 ./scripts/clear_models.sh transcribe
+./scripts/clear_models.sh unlimited-ocr
 ```
 
 Or without the script:

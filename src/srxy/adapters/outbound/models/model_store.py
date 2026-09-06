@@ -14,6 +14,7 @@ SEMANTIC_IMAGE_MODEL_ID = "sentence-transformers/clip-ViT-B-32"
 TRANSCRIBE_FASTER_WHISPER_REPO_TEMPLATE = "Systran/faster-whisper-{model}"
 TRANSCRIBE_TRANSFORMERS_MODEL_TEMPLATE = "openai/whisper-{model}"
 DEFAULT_TRANSCRIBE_MODEL = "base"
+UNLIMITED_OCR_MODEL_ID = "baidu/Unlimited-OCR"
 
 _MODEL_MARKERS = ("modules.json", "config.json", "model.safetensors", "pytorch_model.bin", "model.bin")
 
@@ -63,6 +64,13 @@ def transcribe_faster_whisper_repo_id() -> str:
 
 def transcribe_transformers_model_id() -> str:
 	return TRANSCRIBE_TRANSFORMERS_MODEL_TEMPLATE.format(model=transcribe_model_name())
+
+
+def unlimited_ocr_model_dir() -> Path:
+	override = os.environ.get("SRXY_UNLIMITED_OCR_MODEL_PATH", "").strip()
+	if override:
+		return Path(override).expanduser()
+	return models_root() / "unlimited-ocr-model"
 
 
 def is_model_installed(path: Path) -> bool:
@@ -235,6 +243,25 @@ def download_transcribe_model(
 	print(f"Transcription model cached at {directory}", file=sys.stderr)
 
 
+def download_unlimited_ocr_model(
+	*,
+	target_dir: Path | None = None,
+	on_progress: Callable[[int, int, str], None] | None = None,
+):
+	from srxy.i18n import tr
+
+	directory = target_dir or unlimited_ocr_model_dir()
+	print(f"Downloading {UNLIMITED_OCR_MODEL_ID} into {directory}", file=sys.stderr)
+	download_model(
+		UNLIMITED_OCR_MODEL_ID,
+		directory,
+		on_progress=on_progress,
+		progress_label=_model_progress_label(tr("model.label.unlimited_ocr")),
+	)
+	os.environ["SRXY_UNLIMITED_OCR_MODEL_PATH"] = str(directory)
+	print(f"Unlimited OCR model cached at {directory}", file=sys.stderr)
+
+
 def _ensure_model(
 	*,
 	label: str,
@@ -317,6 +344,34 @@ def ensure_semantic_image_model(
 	)
 
 
+def ensure_unlimited_ocr_model(
+	*,
+	interactive: bool = True,
+	auto_download: bool = False,
+	stdin: IO[str] | None = None,
+	stdout: IO[str] | None = None,
+	prompt_yes: Callable[[str], bool] | None = None,
+) -> bool:
+	return _ensure_model(
+		label="Unlimited OCR model",
+		model_id=UNLIMITED_OCR_MODEL_ID,
+		target_dir=unlimited_ocr_model_dir(),
+		env_var="SRXY_UNLIMITED_OCR_MODEL_PATH",
+		size_hint="~6 GB",
+		interactive=interactive,
+		auto_download=auto_download,
+		stdin=stdin,
+		stdout=stdout,
+		prompt_yes=prompt_yes,
+	)
+
+
+def unlimited_ocr_model_missing_message() -> str:
+	from srxy.i18n import tr
+
+	return tr("error.model_unlimited_ocr_missing", path=unlimited_ocr_model_dir())
+
+
 def semantic_text_model_missing_message() -> str:
 	from srxy.i18n import tr
 
@@ -394,13 +449,24 @@ def clear_transcribe_model():
 	_remove_dir_if_present(transcribe_model_root(), "Transcription model")
 
 
+def clear_unlimited_ocr_model():
+	_remove_dir_if_present(unlimited_ocr_model_dir(), "Unlimited OCR model")
+
+
 def clear_all_models():
 	clear_semantic_text_model()
 	clear_semantic_image_model()
 	clear_transcribe_model()
+	clear_unlimited_ocr_model()
 
 
+# "all" intentionally covers only the matching/transcription bundle from the
+# original release. Unlimited OCR downloads lazily the first time OCR runs with
+# [semantic] installed (see ocr_text.get_ocr_engine); it also has its own explicit
+# CLI target below for parity with `model_store clear` / Settings maintenance.
 _MODEL_TARGETS = ("semantic-text", "semantic-image", "transcribe", "all")
+_UNLIMITED_OCR_TARGET = "unlimited-ocr"
+_CLI_TARGETS = (*_MODEL_TARGETS, _UNLIMITED_OCR_TARGET)
 
 
 PROGRESS_LINE_PREFIX = "__SRXY_PROGRESS__"
@@ -432,7 +498,7 @@ def _build_download_parser():
 	parser = argparse.ArgumentParser(description="Download srxy semantic models for offline use.")
 	parser.add_argument(
 		"target",
-		choices=_MODEL_TARGETS,
+		choices=_CLI_TARGETS,
 		help="Which model bundle to download into ~/.cache/srxy/",
 	)
 	parser.add_argument(
@@ -449,7 +515,7 @@ def _build_clear_parser():
 	parser = argparse.ArgumentParser(description="Remove cached srxy model weights.")
 	parser.add_argument(
 		"target",
-		choices=_MODEL_TARGETS,
+		choices=_CLI_TARGETS,
 		nargs="?",
 		default="all",
 		help="Which model bundle to remove (default: all)",
@@ -470,6 +536,8 @@ def _run_download(target: str, *, progress: bool = False) -> int:
 			download_semantic_image_model(on_progress=on_progress)
 		if target in {"transcribe", "all"}:
 			download_transcribe_model(on_progress=on_progress)
+		if target == _UNLIMITED_OCR_TARGET:
+			download_unlimited_ocr_model(on_progress=on_progress)
 	except RuntimeError as error:
 		print(error, file=sys.stderr)
 		return 2
@@ -483,6 +551,8 @@ def _run_clear(target: str) -> int:
 		clear_semantic_image_model()
 	if target in {"transcribe", "all"}:
 		clear_transcribe_model()
+	if target in {_UNLIMITED_OCR_TARGET, "all"}:
+		clear_unlimited_ocr_model()
 	return 0
 
 

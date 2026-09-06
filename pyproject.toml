@@ -163,6 +163,7 @@ include = [
 	"src/srxy/adapters/outbound/metadata/windows_metadata.py",
 	"src/srxy/adapters/outbound/models/device.py",
 	"src/srxy/adapters/outbound/models/model_store.py",
+	"src/srxy/adapters/outbound/ocr/ocr_text.py",
 	"src/srxy/adapters/outbound/semantic/semantic_image.py",
 	"src/srxy/adapters/outbound/transcribe/transcribe_text.py",
 	"src/srxy/application/matching/semantic.py",
@@ -254,6 +255,7 @@ checks-win-all-quiet = { cmd = "cmd /c scripts\\quality\\checks-win.cmd -Quiet -
 clear-models = { cmd = "./scripts/clear_models.sh", help = "clear cached model weights (optional target after --)" }
 clear-cache = { cmd = "./scripts/clear_results_cache.sh", help = "clear results cache (cache.db)" }
 bench = { cmd = "uv run python scripts/bench_file_search.py", help = "benchmark magic_file_search (flags after --)" }
+bench-ocr = { cmd = "uv run python scripts/bench_ocr_unlimited_vs_tesseract.py", help = "benchmark Unlimited OCR vs Tesseract: quality + speed (flags after --)" }
 export-api = { cmd = "uv run python scripts/docs/export_public_api.py", help = "regenerate docs/api-reference.md" }
 export-tui-screenshot = { cmd = "./scripts/docs/export_tui_screenshot.sh", help = "regenerate TUI docs screenshot" }
 export-gui-screenshot = { cmd = "./scripts/docs/export_gui_screenshot.sh", help = "regenerate per-OS GUI docs screenshot (gui-macos/linux/windows.png)" }

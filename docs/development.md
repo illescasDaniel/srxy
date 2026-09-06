@@ -195,6 +195,8 @@ uv run python scripts/bench_file_search.py --iters 5       # more iterations for
 
 Results and design rationale for the parallel execution strategy (thread pool vs process pool) are documented in [docs/multi-process-benchmark.md](multi-process-benchmark.md).
 
+`scripts/bench_ocr_unlimited_vs_tesseract.py` (`uv run task bench-ocr`) compares the Tesseract and Unlimited OCR (`baidu/Unlimited-OCR`) backends on quality (fixture token hit-rate) and speed. The Unlimited OCR side skips gracefully unless `srxy[semantic]` is installed *and* the model is already cached (`python -m srxy.adapters.outbound.models.model_store unlimited-ocr`) — no GPU or 3B-parameter download is required to run this repo's tests or the light Tesseract-only side of the benchmark.
+
 ## Linux Wayland GUI freezes
 
 On Wayland, Qt Quick may present OpenGL frames through EGL (`eglSwapBuffers`). Threaded Scene Graph rendering on that path can freeze the UI on some drivers (notably NVIDIA). srxy tries **Vulkan** (`QSG_RHI_BACKEND=vulkan`) when the Vulkan loader is available; otherwise it sets `QSG_RENDER_LOOP=basic` on the OpenGL path.
