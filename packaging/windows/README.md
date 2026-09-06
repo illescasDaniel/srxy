@@ -5,9 +5,9 @@ Two offline artifacts, built independently (neither overwrites the other):
 | Artifact | Build | Smoke | UI |
 |----------|-------|-------|----|
 | `dist/srxy-<version>-installer-<installer_version>-x86_64.exe(.zip)` | [`build-offline.ps1`](build-offline.ps1) | [`smoke-offline.ps1`](smoke-offline.ps1) | **Inno Setup** native wizard (headless Python engine underneath) |
-| `dist/srxy-<version>-installer-<installer_version>-pyside-x86_64.zip` | [`build-offline-pyside.ps1`](build-offline-pyside.ps1) | [`smoke-offline-pyside.ps1`](smoke-offline-pyside.ps1) | **PySide6** full wizard — same QML wizard as the macOS `.app` / Linux AppImage offline installers |
+| `dist/srxy-<version>-installer-<installer_version>-pyside-x86_64.zip` | [`build-offline-pyside.ps1`](build-offline-pyside.ps1) | [`smoke-offline-pyside.ps1`](smoke-offline-pyside.ps1) | **PySide6** full wizard — zip of a fat self-extracting `SrxyInstaller.exe` (same QML wizard as macOS `.app` / Linux AppImage) |
 
-The Inno path remains the primary/shipped Windows installer for now (see [Windows installer migration](../../memory/activeContext.md)). The PySide wrapper is an additional, parity-focused build for eventual use as the payload behind an NSIS-based single-file installer (a separate follow-up — **not** implemented here); today it ships as a zip of a portable payload folder (extract, run `SrxyInstaller.exe`).
+The Inno path remains the primary/shipped Windows installer for now (see [Windows installer migration](../../memory/activeContext.md)). The PySide wrapper is an additional, parity-focused build; unzipping its artifact yields a single fat `SrxyInstaller.exe` that embeds `python\` + `venv\` + `share\` and extracts them on first launch.
 
 ## Inno Setup wizard
 
@@ -64,9 +64,9 @@ Optional components (Tesseract, ffmpeg, semantic, models) are **not** embedded; 
 
 ## PySide wizard (offline)
 
-Builds `dist/srxy-<version>-installer-<installer_version>-pyside-x86_64.zip`, a zipped
-portable payload folder — parity with the macOS offline `.app` and Linux offline
-AppImage, which both wrap the same PySide6/QML wizard
+Builds `dist/srxy-<version>-installer-<installer_version>-pyside-x86_64.zip` containing
+only a fat self-extracting `SrxyInstaller.exe` — parity with the macOS offline `.app`
+and Linux offline AppImage, which both wrap the same PySide6/QML wizard
 (`srxy.adapters.inbound.installer.app.run_installer`) around the same headless engine.
 
 ```powershell
@@ -74,12 +74,21 @@ AppImage, which both wrap the same PySide6/QML wizard
 # or: uv run task build-windows-installer-offline-pyside
 .\packaging\windows\smoke-offline-pyside.ps1
 # or: uv run task smoke-windows-installer-offline-pyside
+# optional: .\packaging\windows\smoke-offline-pyside.ps1 -InstallerExe .\dist\windows-pyside-installer-stage\SrxyInstaller.exe
 ```
 
 Prerequisites: `uv`, and `csc.exe` (.NET Framework 4.x developer tools — same requirement
 `build-offline.ps1` already has for the app launcher/icon build).
 
-Extracted, the zip contains:
+After unzipping the distribution zip you get:
+
+```
+SrxyInstaller.exe    fat SFX: embedded zip of python\ + venv\ + share\ + SRXYISFX trailer
+```
+
+On first launch the stub extracts under `%LOCALAPPDATA%\srxy\is\<sha16>\p\`
+(cached for later runs), sets `SRXY_INSTALLER_PAYLOAD`, and execs
+`venv\Scripts\pythonw.exe -m srxy.adapters.inbound.installer`. The embedded tree is:
 
 ```
 python\             relocatable managed CPython 3.12 (base interpreter for venv\)
@@ -87,7 +96,6 @@ venv\                wizard-only venv: PySide6 + srxy --no-deps (pruned, no full
 share\srxy\          srxy.whl / srxy-<version>-*.whl (full wheel for prefix installs)
 share\srxy\installer_meta.toml
 share\srxy\windows\  prebuilt Srxy.exe (app launcher) + srxy.ico, reused at prefix-install time
-SrxyInstaller.exe    launcher: sets SRXY_INSTALLER_PAYLOAD, execs venv\Scripts\pythonw.exe -m srxy.adapters.inbound.installer
 ```
 
 Same payload-resolution contract the Inno bootstrap already uses
@@ -104,23 +112,16 @@ privacy acknowledgment.
 Build steps mirror macOS/Linux offline builds: install a managed CPython, create a
 `--relocatable --link-mode copy` venv, install `PySide6>=6.6` then `srxy --no-deps`,
 verify the venv still imports after being copied to an unrelated path (the same
-relocation-bug class those builds guard against), then prune unused Qt payload
+relocation-bug class those builds guard against), prune unused Qt payload
 ([`prune-pyside.ps1`](prune-pyside.ps1) — Windows PySide6 wheel layout: `Qt6*.dll`
 sit directly under `site-packages\PySide6\`, not a nested `Qt\lib\` like macOS/Linux;
-`qml\` / `plugins\` / `translations\` / `metatypes\` have no `Qt\` prefix either).
+`qml\` / `plugins\` / `translations\` / `metatypes\` have no `Qt\` prefix either),
+then compile the SFX stub and append `payload-embed.zip` + trailer.
 
 CI job: `build-offline-pyside` in
 [`.github/workflows/windows-installer.yml`](../../.github/workflows/windows-installer.yml)
 (uploads the zip as a build artifact on every PR/push; not yet attached to GitHub
-Releases — that follows once the NSIS single-file wrapper lands).
-
-**What still needs a real Windows host to verify:** the actual `.ps1` execution
-(managed Python/`uv venv`/`csc.exe` toolchain, PySide6 DLL loading, on-screen wizard
-rendering, FluentWinUI3 theming). This repo's cloud agent environment cannot run
-PowerShell/Windows builds, so verification here is limited to: script-content contract
-tests (`tests/unit/test_windows_pyside_packaging.py`), reuse of the already-tested
-cross-platform install engine (`install.py`, `path_setup.py`, `controller.py`, shared
-QML wizard), and the CI job above running on `windows-latest`.
+Releases — that follows once the NSIS / release-artifact decision lands).
 
 ## Engine progress protocol
 

@@ -97,7 +97,7 @@ jobs:
         shell: pwsh
         run: .\packaging\windows\build-offline-pyside.ps1
 
-      - name: Smoke PySide installer wrapper payload
+      - name: Smoke PySide fat SrxyInstaller.exe
         shell: pwsh
         run: .\packaging\windows\smoke-offline-pyside.ps1
 

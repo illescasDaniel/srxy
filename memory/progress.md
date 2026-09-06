@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-06_
 
 ## v1.7.0 — fixes and improvements
 
@@ -102,12 +102,13 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
   - Taskipy: `build-windows-installer-offline-pyside`, `smoke-windows-installer-offline-pyside` (existing Inno tasks untouched).
   - Docs: `packaging/windows/README.md` restructured into Inno + PySide sections; `docs/installers.md` Windows section + build-from-source table updated.
   - Tests: `tests/unit/test_windows_pyside_packaging.py` — contract tests (script layout/content, Inno untouched, CI job present, taskipy tasks registered) mirroring `tests/unit/test_linux_appimage_packaging.py`'s pattern; runs on Linux CI (no Windows build needed). No shared-engine test changes were needed — `install.py` / `path_setup.py` / `controller.py` / the QML wizard were already Windows-aware (Windows launcher writers, per-user PATH via registry, FluentWinUI3 theming) before this PR.
-  - **Verified in this environment:** all three `.ps1` scripts parse with `System.Management.Automation.Language.Parser` (PowerShell 7.4.6 installed locally to check, since Windows tooling — `uv venv`, `csc.exe`, Windows PySide6 wheels — isn't available here); `checks-quiet` gate passed (ruff/shell/ty/build/pytest all clean except two pre-existing GUI timing tests in `tests/gui/test_installer.py` that also fail on unmodified `develop` in this sandbox — confirmed via `git stash` — unrelated to this change).
-  - **Still needs a Windows host:** the actual `build-offline-pyside.ps1` run end-to-end (managed Python download, `uv venv --relocatable`, `csc.exe` compiles, real Windows PySide6 DLL pruning/loading, on-screen wizard + FluentWinUI3 rendering) and `smoke-offline-pyside.ps1`. The `windows-installer.yml` CI job (`windows-latest`) covers this on every PR/push going forward.
+  - **Verified on Windows host (2026-09-06):** fat self-extracting `SrxyInstaller.exe` (embed python/venv/share via `SRXYISFX` trailer); distribution zip contains only that exe; headless install/uninstall via SFX exit 0; unit contract tests 13 passed.
   - **Deferred to the NSIS follow-up PR:** wrapping the PySide payload in a single-file NSIS installer; deciding whether the PySide zip becomes the shipped Windows offline artifact (replacing Inno) or stays as a build-artifact-only parity check; attaching it to GitHub Releases.
 
 ## Bugs / sub-tasks discovered
 
+- [x] Windows PySide fat SFX extract failed with `Illegal characters in path` — `.NET Framework` `Directory.CreateDirectory` rejects `\\?\` long-path prefixes. Fixed by short cache `%LOCALAPPDATA%\srxy\is\<sha16>\p\` without `\\?\`. Verified install/uninstall exit 0 (2026-09-06).
+- [x] Windows PySide offline build QML smoke `SyntaxError: '(' was never closed` — PowerShell stripped double quotes from `python -c $QmlSmoke` (`raise SystemExit("…")`). Fixed with single-quoted Python strings in `build-offline-pyside.ps1` + `smoke-offline-pyside.ps1`. Build task exit 0 (2026-09-06).
 - [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
 - [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.

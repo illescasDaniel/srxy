@@ -66,7 +66,7 @@ Offline Inno Setup installer (x86_64):
 
 Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) and run. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required).
 
-A second, PySide6-based offline wrapper (`srxy-*-installer-<installer_version>-pyside-x86_64.zip`) — the same QML wizard used by the macOS `.app` and Linux AppImage offline installers — is built in CI as a build artifact while the Windows installer migration is in progress. It is not yet attached to GitHub Releases; the Inno installer above remains the supported/shipped Windows installer until an NSIS-based single-file wrapper replaces Inno's outer shell (tracked separately). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md#pyside-wizard-offline).
+A second, PySide6-based offline wrapper (`srxy-*-installer-<installer_version>-pyside-x86_64.zip`) — a zip of a fat self-extracting `SrxyInstaller.exe` that embeds the wizard `python\` / `venv\` / `share\` tree (same QML wizard as the macOS `.app` / Linux AppImage) — is built in CI as a build artifact while the Windows installer migration is in progress. It is not yet attached to GitHub Releases; the Inno installer above remains the supported/shipped Windows installer until an NSIS-based outer shell (or this fat PySide exe) replaces Inno for releases (tracked separately). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md#pyside-wizard-offline).
 
 ### Offline wizard
 

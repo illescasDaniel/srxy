@@ -9,16 +9,16 @@
   --no-deps, same policy as macOS/Linux offline) under dist\windows-pyside-installer-stage\payload,
   a full srxy wheel for prefix installs under payload\share\srxy\ (same layout
   SRXY_INSTALLER_PAYLOAD already resolves for the Inno bootstrap — see
-  srxy.adapters.inbound.installer.package_spec / meta), a prebuilt app
+  srxy.adapters.inbound.installer.package_spec / meta), and a prebuilt app
   launcher + icon under payload\share\srxy\windows\ (reused at prefix-install
-  time by install.py's _write_windows_gui_exe), and a small compiled
-  SrxyInstaller.exe wrapper at the payload root that launches the PySide
-  wizard (python -m srxy.adapters.inbound.installer, no args -> GUI).
+  time by install.py's _write_windows_gui_exe). Compiles a self-extracting
+  SrxyInstaller.exe that embeds python\ + venv\ + share\ (appended zip +
+  SRXYISFX trailer); on launch it extracts once under %LOCALAPPDATA%\srxy\
+  installer-sfx\<sha256>\ and runs the PySide wizard.
 
   This is an ADDITIONAL offline artifact alongside the existing Inno Setup
   installer (packaging/windows/srxy-offline.iss / build-offline.ps1) — it does
-  not replace it. The payload folder is zipped for distribution; wrapping it
-  in a single-file NSIS installer is a separate follow-up (out of scope here).
+  not replace it. The distribution zip contains only the fat SrxyInstaller.exe.
 
 .PARAMETER OutDir
   Output directory (default: dist).
@@ -75,6 +75,66 @@ function Find-Csc {
 		}
 	}
 	return $null
+}
+
+function New-FatSrxyInstaller {
+	param(
+		[Parameter(Mandatory = $true)][string]$StubExe,
+		[Parameter(Mandatory = $true)][string]$PayloadZip,
+		[Parameter(Mandatory = $true)][string]$OutExe
+	)
+	# Layout: [stub PE][zip][sha256 32][zip_length uint64 LE][magic "SRXYISFX"]
+	$sha = [System.Security.Cryptography.SHA256]::Create()
+	try {
+		$zipStream = [System.IO.File]::OpenRead($PayloadZip)
+		try {
+			$zipHash = $sha.ComputeHash($zipStream)
+			$zipLength = $zipStream.Length
+		}
+		finally {
+			$zipStream.Dispose()
+		}
+	}
+	finally {
+		$sha.Dispose()
+	}
+	if ($zipLength -le 0) {
+		throw "payload zip is empty: $PayloadZip"
+	}
+
+	$outDir = Split-Path -Parent $OutExe
+	if ($outDir -and -not (Test-Path -LiteralPath $outDir)) {
+		New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+	}
+	if (Test-Path -LiteralPath $OutExe) {
+		Remove-Item -LiteralPath $OutExe -Force
+	}
+
+	$out = [System.IO.File]::Open($OutExe, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+	try {
+		$stub = [System.IO.File]::OpenRead($StubExe)
+		try {
+			$stub.CopyTo($out)
+		}
+		finally {
+			$stub.Dispose()
+		}
+		$zip = [System.IO.File]::OpenRead($PayloadZip)
+		try {
+			$zip.CopyTo($out)
+		}
+		finally {
+			$zip.Dispose()
+		}
+		$out.Write($zipHash, 0, $zipHash.Length)
+		$lengthBytes = [BitConverter]::GetBytes([uint64]$zipLength)
+		$out.Write($lengthBytes, 0, $lengthBytes.Length)
+		$magic = [System.Text.Encoding]::ASCII.GetBytes("SRXYISFX")
+		$out.Write($magic, 0, $magic.Length)
+	}
+	finally {
+		$out.Dispose()
+	}
 }
 
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
@@ -206,8 +266,8 @@ ApplicationWindow {
 '''
 engine.loadData(QByteArray(qml), QUrl())
 if not engine.rootObjects():
-	raise SystemExit("pruned QML smoke failed: no root objects")
-print("qml smoke OK")
+	raise SystemExit('pruned QML smoke failed: no root objects')
+print('qml smoke OK')
 "@
 	& $VenvPy -c $QmlSmoke
 	if ($LASTEXITCODE -ne 0) {
@@ -254,43 +314,71 @@ print(f'wrote {out_exe}')
 		throw "app icon / prebuilt app launcher build failed"
 	}
 
-	Write-Host "Compiling SrxyInstaller.exe wrapper launcher..."
+	Write-Host "Compiling SrxyInstaller.exe stub launcher..."
 	$LauncherCs = Join-Path $Root "src\srxy\resources\windows\SrxyInstallerLauncher.cs"
 	if (-not (Test-Path -LiteralPath $LauncherCs)) {
 		throw "missing $LauncherCs"
 	}
-	$InstallerExeOut = Join-Path $Payload "SrxyInstaller.exe"
-	& $Csc /nologo /target:winexe "/win32icon:$SetupIco" /reference:System.Windows.Forms.dll "/out:$InstallerExeOut" $LauncherCs
+	$StubExe = Join-Path $Stage "SrxyInstaller.stub.exe"
+	& $Csc /nologo /target:winexe "/win32icon:$SetupIco" `
+		/reference:System.Windows.Forms.dll `
+		/reference:System.IO.Compression.dll `
+		/reference:System.IO.Compression.FileSystem.dll `
+		"/out:$StubExe" $LauncherCs
 	if ($LASTEXITCODE -ne 0) {
-		throw "SrxyInstaller.exe compile failed"
+		throw "SrxyInstaller stub compile failed"
 	}
 
-	Write-Host "Smoke-testing SrxyInstaller.exe headless engine passthrough..."
+	Write-Host "Packing payload zip (python + venv + share) for embedding..."
+	$PayloadZip = Join-Path $Stage "payload-embed.zip"
+	if (Test-Path -LiteralPath $PayloadZip) {
+		Remove-Item -LiteralPath $PayloadZip -Force
+	}
+	# Compress-Archive paths become zip root entries named after the leaf folders.
+	Compress-Archive -Path @(
+		(Join-Path $Payload "python"),
+		(Join-Path $Payload "venv"),
+		(Join-Path $Payload "share")
+	) -DestinationPath $PayloadZip -CompressionLevel Optimal
+
+	$FatExe = Join-Path $Stage "SrxyInstaller.exe"
+	Write-Host "Building fat self-extracting SrxyInstaller.exe..."
+	New-FatSrxyInstaller -StubExe $StubExe -PayloadZip $PayloadZip -OutExe $FatExe
+	Copy-Item -LiteralPath $FatExe -Destination (Join-Path $Payload "SrxyInstaller.exe") -Force
+
+	Write-Host "Smoke-testing fat SrxyInstaller.exe headless install/uninstall..."
 	$SmokePrefix = Join-Path $OutDir ("windows-pyside-smoke-" + [guid]::NewGuid().ToString("n"))
 	$ack = (& $VenvPy -c "from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION; print(PRIVACY_NOTICE_VERSION)").Trim()
-	$env:SRXY_INSTALLER_PAYLOAD = $Payload
-	& $VenvPy -m srxy.adapters.inbound.installer --install --prefix $SmokePrefix --privacy-ack $ack --confirm-unsafe --no-add-path
-	if ($LASTEXITCODE -ne 0) {
-		Remove-Item Env:\SRXY_INSTALLER_PAYLOAD -ErrorAction SilentlyContinue
-		throw "payload-driven headless install smoke failed"
+	# Start-Process -Wait so winexe exit codes are reliable (unlike &$exe + $LASTEXITCODE).
+	$install = Start-Process -FilePath $FatExe -ArgumentList @(
+		"--install", "--prefix", $SmokePrefix, "--privacy-ack", $ack, "--confirm-unsafe", "--no-add-path"
+	) -Wait -PassThru -NoNewWindow
+	if ($install.ExitCode -ne 0) {
+		throw "fat SrxyInstaller.exe headless install smoke failed (exit $($install.ExitCode))"
 	}
 	if (-not (Test-Path -LiteralPath (Join-Path $SmokePrefix "bin\Srxy.exe"))) {
-		Remove-Item Env:\SRXY_INSTALLER_PAYLOAD -ErrorAction SilentlyContinue
-		throw "prebuilt app launcher was not copied from payload during smoke install"
+		throw "prebuilt app launcher was not copied from embedded payload during smoke install"
 	}
-	& $VenvPy -m srxy.adapters.inbound.installer --uninstall --prefix $SmokePrefix --confirm-unsafe | Out-Null
-	Remove-Item Env:\SRXY_INSTALLER_PAYLOAD -ErrorAction SilentlyContinue
+	$uninstall = Start-Process -FilePath $FatExe -ArgumentList @(
+		"--uninstall", "--prefix", $SmokePrefix, "--confirm-unsafe"
+	) -Wait -PassThru -NoNewWindow
+	if ($uninstall.ExitCode -ne 0) {
+		throw "fat SrxyInstaller.exe headless uninstall smoke failed (exit $($uninstall.ExitCode))"
+	}
 	Remove-Item -LiteralPath $SmokePrefix -Recurse -Force -ErrorAction SilentlyContinue
 
-	Write-Host "Payload size: $((Get-ChildItem -LiteralPath $Payload -Recurse -Force | Measure-Object -Property Length -Sum).Sum / 1MB) MiB"
+	$PayloadBytes = (Get-ChildItem -LiteralPath $Payload -Recurse -Force | Measure-Object -Property Length -Sum).Sum
+	$FatBytes = (Get-Item -LiteralPath $FatExe).Length
+	Write-Host ("Payload folder size: {0:N1} MiB" -f ($PayloadBytes / 1MB))
+	Write-Host ("Fat SrxyInstaller.exe size: {0:N1} MiB" -f ($FatBytes / 1MB))
 
 	$ZipName = "srxy-$Version-installer-$InstallerVersion-pyside-$Arch.zip"
 	$ZipPath = Join-Path $OutDir $ZipName
 	if (Test-Path -LiteralPath $ZipPath) {
 		Remove-Item -LiteralPath $ZipPath -Force
 	}
-	Write-Host "Creating $ZipName ..."
-	Compress-Archive -Path (Join-Path $Payload "*") -DestinationPath $ZipPath -CompressionLevel Optimal
+	Write-Host "Creating $ZipName (fat SrxyInstaller.exe only)..."
+	Compress-Archive -Path $FatExe -DestinationPath $ZipPath -CompressionLevel Optimal
 	$Hash = Get-Sha256Hex -Path $ZipPath
 	Set-Content -LiteralPath "$ZipPath.sha256" -Value "$Hash  $ZipName`n" -Encoding ASCII
 	$Sums = Join-Path $OutDir "SHA256SUMS-windows-offline-pyside"

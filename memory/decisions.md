@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-06 — Windows PySide offline: fat self-extracting SrxyInstaller.exe
+
+- **Context:** The PySide offline zip previously expanded to a portable folder (`python\` + `venv\` + `share\` + thin `SrxyInstaller.exe`). Users wanted a single fat exe after unzip.
+- **Decision:** Keep the distribution zip name, but put only a self-extracting `SrxyInstaller.exe` inside. Build appends `payload-embed.zip` (python/venv/share) plus a `SRXYISFX` trailer (sha256 + length + magic) to a csc-compiled stub. On launch the stub extracts once to `%LOCALAPPDATA%\srxy\is\<sha16>\p\` (short path to stay under MAX_PATH for deep Qt trees) and sets `SRXY_INSTALLER_PAYLOAD` as before. Headless args use `python.exe` + WaitForExit (no MessageBox).
+- **Rationale:** Same embedded payload contract as macOS/Linux offline wizards without introducing NSIS yet; unzip UX is one double-clickable exe; cache avoids re-extract on every launch.
+
 ## 2026-09-01 — Windows installer: Inno for now; migrate to PySide wrapper + NSIS
 
 - **Context:** Windows offline installer uses Inno Setup (free for non-commercial use). Paid website bundles may include Mac/Linux installers; Inno commercial license applies when srxy for-profit revenue exceeds ~USD 5k/year (donations count). Currently zero sales.

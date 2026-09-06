@@ -52,10 +52,12 @@ def test_given_installer_launcher_source_when_reading_then_launches_wizard_modul
 	# given
 	text = (_RESOURCES_WINDOWS / "SrxyInstallerLauncher.cs").read_text(encoding="utf-8")
 
-	# when / then
+	# when / then — self-extracting stub embeds payload and launches the wizard.
 	assert "SRXY_INSTALLER_PAYLOAD" in text
+	assert "SRXYISFX" in text
 	assert "srxy.adapters.inbound.installer" in text
 	assert "pythonw.exe" in text
+	assert 'Path.Combine(localApp, "srxy", "is"' in text
 	assert "venv" in text and "Scripts" in text
 
 
@@ -74,12 +76,17 @@ def test_given_build_script_when_reading_then_stages_wizard_only_venv_and_bundle
 	assert "prune-pyside.ps1" in text
 	assert "SrxyInstallerLauncher.cs" in text
 	assert "SRXY_INSTALLER_PAYLOAD" in text
+	assert "New-FatSrxyInstaller" in text
+	assert "SRXYISFX" in text
+	assert "payload-embed.zip" in text
 	# Relocation guard mirrors the macOS/Linux offline builds.
 	assert "wizard-reloc-ok" in text
 	assert "relocatable" in text.lower()
 	# Names an artifact distinct from the Inno .exe.zip so neither overwrites the other.
 	assert "installer-$InstallerVersion-pyside-$Arch.zip" in text
 	assert "SHA256SUMS-windows-offline-pyside" in text
+	# Distribution zip contains only the fat exe (not the unpacked payload tree).
+	assert "fat SrxyInstaller.exe only" in text
 
 
 def test_given_build_script_when_reading_then_reuses_prebuilt_app_launcher_for_prefix_installs():
@@ -121,10 +128,11 @@ def test_given_smoke_script_when_reading_then_relocates_before_testing():
 
 	# when / then — same relocation-bug class the macOS/Linux offline smoke tests guard.
 	assert "Copy-Item" in text
-	assert "SRXY_INSTALLER_PAYLOAD" in text
 	assert "--install" in text
 	assert "--uninstall" in text
 	assert "SrxyInstaller.exe" in text
+	assert "InstallerExe" in text
+	assert "relocated fat installer" in text
 
 
 def test_given_installer_meta_when_checking_windows_pyside_smoke_then_references_current_payload_env():
