@@ -30,8 +30,20 @@ def _probe_has_gpu() -> bool:
 	return has_accelerated_gpu_nofork()
 
 
+def _light_unlimited_ocr_deps_installed() -> bool:
+	"""Torch + transformers probe without importing the OCR adapter graph."""
+	return importlib.util.find_spec("torch") is not None and importlib.util.find_spec("transformers") is not None
+
+
 def _light_ocr_available() -> bool:
-	"""OCR availability without importing the OCR adapter graph."""
+	"""OCR availability without importing the OCR adapter graph.
+
+	True when either backend can serve OCR: Unlimited OCR (``[semantic]``
+	extras installed — torch + transformers) or Tesseract (binary on PATH /
+	vendor / SRXY_TESSERACT_PATH).
+	"""
+	if _light_unlimited_ocr_deps_installed():
+		return True
 	if importlib.util.find_spec("pytesseract") is None:
 		return False
 	from srxy.application.install_paths import resolve_tesseract_binary
