@@ -8,13 +8,18 @@ from PIL import Image
 
 from srxy.adapters.outbound.ocr.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
+	TESSERACT_ENGINE_VARIANT,
+	UNLIMITED_OCR_ENGINE_VARIANT,
 	OcrRecognizeTimeout,
 	TesseractEngine,
+	UnlimitedOcrEngine,
+	current_ocr_engine_variant,
 	ensure_ocr_available,
 	has_lexical_ocr_content,
 	is_ocr_active,
 	is_ocr_available,
 	is_sparse_text,
+	is_unlimited_ocr_available,
 	iter_image_ocr_lines,
 	ocr_max_file_size,
 	ocr_pdf_page_images,
@@ -23,6 +28,7 @@ from srxy.adapters.outbound.ocr.ocr_text import (
 	ocr_unavailable_message,
 	preprocess_image,
 	reset_ocr_engine,
+	unlimited_ocr_deps_installed,
 )
 from srxy.domain.models import SkippedFile
 
@@ -435,3 +441,188 @@ def test_given_ocr_timeout_when_iterating_lines_then_records_skip(tmp_path: Path
 	assert lines == []
 	assert len(skipped) == 1
 	assert skipped[0].reason == "ocr_timeout"
+
+
+# --- Unlimited OCR (baidu/Unlimited-OCR) gating on [semantic] extras ---
+
+
+def test_given_no_torch_or_transformers_when_checking_unlimited_deps_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — default CI/core install has no [semantic] extras
+	monkeypatch.delitem(__import__("sys").modules, "torch", raising=False)
+	monkeypatch.delitem(__import__("sys").modules, "transformers", raising=False)
+
+	# when / then
+	assert unlimited_ocr_deps_installed() is False
+
+
+def test_given_torch_and_transformers_importable_when_checking_unlimited_deps_then_returns_true(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — [semantic] extras present (torch + transformers importable)
+	import sys
+
+	monkeypatch.setitem(sys.modules, "torch", MagicMock())
+	monkeypatch.setitem(sys.modules, "transformers", MagicMock())
+
+	# when / then
+	assert unlimited_ocr_deps_installed() is True
+	assert is_unlimited_ocr_available() is True
+
+
+def test_given_only_torch_when_checking_unlimited_deps_then_returns_false(monkeypatch: pytest.MonkeyPatch):
+	# given — partial semantic install should not enable Unlimited OCR
+	import sys
+
+	monkeypatch.setitem(sys.modules, "torch", MagicMock())
+	monkeypatch.delitem(sys.modules, "transformers", raising=False)
+
+	# when / then
+	assert unlimited_ocr_deps_installed() is False
+
+
+def test_given_semantic_deps_available_when_selecting_engine_then_uses_unlimited_ocr(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	reset_ocr_engine()
+
+	class FakeUnlimitedEngine:
+		def recognize(self, image: object) -> str:
+			return "unlimited ocr output"
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.UnlimitedOcrEngine", return_value=FakeUnlimitedEngine()),
+	):
+		from srxy.adapters.outbound.ocr.ocr_text import get_ocr_engine
+
+		# when
+		engine = get_ocr_engine()
+		text = engine.recognize(object())
+
+	# then
+	assert isinstance(engine, FakeUnlimitedEngine)
+	assert text == "unlimited ocr output"
+	reset_ocr_engine()
+
+
+def test_given_no_semantic_deps_when_selecting_engine_then_falls_back_to_tesseract(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	reset_ocr_engine()
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=True),
+	):
+		from srxy.adapters.outbound.ocr.ocr_text import get_ocr_engine
+
+		# when
+		engine = get_ocr_engine()
+
+	# then — Tesseract remains the default, unmodified path for non-semantic installs
+	assert isinstance(engine, TesseractEngine)
+	reset_ocr_engine()
+
+
+def test_given_no_backend_when_ensuring_ocr_available_then_raises(monkeypatch: pytest.MonkeyPatch):
+	# given — neither Unlimited OCR deps nor Tesseract binary present
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False),
+	):
+		# when / then
+		assert is_ocr_available() is False
+		with pytest.raises(RuntimeError):
+			ensure_ocr_available()
+
+
+def test_given_unlimited_ocr_deps_when_checking_availability_then_ocr_available_without_tesseract():
+	# given — Unlimited OCR alone (no Tesseract binary) should still satisfy is_ocr_available
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False),
+	):
+		# when / then
+		assert is_ocr_available() is True
+
+
+def test_given_unlimited_ocr_available_when_reading_engine_variant_then_returns_unlimited_variant():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True):
+		# when / then
+		assert current_ocr_engine_variant() == UNLIMITED_OCR_ENGINE_VARIANT
+
+
+def test_given_tesseract_only_when_reading_engine_variant_then_returns_tesseract_variant():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False):
+		# when / then
+		assert current_ocr_engine_variant() == TESSERACT_ENGINE_VARIANT
+
+
+def test_given_mocked_model_when_unlimited_engine_recognizes_then_calls_infer_and_strips_text():
+	# given
+	fake_model = MagicMock()
+	fake_model.infer.return_value = "  Invoice Total: $42.00  \n"
+	fake_tokenizer = MagicMock()
+	engine = UnlimitedOcrEngine()
+
+	with patch(
+		"srxy.adapters.outbound.ocr.ocr_text._load_unlimited_ocr_model",
+		return_value=(fake_model, fake_tokenizer),
+	):
+		# when
+		text = engine.recognize(Image.new("RGB", (8, 8)))
+
+	# then
+	assert text == "Invoice Total: $42.00"
+	fake_model.infer.assert_called_once_with(fake_tokenizer, Image.new("RGB", (8, 8)))
+
+
+def test_given_model_without_infer_when_unlimited_engine_recognizes_then_raises():
+	# given
+	fake_model = object()  # no .infer attribute
+	engine = UnlimitedOcrEngine()
+
+	with patch(
+		"srxy.adapters.outbound.ocr.ocr_text._load_unlimited_ocr_model",
+		return_value=(fake_model, MagicMock()),
+	):
+		# when / then
+		with pytest.raises(RuntimeError, match="infer"):
+			engine.recognize(Image.new("RGB", (8, 8)))
+
+
+def test_given_cached_ocr_when_engine_variant_changes_then_cache_key_differs(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — switching Tesseract <-> Unlimited must not read stale cached text
+	monkeypatch.setenv("SRXY_CACHE_DIR", str(tmp_path / "cache"))
+	image_path = tmp_path / "scan.png"
+	Image.new("L", (20, 20), color=255).save(image_path)
+	from srxy.adapters.outbound.cache.cache import reset_cache_connection
+
+	reset_cache_connection()
+	reset_ocr_engine()
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="tesseract text"),
+	):
+		first = list(iter_image_ocr_lines(image_path))
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True),
+		patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", return_value="unlimited ocr text"),
+	):
+		second = list(iter_image_ocr_lines(image_path))
+
+	# then
+	assert first == [(1, "tesseract text")]
+	assert second == [(1, "unlimited ocr text")]
+	reset_cache_connection()
