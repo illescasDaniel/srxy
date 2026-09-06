@@ -77,7 +77,7 @@ Package builds read the app version from [`pyproject.toml`](../pyproject.toml) (
 | Installer capability stamp | same files → `installer_version` — bump only when the desktop installer itself gains new capabilities (then rebuild AppImages / DMGs / Windows offline) |
 | Unit tests pinned to the current min | `tests/unit/test_updates_path_i18n.py` (`min_srxy_version` floor) and mocked PyPI versions in `tests/unit/test_installer_online.py` |
 
-Windows/macOS packaging scripts take the version from `pyproject.toml` at build time (Inno `MyAppVersion`, DMG names, etc.) — no separate hardcoded app version there. Prefer a **minor** bump (e.g. `1.6.x` → `1.7.0`) when the release includes user-visible UI or feature work, not only patch-level fixes.
+Windows/macOS packaging scripts take the version from `pyproject.toml` at build time (installer zip / DMG names, etc.) — no separate hardcoded app version there. Prefer a **minor** bump (e.g. `1.6.x` → `1.7.0`) when the release includes user-visible UI or feature work, not only patch-level fixes.
 
 When bumping AppImage installer compatibility alone (without a full app release), still edit both `installer_meta.toml` copies and rebuild. End-user guide: [installers.md](installers.md). Packaging details: [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md).
 

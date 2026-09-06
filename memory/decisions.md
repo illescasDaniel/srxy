@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-07 — Windows offline: fat PySide SFX replaces Inno Setup
+
+- **Context:** The PySide fat self-extracting `SrxyInstaller.exe` proved clearly better UX than the Inno Setup wizard. Keeping both doubled CI/docs/maintenance cost and left a commercial-license cliff for Inno.
+- **Decision:** Remove Inno Setup packaging (`srxy-offline.iss`, Inno `build-offline.ps1` / `smoke-offline.ps1`, tessdata-langs.txt, ISS contract tests, Inno CI job/tasks). The Windows offline artifact is solely the fat PySide zip (`srxy-*-installer-*-x86_64.zip` → `SrxyInstaller.exe`). Release attach uses that artifact. NSIS remains optional future outer packaging, not a prerequisite to ship.
+- **Rationale:** One Windows installer stack aligned with macOS/Linux PySide wizards; no Inno commercial license exposure; simpler releases.
+
 ## 2026-09-06 — Windows PySide offline: fat self-extracting SrxyInstaller.exe
 
 - **Context:** The PySide offline zip previously expanded to a portable folder (`python\` + `venv\` + `share\` + thin `SrxyInstaller.exe`). Users wanted a single fat exe after unzip.

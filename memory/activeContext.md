@@ -1,24 +1,22 @@
 # Active Context
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-07_
 
 ## Branch
 
-- `cursor/windows-pyside-offline-installer-fb07` off `develop` — Windows installer migration step (1): PySide offline wrapper. PR targets `develop`.
+- `cursor/windows-pyside-offline-installer-fb07` off `develop` — Windows fat PySide offline installer (Inno removed). PR targets `develop`.
 
 ## Current focus
 
-Fat self-extracting Windows PySide offline installer — **done** on this branch (pending commit).
+Commit Inno removal + push after quality gate.
 
-## Just completed (2026-09-06)
+## Just completed
 
-- Fat `SrxyInstaller.exe`: stub + appended `payload-embed.zip` + `SRXYISFX` trailer (sha256 + length + magic).
-- Extracts once to `%LOCALAPPDATA%\srxy\is\<sha16>\p\` (short path for MAX_PATH); distribution zip contains only the fat exe.
-- Verified: `--help` / headless install+uninstall exit 0; zip ≈ 138 MiB with sole member `SrxyInstaller.exe`.
-- Contract tests: `test_windows_pyside_packaging.py` 13 passed.
+1. Fat SFX `SrxyInstaller.exe` (commit `8d914f9`).
+2. Removed all Inno Setup packaging/docs/CI/tasks; promoted PySide scripts to `build-offline.ps1` / `smoke-offline.ps1`; release attaches the fat zip.
 
 ## Next steps
 
-1. Commit when asked.
-2. Optional: full `uv run task build-windows-installer-offline-pyside` from a clean stage (logic already smoke-tested via stub rebuild).
-3. NSIS / release-artifact decision remains a separate follow-up.
+1. Finish quality gate if still running; push branch.
+2. Open/update PR targeting `develop`.
+3. Optional later: Authenticode signing; NSIS outer shell only if needed.

@@ -1,24 +1,22 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Build the Windows PySide offline installer wrapper (parity with the macOS
-  offline .app and Linux offline AppImage wizard).
+  Build the Windows offline installer (fat self-extracting PySide wizard —
+  parity with the macOS offline .app and Linux offline AppImage).
 
 .DESCRIPTION
   Stages a relocatable managed CPython + a wizard-only venv (PySide6 + srxy
   --no-deps, same policy as macOS/Linux offline) under dist\windows-pyside-installer-stage\payload,
   a full srxy wheel for prefix installs under payload\share\srxy\ (same layout
-  SRXY_INSTALLER_PAYLOAD already resolves for the Inno bootstrap — see
+  SRXY_INSTALLER_PAYLOAD already resolves — see
   srxy.adapters.inbound.installer.package_spec / meta), and a prebuilt app
   launcher + icon under payload\share\srxy\windows\ (reused at prefix-install
   time by install.py's _write_windows_gui_exe). Compiles a self-extracting
   SrxyInstaller.exe that embeds python\ + venv\ + share\ (appended zip +
-  SRXYISFX trailer); on launch it extracts once under %LOCALAPPDATA%\srxy\
-  installer-sfx\<sha256>\ and runs the PySide wizard.
+  SRXYISFX trailer); on launch it extracts once under
+  %LOCALAPPDATA%\srxy\is\<sha16>\p\ and runs the PySide wizard.
 
-  This is an ADDITIONAL offline artifact alongside the existing Inno Setup
-  installer (packaging/windows/srxy-offline.iss / build-offline.ps1) — it does
-  not replace it. The distribution zip contains only the fat SrxyInstaller.exe.
+  The distribution zip contains only the fat SrxyInstaller.exe.
 
 .PARAMETER OutDir
   Output directory (default: dist).
@@ -189,7 +187,7 @@ try {
 	}
 	$ManagedRoot = $NestedPython.Directory.FullName
 
-	# Flatten to payload\python\python.exe (+ DLLs/Lib), like the Inno bootstrap stage.
+	# Flatten to payload\python\python.exe (+ DLLs/Lib) for a stable embedded layout.
 	$StablePythonDir = Join-Path $Payload "python"
 	New-Item -ItemType Directory -Force -Path $StablePythonDir | Out-Null
 	Copy-Item -Path (Join-Path $ManagedRoot "*") -Destination $StablePythonDir -Recurse -Force
@@ -372,7 +370,7 @@ print(f'wrote {out_exe}')
 	Write-Host ("Payload folder size: {0:N1} MiB" -f ($PayloadBytes / 1MB))
 	Write-Host ("Fat SrxyInstaller.exe size: {0:N1} MiB" -f ($FatBytes / 1MB))
 
-	$ZipName = "srxy-$Version-installer-$InstallerVersion-pyside-$Arch.zip"
+	$ZipName = "srxy-$Version-installer-$InstallerVersion-$Arch.zip"
 	$ZipPath = Join-Path $OutDir $ZipName
 	if (Test-Path -LiteralPath $ZipPath) {
 		Remove-Item -LiteralPath $ZipPath -Force
@@ -381,7 +379,7 @@ print(f'wrote {out_exe}')
 	Compress-Archive -Path $FatExe -DestinationPath $ZipPath -CompressionLevel Optimal
 	$Hash = Get-Sha256Hex -Path $ZipPath
 	Set-Content -LiteralPath "$ZipPath.sha256" -Value "$Hash  $ZipName`n" -Encoding ASCII
-	$Sums = Join-Path $OutDir "SHA256SUMS-windows-offline-pyside"
+	$Sums = Join-Path $OutDir "SHA256SUMS-windows-offline"
 	Set-Content -LiteralPath $Sums -Value "$Hash  $ZipName`n" -Encoding ASCII
 
 	Write-Host "Built $ZipPath"

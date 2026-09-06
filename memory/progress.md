@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-07_
 
 ## v1.7.0 — fixes and improvements
 
@@ -89,8 +89,15 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Open
 
-- [ ] **Windows installer migration (planned):** ~~(1) PySide offline wrapper for Windows~~ — **done** (see below). (2) Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution) — still open, separate PR. Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
 - [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works (parity check alongside Windows packaging work).
+- [ ] Optional: Authenticode signing for Windows fat `SrxyInstaller.exe` (SmartScreen).
+
+### Windows offline installer (PySide fat SFX; Inno removed 2026-09-07)
+
+- [x] Fat self-extracting `SrxyInstaller.exe` embeds python/venv/share; distribution zip contains only that exe.
+- [x] Removed Inno Setup packaging (`srxy-offline.iss`, Inno build/smoke scripts, tessdata-langs.txt, ISS tests, Inno CI job/tasks).
+- [x] CI `windows-installer.yml` builds/smokes/releases the fat PySide zip only.
+- [x] Docs + Taskipy point at `packaging/windows/build-offline.ps1` / `smoke-offline.ps1`.
 
 ### Windows PySide offline wrapper (2026-09-01, branch `cursor/windows-pyside-offline-installer-fb07`)
 

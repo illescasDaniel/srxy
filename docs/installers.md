@@ -1,6 +1,6 @@
 # Desktop installers
 
-Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline Inno Setup installer are available.
+Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline fat PySide installer are available.
 
 Download free builds from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), or [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). PyPI / `uv tool install` remain the primary install paths on every platform. Privacy / third-party downloads: [privacy.md](privacy.md).
 
@@ -58,15 +58,13 @@ Notes:
 
 ## Windows (supported)
 
-Offline Inno Setup installer (x86_64):
+Offline fat self-extracting installer (x86_64) — same PySide6/QML wizard as macOS / Linux:
 
 | Artifact name pattern | Role |
 |-----------------------|------|
-| `srxy-*-installer-<installer_version>-x86_64.exe.zip` | **Offline wizard** — native Inno UI (zip of the setup `.exe`); headless Python engine; install / update / reinstall / uninstall |
+| `srxy-*-installer-<installer_version>-x86_64.zip` | **Offline wizard** — unzip to `SrxyInstaller.exe`; embeds wizard `python\` / `venv\` / `share\`; install / update / reinstall / uninstall |
 
-Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) and run. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required).
-
-A second, PySide6-based offline wrapper (`srxy-*-installer-<installer_version>-pyside-x86_64.zip`) — a zip of a fat self-extracting `SrxyInstaller.exe` that embeds the wizard `python\` / `venv\` / `share\` tree (same QML wizard as the macOS `.app` / Linux AppImage) — is built in CI as a build artifact while the Windows installer migration is in progress. It is not yet attached to GitHub Releases; the Inno installer above remains the supported/shipped Windows installer until an NSIS-based outer shell (or this fat PySide exe) replaces Inno for releases (tracked separately). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md#pyside-wizard-offline).
+Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), unzip, and run `SrxyInstaller.exe`. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md).
 
 ### Offline wizard
 
@@ -94,8 +92,7 @@ Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.m
 | Online | `./packaging/linux-appimage/build-online.sh` | `./packaging/linux-appimage/smoke-appimage-online.sh` |
 | macOS Offline | `./packaging/macos/build-offline.sh` | `./packaging/macos/smoke-offline.sh` |
 | macOS Online | `./packaging/macos/build-online.sh` | `./packaging/macos/smoke-online.sh` |
-| Windows Offline (Inno) | `./packaging/windows/build-offline.ps1` | `./packaging/windows/smoke-offline.ps1` |
-| Windows Offline (PySide) | `./packaging/windows/build-offline-pyside.ps1` | `./packaging/windows/smoke-offline-pyside.ps1` |
+| Windows Offline | `./packaging/windows/build-offline.ps1` | `./packaging/windows/smoke-offline.ps1` |
 
 Packaging details (AppDir layout, UPX, checksums, CI): [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md). Bootstrap sources: [`packaging/online-bootstrap/`](../packaging/online-bootstrap/). Compatibility pins: [`packaging/installer_meta.toml`](../packaging/installer_meta.toml).
 

@@ -1,12 +1,12 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Smoke-test the built Windows PySide offline fat SrxyInstaller.exe.
+  Smoke-test the built Windows offline fat SrxyInstaller.exe.
 
 .DESCRIPTION
   Without -InstallerExe: locates dist\windows-pyside-installer-stage\SrxyInstaller.exe
-  from a prior build-offline-pyside.ps1 run (falls back to unzipping the latest
-  dist\srxy-*-installer-*-pyside-x86_64.zip). Relocates a copy of the fat exe to
+  from a prior build-offline.ps1 run (falls back to unzipping the latest
+  dist\srxy-*-installer-*-x86_64.zip). Relocates a copy of the fat exe to
   a temp directory first (same relocation-bug class as packaging/macos/smoke-offline.sh),
   then drives a full headless install + uninstall through the SFX (extracts the
   embedded python\ + venv\ + share\ on first launch).
@@ -33,10 +33,16 @@ function Resolve-FatInstaller {
 	if (Test-Path -LiteralPath $staged) {
 		return (Resolve-Path -LiteralPath $staged).Path
 	}
-	$zips = @(Get-ChildItem -LiteralPath (Join-Path $Root "dist") -Filter "srxy-*-installer-*-pyside-x86_64.zip" -ErrorAction SilentlyContinue |
+	$zips = @(Get-ChildItem -LiteralPath (Join-Path $Root "dist") -Filter "srxy-*-installer-*-x86_64.zip" -ErrorAction SilentlyContinue |
+		Where-Object { $_.Name -notlike "*pyside*" } |
 		Sort-Object LastWriteTime -Descending)
 	if ($zips.Count -eq 0) {
-		throw "fat SrxyInstaller.exe not found (run build-offline-pyside.ps1 first, or pass -InstallerExe)"
+		# Compat: older local builds used the -pyside- artifact name.
+		$zips = @(Get-ChildItem -LiteralPath (Join-Path $Root "dist") -Filter "srxy-*-installer-*-pyside-x86_64.zip" -ErrorAction SilentlyContinue |
+			Sort-Object LastWriteTime -Descending)
+	}
+	if ($zips.Count -eq 0) {
+		throw "fat SrxyInstaller.exe not found (run build-offline.ps1 first, or pass -InstallerExe)"
 	}
 	$extractDir = Join-Path $env:TEMP ("srxy-pyside-zip-" + [guid]::NewGuid().ToString("n"))
 	New-Item -ItemType Directory -Force -Path $extractDir | Out-Null
