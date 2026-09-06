@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+from collections.abc import Callable
 
 from srxy.adapters.inbound.installer.catalog import (
 	DARWIN_ARM64_CATALOG,
@@ -11,15 +12,20 @@ from srxy.adapters.inbound.installer.catalog import (
 	GHCR_BOTTLE_HEADERS,
 	LINUX_X86_64_CATALOG,
 	WIN_X86_64_CATALOG,
+	BrewBottle,
 )
 from srxy.adapters.inbound.installer.download import probe_url
 from srxy.adapters.inbound.installer.resolve import (
+	ResolvedArtifact,
 	resolve_ffmpeg_btbn,
 	resolve_ffmpeg_martin_riedl,
 	resolve_tesseract_brew_bottles,
 	resolve_tesseract_linux,
 	resolve_tesseract_windows,
 )
+
+
+_HasUrl = ResolvedArtifact | BrewBottle
 
 
 def _probe_catalog_maps() -> list[tuple[str, str, dict[str, str] | None]]:
@@ -44,34 +50,58 @@ def _probe_catalog_maps() -> list[tuple[str, str, dict[str, str] | None]]:
 	return targets
 
 
-def _probe_resolvers() -> list[tuple[str, str, dict[str, str] | None]]:
-	targets: list[tuple[str, str, dict[str, str] | None]] = []
-	ffmpeg_linux = resolve_ffmpeg_btbn(system="linux", machine="x86_64")
-	targets.append(("resolve:ffmpeg/linux", ffmpeg_linux.url, None))
-	ffmpeg_win = resolve_ffmpeg_btbn(system="windows", machine="x86_64")
-	targets.append(("resolve:ffmpeg/windows", ffmpeg_win.url, None))
-	ffmpeg_arm = resolve_ffmpeg_martin_riedl(arch="arm64")
-	targets.append(("resolve:ffmpeg/darwin-arm64", ffmpeg_arm.url, None))
-	ffmpeg_amd = resolve_ffmpeg_martin_riedl(arch="amd64")
-	targets.append(("resolve:ffmpeg/darwin-amd64", ffmpeg_amd.url, None))
+def _probe_resolvers() -> tuple[list[tuple[str, str, dict[str, str] | None]], list[str]]:
+	"""Resolve install-time artifact URLs; return (targets, unresolvable_labels).
 
-	tess_linux = resolve_tesseract_linux()
-	targets.append(("resolve:tesseract/linux", tess_linux.url, None))
-	tess_win = resolve_tesseract_windows()
-	targets.append(("resolve:tesseract/windows", tess_win.url, None))
+	Install-time resolvers depend on live upstream catalogs (Homebrew bottles,
+	GitHub releases) that prune/rename tags outside our control (see this
+	module's docstring). One resolver going stale should not hide probe
+	results for the others, so each resolve call is isolated — a failure here
+	is reported as a soft/informational skip, not a hard CI failure. The
+	static, sha256-pinned catalog URLs probed by `_probe_catalog_maps()` are
+	what actually gate correctness.
+	"""
+	targets: list[tuple[str, str, dict[str, str] | None]] = []
+	unresolvable: list[str] = []
+
+	def _resolve_url(label: str, fn: Callable[[], _HasUrl]) -> str | None:
+		try:
+			return fn().url
+		except RuntimeError as exc:
+			print(f"WARN resolve:{label} unresolvable (upstream catalog drift): {exc}", file=sys.stderr)
+			unresolvable.append(label)
+			return None
+
+	resolutions: list[tuple[str, Callable[[], ResolvedArtifact], dict[str, str] | None]] = [
+		("ffmpeg/linux", lambda: resolve_ffmpeg_btbn(system="linux", machine="x86_64"), None),
+		("ffmpeg/windows", lambda: resolve_ffmpeg_btbn(system="windows", machine="x86_64"), None),
+		("ffmpeg/darwin-arm64", lambda: resolve_ffmpeg_martin_riedl(arch="arm64"), None),
+		("ffmpeg/darwin-amd64", lambda: resolve_ffmpeg_martin_riedl(arch="amd64"), None),
+		("tesseract/linux", resolve_tesseract_linux, None),
+		("tesseract/windows", resolve_tesseract_windows, None),
+	]
+	for label, fn, headers in resolutions:
+		url = _resolve_url(label, fn)
+		if url is not None:
+			targets.append((f"resolve:{label}", url, headers))
 
 	for machine, label in (("arm64", "darwin-arm64"), ("x86_64", "darwin-x86_64")):
-		bottles = resolve_tesseract_brew_bottles(machine=machine)
-		primary = bottles[0]
-		targets.append((f"resolve:tesseract/{label}", primary.url, dict(GHCR_BOTTLE_HEADERS)))
-	return targets
+
+		def _resolve_bottles(machine: str = machine) -> BrewBottle:
+			return resolve_tesseract_brew_bottles(machine=machine)[0]
+
+		url = _resolve_url(f"tesseract/{label}", _resolve_bottles)
+		if url is not None:
+			targets.append((f"resolve:tesseract/{label}", url, dict(GHCR_BOTTLE_HEADERS)))
+	return targets, unresolvable
 
 
 def main(argv: list[str] | None = None) -> int:
 	_ = argv
 	failures: list[str] = []
 	seen: set[str] = set()
-	for label, url, headers in _probe_catalog_maps() + _probe_resolvers():
+	resolver_targets, unresolvable = _probe_resolvers()
+	for label, url, headers in _probe_catalog_maps() + resolver_targets:
 		if url in seen:
 			print(f"OK  {label} (duplicate url skipped)")
 			continue
@@ -85,6 +115,13 @@ def main(argv: list[str] | None = None) -> int:
 	if failures:
 		print(f"{len(failures)} probe(s) failed", file=sys.stderr)
 		return 1
+	if unresolvable:
+		print(
+			f"note: {len(unresolvable)} resolver(s) skipped due to upstream catalog drift: {', '.join(unresolvable)}",
+			file=sys.stderr,
+		)
+		print("all catalog pins OK (some resolver probes skipped — see note above)")
+		return 0
 	print("all catalog/resolver probes OK")
 	return 0
 
