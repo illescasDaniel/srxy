@@ -282,10 +282,24 @@ def test_given_results_when_formatting_json_then_emits_serializable_payload(tmp_
 
 	# then
 	assert payload[0]["path"] == file_path.as_posix()
+	assert payload[0]["type"] == "file"
 	assert payload[0]["lines"][0]["line_number"] == 12
 	assert payload[0]["lines"][0]["location_kind"] == "line"
 	assert payload[0]["lines"][0]["location_label"] == "line 12"
 	assert payload[0]["lines"][0]["preview"] == "«hello»"
+
+
+def test_given_directory_result_when_formatting_json_then_marks_type_directory(tmp_path: Path):
+	# given
+	folder_path = tmp_path / "Invoices"
+	folder_path.mkdir()
+	result = FileSearchResult(path=folder_path, score=0.9, breakdown={"name": 0.9})
+
+	# when
+	payload = json.loads(format_json([result], query="invoices"))
+
+	# then
+	assert payload[0]["type"] == "directory"
 
 
 def test_given_names_only_flag_when_resolving_modes_then_disables_content_search():
@@ -388,6 +402,41 @@ def test_given_uppercase_readme_filename_when_running_cli_names_only_then_finds_
 	captured = capsys.readouterr()
 	assert exit_code == 0
 	assert "README.md" in captured.out
+
+
+def test_given_matching_folder_name_when_running_cli_names_only_then_lists_folder(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body", encoding="utf-8")
+
+	# when
+	exit_code = main(["invoices", str(tmp_path), "--names-only", "--format", "flat", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert f"{invoices.as_posix()}:name:0:" in captured.out
+
+
+def test_given_matching_folder_name_when_running_cli_content_only_then_folder_excluded(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str]
+):
+	# given — folders have no body text, so --content-only must never surface them.
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures", encoding="utf-8")
+
+	# when
+	exit_code = main(["invoices", str(tmp_path), "--content-only", "--format", "flat", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 0
+	assert f"{invoices.as_posix()}:" not in captured.out
+	assert "notes.txt:line" in captured.out
 
 
 def test_given_no_matches_when_running_cli_then_returns_exit_code_one(
