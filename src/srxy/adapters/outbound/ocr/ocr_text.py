@@ -5,6 +5,8 @@ import io
 import os
 import re
 import shutil
+import sys
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -30,7 +32,10 @@ SPARSE_TEXT_THRESHOLD = 20
 MIN_LEXICAL_TOKEN_LENGTH = 4
 MIN_LEXICAL_ZIPF = 3.0
 LEXICAL_WORDLIST = "small"
-OCR_ENGINE_VARIANT = "tesseract-v10"
+TESSERACT_ENGINE_VARIANT = "tesseract-v10"
+UNLIMITED_OCR_ENGINE_VARIANT = "unlimited-ocr-v1"
+# Kept for backwards compatibility with callers importing the old constant name.
+OCR_ENGINE_VARIANT = TESSERACT_ENGINE_VARIANT
 _REGION_MIN_DIMENSION = 400
 _REGION_GRID_DIVISIONS = 3
 _REGION_MIN_CELL = 32
@@ -43,6 +48,8 @@ _ocr_langs_cache: str | None = None
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
 _ocr_engine: OcrEngine | None = None
+_unlimited_ocr_model_lock = threading.Lock()
+_unlimited_ocr_model_state: tuple[object, object] | None = None
 _lexical_langs_cache: tuple[str, ...] | None = None
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _OSD_ORIENTATION_RE = re.compile(r"Orientation in degrees:\s*(\d+)", re.IGNORECASE)
@@ -192,6 +199,105 @@ class TesseractEngine(OcrEngine):
 		return best_text
 
 
+def _module_importable(name: str) -> bool:
+	# Tests inject a MagicMock via sys.modules; find_spec raises ValueError without __spec__.
+	if sys.modules.get(name) is not None:
+		return True
+	try:
+		return importlib.util.find_spec(name) is not None
+	except (ImportError, ValueError, ModuleNotFoundError):
+		return False
+
+
+def unlimited_ocr_deps_installed() -> bool:
+	"""True when the ``[semantic]`` extras (torch + transformers) are importable.
+
+	Mirrors ``transcribe_deps_installed`` / ``sentence_transformers_installed`` —
+	a cheap ``find_spec`` probe, no heavy import. This is the sole gate baidu's
+	Unlimited OCR needs per the product spec ("if semantic extras installed,
+	use Unlimited OCR; else Tesseract") — no separate env flag.
+	"""
+	return _module_importable("torch") and _module_importable("transformers")
+
+
+def is_unlimited_ocr_available() -> bool:
+	return unlimited_ocr_deps_installed()
+
+
+def _build_unlimited_ocr_model() -> tuple[object, object]:
+	import torch
+	from transformers import AutoModel, AutoTokenizer  # type: ignore[import-not-found]
+
+	from srxy.adapters.outbound.models.device import resolve_torch_device, warn_if_cpu_device
+	from srxy.adapters.outbound.models.model_store import (
+		UNLIMITED_OCR_MODEL_ID,
+		ensure_unlimited_ocr_model,
+		is_model_installed,
+		unlimited_ocr_model_dir,
+		unlimited_ocr_model_missing_message,
+	)
+
+	if not ensure_unlimited_ocr_model(interactive=sys.stdin.isatty()):
+		raise RuntimeError(unlimited_ocr_model_missing_message())
+
+	model_dir = unlimited_ocr_model_dir()
+	device = resolve_torch_device()
+	warn_if_cpu_device(device, context="Unlimited OCR")
+	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+	os.environ.setdefault("TQDM_DISABLE", "1")
+	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+
+	installed_locally = model_dir.is_dir() and is_model_installed(model_dir)
+	source = str(model_dir) if installed_locally else UNLIMITED_OCR_MODEL_ID
+	# The model card's transformers example always calls .cuda() + bfloat16; keep that
+	# on CUDA but fall back to a widely-supported dtype off-GPU (CI/no-GPU/no-CUDA).
+	dtype = torch.bfloat16 if device == "cuda" else torch.float32
+	load_kwargs: dict[str, object] = {"trust_remote_code": True, "torch_dtype": dtype}
+	if installed_locally:
+		os.environ.setdefault("HF_HUB_OFFLINE", "1")
+		os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+		load_kwargs["local_files_only"] = True
+
+	tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True)
+	model = AutoModel.from_pretrained(source, **load_kwargs)
+	model = model.to(device).eval()
+	return model, tokenizer
+
+
+def _load_unlimited_ocr_model() -> tuple[object, object]:
+	global _unlimited_ocr_model_state
+	if _unlimited_ocr_model_state is not None:
+		return _unlimited_ocr_model_state
+	with _unlimited_ocr_model_lock:
+		if _unlimited_ocr_model_state is None:
+			_unlimited_ocr_model_state = _build_unlimited_ocr_model()
+		return _unlimited_ocr_model_state
+
+
+def reset_unlimited_ocr_model():
+	"""Reset the cached Unlimited OCR model. Intended for tests."""
+	global _unlimited_ocr_model_state
+	_unlimited_ocr_model_state = None
+
+
+class UnlimitedOcrEngine(OcrEngine):
+	"""baidu/Unlimited-OCR backend, used when ``[semantic]`` extras are installed.
+
+	Loaded lazily via HF ``transformers`` (``AutoModel``/``AutoTokenizer`` with
+	``trust_remote_code=True``, per the model card) and downloaded on first use
+	through :mod:`srxy.adapters.outbound.models.model_store`, mirroring the CLIP /
+	semantic-text / transcribe loaders in this codebase.
+	"""
+
+	def recognize(self, image: Image.Image) -> str:
+		model, tokenizer = _load_unlimited_ocr_model()
+		infer = getattr(model, "infer", None)
+		if infer is None:
+			raise RuntimeError("Unlimited OCR model does not expose an infer() method")
+		result = infer(tokenizer, image)
+		return str(result).strip()
+
+
 def ocr_env_enabled() -> bool:
 	value = os.environ.get("SRXY_OCR", "").strip().lower()
 	return value in _TRUTHY_ENV_VALUES
@@ -211,7 +317,7 @@ def tesseract_available() -> bool:
 
 
 def is_ocr_available() -> bool:
-	return tesseract_available()
+	return is_unlimited_ocr_available() or tesseract_available()
 
 
 def ocr_requested(ocr: bool | None) -> bool:
@@ -247,15 +353,23 @@ def ocr_unavailable_message() -> str:
 
 
 def ensure_ocr_available():
-	if not tesseract_available():
+	if not is_ocr_available():
 		raise RuntimeError(_ocr_unavailable_message())
+
+
+def current_ocr_engine_variant() -> str:
+	"""Cache-key variant for the OCR backend `get_ocr_engine` would select right now."""
+	return UNLIMITED_OCR_ENGINE_VARIANT if is_unlimited_ocr_available() else TESSERACT_ENGINE_VARIANT
 
 
 def get_ocr_engine() -> OcrEngine:
 	global _ocr_engine
 	if _ocr_engine is None:
 		ensure_ocr_available()
-		_ocr_engine = TesseractEngine()
+		if is_unlimited_ocr_available():
+			_ocr_engine = UnlimitedOcrEngine()
+		else:
+			_ocr_engine = TesseractEngine()
 	return _ocr_engine
 
 
@@ -263,6 +377,7 @@ def reset_ocr_engine():
 	global _ocr_engine
 	_ocr_engine = None
 	reset_ocr_languages_cache()
+	reset_unlimited_ocr_model()
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
@@ -438,12 +553,13 @@ def _cached_ocr_text(kind: str, content_hash: str, recognize: Callable[[], str])
 	if kind not in {CACHE_KIND_OCR_IMAGE, CACHE_KIND_OCR_PDF_BLOB}:
 		raise ValueError(f"unsupported OCR cache kind: {kind}")
 
-	cached = cache_get(kind, content_hash, OCR_ENGINE_VARIANT)
+	variant = current_ocr_engine_variant()
+	cached = cache_get(kind, content_hash, variant)
 	if cached is not None:
 		return cached.decode("utf-8")
 
 	text = recognize().strip()
-	cache_put(kind, content_hash, OCR_ENGINE_VARIANT, text.encode("utf-8"))
+	cache_put(kind, content_hash, variant, text.encode("utf-8"))
 	return text
 
 
