@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-01_
+_Last updated: 2026-09-06_
 
 ## v1.7.0 — fixes and improvements
 
@@ -89,8 +89,16 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ### Open
 
-- [ ] **Windows installer migration (planned):** (1) PySide offline wrapper for Windows (parity with macOS `.app` / Linux AppImage offline wizard). (2) Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution). Inno Setup is acceptable for now — no srxy revenue yet (non-commercial under Inno's ~$5k threshold).
-- [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works (parity check alongside Windows packaging work).
+#### v1.7.0 (still on `develop` / PR #35)
+
+- [ ] **Windows installer migration — PySide offline wrapper:** parity with macOS `.app` / Linux AppImage offline wizard (PR #35).
+- [ ] **Check macOS installer:** Verify macOS installer build/signing/install path still works.
+
+#### v1.8.0 (`feature/1.8.0`)
+
+- [ ] **Unlimited OCR (semantic):** When `[semantic]` deps are installed, download/use [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR); else keep Tesseract. Benchmarks (quality+speed), unit + integration tests. Draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
+- [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Topic branch off `feature/1.8.0`.
+- [ ] **Windows installer migration — NSIS:** Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution).
 
 ## Bugs / sub-tasks discovered
 
