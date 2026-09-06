@@ -8,8 +8,9 @@ _Last updated: 2026-09-06_
 
 ## Current focus
 
-1. **Unlimited OCR** (draft PR #38 → `feature/1.8.0`) — `[semantic]` → `baidu/Unlimited-OCR`, else Tesseract; benches + tests; **stay draft** until Daniel GPU QA.
-2. **Media preview panel** — preview images, video, and audio in the content preview panel (new topic branch off `feature/1.8.0`).
+1. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
+2. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
+3. **Search by folder name** — GUI + TUI + CLI; topic branch off `feature/1.8.0`; tests required; Team Lead marks ready-for-review when OK.
 
 ## Planned (also 1.8.0)
 
@@ -17,9 +18,10 @@ _Last updated: 2026-09-06_
 
 ## Next steps
 
-1. Unlimited OCR — Daniel GPU QA; keep draft until then.
-2. Media preview (images / video / audio) — Srxy Developer implements on a branch off `feature/1.8.0`.
-3. NSIS Windows installer (later in 1.8.0).
+1. Folder-name search — Srxy Developer implements (GUI/TUI/CLI + tests); PR into `feature/1.8.0`.
+2. Unlimited OCR — Daniel GPU QA; keep draft until then.
+3. Media preview — Daniel smoke; then undraft/merge into `feature/1.8.0`.
+4. NSIS Windows installer (later in 1.8.0).
 
 ## Memory protocol (2026-09-01)
 
