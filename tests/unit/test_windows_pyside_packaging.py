@@ -153,6 +153,27 @@ def test_given_windows_ci_workflow_when_checking_then_has_offline_job():
 	assert "needs: [build-offline]" in workflow
 
 
+def test_given_windows_ci_workflow_when_checking_probe_step_then_advisory_non_blocking():
+	"""The vendor-catalog probe (third-party URL health check, not code quality)
+	must not be able to hard-fail the whole build-offline job on a transient or
+	upstream-catalog-drift failure — mirrors ci.yml's quality job. Regression for
+	an incident where a Homebrew formula dropped x86_64 macOS bottles and the
+	unguarded probe step took the whole Windows build job down before
+	build-offline.ps1 ever ran."""
+	# given
+	workflow = (_REPO / ".github" / "workflows" / "windows-installer.yml").read_text(encoding="utf-8")
+	lines = workflow.splitlines()
+	probe_idx = next(i for i, line in enumerate(lines) if "Probe installer catalog URLs" in line)
+	# The probe step's own block (up to the next "- name:").
+	probe_end = next(i for i in range(probe_idx + 1, len(lines)) if lines[i].strip().startswith("- name:"))
+	probe_block = "\n".join(lines[probe_idx:probe_end])
+
+	# when / then
+	assert "continue-on-error: true" in probe_block
+	assert "probe_catalog" in workflow  # step id referenced by the follow-up report step
+	assert "::warning::" in workflow
+
+
 def test_given_windows_ci_workflow_when_checking_triggers_then_runs_on_develop():
 	"""The build-offline job must run on PRs/pushes targeting develop (and main).
 

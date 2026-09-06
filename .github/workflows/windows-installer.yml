@@ -30,7 +30,23 @@ jobs:
         run: uv sync --frozen
 
       - name: Probe installer catalog URLs
+        id: probe_catalog
+        # Advisory health check for third-party vendor download URLs (GitHub
+        # releases, Homebrew, martin-riedl) — not part of the build/smoke gate
+        # below. continue-on-error keeps an unrelated upstream catalog drift
+        # (e.g. a formula dropping x86_64 macOS bottles) from hard-failing the
+        # Windows build job; failures are still visible in this step's own logs
+        # and via the warning annotation below. Mirrors ci.yml's quality job.
+        continue-on-error: true
         run: uv run python -m srxy.adapters.inbound.installer.probe_catalog
+
+      - name: Report catalog probe outcome
+        if: always()
+        shell: bash
+        run: |
+          if [ "${{ steps.probe_catalog.outcome }}" != "success" ]; then
+            echo "::warning::Installer catalog probe failed (advisory, non-blocking) — see 'Probe installer catalog URLs' step logs above. This checks third-party vendor download URLs, not code quality; it does not affect this job's pass/fail status."
+          fi
 
       - name: Build offline Windows PySide installer
         shell: pwsh
