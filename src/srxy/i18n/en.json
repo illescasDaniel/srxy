@@ -265,6 +265,7 @@
   "gui.section.progress": "Search progress",
   "gui.browse": "Browse…",
   "gui.path_placeholder": "Path",
+  "gui.drop_folder_here": "Drop folder here",
   "gui.search_placeholder": "Search…",
   "gui.term_placeholder": "Term",
   "gui.add_term": "Add term",
