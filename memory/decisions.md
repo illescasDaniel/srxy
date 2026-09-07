@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-07 — Cherry-pick `fake_uninstall` stub kwargs fix onto new `feature/1.8.0` topic branches too
+
+- **Context:** CI for this branch (recent-searches) failed the exact same way as the DnD branch's second CI run: `InstallerController` always passes `remove_cache`/`remove_settings`/`remove_models` to `uninstall_prefix()`, but two `tests/gui/test_installer.py` tests' `fake_uninstall` monkeypatch stubs only accepted `path`/`status`/`confirm_unsafe`. The extra kwargs raised `TypeError` *inside the worker `QThread`* before the stub body ever ran, so `started.set()` was never reached and the test's own `started.wait(5.0)` timed out — surfacing as generic-looking timing flakiness on macOS, Windows, and the Linux `quality` job alike (not sandbox-specific, not actually flaky).
+- **Decision:** Cherry-picked `c4e75e2` (`test(installer): fix fake_uninstall stub kwargs + generous wait budget (port from develop)`) from `cursor/gui-dnd-path-field-27be`: both stubs now accept the full current `uninstall_prefix()` kwarg set; `_WAIT_SECONDS` (`SRXY_TEST_WORKER_WAIT_SECONDS` env override, default 20s) and `_pump_until()` (drains `QCoreApplication.processEvents()` until a predicate is true) replace the tests' inline sleep-loops and short hardcoded 5s waits. Resolved a `memory/progress.md` merge conflict by keeping this branch's own entries (the incoming ones referenced the DnD branch's unrelated context).
+- **Rationale:** Same real bug, same fix, independently required on every `feature/1.8.0` topic branch that predates it; verified locally (both previously-failing tests pass, full `tests/gui/` suite green, `./scripts/quality/checks.sh --full` PASSED) before re-pushing.
+
 ## 2026-09-07 — GUI recent searches store one list; no filter/options snapshot in v1
 
 - **Context:** Trello scope lock for "GUI: recent searches + restore last path/query session": persist last **successful** search context (path, query text, query mode) only, cap ~20, launch Restore/Dismiss banner (never auto-search), query-field chevron popover with Restore / Restore & Search / Clear all, Reset preferences also clears history.
