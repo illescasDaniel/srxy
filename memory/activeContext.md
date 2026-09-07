@@ -1,16 +1,18 @@
 # Active Context
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-07_
 
 ## Branch
 
 - Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
+- This branch: `cursor/gui-recent-searches-cf28` — GUI recent searches + restore last path/query session (Trello card, scope locked 2026-09-07).
 
 ## Current focus
 
-1. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-2. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
-3. **Search by folder name** — GUI + TUI + CLI; topic branch off `feature/1.8.0`; tests required; Team Lead marks ready-for-review when OK.
+1. **GUI recent searches + restore last session** (this branch) — last successful search (path/query text/query mode only, no filters) persisted to `settings.json` `recent_searches` (cap 20, newest first); launch Restore/Dismiss banner (never auto-starts search); query-field chevron popover with Restore / Restore & Search / Clear all. Reset preferences clears history too. Unit + GUI tests added; PR into `feature/1.8.0`.
+2. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
+3. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
+4. **Search by folder name** — GUI + TUI + CLI; topic branch off `feature/1.8.0`; tests required; Team Lead marks ready-for-review when OK.
 
 ## Planned (also 1.8.0)
 

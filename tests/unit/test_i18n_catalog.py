@@ -21,6 +21,7 @@ _IDENTICAL_ALLOWLIST = frozenset(
 		"menu.language.en",
 		"menu.language.es",
 		"filters.summary.top",
+		"gui.recent.summary",
 		"installer.options.tesseract_sub",
 		"installer.options.ffmpeg_sub",
 		"installer.progress.overall_text",

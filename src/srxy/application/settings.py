@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import json
 import os
-from dataclasses import asdict, dataclass, fields
+from dataclasses import asdict, dataclass, fields, replace
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -18,6 +19,8 @@ if TYPE_CHECKING:
 
 SUPPORTED_LANGUAGES = ("en", "es")
 DEFAULT_LANGUAGE = "en"
+QUERY_MODES = ("simple", "multi", "advanced")
+RECENT_SEARCHES_CAP = 20
 
 
 @dataclass(frozen=True, slots=True)
@@ -185,15 +188,100 @@ def save_persisted_search_prefs(
 	return save_settings(data)
 
 
+@dataclass(frozen=True, slots=True)
+class RecentSearchEntry:
+	"""One successful GUI search: path, query text, and query mode only.
+
+	No filter/options snapshot in v1 (Trello scope lock 2026-09-07) — restoring
+	a recent entry never touches Search options / Filters.
+	"""
+
+	path: str
+	query_mode: str
+	simple_query: str = ""
+	advanced_query: str = ""
+	term_rows_json: str = "[]"
+	display: str = ""
+	timestamp: str = ""
+
+
+def _recent_entry_from_raw(raw: Any) -> RecentSearchEntry | None:
+	if not isinstance(raw, dict):
+		return None
+	path = raw.get("path")
+	mode = raw.get("query_mode")
+	if not isinstance(path, str) or not path.strip():
+		return None
+	if mode not in QUERY_MODES:
+		return None
+	return RecentSearchEntry(
+		path=path,
+		query_mode=mode,
+		simple_query=str(raw.get("simple_query", "")),
+		advanced_query=str(raw.get("advanced_query", "")),
+		term_rows_json=str(raw.get("term_rows_json", "[]")),
+		display=str(raw.get("display", "")),
+		timestamp=str(raw.get("timestamp", "")),
+	)
+
+
+def load_recent_searches() -> list[RecentSearchEntry]:
+	"""Recent successful searches, newest first. ``[0]`` is the last session."""
+	raw = load_settings().get("recent_searches")
+	if not isinstance(raw, list):
+		return []
+	entries: list[RecentSearchEntry] = []
+	for item in raw:
+		entry = _recent_entry_from_raw(item)
+		if entry is not None:
+			entries.append(entry)
+	return entries
+
+
+def save_recent_search(entry: RecentSearchEntry, *, cap: int = RECENT_SEARCHES_CAP) -> bool:
+	"""Prepend a successful search to the recent list (settings.json), oldest dropped past ``cap``.
+
+	An exact duplicate (same path/mode/query text) already in the list is
+	removed first so re-running the same search moves it to the front instead
+	of padding the list with copies.
+	"""
+	data = load_settings()
+	existing = load_recent_searches()
+	stamped = replace(entry, timestamp=entry.timestamp or datetime.now(UTC).isoformat(timespec="seconds"))
+
+	def _key(item: RecentSearchEntry) -> tuple[str, str, str, str, str]:
+		return (item.path, item.query_mode, item.simple_query, item.advanced_query, item.term_rows_json)
+
+	deduped = [item for item in existing if _key(item) != _key(stamped)]
+	deduped.insert(0, stamped)
+	data["recent_searches"] = [asdict(item) for item in deduped[:cap]]
+	return save_settings(data)
+
+
+def clear_recent_searches() -> bool:
+	"""Drop the recent-searches list (and last-session banner) from settings.json."""
+	data = load_settings()
+	if "recent_searches" not in data:
+		return True
+	data.pop("recent_searches", None)
+	return save_settings(data)
+
+
 __all__ = [
 	"DEFAULT_LANGUAGE",
+	"QUERY_MODES",
+	"RECENT_SEARCHES_CAP",
 	"SUPPORTED_LANGUAGES",
 	"PersistedSearchPrefs",
+	"RecentSearchEntry",
+	"clear_recent_searches",
 	"get_language_setting",
 	"load_persisted_search_prefs",
+	"load_recent_searches",
 	"load_settings",
 	"reset_settings",
 	"save_persisted_search_prefs",
+	"save_recent_search",
 	"save_settings",
 	"set_language_setting",
 	"settings_file_present",

@@ -27,6 +27,7 @@ ApplicationWindow {
 		preferences: { path: "", present: false, statusText: "", pathLabel: "" },
 		busy: false
 	})
+	property var recentSearchesData: []
 
 	// Keep platform-native checkbox rendering (especially on macOS).
 	component StyledCheckBox: CheckBox {}
@@ -104,6 +105,45 @@ ApplicationWindow {
 		return { kind: kind, label: kind, installed: false, statusText: "", path: "" }
 	}
 
+	function reloadRecentSearches() {
+		if (!controller) {
+			root.recentSearchesData = []
+			return
+		}
+		try {
+			root.recentSearchesData = JSON.parse(controller.recentSearchesJson)
+		} catch (e) {
+			root.recentSearchesData = []
+		}
+	}
+
+	// Fills path/query/mode from a restored session. QML owns the mode
+	// ComboBox and multi-term ListModel, so it must sync itself in response
+	// to controller.sessionRestored (path/simple/advanced already live-bind).
+	function syncQueryModeAndRowsFromController() {
+		if (!controller)
+			return
+		const modes = ["simple", "multi", "advanced"]
+		const idx = modes.indexOf(controller.queryMode)
+		if (idx >= 0)
+			modeBox.currentIndex = idx
+		if (controller.queryMode !== "multi")
+			return
+		let rows = []
+		try {
+			rows = JSON.parse(controller.termRowsJson)
+		} catch (e) {
+			rows = []
+		}
+		termModel.clear()
+		if (rows.length === 0) {
+			termModel.append({ term: "", join: "" })
+			return
+		}
+		for (let i = 0; i < rows.length; i++)
+			termModel.append({ term: rows[i].term || "", join: i === 0 ? "" : (rows[i].join || "or") })
+	}
+
 	Connections {
 		target: controller
 		function onLanguageChanged() {
@@ -112,6 +152,12 @@ ApplicationWindow {
 		function onSettingsUiChanged() {
 			root.settingsRev++
 			root.reloadSettingsData()
+		}
+		function onRecentSearchesChanged() {
+			root.reloadRecentSearches()
+		}
+		function onSessionRestored() {
+			root.syncQueryModeAndRowsFromController()
 		}
 	}
 
@@ -463,6 +509,33 @@ ApplicationWindow {
 		anchors.margins: 8
 		spacing: 8
 
+		Frame {
+			id: launchBanner
+			objectName: "launchBanner"
+			Layout.fillWidth: true
+			visible: controller && controller.launchBannerVisible
+			RowLayout {
+				anchors.fill: parent
+				spacing: 8
+				Label {
+					objectName: "launchBannerMessage"
+					Layout.fillWidth: true
+					wrapMode: Text.WordWrap
+					text: controller ? controller.launchBannerMessage : ""
+				}
+				SecondaryButton {
+					objectName: "launchBannerDismissButton"
+					text: root.t("gui.launch_banner.dismiss")
+					onClicked: if (controller) controller.dismissLaunchBanner()
+				}
+				AccentButton {
+					objectName: "launchBannerRestoreButton"
+					text: root.t("gui.launch_banner.restore")
+					onClicked: if (controller) controller.restoreLaunchBanner(false)
+				}
+			}
+		}
+
 		ScrollView {
 			id: mainScroll
 			Layout.fillWidth: true
@@ -616,6 +689,21 @@ ApplicationWindow {
 												text: controller ? controller.advancedQuery : ""
 												onTextChanged: if (controller) controller.advancedQuery = text
 												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+											}
+										}
+										ToolButton {
+											id: recentSearchesButton
+											objectName: "recentSearchesButton"
+											text: "▾"
+											flat: true
+											implicitWidth: 28
+											implicitHeight: 28
+											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											ToolTip.visible: hovered
+											ToolTip.text: root.t("gui.recent.button")
+											onClicked: {
+												root.reloadRecentSearches()
+												recentSearchesPopup.open()
 											}
 										}
 										AccentButton {
@@ -1327,6 +1415,121 @@ ApplicationWindow {
 				}
 			}
 		}
+			}
+		}
+	}
+
+	Popup {
+		id: recentSearchesPopup
+		objectName: "recentSearchesPopup"
+		parent: recentSearchesButton
+		x: recentSearchesButton.width - width
+		y: recentSearchesButton.height
+		width: 420
+		modal: false
+		focus: true
+		closePolicy: Popup.CloseOnEscape | Popup.CloseOnPressOutside
+		enter: Transition {}
+		exit: Transition {}
+
+		// Content is instantiated fresh on every open (Loader.active tracks
+		// Popup.visible) rather than kept alive across opens. QtQuick.Layouts
+		// children whose Layout.preferredHeight/visible bindings change *before*
+		// the Popup is first shown get stuck at 0 height forever (polish is
+		// skipped for invisible items and never retroactively re-run once the
+		// popup opens). Recreating on each open sidesteps that: every binding
+		// evaluates for the first time already against the final, reloaded data.
+		//
+		// Rows are unrolled statically (``RecentSearchRow`` below) rather than
+		// driven by a ListView/Repeater over ``root.recentSearchesData``: under
+		// the offscreen QPA platform, dynamically-created delegate items for a
+		// freshly (re)bound model never finish incubating within the test
+		// event loop, so they are never clickable. Statically-declared rows
+        // hit neither issue.
+		contentItem: Loader {
+			active: recentSearchesPopup.visible
+			sourceComponent: ColumnLayout {
+				id: recentSearchesColumn
+				width: recentSearchesPopup.availableWidth
+				spacing: 6
+
+				Label {
+					text: root.t("gui.recent.title")
+					font.bold: true
+				}
+
+				Label {
+					objectName: "recentSearchesEmptyLabel"
+					visible: root.recentSearchesData.length === 0
+					text: root.t("gui.recent.empty")
+					opacity: 0.7
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+
+				component RecentSearchRow: Frame {
+					id: rowRoot
+					required property int rowIndex
+					readonly property var entry: rowIndex < root.recentSearchesData.length
+						? root.recentSearchesData[rowIndex] : null
+					visible: entry !== null
+					Layout.fillWidth: true
+					Layout.preferredHeight: visible ? implicitHeight : 0
+
+					ColumnLayout {
+						width: rowRoot.width
+						spacing: 2
+						Label {
+							text: rowRoot.entry ? rowRoot.entry.summary : ""
+							wrapMode: Text.WordWrap
+							Layout.fillWidth: true
+						}
+						RowLayout {
+							spacing: 4
+							SecondaryButton {
+								objectName: "recentRestoreButton_" + rowRoot.rowIndex
+								text: root.t("gui.recent.restore")
+								onClicked: {
+									recentSearchesPopup.close()
+									if (controller) controller.restoreRecentSearch(rowRoot.rowIndex, false)
+								}
+							}
+							SecondaryButton {
+								objectName: "recentRestoreSearchButton_" + rowRoot.rowIndex
+								text: root.t("gui.recent.restore_search")
+								onClicked: {
+									recentSearchesPopup.close()
+									if (controller) controller.restoreRecentSearch(rowRoot.rowIndex, true)
+								}
+							}
+						}
+					}
+				}
+
+				// Storage caps at ~20 (settings.py RECENT_SEARCHES_CAP); the
+				// popover shows the 10 most recent to keep it a fixed height.
+				RecentSearchRow { rowIndex: 0 }
+				RecentSearchRow { rowIndex: 1 }
+				RecentSearchRow { rowIndex: 2 }
+				RecentSearchRow { rowIndex: 3 }
+				RecentSearchRow { rowIndex: 4 }
+				RecentSearchRow { rowIndex: 5 }
+				RecentSearchRow { rowIndex: 6 }
+				RecentSearchRow { rowIndex: 7 }
+				RecentSearchRow { rowIndex: 8 }
+				RecentSearchRow { rowIndex: 9 }
+
+				SecondaryButton {
+					id: recentClearAllButton
+					objectName: "recentClearAllButton"
+					text: root.t("gui.recent.clear_all")
+					visible: root.recentSearchesData.length > 0
+					Layout.alignment: Qt.AlignRight
+					onClicked: {
+						if (controller) controller.clearRecentSearches()
+						recentSearchesPopup.close()
+					}
+				}
 			}
 		}
 	}
@@ -2166,6 +2369,7 @@ ApplicationWindow {
 			syncTermRows()
 			loadOptionsFromController()
 			loadFiltersFromController()
+			root.reloadRecentSearches()
 		}
 	}
 }
