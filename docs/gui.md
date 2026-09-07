@@ -14,7 +14,7 @@ Named sections top to bottom:
 
 | Section | Purpose |
 |---------|---------|
-| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory |
+| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory; a folder can also be dragged from the OS file manager and dropped anywhere on this row (dashed highlight + "Drop folder here" while dragging) |
 | **What to search** | Query field with mode selector on the right (Simple / Multi-term / Advanced); preview shown for Multi-term and Advanced only |
 | **How to search** | Options and Filters buttons (stacked) open popup dialogs; Options uses the same sections as the TUI (Where / How / Which files); each control has an **(i)** info button. Each dialog ends with an opt-in **Persist … after srxy exits** checkbox and a **Reset** button (factory defaults in the draft; OK still required). When Persist is on, values are written to `settings.json` on quit and restored on the next GUI launch. |
 | **Search** | Wider Search button (enabled only when path + query are usable); warning icon when the query is invalid; system highlight tint when settings are stale |
@@ -63,6 +63,19 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 | **Simple** | One literal search term (`|` / `&` / `()` are not operators; path separators are ignored) |
 | **Multi-term** | Literal term rows joined with AND/OR (same as the TUI builder) |
 | **Advanced** | Raw `|` / `&` / `()` boolean syntax |
+
+## Drag-and-drop path field
+
+The **Where to search** row is a `DropArea` (`objectName: pathDropArea`) accepting `text/uri-list`:
+
+- Dragging a folder over it shows a dashed accent border, a translucent fill, and a "Drop folder here" label; the **Browse** button dims while a drag is in progress.
+- Dropping resolves the first local `file://` URI via `resolve_dropped_folder_path()` in [`controller.py`](../src/srxy/adapters/inbound/gui/controller.py) and assigns it to `controller.path`, going through the same normalization (`_normalize_browsed_path`, percent-decoding) and validation (`pathIssue`) as the Browse dialog and manual typing.
+- **Directories** update the path and clear any warning; **files** update the path but surface the existing "Not a directory" warning (same affordance as typing a file path).
+- **Multiple dropped items**: only the first local URI is used; the rest are ignored (a multi-selection drag is not a multi-root search).
+- **Non-local URIs** (`http://`, `ftp://`, UNC/network-share hosts) are ignored outright — the path field is left unchanged.
+- Dropping never starts a search; it only updates `path`/`pathIssue`, same as editing `pathField` by hand.
+
+Covered by unit tests for the URI→path helper (`resolve_dropped_folder_path`, `handleDroppedPathUrls`) in [`tests/gui/test_gui_controller.py`](../tests/gui/test_gui_controller.py) and a full-window flow test in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py) that drives `Main.qml`'s bindings end-to-end (offscreen QML cannot synthesize real OS drag events, so tests call the same `handleDroppedPathUrls` entry point the `DropArea.onDropped` handler calls).
 
 ## Snapshots
 

@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Shapes
 import SrxyControls
 
 ApplicationWindow {
@@ -481,11 +482,36 @@ ApplicationWindow {
 				GroupBox {
 					title: root.t("gui.section.where")
 					Layout.fillWidth: true
+
+					// Accepts a folder dragged from the OS file manager and drops
+					// it onto the path field. Only the first local file:// URI is
+					// used (see resolve_dropped_folder_path); non-local drops
+					// (http, network shares, etc.) are ignored outright.
+					DropArea {
+						id: pathDropArea
+						objectName: "pathDropArea"
+						anchors.fill: parent
+						keys: ["text/uri-list"]
+						onEntered: (drag) => {
+							if (!drag.hasUrls)
+								drag.accepted = false
+						}
+						onDropped: (drop) => {
+							if (!drop.hasUrls || !controller)
+								return
+							var urls = []
+							for (var i = 0; i < drop.urls.length; i++)
+								urls.push(drop.urls[i].toString())
+							controller.handleDroppedPathUrls(urls)
+						}
+					}
+
 					RowLayout {
 						anchors.fill: parent
 						SecondaryButton {
 							objectName: "browseButton"
 							text: root.t("gui.browse")
+							opacity: pathDropArea.containsDrag ? 0.5 : 1.0
 							onClicked: folderDialog.open()
 						}
 						TextField {
@@ -507,6 +533,43 @@ ApplicationWindow {
 							ToolTip.visible: hovered
 							ToolTip.text: controller ? controller.pathIssue : ""
 						}
+					}
+
+					Rectangle {
+						id: pathDropFill
+						objectName: "pathDropHighlight"
+						anchors.fill: parent
+						visible: pathDropArea.containsDrag
+						color: palette.highlight
+						opacity: 0.10
+						radius: 4
+					}
+
+					Shape {
+						id: pathDropOutline
+						anchors.fill: parent
+						visible: pathDropArea.containsDrag
+						ShapePath {
+							strokeColor: palette.highlight
+							strokeWidth: 2
+							fillColor: "transparent"
+							strokeStyle: ShapePath.DashLine
+							dashPattern: [4, 3]
+							startX: 1
+							startY: 1
+							PathLine { x: pathDropOutline.width - 1; y: 1 }
+							PathLine { x: pathDropOutline.width - 1; y: pathDropOutline.height - 1 }
+							PathLine { x: 1; y: pathDropOutline.height - 1 }
+							PathLine { x: 1; y: 1 }
+						}
+					}
+
+					Label {
+						anchors.centerIn: parent
+						visible: pathDropArea.containsDrag
+						text: root.t("gui.drop_folder_here")
+						color: palette.highlight
+						font.bold: true
 					}
 				}
 
