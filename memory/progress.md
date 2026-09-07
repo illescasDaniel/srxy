@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-07_
 
 ## v1.7.0 — fixes and improvements
 
@@ -100,6 +100,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual smoke before undraft.
 - [ ] **Search by folder name:** Match folder/directory names in search across **GUI**, **TUI**, and **CLI**. Topic branch off `feature/1.8.0`; unit + GUI/TUI/CLI tests required. Team Lead marks PR ready-for-review when OK.
 - [ ] **Windows installer migration — NSIS:** Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution).
+- [x] **GUI drag-and-drop folder onto path field** (Trello: [voZsdHYf](https://trello.com/c/voZsdHYf)) — the **Where to search** `GroupBox` is now a `DropArea` (`objectName: pathDropArea`) accepting `text/uri-list`, with a dashed accent outline (`QtQuick.Shapes`), translucent fill, "Drop folder here" label, and dimmed Browse button while `containsDrag`. `resolve_dropped_folder_path()` in `controller.py` resolves the first local `file://` URI (percent-decoded, `_normalize_browsed_path` reused, `localhost` authority handled, UNC/non-local URIs ignored); `SearchController.handleDroppedPathUrls()` feeds it through the existing `path` setter so validation (`pathIssue`) and normalization exactly match Browse/manual typing. Directory drop clears the warning; file drop surfaces "Not a directory"; multi-URI drops only use the first local entry; non-local drops (http/ftp/UNC) leave `path` untouched; dropping never auto-starts search. Docs: `docs/gui.md` (Layout table + new "Drag-and-drop path field" section). Unit tests (`resolve_dropped_folder_path` URI→path table + `handleDroppedPathUrls` behavior) in `tests/gui/test_gui_controller.py`; full-window flow tests in `tests/gui/test_gui_flows.py` (directory/file drop through loaded `Main.qml`, asserting `pathField`/`pathIssueButton` and no auto-search). i18n key `gui.drop_folder_here` (en/es). Gate: ruff/shell/ty/build clean; `pytest tests/gui/` 228 passed, 2 skipped (only the two pre-existing, unrelated `test_installer.py` timing flakes fail — reproduce on the unmodified base branch too); `pip-audit` (pre-existing `pypdf` CVE, unrelated) and the gate's `heavy` pytest bucket (needs network for a semantic model download, unavailable in this sandbox) are pre-existing environment limitations, not regressions. PR → `feature/1.8.0` (branch `cursor/gui-dnd-path-field-27be`).
 
 ## Bugs / sub-tasks discovered
 
