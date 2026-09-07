@@ -86,6 +86,58 @@ def test_given_path_query_options_filters_when_searching_then_results_and_progre
 	harness.shutdown()
 
 
+def test_given_folder_dropped_on_path_field_when_handled_then_path_updates_without_search(
+	qapp,
+	tmp_path: Path,
+):
+	# given
+	dropped_dir = tmp_path / "dropped"
+	dropped_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+	drop_area = harness.find("pathDropArea")
+	assert drop_area is not None, "missing objectName=pathDropArea"
+
+	# when — simulate the DropArea's onDropped handler receiving a dragged folder URI
+	controller.handleDroppedPathUrls([dropped_dir.as_uri()])
+	qapp.processEvents()
+
+	# then
+	assert Path(harness.prop("pathField", "text")) == dropped_dir
+	assert harness.prop("pathIssueButton", "visible") is False
+	assert controller.searching is False
+
+	harness.shutdown()
+
+
+def test_given_file_dropped_on_path_field_when_handled_then_path_warning_shown(
+	qapp,
+	tmp_path: Path,
+):
+	# given
+	dropped_file = tmp_path / "note.txt"
+	dropped_file.write_text("hello\n", encoding="utf-8")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	controller.handleDroppedPathUrls([dropped_file.as_uri()])
+	qapp.processEvents()
+
+	# then
+	assert Path(harness.prop("pathField", "text")) == dropped_file
+	assert harness.prop("pathIssueButton", "visible") is True
+	assert "directory" in controller.pathIssue.lower()
+
+	harness.shutdown()
+
+
 def test_given_names_only_options_when_searching_then_filename_hit_appears(qapp, tmp_path: Path):
 	# given
 	(tmp_path / "README.md").write_text("docs without matching body text\n", encoding="utf-8")
