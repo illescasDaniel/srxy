@@ -61,6 +61,7 @@ from srxy.application.search_session import (
 	SearchProgressEvent,
 	SearchResultEvent,
 )
+from srxy.application.settings import RecentSearchEntry
 from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
@@ -301,6 +302,9 @@ class SearchController(QObject):
 	settingsUiChanged = Signal()
 	settingsConfirmChanged = Signal()
 	languageChanged = Signal()
+	recentSearchesChanged = Signal()
+	launchBannerChanged = Signal()
+	sessionRestored = Signal()
 
 	def __init__(
 		self,
@@ -382,6 +386,11 @@ class SearchController(QObject):
 		self._persist_options = False
 		self._persist_filters = False
 		self._load_persisted_search_prefs()
+		self._recent_searches: list[RecentSearchEntry] = []
+		self._load_recent_searches()
+		# Shown once at launch when a prior successful search exists; cleared by
+		# Restore/Dismiss/Restore & Search (never re-shown mid-session).
+		self._launch_banner_visible = bool(self._recent_searches)
 		# Fast snapshot first; full GPU probe runs after the window can paint.
 		self._capabilities = default_capabilities()
 		self._capabilities_probing = True
@@ -473,6 +482,84 @@ class SearchController(QObject):
 			self._options = prefs.options
 		if prefs.filters is not None:
 			self._filters = prefs.filters
+
+	def _load_recent_searches(self):
+		from srxy.application.settings import load_recent_searches
+
+		self._recent_searches = load_recent_searches()
+
+	def _record_recent_search(self):
+		"""Persist path/query/mode of a just-finished successful search (no filters/options)."""
+		from srxy.application.settings import save_recent_search
+
+		try:
+			display = self._formatted_query()
+		except (FileQueryParseError, ValueError):
+			display = ""
+		display = display or self._simple_query.strip()
+		entry = RecentSearchEntry(
+			path=self._path,
+			query_mode=self._query_mode,
+			simple_query=self._simple_query,
+			advanced_query=self._advanced_query,
+			term_rows_json=self._term_rows_json,
+			display=display,
+		)
+		if save_recent_search(entry):
+			self._load_recent_searches()
+			self.recentSearchesChanged.emit()
+
+	def _apply_recent_entry(self, entry: RecentSearchEntry):
+		self._path = _normalize_browsed_path(entry.path)
+		self._query_mode = entry.query_mode
+		self._simple_query = entry.simple_query
+		self._advanced_query = entry.advanced_query
+		self._term_rows_json = entry.term_rows_json or "[]"
+		self.pathChanged.emit()
+		self.pathIssueChanged.emit()
+		self.queryPreviewChanged.emit()
+		self.canSearchChanged.emit()
+		self._refresh_stale()
+		# QML syncs its mode ComboBox / multi-term ListModel from this payload —
+		# those live in the view layer, not on properties with change notifiers.
+		self.sessionRestored.emit()
+
+	def _close_launch_banner(self):
+		if self._launch_banner_visible:
+			self._launch_banner_visible = False
+			self.launchBannerChanged.emit()
+
+	@Slot()
+	def dismissLaunchBanner(self):  # noqa: N802
+		self._close_launch_banner()
+
+	@Slot(bool)
+	def restoreLaunchBanner(self, run_search: bool):  # noqa: N802
+		if not self._recent_searches:
+			self._close_launch_banner()
+			return
+		self._apply_recent_entry(self._recent_searches[0])
+		self._close_launch_banner()
+		if run_search:
+			self.startSearch()
+
+	@Slot(int, bool)
+	def restoreRecentSearch(self, index: int, run_search: bool):  # noqa: N802
+		if index < 0 or index >= len(self._recent_searches):
+			return
+		self._apply_recent_entry(self._recent_searches[index])
+		self._close_launch_banner()
+		if run_search:
+			self.startSearch()
+
+	@Slot()
+	def clearRecentSearches(self):  # noqa: N802
+		from srxy.application.settings import clear_recent_searches
+
+		if clear_recent_searches():
+			self._recent_searches = []
+			self._close_launch_banner()
+			self.recentSearchesChanged.emit()
 
 	def _clamp_options_to_capabilities(self):
 		caps = self._capabilities
@@ -861,6 +948,61 @@ class SearchController(QObject):
 
 	filtersSummary = Property(str, _get_filters_summary, notify=filtersSummaryChanged)
 
+	def _mode_label(self, mode: str) -> str:
+		from srxy.i18n import tr
+
+		return tr(
+			{"simple": "gui.mode.simple", "multi": "gui.mode.multi", "advanced": "gui.mode.advanced"}.get(
+				mode, "gui.mode.simple"
+			)
+		)
+
+	def _recent_summary(self, entry: RecentSearchEntry) -> str:
+		from srxy.i18n import tr
+
+		return tr(
+			"gui.recent.summary",
+			query=entry.display or "…",
+			mode=self._mode_label(entry.query_mode),
+			path=entry.path,
+		)
+
+	def _get_recent_searches_json(self) -> str:
+		return json.dumps(
+			[
+				{
+					"index": index,
+					"path": entry.path,
+					"mode": entry.query_mode,
+					"display": entry.display,
+					"summary": self._recent_summary(entry),
+					"timestamp": entry.timestamp,
+				}
+				for index, entry in enumerate(self._recent_searches)
+			]
+		)
+
+	recentSearchesJson = Property(str, _get_recent_searches_json, notify=recentSearchesChanged)
+
+	def _get_has_recent_searches(self) -> bool:
+		return bool(self._recent_searches)
+
+	hasRecentSearches = Property(bool, _get_has_recent_searches, notify=recentSearchesChanged)
+
+	def _get_launch_banner_visible(self) -> bool:
+		return self._launch_banner_visible and bool(self._recent_searches)
+
+	launchBannerVisible = Property(bool, _get_launch_banner_visible, notify=launchBannerChanged)
+
+	def _get_launch_banner_message(self) -> str:
+		if not self._recent_searches:
+			return ""
+		from srxy.i18n import tr
+
+		return tr("gui.launch_banner.message", summary=self._recent_summary(self._recent_searches[0]))
+
+	launchBannerMessage = Property(str, _get_launch_banner_message, notify=launchBannerChanged)
+
 	def _get_selected_result(self) -> int:
 		return self._selected_row
 
@@ -1212,6 +1354,7 @@ class SearchController(QObject):
 		if not self._has_searched:
 			self._has_searched = True
 			self.hasSearchedChanged.emit()
+		self._close_launch_banner()
 		self._search_cancel_requested = False
 		self._search_completed_ok = False
 		from srxy.application.search_filters import GUI_DEFAULT_RESULT_LIMIT
@@ -1480,6 +1623,7 @@ class SearchController(QObject):
 				self._set_status_tr("status.search_cancelled")
 				return
 			self._search_completed_ok = True
+			self._record_recent_search()
 			self._exit_code = 0 if count else 1
 			self._set_progress_value(100.0, indeterminate=False)
 			if self._default_result_limit_applied and count >= self._args.limit:
@@ -2437,6 +2581,12 @@ class SearchController(QObject):
 		apply_search_options_to_args(self._args, self._options)
 		apply_search_filters_to_args(self._args, self._filters)
 		self._refresh_stale()
+		# Reset preferences also clears recent-search history / the launch banner
+		# (the whole settings.json file is gone) — do not conflate with the
+		# persist-options/persist-filters defaults reset above.
+		self._recent_searches = []
+		self._close_launch_banner()
+		self.recentSearchesChanged.emit()
 		# Re-resolve from system locale without rewriting settings.json.
 		set_language(resolve_language())
 		self._language = get_language()
