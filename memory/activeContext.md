@@ -4,19 +4,19 @@ _Last updated: 2026-09-10_
 
 ## Branch
 
-- `develop` — Search button magnifier glyph fix applied from `cursor/10ecd083`.
+- `develop` — macOS Srxy.app Liquid Glass fix merged from `cursor/61a81fe5` (mdvs).
 
 ## Current focus
 
-Search magnifier glyph: uniform ring thickness (separate ring + handle paths). Applied to develop.
+Installed Srxy.app “old macOS look”: Mach-O launcher + copy/`vtool` SDK 26 restamp on `SrxyPython` so AppKit draws Tahoe chrome (matches `uv run task gui`).
 
 ## Just changed
 
-- [`search.svg`](../src/srxy/adapters/inbound/gui/qml/images/search.svg): separate evenodd ring + SE handle (uniform L=R thickness, 2px margins).
-- [`copy-venv.sh`](../.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh): BSD/macOS rsync `--progress` fallback.
-- Applied via `/apply-worktree-srxy` (FF `9ec8dea` onto develop).
+- Applied `/apply-worktree-srxy` from `cursor/61a81fe5`: embed copied `SrxyPython`, restamp sdk 26.0, Mach-O `SrxyAppLauncher`, repair script, dialog/style harden, tests.
+- Prefix already repaired from mdvs (`SrxyPython` sdk 26.0; uv CPython remains sdk 15.5).
 
 ## Next steps
 
-1. Push develop when desired.
-2. `/delete-worktree-srxy` when the isolated checkout is no longer needed.
+1. User: visually confirm `open ~/Applications/srxy/Srxy.app` matches `uv run task gui`.
+2. Push develop when desired.
+3. `/delete-worktree-srxy` for mdvs when no longer needed.

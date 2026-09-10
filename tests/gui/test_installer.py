@@ -1065,6 +1065,10 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	# Fake venv python so Srxy.app can embed an in-bundle interpreter.
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1077,6 +1081,23 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	assert 'echo "argv: $*"' not in content or "SRXY_DEBUG:-" in content
 	assert "Applications/srxy" in content or "Applications\\/srxy" in content
 	assert 'exec ">>"$LOG_FILE"' not in content.replace("\n", " ")
+	if platform.system().lower() == "darwin":
+		assert "QT_QUICK_CONTROLS_STYLE" in content
+		assert "macOS" in content
+		plist = prefix / "Srxy.app" / "Contents" / "Info.plist"
+		assert plist.is_file()
+		import plistlib
+
+		data = plistlib.loads(plist.read_bytes())
+		assert data.get("NSHighResolutionCapable") is True
+		assert (data.get("LSEnvironment") or {}).get("QT_QUICK_CONTROLS_STYLE") == "macOS"
+		# In-bundle interpreter so AppKit keeps com.srxy.app as mainBundle.
+		assert (prefix / "Srxy.app" / "Contents" / "MacOS" / "SrxyPython").exists()
+		app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+		raw = app_exe.read_bytes()
+		# LaunchServices rejects shell scripts as CFBundleExecutable (kLSNoExecutableErr).
+		assert not raw.startswith(b"#!"), "Srxy.app executable must be Mach-O, not a shell script"
+		assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
 
 
 @pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
@@ -1088,6 +1109,9 @@ def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_befor
 	prefix.mkdir()
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1109,11 +1133,13 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	from srxy.adapters.inbound.installer import install as install_mod
 
 	monkeypatch.setattr(install_mod.platform, "system", lambda: "Darwin")
-	monkeypatch.setattr(install_mod.shutil, "which", lambda _name: None)
 	prefix = tmp_path / "Applications" / "srxy"
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1121,8 +1147,37 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	# then
 	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
 	assert app_exe.is_file()
-	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
+	raw = app_exe.read_bytes()
+	assert not raw.startswith(b"#!"), "CFBundleExecutable must not be a shell script"
+	assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
 	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
+
+
+@pytest.mark.skipif(platform.system().lower() != "darwin", reason="Mach-O CFBundleExecutable only on macOS")
+def test_given_darwin_app_bundle_when_writing_launcher_then_executable_is_macho_not_shell(
+	tmp_path: Path,
+):
+	"""Regression: shell CFBundleExecutable → Dock '(null)' / kLSNoExecutableErr."""
+	# given
+	prefix = tmp_path / "Applications" / "srxy"
+	(prefix / ".venv" / "bin").mkdir(parents=True)
+	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"#!/bin/sh\necho stub-python\n")
+	fake_py.chmod(0o755)
+	site = prefix / ".venv" / "lib" / "python3.12" / "site-packages"
+	site.mkdir(parents=True)
+
+	# when
+	write_launcher(prefix)
+	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+	raw = app_exe.read_bytes()
+
+	# then — do not call ``open`` here; LaunchServices can destabilize the shared
+	# QGuiApplication used by other GUI tests in this process.
+	assert not raw.startswith(b"#!"), "CFBundleExecutable must not be a shell script"
+	assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
+	assert os.access(app_exe, os.X_OK)
 
 
 def test_given_windows_prefix_when_writing_launcher_then_writes_cmd(

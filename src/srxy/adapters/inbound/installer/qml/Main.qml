@@ -72,6 +72,9 @@ ApplicationWindow {
 	property string browseTarget: "prefix"
 	// Bump when language changes so every t() binding re-evaluates.
 	property int langRev: 0
+	// Interactive macOS uses NSAlert via MessageDialog; offscreen tests force false.
+	readonly property bool useNativeAlerts: Qt.platform.os === "osx"
+		&& srxyUseNativeAlerts !== false
 	readonly property color primaryText: palette.windowText
 	// Do not use palette.placeholderText — on macOS light themes it is nearly invisible.
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
@@ -97,8 +100,16 @@ ApplicationWindow {
 	}
 
 	function showHelp(key) {
+		const body = c ? c.helpText(key) : ""
+		if (root.useNativeAlerts) {
+			helpNativeDialog.title = root.t("help.option_title")
+			helpNativeDialog.text = key
+			helpNativeDialog.informativeText = body
+			helpNativeDialog.open()
+			return
+		}
 		helpTitle.text = key
-		helpBody.text = c ? c.helpText(key) : ""
+		helpBody.text = body
 		helpDialog.open()
 	}
 
@@ -714,7 +725,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: helpDialog
 		title: root.t("help.option_title")
 		modal: true
@@ -743,7 +754,14 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	MessageDialog {
+		id: helpNativeDialog
+		title: root.t("help.option_title")
+		buttons: MessageDialog.Ok
+		parentWindow: root
+	}
+
+	SrxyDialog {
 		id: unsafePrefixDialog
 		objectName: "unsafePrefixDialog"
 		title: root.t("installer.confirm.unsafe_prefix_title")
@@ -773,13 +791,31 @@ ApplicationWindow {
 		onRejected: if (c) c.rejectUnsafeConfirm()
 	}
 
+	MessageDialog {
+		id: unsafePrefixNativeDialog
+		title: root.t("installer.confirm.unsafe_prefix_title")
+		text: c ? c.unsafeConfirmMessage : ""
+		buttons: MessageDialog.Ok | MessageDialog.Cancel
+		parentWindow: root
+		onAccepted: if (c) c.acceptUnsafeConfirm()
+		onRejected: if (c) c.rejectUnsafeConfirm()
+	}
+
 	Connections {
 		target: c
 		function onUnsafeConfirmOpenChanged() {
-			if (c && c.unsafeConfirmOpen)
+			if (root.useNativeAlerts) {
+				if (c && c.unsafeConfirmOpen) {
+					unsafePrefixNativeDialog.text = c.unsafeConfirmMessage
+					unsafePrefixNativeDialog.open()
+				} else {
+					unsafePrefixNativeDialog.close()
+				}
+			} else if (c && c.unsafeConfirmOpen) {
 				unsafePrefixDialog.open()
-			else
+			} else {
 				unsafePrefixDialog.close()
+			}
 		}
 	}
 }

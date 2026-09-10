@@ -41,6 +41,8 @@ from srxy.adapters.outbound.models.model_store import parse_progress_line
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.i18n import tr
 from srxy.resources.icons import app_icon_path, available_icon_sizes, macos_app_icon_path
+from srxy.resources.icons.icns import write_icns_from_png
+from srxy.resources.macos import app_launcher_c_path
 
 
 StatusCallback = Callable[[str], None]
@@ -267,6 +269,21 @@ def _validate_install_prefix(prefix: Path, *, confirm_unsafe: bool):
 		raise RuntimeError(tr("installer.error.non_empty_prefix", path=str(prefix)))
 
 
+def _clear_macos_qml_caches():
+	"""Drop Qt QML disk caches that can keep pre-style-fix bytecode on Darwin."""
+	if platform.system().lower() != "darwin":
+		return
+	home = Path.home()
+	for relative in (
+		Path("Library") / "Caches" / "srxy" / "qmlcache",
+		Path("Library") / "Caches" / "srxy-installer" / "qmlcache",
+		Path("Library") / "Caches" / "Python" / "qmlcache",
+	):
+		cache = home / relative
+		if cache.is_dir():
+			shutil.rmtree(cache, ignore_errors=True)
+
+
 def write_launcher(prefix: Path):
 	bin_dir = prefix / "bin"
 	bin_dir.mkdir(parents=True, exist_ok=True)
@@ -301,6 +318,13 @@ if [ -d {shlex.quote(tessdata_dist.as_posix())} ]; then
 else
 	export TESSDATA_PREFIX={q_tessdata}
 fi
+# Force native Quick Controls before Python starts (Finder launches inherit a
+# minimal env; without this some hosts fall back to Basic/Fusion chrome).
+case "$(uname -s 2>/dev/null || true)" in
+Darwin)
+	export QT_QUICK_CONTROLS_STYLE="${{QT_QUICK_CONTROLS_STYLE:-macOS}}"
+	;;
+esac
 LOG_DIR={q_log_dir}
 LOG_FILE={q_log_file}
 mkdir -p "$LOG_DIR"
@@ -311,6 +335,7 @@ _log_start() {{
 			echo "argv: $*"
 		fi
 		echo "SRXY_HOME=$SRXY_HOME"
+		echo "QT_QUICK_CONTROLS_STYLE=${{QT_QUICK_CONTROLS_STYLE:-}}"
 	}} >>"$LOG_FILE"
 }}
 if [ -t 1 ]; then
@@ -324,6 +349,7 @@ fi
 	launcher.write_text(content, encoding="utf-8")
 	launcher.chmod(0o755)
 	_write_macos_app(prefix, launcher_text=content)
+	_clear_macos_qml_caches()
 
 
 def _write_windows_launcher(prefix: Path):
@@ -456,7 +482,226 @@ def _write_windows_gui_exe(prefix: Path):
 	subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
 
 
+# AppKit gates Tahoe Liquid Glass on the *main executable* linked SDK
+# (LC_BUILD_VERSION), not Info.plist. Keep minos aligned with LSMinimumSystemVersion.
+_MACOS_EMBEDDED_PYTHON_MINOS = "12.0"
+_MACOS_EMBEDDED_PYTHON_SDK = "26.0"
+_MACHO_MAGICS = {
+	b"\xcf\xfa\xed\xfe",
+	b"\xfe\xed\xfa\xcf",
+	b"\xca\xfe\xba\xbe",
+	b"\xbe\xba\xfe\xca",
+}
+
+
+def _is_macho_executable(path: Path) -> bool:
+	try:
+		return path.read_bytes()[:4] in _MACHO_MAGICS
+	except OSError:
+		return False
+
+
+def _restamp_macos_linked_sdk(
+	binary: Path,
+	*,
+	minos: str = _MACOS_EMBEDDED_PYTHON_MINOS,
+	sdk: str = _MACOS_EMBEDDED_PYTHON_SDK,
+) -> bool:
+	"""Rewrite ``LC_BUILD_VERSION`` so AppKit draws modern Tahoe chrome.
+
+	Returns True when the binary was restamped. Non-Mach-O inputs (test stubs)
+	are skipped. Missing ``vtool`` on Darwin is a hard error for real interpreters.
+	"""
+	if not _is_macho_executable(binary):
+		return False
+	xcrun = shutil.which("xcrun")
+	vtool = shutil.which("vtool")
+	if xcrun is not None:
+		cmd_prefix = [xcrun, "vtool"]
+	elif vtool is not None:
+		cmd_prefix = [vtool]
+	else:
+		raise RuntimeError(
+			"vtool is required to stamp embedded SrxyPython with macOS SDK "
+			f"{sdk} (Liquid Glass). Install Xcode CLT or ensure vtool is on PATH."
+		)
+	tmp = binary.with_name(binary.name + ".restamp")
+	cmd = [
+		*cmd_prefix,
+		"-set-build-version",
+		"macos",
+		minos,
+		sdk,
+		"-replace",
+		"-output",
+		str(tmp),
+		str(binary),
+	]
+	completed = subprocess.run(cmd, check=False, capture_output=True, text=True)  # noqa: S603
+	if completed.returncode != 0 or not tmp.is_file():
+		tmp.unlink(missing_ok=True)
+		detail = (completed.stderr or completed.stdout or "").strip()
+		raise RuntimeError(f"vtool failed restamping {binary.name} to sdk {sdk}: {detail}")
+	tmp.replace(binary)
+	binary.chmod(0o755)
+	return True
+
+
+def _adhoc_codesign_macos(binary: Path):
+	"""Re-sign after vtool (invalidates the previous signature)."""
+	codesign = shutil.which("codesign") or "/usr/bin/codesign"
+	if not Path(codesign).is_file():
+		print(f"warning: codesign not found; left {binary.name} unsigned after SDK restamp", file=sys.stderr)
+		return
+	completed = subprocess.run(  # noqa: S603
+		[codesign, "--force", "--sign", "-", "--timestamp=none", str(binary)],
+		check=False,
+		capture_output=True,
+		text=True,
+	)
+	if completed.returncode != 0:
+		detail = (completed.stderr or completed.stdout or "").strip()
+		print(f"warning: ad-hoc codesign failed for {binary.name}: {detail}", file=sys.stderr)
+
+
+def _embed_macos_app_python(prefix: Path, macos_dir: Path) -> Path | None:
+	"""Place a Python interpreter *inside* ``Srxy.app`` so AppKit keeps our bundle.
+
+	Finder launches Mach-O ``Contents/MacOS/srxy``, which ``exec``s an interpreter
+	whose path still lives under ``Srxy.app``. If we ``exec`` the prefix ``.venv``
+	python (outside the bundle), ``NSBundle.mainBundle`` becomes the uv/CPython
+	install.
+
+	Always **copy** (never hardlink): we then ``vtool``-restamp the copy to
+	linked SDK 26 so Tahoe draws Liquid Glass instead of legacy Aqua. Hardlinking
+	would mutate the shared uv CPython install under ``~/.local/share/uv/python``.
+	"""
+	venv_python = prefix / ".venv" / "bin" / "python"
+	if not venv_python.exists():
+		return None
+	real_python = venv_python.resolve()
+	embedded = macos_dir / "SrxyPython"
+	if embedded.exists() or embedded.is_symlink():
+		embedded.unlink()
+	shutil.copy2(real_python, embedded)
+	embedded.chmod(0o755)
+	# Only restamp on a real Darwin host with a real Mach-O interpreter.
+	if sys.platform == "darwin" and _is_macho_executable(embedded):
+		_restamp_macos_linked_sdk(embedded)
+		_adhoc_codesign_macos(embedded)
+	return embedded
+
+
+def _venv_site_packages(prefix: Path) -> Path | None:
+	lib = prefix / ".venv" / "lib"
+	if not lib.is_dir():
+		return None
+	candidates = sorted(p for p in lib.glob("python*/site-packages") if p.is_dir())
+	return candidates[0] if candidates else None
+
+
+def _c_string_define(value: str) -> str:
+	"""Return a clang ``-DNAME="…"`` value with escapes for backslash and quotes."""
+	escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+	return f'"{escaped}"'
+
+
+def _venv_python_home(prefix: Path) -> str | None:
+	"""Return ``sys.base_prefix`` for the prefix venv interpreter (for PYTHONHOME)."""
+	venv_python = prefix / ".venv" / "bin" / "python"
+	if not venv_python.exists():
+		return None
+	try:
+		out = subprocess.check_output(  # noqa: S603
+			[str(venv_python), "-c", "import sys; print(sys.base_prefix)"],
+			text=True,
+			stderr=subprocess.DEVNULL,
+		)
+	except (OSError, subprocess.CalledProcessError):
+		return None
+	home = out.strip()
+	if not home:
+		return None
+	return str(Path(home).resolve())
+
+
+def _compile_macos_app_launcher(prefix: Path, dest: Path):
+	"""Compile Mach-O ``CFBundleExecutable`` (macOS rejects shell scripts)."""
+	src = app_launcher_c_path()
+	if not src.is_file():
+		raise FileNotFoundError(f"missing macOS app launcher source: {src}")
+
+	site = _venv_site_packages(prefix)
+	if site is None:
+		# Editable / partial prefixes: still point at the expected layout.
+		site = prefix / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+
+	python_home = _venv_python_home(prefix)
+	if not python_home:
+		# Fall back to the resolved interpreter's parent chain when probe fails.
+		venv_python = prefix / ".venv" / "bin" / "python"
+		python_home = str(venv_python.resolve().parent.parent) if venv_python.exists() else ""
+	if not python_home:
+		raise RuntimeError("could not resolve PYTHONHOME for Srxy.app launcher")
+
+	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
+	tessdata_dist = prefix / "vendor" / "tesseract" / "dist" / "tessdata"
+	tess = tessdata_dist if tessdata_dist.is_dir() else tessdata
+	path_prefix = ":".join(
+		[
+			(prefix / "vendor" / "tesseract" / "bin").as_posix(),
+			(prefix / "vendor" / "ffmpeg" / "bin").as_posix(),
+			(prefix / "vendor" / "uv").as_posix(),
+		]
+	)
+	log_dir = prefix / "logs"
+	log_dir.mkdir(parents=True, exist_ok=True)
+	log_file = log_dir / "srxy.log"
+
+	clang = shutil.which("clang")
+	if clang is None:
+		raise RuntimeError("clang is required to build Srxy.app (CFBundleExecutable must be Mach-O)")
+
+	cmd = [
+		clang,
+		"-O2",
+		"-Wall",
+		"-Wextra",
+		f"-DSRXY_HOME_PATH={_c_string_define(prefix.as_posix())}",
+		f"-DSRXY_PYTHONHOME={_c_string_define(python_home)}",
+		f"-DSRXY_SITE_PACKAGES={_c_string_define(site.as_posix())}",
+		f"-DSRXY_PATH_PREFIX={_c_string_define(path_prefix)}",
+		f"-DSRXY_TESSDATA={_c_string_define(tess.as_posix())}",
+		f"-DSRXY_LOG_FILE={_c_string_define(log_file.as_posix())}",
+		"-o",
+		str(dest),
+		str(src),
+	]
+	completed = subprocess.run(cmd, check=False, capture_output=True, text=True)  # noqa: S603
+	if completed.returncode != 0:
+		detail = (completed.stderr or completed.stdout or "").strip()
+		raise RuntimeError(f"clang failed building Srxy.app launcher: {detail}")
+	dest.chmod(0o755)
+	_adhoc_codesign_macos(dest)
+
+
+def _write_macos_bundle_executable(prefix: Path, dest: Path):
+	"""Write ``Contents/MacOS/srxy`` as Mach-O (or a non-shell stub off Darwin)."""
+	# Cross-platform tests monkeypatch ``platform.system`` to Darwin; only compile
+	# on a real macOS host. Stub must not look like a shell script — LaunchServices
+	# rejects ``#!/bin/sh`` as ``CFBundleExecutable`` (kLSNoExecutableErr).
+	if sys.platform != "darwin":
+		dest.write_bytes(b"\xcf\xfa\xed\xfeSRXY_MACOS_LAUNCHER_STUB\n")
+		dest.chmod(0o755)
+		return
+	_compile_macos_app_launcher(prefix, dest)
+
+
 def _write_macos_app(prefix: Path, *, launcher_text: str):
+	# ``launcher_text`` is the CLI ``bin/srxy`` shell script. The .app bundle
+	# executable must be Mach-O — LaunchServices rejects shell scripts
+	# (kLSNoExecutableErr / Dock "(null)").
+	_ = launcher_text
 	if platform.system().lower() != "darwin":
 		return
 	app_bundle = prefix / "Srxy.app"
@@ -464,30 +709,24 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 	resources_dir = app_bundle / "Contents" / "Resources"
 	macos_dir.mkdir(parents=True, exist_ok=True)
 	resources_dir.mkdir(parents=True, exist_ok=True)
-	app_launcher = macos_dir / "srxy"
-	app_launcher.write_text(launcher_text, encoding="utf-8")
-	app_launcher.chmod(0o755)
+
+	_embed_macos_app_python(prefix, macos_dir)
+	_write_macos_bundle_executable(prefix, macos_dir / "srxy")
 
 	# Prefer squircle-masked macOS artwork so Finder/Dock show rounded corners.
 	icon_png = macos_app_icon_path()
 	shutil.copy2(icon_png, resources_dir / "srxy.png")
 	icns_name = "srxy.icns"
 	icns_path = resources_dir / icns_name
-	if shutil.which("sips") and shutil.which("iconutil"):
-		iconset = resources_dir / "srxy.iconset"
-		if iconset.exists():
-			shutil.rmtree(iconset)
-		iconset.mkdir(parents=True, exist_ok=True)
-		for size in (16, 32, 128, 256, 512):
-			target = iconset / f"icon_{size}x{size}.png"
-			_run(["sips", "-z", str(size), str(size), str(icon_png), "--out", str(target)])
-			if size <= 512:
-				target2x = iconset / f"icon_{size}x{size}@2x.png"
-				_run(["sips", "-z", str(size * 2), str(size * 2), str(icon_png), "--out", str(target2x)])
-		_run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns_path)])
-		shutil.rmtree(iconset, ignore_errors=True)
+	try:
+		write_icns_from_png(icon_png, icns_path)
+	except Exception as exc:  # noqa: BLE001 — icon is best-effort; app still launches
+		print(f"warning: could not write {icns_path.name}: {exc}", file=sys.stderr)
+		if icns_path.exists():
+			icns_path.unlink(missing_ok=True)
 
-	plist = {
+	# Keep modern Tahoe metrics: do NOT set UIDesignRequiresCompatibility.
+	plist: dict[str, object] = {
 		"CFBundleName": "Srxy",
 		"CFBundleDisplayName": "Srxy",
 		"CFBundleIdentifier": "com.srxy.app",
@@ -496,6 +735,11 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 		"CFBundleExecutable": "srxy",
 		"CFBundlePackageType": "APPL",
 		"LSMinimumSystemVersion": "12.0",
+		"NSHighResolutionCapable": True,
+		"NSSupportsAutomaticGraphicsSwitching": True,
+		"LSEnvironment": {
+			"QT_QUICK_CONTROLS_STYLE": "macOS",
+		},
 	}
 	if icns_path.is_file():
 		plist["CFBundleIconFile"] = icns_name
@@ -758,6 +1002,18 @@ def _install_srxy_body(
 			"Installed srxy is missing PySide6 (GUI). The installer must use a local "
 			"wheel/source build that includes the desktop UI — not an older PyPI build.\n"
 			f"{(probe.stderr or probe.stdout).strip()}"
+		)
+
+	# Keep the same PySide pin as packaging/macos offline builds. A floating
+	# 6.11.x patch can change Quick Controls macOS chrome vs ``uv run`` / the
+	# installer wizard the user just saw.
+	if platform.system().lower() == "darwin":
+		_run_with_stdout_progress(
+			[str(uv), "pip", "install", "PySide6==6.11.1"],
+			env=env,
+			progress=progress,
+			cancel_file=cancel_file,
+			heartbeat_label=package_label,
 		)
 
 	phase_by_key = {phase.key: (i + 1, phase) for i, phase in enumerate(phases)}
