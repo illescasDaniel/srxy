@@ -4,18 +4,21 @@ _Last updated: 2026-09-10_
 
 ## Branch
 
-- `cursor/10ecd083` off `develop` — Search button icon clip fix.
+- `cursor/61a81fe5` (worktree `mdvs`) — macOS GUI + Srxy.app launch + Liquid Glass SDK restamp.
 
 ## Current focus
 
-Search magnifier glyph: uniform ring thickness (separate ring + handle paths).
+Installed Srxy.app “old macOS look”: copy + `vtool` restamp embedded `SrxyPython` to sdk 26.0.
 
 ## Just changed
 
-- [`search.svg`](../src/srxy/adapters/inbound/gui/qml/images/search.svg): split into evenodd ring (`Ro=5`/`Ri=3` at `(7,7)`) + separate rounded handle path. Compound outline had made the right/SE rim thicker under AA (measured L≈0.94 vs R≈1.56 px); now L=R=2.12 px, margins 2 all around.
-- Prior: SE handle restore, recenter after left clip, copy-venv BSD rsync, worktree `.venv`.
+- [`install.py`](../src/srxy/adapters/inbound/installer/install.py): `_embed_macos_app_python` always copies; `_restamp_macos_linked_sdk` + `_adhoc_codesign_macos`; Mach-O stub also adhoc-signed.
+- [`repair-prefix-gui.sh`](../scripts/macos/repair-prefix-gui.sh): assert no hardlink; assert `vtool -show-build` sdk 26.
+- [`test_macos_app_launcher.py`](../tests/unit/test_macos_app_launcher.py): restamp + embed sdk 26 tests.
+- Prefix repaired: `SrxyPython` sdk 26.0, uv CPython remains sdk 15.5; `open Srxy.app` launched for visual QA.
 
 ## Next steps
 
-1. User visual confirm in live macOS GUI.
-2. Commit when asked.
+1. User: visually confirm `Srxy.app` matches `uv run task gui` (Liquid Glass).
+2. Port launcher + SDK restamp onto `develop`.
+3. Commit when ready.

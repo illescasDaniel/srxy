@@ -2,6 +2,54 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-10 — SrxyPython copy + vtool SDK 26 for Liquid Glass
+
+- **Context:** After Mach-O ``Srxy.app`` + in-bundle ``SrxyPython``, ``NSBundle.mainBundle`` was correct (``com.srxy.app``) but the installed GUI still looked like legacy Aqua vs ``uv run task gui``. Measured: after ``execv`` the process image is uv’s CPython with ``LC_BUILD_VERSION sdk 15.5``; Homebrew ``Python.app`` used by ``uv run`` is ``sdk 26.4``. AppKit enables Tahoe Liquid Glass from the main executable’s linked SDK ([cpython#139404](https://github.com/python/cpython/issues/139404)).
+- **Decision:** Always ``shutil.copy2`` the venv interpreter into ``Contents/MacOS/SrxyPython`` (never hardlink — ``vtool`` must not mutate ``~/.local/share/uv/python``); ``xcrun vtool -set-build-version macos 12.0 26.0 -replace``; ad-hoc ``codesign`` the copy and the Mach-O stub. Repair script asserts ``sdk 26``; unit tests cover restamp + embed.
+- **Rationale:** Bundle identity alone cannot unlock Liquid Glass; restamping the *exec’d* interpreter matches AppKit’s linked-on-or-after check without switching the prefix off uv-managed CPython.
+
+## 2026-09-10 — Srxy.app PYTHONHOME; help ScrollView; repair script quoting
+
+- **Context:** In-bundle ``SrxyPython`` failed at startup (``Could not find platform independent libraries`` / prefix ``/install``) so Finder/Dock opened nothing. ``repair-prefix-gui.sh`` used ``Path($(printf '%q' "$PREFIX"))`` → ``Path(/Users/…)`` SyntaxError. Help body lacked a ScrollView; Filters sheet was oversized (520–640).
+- **Decision:** Bake ``PYTHONHOME`` (resolved ``sys.base_prefix``) into the Mach-O launcher; repair script uses ``Path(os.environ["SRXY_HOME"])`` + heredoc and clean-env ``--help`` smoke; help content always in ``ScrollView``; Filters height ~340–420.
+- **Rationale:** Relocating the interpreter changes argv[0]; PYTHONHOME is required. Quoting via env avoids shell/Python string bugs. ScrollView + shorter Filters match normal dialog UX.
+
+## 2026-09-10 — Help/alerts use SrxyDialog+AccentButton (drop MessageDialog)
+
+- **Context:** Info-button help used Qt Quick ``MessageDialog``. On macOS it fell back to Basic chrome (weird OK) and, with ``parentWindow`` null/root under ``Popup.Native`` Options, stacked *behind* the Options sheet so OK was almost unclickable.
+- **Decision:** Help/unavailable always open ``helpDialog`` (``SrxyDialog`` + ``AccentButton``). When another sheet is open, force ``Popup.Window`` so help sits above Options; otherwise ``Popup.Native`` / Item for tests. Remove remaining MessageDialog error/confirm paths in Main.qml (same stacking/chrome issues).
+- **Rationale:** AccentButton matches Options/Filters; Window-above-sheet is reliable where Native-on-Native and NSAlert parenting are not.
+
+## 2026-09-10 — Srxy.app CFBundleExecutable is Mach-O; MessageDialog parent is QWindow*
+
+- **Context:** Installing with a shell script as `Contents/MacOS/srxy` made LaunchServices fail (`kLSNoExecutableErr` / Dock “(null)”). Separately, help `MessageDialog.parentWindow = open SrxyDialog` raised `Cannot assign QObject* to QWindow*`. InfoButton ToolTip broke after the macOS pill background swap. Tests never clicked “i” with native alerts on.
+- **Decision:** Compile packaged `SrxyAppLauncher.c` to Mach-O at install time (paths baked via `-D`); still embed `SrxyPython`. When a sheet is open, set `MessageDialog.parentWindow` to `null` (app-modal NSAlert); otherwise `root`. InfoButton uses HoverHandler-driven ToolTip + objectNames; `capture_qt_messages` fails tests on QML assign/runtime errors; installer tests assert Mach-O magic and LaunchServices open without `kLSNoExecutableErr`.
+- **Rationale:** Modern macOS rejects shell `CFBundleExecutable`; `parentWindow` is `QWindow*`; app-modal null stacks above sheets; tests must exercise the user click path.
+
+## 2026-09-10 — Srxy.app embeds interpreter for AppKit mainBundle
+
+- **Context:** After pinning PySide and exporting `QT_QUICK_CONTROLS_STYLE=macOS`, the installed GUI still looked like older macOS vs `uv run`. The `.app` entrypoint was a shell script that `exec`’d `prefix/.venv/bin/python` (uv CPython outside the bundle). AppKit then treated the process as that interpreter’s bundle, so Qt’s macOS NativeStyle used a compatibility / non-app chrome path. Separately: Filters lacked ScrollView; info `ToolButton` hover was a heavy slab; help `MessageDialog` parented to the main window appeared under Popup.Native Options/Filters sheets.
+- **Decision:** Hardlink/copy the venv Python into `Srxy.app/Contents/MacOS/SrxyPython` and have the bundle Mach-O launcher exec that binary with `PYTHONPATH` → venv site-packages; Info.plist gains `NSHighResolutionCapable`, `LSSupportsAutomaticGraphicsSwitching`, and `LSEnvironment.QT_QUICK_CONTROLS_STYLE=macOS` (never `UIDesignRequiresCompatibility`). Filters get ScrollView + bounded height; info hover uses a light pill on macOS; native alerts use a QWindow-compatible parent (see Mach-O / parentWindow decision above); remove the style stdout line.
+- **Rationale:** `NSBundle.mainBundle` follows the running Mach-O path; keeping the interpreter inside the `.app` is the standard fix for script-launched Python GUIs.
+
+## 2026-09-10 — macOS dialog footer opacity + installed Quick style harden
+
+- **Context:** Native Filters sheets looked good but OK sat flush to the right edge, the Cancel/OK strip was transparent (form content visible underneath), and Filters felt cramped. Installed `Srxy.app` could still look “old” vs `uv run` because Finder launches omit style env, QML disk caches linger, and pip floated PySide to 6.11.2 while offline/`uv run` stay on 6.11.1.
+- **Decision:** Opaque macOS `SrxyDialogFooter` with 16px side padding; Filters width 560 on Darwin; Unix launcher exports `QT_QUICK_CONTROLS_STYLE=macOS`; clear `~/Library/Caches/{srxy,Python}/qmlcache` on `write_launcher`; after Darwin package install pin `PySide6==6.11.1`; ship `scripts/macos/repair-prefix-gui.sh` for existing prefixes.
+- **Rationale:** Footer is laid out full-bleed (Dialog padding does not inset it); env+pin+cache removes the three installed-vs-dev skews we can control without requiring a full offline rebuild.
+
+## 2026-09-10 — Offline install: payload wheel beats PyPI; macOS Dialog uses Popup.Native
+
+- **Context:** Local installer wizard looked correct (live tree) while `~/Applications/srxy` stayed on an older install (Fusion `Dialog`, no `+macos` sheet). Separately, packaged offline installers could prefer a newer PyPI `srxy` than the wheel they shipped. Custom sheet chrome with stacked fake shadows still felt non-native. On macOS 26, `iconutil -c icns` rejects valid iconsets (`Invalid Iconset`), breaking launcher tests and `.app` icon generation.
+- **Decision:** (1) When `APPDIR` / `SRXY_INSTALLER_PAYLOAD` has a wheel, `resolve_srxy_install_spec` always returns that path (no PyPI upgrade). (2) macOS `+macos/SrxyDialog.qml` uses `Popup.Native` for interactive runs; offscreen tests keep `Popup.Item` when `srxyUseNativeAlerts === false`. Drop double drop-shadow rectangles; footer gets a hairline only. (3) Pack `.icns` via `srxy.resources.icons.icns.write_icns_from_png` (Pillow + PNG ICNS chunks); use it from `install.py` and macOS packaging `build_icns`.
+- **Rationale:** Wizard UI and installed package must match the payload; Cocoa-hosted popups beat hand-drawn Fusion sheets; tests need overlay Item popups for `findChild` / synthetic clicks; Apple’s encoder is broken on Tahoe while a pure-Python ICNS still round-trips through `iconutil --convert iconset`.
+
+## 2026-09-10 — macOS: terminal quit signals, Quick style harden, native alerts
+
+- **Context:** (1) Ctrl+C from `uv run task gui` left the Qt window open because `app.exec()` never saw SIGINT — and a TTY-only install skipped some launch trees; background/parent jobs often leave SIGINT as ``SIG_IGN``. (2) Packaged offline installer / installed app could look non-native if the macOS Quick style failed to load silently (Basic/Fusion). (3) Qt’s macOS Quick `Dialog` is Fusion-derived; Options/Filters/etc. looked like old Qt boxes vs WinUI/Material.
+- **Decision:** (1) `install_terminal_quit_signals` always on Unix: un-ignore SIGINT, handlers + ``signal.set_wakeup_fd`` + ``QSocketNotifier`` + 200ms ``QTimer`` pump → ``QCoreApplication.quit()``; wired in GUI + installer. (2) `prefer_macos_quick_controls_style` sets `QT_QUICK_CONTROLS_STYLE=macOS` before `QGuiApplication`; Darwin theme path warns if `QQuickStyle.name() != "macOS"`; offline build pins `PySide6==6.11.1`; smoke asserts style; packaging contract tests. (3) Form modals use shared ``SrxyDialog``; on macOS ``+macos/SrxyDialog.qml`` (QFileSelector) is a ``Templates.Dialog`` with sheet-like chrome (radius 14, centered title, dim scrim) — Windows/Linux keep a plain ``Dialog`` passthrough. Simple confirms/help/error use native ``MessageDialog`` (NSAlert) with ``parentWindow`` when not offscreen.
+- **Rationale:** Matches Python+Qt best practice for Ctrl+C (wakeup fd + timer); makes packaged style failures visible; Qt has no native form Dialog on macOS, so sheet chrome + NSAlert is the practical native-feeling split without touching other platforms.
+
 ## 2026-09-07 — Windows offline: fat PySide SFX replaces Inno Setup
 
 - **Context:** The PySide fat self-extracting `SrxyInstaller.exe` proved clearly better UX than the Inno Setup wizard. Keeping both doubled CI/docs/maintenance cost and left a commercial-license cliff for Inno.

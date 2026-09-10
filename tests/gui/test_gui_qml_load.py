@@ -44,6 +44,10 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 			# Native styles (macOS Aqua) reject custom contentItems/backgrounds.
 			# The Search button must use text+icon instead of a custom Row.
 			or "does not support customization of this control" in message
+			or "Cannot assign" in message
+			or (".qml:" in message and " Error:" in message)
+			or "ReferenceError" in message
+			or "TypeError" in message
 		):
 			warnings.append(message)
 
@@ -55,6 +59,7 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 	qml_path = qml_dir() / "Main.qml"
 
 	# when
@@ -162,6 +167,7 @@ def test_given_dialog_ok_buttons_when_loaded_then_render_accent_fill_and_foregro
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 	qml_path = qml_dir() / "Main.qml"
 
 	# when
@@ -210,6 +216,7 @@ def test_given_invalid_filter_input_when_typing_then_ok_disabled_and_error_shown
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
 	roots = engine.rootObjects()
 	assert roots
@@ -279,6 +286,7 @@ def test_given_accented_search_button_when_loaded_then_label_and_glyph_match_dia
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 
 	# when — a query makes Search enabled; it is accented until a search runs
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
@@ -343,6 +351,7 @@ def test_given_results_when_running_a_new_search_then_no_delegate_model_warning(
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
 	roots = engine.rootObjects()
 	assert roots, "failed to load Main.qml"
@@ -393,6 +402,7 @@ def test_given_splash_qml_when_engine_loads_then_shows_branding_and_status(qapp:
 	engine = QQmlApplicationEngine()
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", False)
 	engine.rootContext().setContextProperty("splashBridge", bridge)
 	engine.rootContext().setContextProperty(
 		"splashIconUrl",
