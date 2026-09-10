@@ -41,7 +41,6 @@ from srxy.adapters.outbound.models.model_store import parse_progress_line
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.i18n import tr
 from srxy.resources.icons import app_icon_path, available_icon_sizes, macos_app_icon_path
-from srxy.resources.icons.icns import write_icns_from_png
 from srxy.resources.macos import app_launcher_c_path
 
 
@@ -719,6 +718,11 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 	icns_name = "srxy.icns"
 	icns_path = resources_dir / icns_name
 	try:
+		# Deferred: Pillow is a macOS-only runtime need here (Windows offline
+		# installer venv installs srxy with ``--no-deps``, so importing this
+		# at module load time breaks the Windows relocatable-venv smoke test).
+		from srxy.resources.icons.icns import write_icns_from_png
+
 		write_icns_from_png(icon_png, icns_path)
 	except Exception as exc:  # noqa: BLE001 — icon is best-effort; app still launches
 		print(f"warning: could not write {icns_path.name}: {exc}", file=sys.stderr)
