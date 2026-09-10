@@ -1,23 +1,21 @@
 # Active Context
 
-_Last updated: 2026-09-07_
+_Last updated: 2026-09-10_
 
 ## Branch
 
-- `cursor/windows-pyside-offline-installer-fb07` off `develop` — Windows fat PySide offline installer (Inno removed). PR targets `develop` (PR #35).
+- `cursor/10ecd083` off `develop` — Search button icon clip fix.
 
 ## Current focus
 
-Suppress `qt.qpa.mime: Retrying to obtain clipboard` spam (Qt clipboard lock bug).
+Search magnifier glyph: uniform ring thickness (separate ring + handle paths).
 
 ## Just changed
 
-- `silence_noisy_qt_logging()` in `qt_theme.py` — sets `QT_LOGGING_RULES` / `QLoggingCategory` for `qt.qpa.mime=false`
-- Called from GUI + installer `run_*` before `QGuiApplication`
-- Tests in `test_qt_theme.py`
+- [`search.svg`](../src/srxy/adapters/inbound/gui/qml/images/search.svg): split into evenodd ring (`Ro=5`/`Ri=3` at `(7,7)`) + separate rounded handle path. Compound outline had made the right/SE rim thicker under AA (measured L≈0.94 vs R≈1.56 px); now L=R=2.12 px, margins 2 all around.
+- Prior: SE handle restore, recenter after left clip, copy-venv BSD rsync, worktree `.venv`.
 
 ## Next steps
 
-1. Commit + push if desired (merge PR #35 once CI green).
-2. **Check macOS installer**.
-3. Optional: Authenticode signing.
+1. User visual confirm in live macOS GUI.
+2. Commit when asked.

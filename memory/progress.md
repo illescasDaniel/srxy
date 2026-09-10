@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-09-07_
+_Last updated: 2026-09-10_
 
 ## v1.7.0 — fixes and improvements
 
@@ -114,6 +114,7 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 
 ## Bugs / sub-tasks discovered
 
+- [x] Search button magnifier icon clipped / uneven — filled `search.svg` (post stroke→fill) had a mirrored SW handle, edge clipping, then a compound outline that made the right rim thicker under AA (L≈0.94 vs R≈1.56 px). Fixed: separate evenodd ring (`Ro=5`/`Ri=3` at `(7,7)`) + rounded SE handle path (L=R=2.12 px, 2px margins). `copy-venv.sh` BSD rsync progress fallback. Gate + Search button tests PASSED (2026-09-10).
 - [x] Windows PySide fat SFX extract failed with `Illegal characters in path` — `.NET Framework` `Directory.CreateDirectory` rejects `\\?\` long-path prefixes. Fixed by short cache `%LOCALAPPDATA%\srxy\is\<sha16>\p\` without `\\?\`. Verified install/uninstall exit 0 (2026-09-06).
 - [x] Windows PySide offline build QML smoke `SyntaxError: '(' was never closed` — PowerShell stripped double quotes from `python -c $QmlSmoke` (`raise SystemExit("…")`). Fixed with single-quoted Python strings in `build-offline-pyside.ps1` + `smoke-offline-pyside.ps1`. Build task exit 0 (2026-09-06).
 - [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
