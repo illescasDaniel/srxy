@@ -4,18 +4,19 @@ _Last updated: 2026-09-10_
 
 ## Branch
 
-- `cursor/10ecd083` off `develop` — Search button icon clip fix.
+- `develop` — Search button magnifier glyph fix applied from `cursor/10ecd083`.
 
 ## Current focus
 
-Search magnifier glyph: uniform ring thickness (separate ring + handle paths).
+Search magnifier glyph: uniform ring thickness (separate ring + handle paths). Applied to develop.
 
 ## Just changed
 
-- [`search.svg`](../src/srxy/adapters/inbound/gui/qml/images/search.svg): split into evenodd ring (`Ro=5`/`Ri=3` at `(7,7)`) + separate rounded handle path. Compound outline had made the right/SE rim thicker under AA (measured L≈0.94 vs R≈1.56 px); now L=R=2.12 px, margins 2 all around.
-- Prior: SE handle restore, recenter after left clip, copy-venv BSD rsync, worktree `.venv`.
+- [`search.svg`](../src/srxy/adapters/inbound/gui/qml/images/search.svg): separate evenodd ring + SE handle (uniform L=R thickness, 2px margins).
+- [`copy-venv.sh`](../.cursor/skills/copy-venv-to-worktree-srxy/scripts/copy-venv.sh): BSD/macOS rsync `--progress` fallback.
+- Applied via `/apply-worktree-srxy` (FF `9ec8dea` onto develop).
 
 ## Next steps
 
-1. User visual confirm in live macOS GUI.
-2. Commit when asked.
+1. Push develop when desired.
+2. `/delete-worktree-srxy` when the isolated checkout is no longer needed.
