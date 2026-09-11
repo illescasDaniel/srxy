@@ -128,11 +128,11 @@ Once `.venv` exists, thin Taskipy aliases also work:
 ```bash
 uv run task sync-dev
 uv run task sync-uploader
-uv run task checks-fix
-uv run task checks              # day-to-day (auto-scope)
-uv run task checks-gui          # core+gui when working on the GUI
-uv run task checks-full         # before release
-uv run task checks-full-cpu     # + forced-CPU transcribe matrix
+uv run task checks                        # day-to-day (auto-scope)
+uv run task checks -- --fix               # autofix then verify
+uv run task checks -- --quiet --gui       # core+gui (agent-verbosity)
+uv run task checks -- --full              # before release
+uv run task checks -- --full+cpu          # + forced-CPU transcribe matrix
 ```
 
 CI runs `core+gui+tui` buckets (no heavy/real-model suite). Details: [docs/development.md](docs/development.md).

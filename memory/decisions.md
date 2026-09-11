@@ -2,6 +2,30 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-09-11 — Parallel pytest progress + checks.py Ctrl+C forwarding
+
+- **Context:** `uv run task checks --full` looked frozen after printing bucket args (parallel buckets wrote to temp logs with no live progress). Ctrl+C in `checks.py` raised `KeyboardInterrupt` in Python instead of stopping the bash gate tree.
+- **Decision:** Keep pytest buckets **parallel**. `pytest.sh` polls running buckets: emit `[gate] pytest[bucket]: still running (Ns)` every `LIB_PYTEST_PROGRESS_INTERVAL` (default 25s); in quiet mode also tail `[gate]` lines from per-bucket logs (with `LIB_GATE_BUCKET_NAME` prefix in `agent_progress`). `checks.sh` overlaps pytest with light steps via `tee`. `checks.py` uses `Popen(start_new_session=True)` + SIGINT/SIGTERM → `killpg`, exit 130. **Do not** serialize buckets for verbose mode.
+- **Rationale:** Speed from overlap; liveness from periodic progress without dumping full verbose interleave. Taskipy: pass flags after `--` (`uv run task checks -- --fix --full`).
+
+## 2026-09-11 — Gate lock file records holder PIDs
+
+- **Context:** When the gate refused a second run, `.srxy-quality-gate.lock` was empty — no hint which process held the flock / exclusive file lock.
+- **Decision:** While the gate runs, write key=value metadata to the lock file: `pid`, `pids` (main + tracked children), `started`, `script`, `status` (`running`/`exited`/`interrupted`), `updated`. On lock contention, print the file plus a per-PID alive check (`kill -0` / `Get-Process`). Unix updates via `lib.sh`; Windows writes through the held `LockStream`.
+- **Rationale:** Makes stale-lock diagnosis actionable (`kill <pid>`) without spelunking `pgrep`. Tests: `tests/unit/test_gate_lock_file.py`.
+
+## 2026-09-11 — Quality gate interrupt cleanup (Ctrl+C)
+
+- **Context:** Cancelling `checks.sh` / `checks-win.ps1` with Ctrl+C left parallel pytest bucket subprocesses and lock holders running (orphan bash/pytest/xdist trees).
+- **Decision:** Track background PIDs in `lib.sh` with INT/TERM/EXIT traps that recursively kill process trees (`pgrep` + group kill). Apply in `checks.sh` (parallel light steps + pytest subshell), `pytest.sh` (concurrent buckets), and `run_with_watch.sh` (setsid pytest leader). Windows: register `Start-Process` children, handle `[Console]::CancelKeyPress`, and `Stop-ProcessTree` / `taskkill /T` in `finally` blocks.
+- **Rationale:** Ctrl+C should tear down the whole gate, not just the foreground `wait`. Verified scoped gate PASSED after changes.
+
+## 2026-09-11 — Single OS-aware Taskipy `checks` task
+
+- **Context:** The quality gate had ~34 Taskipy entries (`checks`, `checks-win`, `*-quiet`, scoped variants) duplicating the same flag combinations across Unix and Windows.
+- **Decision:** Replace the matrix with one Taskipy task (`python scripts/quality/checks.py`) that detects the OS and forwards documented flags (`--fix`, `--full`, `--full+cpu`, `--quiet`, `--scope`, bucket shorthands) to `checks.sh` or `checks-win.ps1`. Pass flags after `--` in Taskipy so `uv run` does not consume `--quiet`. Keep verbose as the default; agents pass `--quiet` explicitly. CI still invokes `checks.sh` directly.
+- **Rationale:** One discoverable entry point with `--help`; same flags on every OS; removes Windows/Unix task naming drift. Verified: unit tests for dispatch, `uv run task checks -- --help`, scoped gate `uv run task checks -- --quiet --scope=core,gui,tui` PASSED.
+
 ## 2026-09-10 — SrxyPython copy + vtool SDK 26 for Liquid Glass
 
 - **Context:** After Mach-O ``Srxy.app`` + in-bundle ``SrxyPython``, ``NSBundle.mainBundle`` was correct (``com.srxy.app``) but the installed GUI still looked like legacy Aqua vs ``uv run task gui``. Measured: after ``execv`` the process image is uv’s CPython with ``LC_BUILD_VERSION sdk 15.5``; Homebrew ``Python.app`` used by ``uv run`` is ``sdk 26.4``. AppKit enables Tahoe Liquid Glass from the main executable’s linked SDK ([cpython#139404](https://github.com/python/cpython/issues/139404)).

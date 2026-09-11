@@ -47,6 +47,22 @@ lib_run_with_watch() {
 	start_epoch="$(date +%s)"
 
 	local exit_code=0
+	local watch_interrupted=false
+
+	_watch_on_interrupt() {
+		watch_interrupted=true
+		if [[ -n "${cmd_pid:-}" ]] && kill -0 "${cmd_pid}" 2>/dev/null; then
+			kill -INT -"${cmd_pid}" 2>/dev/null || kill -TERM -"${cmd_pid}" 2>/dev/null || kill -TERM "${cmd_pid}" 2>/dev/null || true
+			sleep 0.3
+			kill -KILL -"${cmd_pid}" 2>/dev/null || kill -KILL "${cmd_pid}" 2>/dev/null || true
+		fi
+		if [[ -n "${reader_pid:-}" ]]; then
+			kill "${reader_pid}" 2>/dev/null || true
+		fi
+	}
+
+	trap '_watch_on_interrupt' INT TERM
+
 	while kill -0 "${cmd_pid}" 2>/dev/null; do
 		now="$(date +%s)"
 		if ((now - start_epoch >= wall_seconds)); then
@@ -87,9 +103,14 @@ lib_run_with_watch() {
 		wait "${cmd_pid}" 2>/dev/null || true
 	fi
 
+	trap - INT TERM
+
 	# Unblock reader if still waiting on fifo.
 	kill "${reader_pid}" 2>/dev/null || true
 	wait "${reader_pid}" 2>/dev/null || true
 	rm -f "${fifo}" "${log}" "${log}.beat"
+	if [[ "${watch_interrupted}" == true ]]; then
+		return 130
+	fi
 	return "${exit_code}"
 }

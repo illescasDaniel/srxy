@@ -12,6 +12,7 @@ source "${quality_dir}/internal/lib.sh"
 source "${quality_dir}/internal/run_with_watch.sh"
 
 lib_require_venv
+lib_gate_setup_interrupt_traps
 
 if [[ "${CI:-}" == "true" ]]; then
 	: "${LIB_PYTEST_WALL_SECONDS:=300}"
@@ -49,6 +50,116 @@ if [[ "${serialize}" == "1" ]]; then
 	echo "note: LIB_GATE_BUCKET_CONCURRENCY=1 — buckets run serially"
 fi
 
+lib_pytest_progress_interval() {
+	echo "${LIB_PYTEST_PROGRESS_INTERVAL:-25}"
+}
+
+# Emit new [gate] progress lines from a bucket log (quiet parallel mode).
+# $3 = name of offsets array; $4 = index into that array (byte cursor per bucket).
+lib_pytest_emit_log_gate_lines() {
+	local bucket="$1"
+	local log="$2"
+	local -n _offsets=$3
+	local idx="$4"
+
+	[[ -f "${log}" ]] || return 0
+	local size
+	size="$(wc -c <"${log}" | tr -d ' ')"
+	if [[ "${size}" -le "${_offsets[idx]}" ]]; then
+		return 0
+	fi
+	tail -c +"$((_offsets[idx] + 1))" "${log}" | while IFS= read -r line || [[ -n "${line}" ]]; do
+		if [[ "${line}" == \[gate\]* ]]; then
+			printf '%s\n' "${line}"
+		fi
+	done
+	_offsets[idx]="${size}"
+}
+
+# Wait for parallel bucket jobs; stream sparse progress while they run.
+lib_pytest_wait_parallel_buckets() {
+	local -n _pids=$1
+	local -n _logs=$2
+	local -n _buckets=$3
+	local -n _overall_ref=$4
+
+	local count="${#_pids[@]}"
+	local interval now last_heartbeat start_epoch
+	local -a offsets=()
+	local -a done_flags=()
+	local i pid bucket log code elapsed
+
+	interval="$(lib_pytest_progress_interval)"
+	start_epoch="$(date +%s)"
+	last_heartbeat=0
+
+	for ((i = 0; i < count; i++)); do
+		# shellcheck disable=SC2034  # offsets mutated via nameref in lib_pytest_emit_log_gate_lines
+		offsets[i]=0
+		done_flags[i]=0
+	done
+
+	while true; do
+		local finished=0
+		local any_running=false
+		now="$(date +%s)"
+
+		for ((i = 0; i < count; i++)); do
+			if [[ "${done_flags[i]}" -eq 1 ]]; then
+				finished=$((finished + 1))
+				continue
+			fi
+
+			pid="${_pids[i]}"
+			bucket="${_buckets[i]}"
+			log="${_logs[i]}"
+
+			if [[ "${LIB_GATE_QUIET:-false}" == true ]]; then
+				lib_pytest_emit_log_gate_lines "${bucket}" "${log}" offsets "${i}"
+			fi
+
+			if ! kill -0 "${pid}" 2>/dev/null; then
+				set +e
+				wait "${pid}"
+				code=$?
+				set -e
+				done_flags[i]=1
+				finished=$((finished + 1))
+
+				if [[ "${LIB_GATE_QUIET:-false}" == true ]]; then
+					lib_pytest_emit_log_gate_lines "${bucket}" "${log}" offsets "${i}"
+				fi
+
+				echo ""
+				echo "──── pytest[${bucket}] (exit ${code}) ────"
+				if [[ "${code}" -ne 0 || "${LIB_GATE_QUIET:-false}" != true ]]; then
+					cat "${log}"
+				fi
+				if [[ "${code}" -ne 0 && "${_overall_ref}" -eq 0 ]]; then
+					_overall_ref="${code}"
+				fi
+				continue
+			fi
+
+			any_running=true
+		done
+
+		if [[ "${finished}" -ge "${count}" ]]; then
+			break
+		fi
+
+		if [[ "${any_running}" == true && $((now - last_heartbeat)) -ge interval ]]; then
+			elapsed=$((now - start_epoch))
+			for ((i = 0; i < count; i++)); do
+				[[ "${done_flags[i]}" -eq 1 ]] && continue
+				echo "[gate] pytest[${_buckets[i]}]: still running (${elapsed}s)"
+			done
+			last_heartbeat="${now}"
+		fi
+		sleep 2
+	done
+}
+
 run_one_bucket() {
 	local bucket="$1"
 	local log_file="${2:-}"
@@ -66,9 +177,13 @@ run_one_bucket() {
 			cmd_env+=("${env_pair}")
 		done
 	fi
+
+	if [[ -n "${log_file}" ]]; then
+		cmd_env+=("LIB_GATE_BUCKET_NAME=${bucket}")
+		cmd_env+=("LIB_PYTEST_PROGRESS_INTERVAL=1")
+	fi
 	if [[ "${LIB_GATE_QUIET:-false}" == "true" && "${bucket}" == "heavy" ]]; then
 		cmd_env+=(
-			LIB_PYTEST_PROGRESS_INTERVAL=1
 			HF_HUB_DISABLE_PROGRESS_BARS=1
 			TRANSFORMERS_VERBOSITY=error
 			TQDM_DISABLE=1
@@ -106,7 +221,7 @@ cleanup_tmp() {
 		rm -rf "${tmp_dir}"
 	fi
 }
-trap cleanup_tmp EXIT
+lib_gate_add_cleanup cleanup_tmp
 
 if [[ "${serialize}" == "1" || "${bucket_count}" -eq 1 ]]; then
 	for bucket in "${bucket_list[@]}"; do
@@ -122,6 +237,8 @@ if [[ "${serialize}" == "1" || "${bucket_count}" -eq 1 ]]; then
 else
 	tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-pytest.XXXXXX")"
 	export LIB_GATE_ACTIVE_BUCKETS="${bucket_count}"
+	echo "note: pytest buckets run in parallel; progress lines appear every $(lib_pytest_progress_interval)s"
+	set -m
 	pids=()
 	logs=()
 	for bucket in "${bucket_list[@]}"; do
@@ -130,22 +247,12 @@ else
 		(
 			run_one_bucket "${bucket}" "${log}"
 		) &
-		pids+=($!)
+		bucket_pid=$!
+		pids+=("${bucket_pid}")
+		lib_gate_track_pid "${bucket_pid}"
 	done
-	i=0
-	for bucket in "${bucket_list[@]}"; do
-		set +e
-		wait "${pids[i]}"
-		code=$?
-		set -e
-		echo ""
-		echo "──── pytest[${bucket}] (exit ${code}) ────"
-		cat "${logs[i]}"
-		if [[ "${code}" -ne 0 && "${overall_exit}" -eq 0 ]]; then
-			overall_exit="${code}"
-		fi
-		i=$((i + 1))
-	done
+	set +m
+	lib_pytest_wait_parallel_buckets pids logs bucket_list overall_exit
 fi
 
 exit "${overall_exit}"

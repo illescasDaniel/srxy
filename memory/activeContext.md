@@ -10,16 +10,15 @@ _Last updated: 2026-09-11_
 
 ## Current focus
 
-Post-merge on `develop`: screenshot + installer workflow updates from `main` are in; memory reconciled.
+Fixed ShellCheck SC2034 in `scripts/quality/pytest.sh` (offsets nameref).
 
 ## Just changed
 
-- Merged `main` → `develop` (`38c2466`): `scripts/docs/export_gui_screenshot.sh`, `docs/images/gui-linux.png`, README, installer workflow `action-gh-release` bumps.
-- Resolved memory conflicts: kept develop's #49 sync note; added main's Docs screenshot checklist.
-- #49 Windows Property Store isolation already on develop via #50 (`8990f7d`).
+- `pytest.sh`: pass `offsets` array + index into `lib_pytest_emit_log_gate_lines` (was unquoted `offsets[i]`, which expanded to the value and broke the nameref); SC2034 disable for nameref mutation.
+- Prior: quality gate dispatcher (`checks.py`), interrupt cleanup, lock metadata, docs/tests (still uncommitted).
 
 ## Next steps
 
-1. Push `develop` when ready (`git push`).
-2. Optional: re-run `./scripts/docs/export_gui_screenshot.sh` on a real Linux display (no composite); regenerate macOS/Windows tiles on those hosts.
+1. Commit when Daniel asks (uncommitted: checks dispatcher + pytest.sh SC2034 fix + docs + memory).
+2. Push `develop` when ready.
 3. Continue 1.8.0 work off `feature/1.8.0`.
