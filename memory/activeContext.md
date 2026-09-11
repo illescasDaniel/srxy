@@ -17,6 +17,7 @@ _Last updated: 2026-09-11_
 
 - v1.7.0 tagged and installers published.
 - `memory/progress.md` / `activeContext.md` matched to main after #46.
+- Synced #49 hotfix (Windows Property Store subprocess isolation) from `main` @ `182649f` onto `develop`: ported `src/srxy/adapters/outbound/metadata/windows_metadata.py`, `src/srxy/adapters/outbound/metadata/windows_metadata_worker.py` (new), and `tests/unit/test_windows_metadata.py` verbatim (no full main→develop merge, per the #47/#48 squash-history lesson).
 
 ## Next steps
 
