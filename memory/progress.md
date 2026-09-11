@@ -25,4 +25,11 @@ Branch `cursor/hotfix-windows-corrupt-jpeg-property-store-cdc4` off `main`. **Me
 - [x] Unit coverage added in `tests/unit/test_windows_metadata.py` (dispatch, dead-worker, hung-worker timeout, healthy-worker reuse, worker request handler) — 18/18 passed.
 - [x] Local verification: `checks.sh --quiet --all` PASSED (ruff/shell/ty/pip-audit/build/pytest); corrupt-JPEG test passes; full `tests/unit tests/cli` (772 tests) passes.
 - [x] Confirmed: real Windows CI on PR #49 (https://github.com/illescasDaniel/srxy/pull/49) went green — `test-windows` passed in 2m29s (https://github.com/illescasDaniel/srxy/actions/runs/34580726092/job/103203395479), including the corrupt-JPEG test; all 13 checks passed (`quality`, `test-macos`, `test-windows`, `build*`, security scans).
-- [ ] Open: Daniel's fresh OK on PR #49, then merge (not part of this agent's scope — do not merge).
+- [x] Merged to `main` as `182649f` (PR #49).
+
+## Docs — README GUI screenshot (2026-09-11)
+
+- [x] Regenerated `docs/images/gui-linux.png` via `./scripts/docs/export_gui_screenshot.sh`.
+- [x] Fixed script for `SrxyControls` import path + theme context props.
+- [x] Fixed missing Search / flat Options/Filters: headless Material fills often omit from `grabWindow`; script prefers a real display, falls back to software RHI, and composites button faces from QML props when chrome is missing.
+- [ ] Optional: regenerate on a real Linux display (no composite); regenerate `gui-macos.png` / `gui-windows.png` on those hosts; commit when Daniel asks.
