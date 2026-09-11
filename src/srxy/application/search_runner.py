@@ -6,10 +6,7 @@ import argparse
 import os
 from collections.abc import Callable
 
-from srxy.adapters.outbound.ocr.ocr_text import ocr_requested
-from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_requested
 from srxy.application.search_control import SearchCancelled
-from srxy.application.use_cases.search_files import magic_file_search
 from srxy.domain.file_query import FileQ, coerce_file_query, file_q_from_dict
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityCallback
@@ -80,6 +77,10 @@ def execute_search(
 	cancel_check: Callable[[], bool] | None = None,
 	allow_process_pool: bool = False,
 ) -> tuple[list[FileSearchResult], list[SkippedFile]]:
+	from srxy.adapters.outbound.ocr.ocr_text import ocr_requested
+	from srxy.adapters.outbound.transcribe.transcribe_text import transcribe_requested
+	from srxy.application.use_cases.search_files import magic_file_search
+
 	search_names, search_contents = resolve_search_modes(args)
 	raw_docs = getattr(args, "search_docs_tags", None)
 	search_docs_tags = True if raw_docs is None else bool(raw_docs)
@@ -108,7 +109,7 @@ def execute_search(
 			match_skipped_names=bool(getattr(args, "match_skipped_names", False)) and search_names,
 			include_archives=bool(getattr(args, "include_archives", False)),
 			include_subdirectories=bool(getattr(args, "include_subdirectories", True)),
-			skipped_files=effective_skipped if search_contents or ocr or transcribe else None,
+			skipped_files=effective_skipped,
 			ocr=ocr,
 			transcribe=transcribe,
 			on_progress=on_progress,

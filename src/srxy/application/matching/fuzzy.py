@@ -1,12 +1,12 @@
 from __future__ import annotations
 
-from rapidfuzz import fuzz
-
 from srxy.application.matching.base import Matcher
 
 
 class FuzzyMatcher(Matcher):
 	def score(self, query: str, value: str) -> float:
+		from rapidfuzz import fuzz
+
 		if not query or not value:
 			return 0.0
 		weighted = fuzz.WRatio(query, value)

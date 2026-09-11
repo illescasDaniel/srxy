@@ -14,7 +14,7 @@ export SRXY_OCR=1
 
 Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via structured extraction. `--ocr` adds Tesseract on embedded images in photos, PDFs, and Office packages (`.docx`, `.xlsx`, `.pptx`) — see [Installation](installation.md). PDF body text still from `pypdf`; matches show page number. Installers can download extra **tessdata** language packs (English + orientation detection are always included); runtime passes installed packs to Tesseract as `-l eng+spa+…`.
 
-Cache: encrypted `~/.cache/srxy/cache.db` on Linux/macOS, or `%LOCALAPPDATA%\srxy\cache.db` on Windows (`SRXY_CACHE_DIR`). Key file: `.cache_key` beside `cache.db` (mode `600` on Unix). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage/Inno installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
+Cache: encrypted `~/.cache/srxy/cache.db` on Linux/macOS, or `%LOCALAPPDATA%\srxy\cache.db` on Windows (`SRXY_CACHE_DIR`). Key file: `.cache_key` beside `cache.db` (mode `600` on Unix). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage/Windows installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
 
 Default OCR file cap: **50 MiB** (`--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE`).
 
@@ -96,6 +96,8 @@ Downloaded model weights and scan results are stored separately under `~/.cache/
 Custom model paths via `SRXY_SEMANTIC_MODEL_PATH`, `SRXY_SEMANTIC_IMAGE_MODEL_PATH`, `SRXY_TRANSCRIBE_FASTER_WHISPER_MODEL_PATH`, `SRXY_TRANSCRIBE_TRANSFORMERS_MODEL_PATH`, and `SRXY_CACHE_DIR`. LRU cap: `SRXY_CACHE_MAX_BYTES`.
 
 Upgrading from older srxy versions clears unencrypted cache entries on first open (schema v2).
+
+In the GUI, **Settings** offers quick actions (**Download All Models**, **Reset Cache**, **Reset All Settings**) plus **All Settings…** for per-model clear/re-download and cache/preferences details. The CLI scripts below remain available for scripting and troubleshooting.
 
 ### Clear downloaded models
 

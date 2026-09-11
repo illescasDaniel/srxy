@@ -40,7 +40,7 @@ def _bundled_wheel_candidates() -> list[Path]:
 		share = Path(appdir) / "usr" / "share" / "srxy"
 		candidates.extend(sorted(share.glob("srxy-*.whl"), reverse=True))
 		candidates.append(share / "srxy.whl")
-	# Windows Inno offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
+	# Windows offline payload (and optional SRXY_INSTALLER_PAYLOAD root).
 	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
 	if payload:
 		share = Path(payload) / "share" / "srxy"
@@ -185,11 +185,41 @@ def resolve_bundled_or_local_spec() -> tuple[str, str | None]:
 	return "srxy", None
 
 
+def _packaged_payload_wheel() -> Path | None:
+	"""Return the first existing wheel from APPDIR / installer payload, if any.
+
+	Used so offline / fat installers never replace their shipped wheel with a
+	newer PyPI build that can lag the wizard UI the user just saw.
+	"""
+	appdir = os.environ.get("APPDIR", "").strip()
+	payload = os.environ.get("SRXY_INSTALLER_PAYLOAD", "").strip()
+	roots: list[Path] = []
+	if appdir:
+		roots.append(Path(appdir) / "usr" / "share" / "srxy")
+	if payload:
+		roots.append(Path(payload) / "share" / "srxy")
+	for share in roots:
+		named = sorted(share.glob("srxy-*.whl"), reverse=True)
+		for wheel in named:
+			if wheel.is_file():
+				return wheel
+		alias = share / "srxy.whl"
+		if alias.is_file():
+			return alias
+	return None
+
+
 def resolve_srxy_install_spec(*, fetch_pypi: bool = True) -> str:
 	"""Prefer newer compatible PyPI when safe; otherwise bundled/local/PyPI name."""
 	override = _override_install_spec()
 	if override is not None:
 		return override
+
+	# Packaged offline/fat installers must install the payload they ship — not
+	# a newer PyPI build that can leave the installed app on older QML/theme.
+	payload_wheel = _packaged_payload_wheel()
+	if payload_wheel is not None:
+		return str(payload_wheel.resolve())
 
 	bundled_spec, bundled_version = resolve_bundled_or_local_spec()
 	meta = load_installer_meta()
@@ -302,11 +332,6 @@ def with_semantic_extra(spec: str) -> str:
 	return with_extras(spec, "semantic")
 
 
-def with_windows_extra(spec: str) -> str:
-	"""Insert ``[windows]`` into a PEP 508 requirement (before any version pin)."""
-	return with_extras(spec, "windows")
-
-
 __all__ = [
 	"fetch_pypi_srxy_info",
 	"local_source_version",
@@ -322,5 +347,4 @@ __all__ = [
 	"wheel_version_from_path",
 	"with_extras",
 	"with_semantic_extra",
-	"with_windows_extra",
 ]

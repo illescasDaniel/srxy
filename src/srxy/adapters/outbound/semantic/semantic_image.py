@@ -12,7 +12,6 @@ from srxy.application.utils import normalize_text
 
 
 DEFAULT_MODEL_ID = "sentence-transformers/clip-ViT-B-32"
-DEFAULT_SEMANTIC_IMAGE_THRESHOLD = 0.18
 MIN_SEMANTIC_IMAGE_QUERY_LENGTH = 4
 
 _semantic_image_model: object | None = None

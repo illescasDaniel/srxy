@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 from collections.abc import Callable
 from pathlib import Path
@@ -13,7 +14,7 @@ from srxy.adapters.inbound.installer.manifest import (
 	prefix_needs_confirmation,
 	require_matching_manifest,
 )
-from srxy.application.install_paths import MANIFEST_NAME, default_install_prefix
+from srxy.application.install_paths import MANIFEST_NAME, default_install_prefix, default_non_prefix_cache_root
 from srxy.i18n import tr
 
 
@@ -50,11 +51,52 @@ def _remove_desktop_if_matches(resolved: Path, *, recorded_prefix: str = "", sta
 			status(tr("installer.status.removed_desktop_entry"))
 
 
+def cleanup_user_data(
+	*,
+	remove_cache: bool = True,
+	remove_settings: bool = True,
+	remove_models: bool = True,
+	status: StatusCallback | None = None,
+) -> None:
+	"""Remove srxy-managed user data outside an install prefix (prefix tree is separate)."""
+	prior_home = os.environ.pop("SRXY_HOME", None)
+	try:
+		if remove_cache:
+			from srxy.adapters.outbound.cache.cache import clear_results_cache
+
+			clear_results_cache()
+			bootstrap = default_non_prefix_cache_root() / "online-bootstrap"
+			if bootstrap.is_dir():
+				shutil.rmtree(bootstrap, ignore_errors=True)
+				if status is not None:
+					status(tr("installer.status.removed_bootstrap_cache"))
+			if status is not None:
+				status(tr("installer.status.removed_cache"))
+		if remove_models:
+			from srxy.adapters.outbound.models.model_store import clear_all_models
+
+			clear_all_models()
+			if status is not None:
+				status(tr("installer.status.removed_models"))
+		if remove_settings:
+			from srxy.application.settings import reset_settings
+
+			reset_settings()
+			if status is not None:
+				status(tr("installer.status.removed_settings"))
+	finally:
+		if prior_home is not None:
+			os.environ["SRXY_HOME"] = prior_home
+
+
 def uninstall_prefix(
 	prefix: Path,
 	*,
 	status: StatusCallback | None = None,
 	confirm_unsafe: bool = False,
+	remove_cache: bool = True,
+	remove_settings: bool = True,
+	remove_models: bool = True,
 ) -> None:
 	resolved = prefix.expanduser().resolve()
 	_validate_uninstall_prefix(resolved, confirm_unsafe=confirm_unsafe)
@@ -83,6 +125,12 @@ def uninstall_prefix(
 		if status is not None:
 			status(tr("installer.status.removing_app"))
 		shutil.rmtree(resolved)
+		cleanup_user_data(
+			remove_cache=remove_cache,
+			remove_settings=remove_settings,
+			remove_models=remove_models,
+			status=status,
+		)
 		if status is not None:
 			status(tr("installer.status.uninstall_complete"))
 		return
@@ -92,6 +140,12 @@ def uninstall_prefix(
 		if status is not None:
 			status(tr("installer.status.reclaiming_partial"))
 		shutil.rmtree(resolved)
+		cleanup_user_data(
+			remove_cache=remove_cache,
+			remove_settings=remove_settings,
+			remove_models=remove_models,
+			status=status,
+		)
 		if status is not None:
 			status(tr("installer.status.uninstall_complete"))
 		return
@@ -114,6 +168,7 @@ def _remove_user_icons(manifest: InstallManifest, *, status: StatusCallback | No
 
 
 __all__ = [
+	"cleanup_user_data",
 	"discover_default_prefix",
 	"uninstall_prefix",
 	"uninstall_search_hint",

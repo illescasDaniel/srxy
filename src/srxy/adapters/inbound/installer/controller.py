@@ -63,12 +63,18 @@ class _Worker(QThread):
 		prefix: Path | None,
 		*,
 		confirm_unsafe: bool = False,
+		remove_cache: bool = True,
+		remove_settings: bool = True,
+		remove_models: bool = True,
 	):
 		super().__init__()
 		self._action = action
 		self._options = options
 		self._prefix = prefix
 		self._confirm_unsafe = confirm_unsafe
+		self._remove_cache = remove_cache
+		self._remove_settings = remove_settings
+		self._remove_models = remove_models
 
 	def run(self):
 		try:
@@ -96,6 +102,9 @@ class _Worker(QThread):
 					self._prefix,
 					status=lambda message: self.status.emit(message),
 					confirm_unsafe=self._confirm_unsafe,
+					remove_cache=self._remove_cache,
+					remove_settings=self._remove_settings,
+					remove_models=self._remove_models,
 				)
 				_emit_progress_safe(self.progress, 1, 1, remove_label)
 				install_srxy(
@@ -113,6 +122,9 @@ class _Worker(QThread):
 					self._prefix,
 					status=lambda message: self.status.emit(message),
 					confirm_unsafe=self._confirm_unsafe,
+					remove_cache=self._remove_cache,
+					remove_settings=self._remove_settings,
+					remove_models=self._remove_models,
 				)
 			else:
 				raise RuntimeError(f"unknown action: {self._action}")
@@ -159,6 +171,9 @@ class InstallerController(QObject):
 		self._install_semantic = self._has_gpu
 		self._prefetch_models = False
 		self._add_to_path = True
+		self._uninstall_remove_cache = True
+		self._uninstall_remove_settings = True
+		self._uninstall_remove_models = True
 		from PySide6.QtCore import QLocale
 
 		from srxy.adapters.inbound.installer.tessdata_langs import (
@@ -364,6 +379,36 @@ class InstallerController(QObject):
 	@Property(bool, notify=addToPathChanged)
 	def addToPath(self) -> bool:
 		return self._add_to_path
+
+	@Property(bool, notify=prefixChanged)
+	def uninstallRemoveCache(self) -> bool:
+		return self._uninstall_remove_cache
+
+	@Slot(bool)
+	def setUninstallRemoveCache(self, value: bool):
+		if self._uninstall_remove_cache != value:
+			self._uninstall_remove_cache = value
+			self.prefixChanged.emit()
+
+	@Property(bool, notify=prefixChanged)
+	def uninstallRemoveSettings(self) -> bool:
+		return self._uninstall_remove_settings
+
+	@Slot(bool)
+	def setUninstallRemoveSettings(self, value: bool):
+		if self._uninstall_remove_settings != value:
+			self._uninstall_remove_settings = value
+			self.prefixChanged.emit()
+
+	@Property(bool, notify=prefixChanged)
+	def uninstallRemoveModels(self) -> bool:
+		return self._uninstall_remove_models
+
+	@Slot(bool)
+	def setUninstallRemoveModels(self, value: bool):
+		if self._uninstall_remove_models != value:
+			self._uninstall_remove_models = value
+			self.prefixChanged.emit()
 
 	@Slot(bool)
 	def setAddToPath(self, value: bool):
@@ -611,6 +656,7 @@ class InstallerController(QObject):
 			add_to_path=self._add_to_path,
 			confirm_unsafe=confirm_unsafe,
 			tessdata_langs=normalize_tessdata_langs(self._tessdata_langs),
+			ui_language=self._language,
 		)
 
 	def _begin_install(self, prefix: Path, *, confirm_unsafe: bool):
@@ -671,7 +717,15 @@ class InstallerController(QObject):
 		self._status = translate("installer.status.removing_app")
 		self.statusChanged.emit()
 		self._set_busy(True)
-		self._worker = _Worker("uninstall", None, prefix, confirm_unsafe=confirm_unsafe)
+		self._worker = _Worker(
+			"uninstall",
+			None,
+			prefix,
+			confirm_unsafe=confirm_unsafe,
+			remove_cache=self._uninstall_remove_cache,
+			remove_settings=self._uninstall_remove_settings,
+			remove_models=self._uninstall_remove_models,
+		)
 		self._worker.status.connect(self._on_status)
 		self._worker.finished_ok.connect(self._on_finished_ok)
 		self._worker.failed.connect(self._on_failed)

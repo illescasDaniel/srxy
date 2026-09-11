@@ -205,7 +205,7 @@ window = roots[0]
 if not isinstance(window, QQuickWindow):
 	raise SystemExit(f"unexpected root type: {type(window)}")
 window.setWidth(1200)
-# Universal chrome is taller than Material/macOS; give results room on Windows.
+# Windows Quick chrome (Fluent/Universal) is taller than Material/macOS; give results room.
 window.setHeight(1000 if OS_SLUG == "windows" else 800)
 window.show()
 app.processEvents()

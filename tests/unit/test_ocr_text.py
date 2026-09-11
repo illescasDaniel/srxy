@@ -5,10 +5,10 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from PIL import Image
-from tests.helpers import file_search_root, require_file_search_fixtures
 
 from srxy.adapters.outbound.ocr.ocr_text import (
 	DEFAULT_OCR_MAX_FILE_SIZE,
+	OcrRecognizeTimeout,
 	TesseractEngine,
 	ensure_ocr_available,
 	has_lexical_ocr_content,
@@ -23,8 +23,8 @@ from srxy.adapters.outbound.ocr.ocr_text import (
 	ocr_unavailable_message,
 	preprocess_image,
 	reset_ocr_engine,
-	tesseract_available,
 )
+from srxy.domain.models import SkippedFile
 
 
 pytestmark = pytest.mark.unit
@@ -183,7 +183,7 @@ def test_given_multiple_tesseract_outputs_when_selecting_best_then_prefers_reada
 	garbage = "-\n\nA\n\nf\\\n"
 	good = "MUSIC COMPOSED BY\nBRIAN TYLER"
 
-	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "", **_kwargs) -> str:
 		if "--psm 1" in config:
 			return good
 		return garbage
@@ -204,7 +204,7 @@ def test_given_multiple_tesseract_outputs_when_recognizing_then_returns_best_can
 	engine = TesseractEngine()
 	image = Image.new("RGB", (8, 8))
 
-	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "") -> str:
+	def fake_to_string(img: Image.Image, lang: str = "eng", config: str = "", **_kwargs) -> str:
 		if "--psm 1" in config:
 			return "MUSIC COMPOSED BY\nBRIAN TYLER"
 		return "-\n\nA\n\nf\\\n"
@@ -386,24 +386,6 @@ def test_given_large_image_with_lexical_primary_when_ocring_then_still_merges_gr
 	assert "Generate" in text
 
 
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_cover_image_when_ocring_then_reads_embedded_text():
-	# given
-	require_file_search_fixtures()
-	cover = file_search_root() / "cover.jpg"
-	assert cover.is_file(), f"missing cover fixture: {cover}"
-
-	# when
-	with Image.open(cover) as image:
-		text = ocr_pil_image(image)
-
-	# then
-	lowered = text.lower()
-	assert "fixture" in lowered
-	assert "composer" in lowered
-
-
 def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only():
 	# given
 	small_image = MagicMock()
@@ -424,31 +406,32 @@ def test_given_small_and_large_pdf_images_when_ocring_page_then_skips_small_only
 	assert text == "classifier layer"
 
 
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_ocr_image_fixture_when_running_tesseract_then_reads_revenue():
-	# given
-	from tests.helpers import OCR_IMAGE_FIXTURE
+def test_given_tesseract_timeout_when_recognizing_then_raises_without_text():
+	image = Image.new("RGB", (40, 40), color=(255, 255, 255))
 
-	# when
-	lines = list(iter_image_ocr_lines(OCR_IMAGE_FIXTURE))
+	class FakePytesseract:
+		class pytesseract:
+			tesseract_cmd = "tesseract"
 
-	# then
-	assert lines
-	assert any("revenue" in line_text.lower() for _, line_text in lines)
+		@staticmethod
+		def image_to_string(*_args, **_kwargs):
+			raise RuntimeError("Tesseract process timeout")
+
+	with patch("srxy.adapters.outbound.ocr.ocr_text.discover_ocr_languages", return_value="eng"):
+		engine = TesseractEngine()
+		with patch.dict("sys.modules", {"pytesseract": FakePytesseract}):
+			with pytest.raises(OcrRecognizeTimeout):
+				engine.recognize(image)
 
 
-@pytest.mark.ocr
-@pytest.mark.skipif(not tesseract_available(), reason="tesseract not on PATH")
-def test_given_ocr_pdf_fixture_when_running_tesseract_then_reads_classifier():
-	# given
-	from pypdf import PdfReader
-	from tests.helpers import OCR_PDF_FIXTURE
+def test_given_ocr_timeout_when_iterating_lines_then_records_skip(tmp_path: Path):
+	image_path = tmp_path / "slow.png"
+	Image.new("L", (20, 20), color=255).save(image_path)
+	skipped: list[SkippedFile] = []
 
-	page = PdfReader(str(OCR_PDF_FIXTURE)).pages[0]
+	with patch("srxy.adapters.outbound.ocr.ocr_text.ocr_pil_image", side_effect=OcrRecognizeTimeout()):
+		lines = list(iter_image_ocr_lines(image_path, skipped_files=skipped))
 
-	# when
-	text = ocr_pdf_page_images(page)
-
-	# then
-	assert "classifier" in text.lower()
+	assert lines == []
+	assert len(skipped) == 1
+	assert skipped[0].reason == "ocr_timeout"

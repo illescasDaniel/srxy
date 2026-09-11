@@ -32,7 +32,11 @@ _COM_STATE = threading.local()
 def windows_tags_supported() -> bool:
 	if sys.platform != "win32":
 		return False
-	return importlib.util.find_spec("win32com.propsys") is not None
+	try:
+		return importlib.util.find_spec("win32com.propsys") is not None
+	except ModuleNotFoundError:
+		# Parent package ``win32com`` missing: find_spec can raise on some Pythons.
+		return False
 
 
 windows_metadata_supported = windows_tags_supported

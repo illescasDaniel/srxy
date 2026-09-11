@@ -15,7 +15,7 @@ cleanup() {
 trap cleanup EXIT
 
 cd "${LIB_REPO_ROOT}" || exit
-uv build --wheel --out-dir "${build_dir}"
+UV_NO_SYNC=1 uv build --wheel --out-dir "${build_dir}"
 
 wheel_count=0
 while IFS= read -r _; do

@@ -212,7 +212,7 @@ def remove_srxy_path_from_shell(
 			return remove_windows_user_path(bin_dir)
 		if marker and marker != WINDOWS_USER_PATH_MARKER:
 			# Explicit filesystem rc path (tests / unusual setups).
-			return remove_path_block(Path(rc_path))  # type: ignore[arg-type]
+			return remove_path_block(Path(rc_path))  # ty: ignore[invalid-argument-type]
 		return remove_windows_user_path(bin_dir)
 	target = Path(rc_path) if rc_path is not None else shell_rc_path(shell_name)
 	return remove_path_block(target)

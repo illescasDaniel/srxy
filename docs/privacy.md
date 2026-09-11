@@ -57,6 +57,7 @@ These direct runtime libraries ship with srxy (or with optional extras) via PyPI
 | **PySide6** | [Qt for Python](https://doc.qt.io/qtforpython/) | Desktop GUI and installer UI |
 | **python-docx** | [python-docx](https://python-docx.readthedocs.io/) | Extracts text from Word `.docx` |
 | **python-pptx** | [python-pptx](https://python-pptx.readthedocs.io/) | Extracts text from PowerPoint `.pptx` |
+| **pywin32** | [mhammond/pywin32](https://github.com/mhammond/pywin32) | Windows Explorer file tags (Windows only) |
 | **rapidfuzz** | [rapidfuzz/RapidFuzz](https://github.com/rapidfuzz/RapidFuzz) | Fuzzy string scoring for search |
 | **textual** | [textual.textualize.io](https://textual.textualize.io/) | Terminal UI (TUI) |
 | **wordfreq** | [rspeer/wordfreq](https://github.com/rspeer/wordfreq) | Scores OCR text against word-frequency lists |
@@ -69,12 +70,6 @@ These direct runtime libraries ship with srxy (or with optional extras) via PyPI
 | **nvidia-cublas-cu12** | [cuBLAS](https://developer.nvidia.com/cublas) | cuBLAS libs for GPU transcription (Linux/Windows) |
 | **rawpy** | [letmaik/rawpy](https://github.com/letmaik/rawpy) | Decodes camera RAW for metadata/vision |
 | **sentence-transformers** | [sbert.net](https://www.sbert.net/) | Local text/image embeddings |
-
-### Optional `[windows]`
-
-| Library | Project | Used for |
-|---------|---------|----------|
-| **pywin32** | [mhammond/pywin32](https://github.com/mhammond/pywin32) | Windows Explorer file tags |
 
 ## Privacy
 

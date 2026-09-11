@@ -64,3 +64,15 @@ def test_given_file_search_use_case_when_searching_with_extractor_then_uses_it(t
 	assert fake.calls >= 1
 	assert results
 	assert results[0].path == path
+
+
+def test_given_image_path_when_ocr_candidate_then_true():
+	extractor = DefaultTextExtractor()
+	assert extractor.ocr_candidate_path(Path("scan.png")) is True
+	assert extractor.ocr_candidate_path(Path("notes.txt")) is False
+
+
+def test_given_audio_path_when_transcribe_candidate_then_true():
+	extractor = DefaultTextExtractor()
+	assert extractor.transcribe_candidate_path(Path("track.mp3")) is True
+	assert extractor.transcribe_candidate_path(Path("notes.txt")) is False

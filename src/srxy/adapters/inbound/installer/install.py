@@ -5,15 +5,24 @@ from __future__ import annotations
 import os
 import platform
 import plistlib
+import queue
+import re
 import shlex
 import shutil
 import subprocess
 import sys
-from collections.abc import Callable
+import threading
+import time
+from collections.abc import Callable, Iterator
 from dataclasses import dataclass
 from importlib.metadata import version as package_version
 from pathlib import Path
 
+from srxy.adapters.inbound.installer.cancel import InstallCancelledError, raise_if_cancelled
+from srxy.adapters.inbound.installer.cuda_torch import (
+	ensure_windows_cuda_torch,
+	should_ensure_windows_cuda_torch,
+)
 from srxy.adapters.inbound.installer.download import ProgressCallback
 from srxy.adapters.inbound.installer.manifest import (
 	InstallManifest,
@@ -32,11 +41,15 @@ from srxy.adapters.outbound.models.model_store import parse_progress_line
 from srxy.application.install_paths import MANIFEST_NAME
 from srxy.i18n import tr
 from srxy.resources.icons import app_icon_path, available_icon_sizes, macos_app_icon_path
+from srxy.resources.macos import app_launcher_c_path
 
 
 StatusCallback = Callable[[str], None]
 # index (1-based current phase), total phases, phase label
 TaskCallback = Callable[[int, int, str], None]
+
+_PIP_PROGRESS_RE = re.compile(r"(\d+)\s*%|(\d+)\s*/\s*(\d+)")
+_HEARTBEAT_SECONDS = 2.0
 
 
 @dataclass(slots=True)
@@ -50,6 +63,7 @@ class InstallOptions:
 	srxy_spec: str = ""
 	confirm_unsafe: bool = False
 	tessdata_langs: tuple[str, ...] = ()
+	ui_language: str | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -65,6 +79,11 @@ def plan_install_phases(options: InstallOptions) -> list[InstallPhase]:
 		InstallPhase("venv", tr("installer.status.creating_venv")),
 		InstallPhase("package", tr("installer.status.installing_package", spec="srxy")),
 	]
+	if should_ensure_windows_cuda_torch(
+		install_semantic=options.install_semantic,
+		is_windows=_is_windows(),
+	):
+		phases.append(InstallPhase("cuda_torch", tr("installer.status.installing_cuda_torch")))
 	if options.download_tesseract:
 		phases.append(InstallPhase("tesseract", tr("installer.status.downloading_tesseract")))
 	if options.download_ffmpeg:
@@ -93,7 +112,12 @@ def _task(
 		callback(index, total, label)
 
 
-def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
+def _raise_if_cancelled(cancel_file: str | None):
+	raise_if_cancelled(cancel_file, tr("installer.status.cancelled"))
+
+
+def _run(cmd: list[str], *, env: dict[str, str] | None = None, cancel_file: str | None = None) -> None:
+	_raise_if_cancelled(cancel_file)
 	result = subprocess.run(  # noqa: S603
 		cmd,
 		capture_output=True,
@@ -106,13 +130,106 @@ def _run(cmd: list[str], *, env: dict[str, str] | None = None) -> None:
 		raise RuntimeError(f"command failed ({result.returncode}): {' '.join(cmd)}\n{detail}")
 
 
+def _emit_pip_line_progress(
+	line: str,
+	*,
+	progress: ProgressCallback | None,
+	default_label: str,
+) -> None:
+	if progress is None:
+		return
+	text = line.strip()
+	if not text:
+		return
+	match = _PIP_PROGRESS_RE.search(text)
+	if match is None:
+		return
+	if match.group(1) is not None:
+		done = int(match.group(1))
+		progress(done, 100, default_label)
+		return
+	if match.group(2) is not None and match.group(3) is not None:
+		done = int(match.group(2))
+		total = int(match.group(3))
+		if total > 0:
+			progress(done, total, default_label)
+
+
+def _run_with_stdout_progress(
+	cmd: list[str],
+	*,
+	env: dict[str, str] | None = None,
+	progress: ProgressCallback | None = None,
+	cancel_file: str | None = None,
+	heartbeat_label: str = "",
+) -> None:
+	_raise_if_cancelled(cancel_file)
+	proc = subprocess.Popen(  # noqa: S603
+		cmd,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.PIPE,
+		text=True,
+		env=env,
+	)
+	stdout = proc.stdout
+	stderr = proc.stderr
+	if stdout is None or stderr is None:
+		raise RuntimeError("command failed: missing stdout/stderr pipes")
+
+	out_q: queue.Queue[tuple[str, str]] = queue.Queue()
+
+	def pump(stream: Iterator[str], name: str):
+		for line in stream:
+			out_q.put((name, line))
+		out_q.put((name, ""))
+
+	threads = [
+		threading.Thread(target=pump, args=(stdout, "stdout"), daemon=True),
+		threading.Thread(target=pump, args=(stderr, "stderr"), daemon=True),
+	]
+	for thread in threads:
+		thread.start()
+
+	label = heartbeat_label or " ".join(cmd)
+	stderr_chunks: list[str] = []
+	open_streams = 2
+	last_heartbeat = time.monotonic()
+
+	while open_streams > 0:
+		_raise_if_cancelled(cancel_file)
+		try:
+			name, line = out_q.get(timeout=0.2)
+		except queue.Empty:
+			if progress is not None and heartbeat_label and time.monotonic() - last_heartbeat >= _HEARTBEAT_SECONDS:
+				progress(0, 0, heartbeat_label)
+				last_heartbeat = time.monotonic()
+			if proc.poll() is not None and out_q.empty():
+				open_streams = 0
+			continue
+		if line == "":
+			open_streams -= 1
+			continue
+		last_heartbeat = time.monotonic()
+		if name == "stderr":
+			stderr_chunks.append(line)
+		else:
+			_emit_pip_line_progress(line, progress=progress, default_label=label)
+
+	code = proc.wait()
+	if code != 0:
+		detail = "".join(stderr_chunks).strip()
+		raise RuntimeError(f"command failed ({code}): {' '.join(cmd)}\n{detail}")
+
+
 def _run_with_progress(
 	cmd: list[str],
 	*,
 	env: dict[str, str] | None = None,
 	progress: ProgressCallback | None = None,
+	cancel_file: str | None = None,
 ) -> None:
 	"""Run a command and forward ``__SRXY_PROGRESS__`` stdout lines to ``progress``."""
+	_raise_if_cancelled(cancel_file)
 	proc = subprocess.Popen(  # noqa: S603
 		cmd,
 		stdout=subprocess.PIPE,
@@ -126,6 +243,7 @@ def _run_with_progress(
 		raise RuntimeError("command failed: missing stdout/stderr pipes")
 	stderr_chunks: list[str] = []
 	for line in stdout:
+		_raise_if_cancelled(cancel_file)
 		parsed = parse_progress_line(line)
 		if parsed is not None:
 			done, total, label = parsed
@@ -148,6 +266,21 @@ def _validate_install_prefix(prefix: Path, *, confirm_unsafe: bool):
 		raise RuntimeError(tr("installer.error.unsafe_prefix"))
 	if is_non_empty_foreign_prefix(prefix) and not looks_like_partial_srxy_prefix(prefix):
 		raise RuntimeError(tr("installer.error.non_empty_prefix", path=str(prefix)))
+
+
+def _clear_macos_qml_caches():
+	"""Drop Qt QML disk caches that can keep pre-style-fix bytecode on Darwin."""
+	if platform.system().lower() != "darwin":
+		return
+	home = Path.home()
+	for relative in (
+		Path("Library") / "Caches" / "srxy" / "qmlcache",
+		Path("Library") / "Caches" / "srxy-installer" / "qmlcache",
+		Path("Library") / "Caches" / "Python" / "qmlcache",
+	):
+		cache = home / relative
+		if cache.is_dir():
+			shutil.rmtree(cache, ignore_errors=True)
 
 
 def write_launcher(prefix: Path):
@@ -184,6 +317,13 @@ if [ -d {shlex.quote(tessdata_dist.as_posix())} ]; then
 else
 	export TESSDATA_PREFIX={q_tessdata}
 fi
+# Force native Quick Controls before Python starts (Finder launches inherit a
+# minimal env; without this some hosts fall back to Basic/Fusion chrome).
+case "$(uname -s 2>/dev/null || true)" in
+Darwin)
+	export QT_QUICK_CONTROLS_STYLE="${{QT_QUICK_CONTROLS_STYLE:-macOS}}"
+	;;
+esac
 LOG_DIR={q_log_dir}
 LOG_FILE={q_log_file}
 mkdir -p "$LOG_DIR"
@@ -194,6 +334,7 @@ _log_start() {{
 			echo "argv: $*"
 		fi
 		echo "SRXY_HOME=$SRXY_HOME"
+		echo "QT_QUICK_CONTROLS_STYLE=${{QT_QUICK_CONTROLS_STYLE:-}}"
 	}} >>"$LOG_FILE"
 }}
 if [ -t 1 ]; then
@@ -207,6 +348,7 @@ fi
 	launcher.write_text(content, encoding="utf-8")
 	launcher.chmod(0o755)
 	_write_macos_app(prefix, launcher_text=content)
+	_clear_macos_qml_caches()
 
 
 def _write_windows_launcher(prefix: Path):
@@ -289,12 +431,10 @@ def _write_windows_ico(path: Path, *, installer: bool = False):
 	for size in sizes:
 		source = installer_icon_path(size=size) if installer else app_icon_path(size=size)
 		images.append(Image.open(source).convert("RGBA"))
-	# Primary must be the largest; bitmap_format=bmp avoids PNG-in-ICO frames that
-	# break Inno Setup EndUpdateResource (110) and some older Win32 icon loaders.
+	# Primary must be the largest. Pillow default PNG-in-ICO keeps size down.
 	images[-1].save(
 		path,
 		format="ICO",
-		bitmap_format="bmp",
 		sizes=[(img.width, img.height) for img in images],
 		append_images=images[:-1],
 	)
@@ -341,7 +481,226 @@ def _write_windows_gui_exe(prefix: Path):
 	subprocess.run(cmd, check=True, capture_output=True, text=True)  # noqa: S603
 
 
+# AppKit gates Tahoe Liquid Glass on the *main executable* linked SDK
+# (LC_BUILD_VERSION), not Info.plist. Keep minos aligned with LSMinimumSystemVersion.
+_MACOS_EMBEDDED_PYTHON_MINOS = "12.0"
+_MACOS_EMBEDDED_PYTHON_SDK = "26.0"
+_MACHO_MAGICS = {
+	b"\xcf\xfa\xed\xfe",
+	b"\xfe\xed\xfa\xcf",
+	b"\xca\xfe\xba\xbe",
+	b"\xbe\xba\xfe\xca",
+}
+
+
+def _is_macho_executable(path: Path) -> bool:
+	try:
+		return path.read_bytes()[:4] in _MACHO_MAGICS
+	except OSError:
+		return False
+
+
+def _restamp_macos_linked_sdk(
+	binary: Path,
+	*,
+	minos: str = _MACOS_EMBEDDED_PYTHON_MINOS,
+	sdk: str = _MACOS_EMBEDDED_PYTHON_SDK,
+) -> bool:
+	"""Rewrite ``LC_BUILD_VERSION`` so AppKit draws modern Tahoe chrome.
+
+	Returns True when the binary was restamped. Non-Mach-O inputs (test stubs)
+	are skipped. Missing ``vtool`` on Darwin is a hard error for real interpreters.
+	"""
+	if not _is_macho_executable(binary):
+		return False
+	xcrun = shutil.which("xcrun")
+	vtool = shutil.which("vtool")
+	if xcrun is not None:
+		cmd_prefix = [xcrun, "vtool"]
+	elif vtool is not None:
+		cmd_prefix = [vtool]
+	else:
+		raise RuntimeError(
+			"vtool is required to stamp embedded SrxyPython with macOS SDK "
+			f"{sdk} (Liquid Glass). Install Xcode CLT or ensure vtool is on PATH."
+		)
+	tmp = binary.with_name(binary.name + ".restamp")
+	cmd = [
+		*cmd_prefix,
+		"-set-build-version",
+		"macos",
+		minos,
+		sdk,
+		"-replace",
+		"-output",
+		str(tmp),
+		str(binary),
+	]
+	completed = subprocess.run(cmd, check=False, capture_output=True, text=True)  # noqa: S603
+	if completed.returncode != 0 or not tmp.is_file():
+		tmp.unlink(missing_ok=True)
+		detail = (completed.stderr or completed.stdout or "").strip()
+		raise RuntimeError(f"vtool failed restamping {binary.name} to sdk {sdk}: {detail}")
+	tmp.replace(binary)
+	binary.chmod(0o755)
+	return True
+
+
+def _adhoc_codesign_macos(binary: Path):
+	"""Re-sign after vtool (invalidates the previous signature)."""
+	codesign = shutil.which("codesign") or "/usr/bin/codesign"
+	if not Path(codesign).is_file():
+		print(f"warning: codesign not found; left {binary.name} unsigned after SDK restamp", file=sys.stderr)
+		return
+	completed = subprocess.run(  # noqa: S603
+		[codesign, "--force", "--sign", "-", "--timestamp=none", str(binary)],
+		check=False,
+		capture_output=True,
+		text=True,
+	)
+	if completed.returncode != 0:
+		detail = (completed.stderr or completed.stdout or "").strip()
+		print(f"warning: ad-hoc codesign failed for {binary.name}: {detail}", file=sys.stderr)
+
+
+def _embed_macos_app_python(prefix: Path, macos_dir: Path) -> Path | None:
+	"""Place a Python interpreter *inside* ``Srxy.app`` so AppKit keeps our bundle.
+
+	Finder launches Mach-O ``Contents/MacOS/srxy``, which ``exec``s an interpreter
+	whose path still lives under ``Srxy.app``. If we ``exec`` the prefix ``.venv``
+	python (outside the bundle), ``NSBundle.mainBundle`` becomes the uv/CPython
+	install.
+
+	Always **copy** (never hardlink): we then ``vtool``-restamp the copy to
+	linked SDK 26 so Tahoe draws Liquid Glass instead of legacy Aqua. Hardlinking
+	would mutate the shared uv CPython install under ``~/.local/share/uv/python``.
+	"""
+	venv_python = prefix / ".venv" / "bin" / "python"
+	if not venv_python.exists():
+		return None
+	real_python = venv_python.resolve()
+	embedded = macos_dir / "SrxyPython"
+	if embedded.exists() or embedded.is_symlink():
+		embedded.unlink()
+	shutil.copy2(real_python, embedded)
+	embedded.chmod(0o755)
+	# Only restamp on a real Darwin host with a real Mach-O interpreter.
+	if sys.platform == "darwin" and _is_macho_executable(embedded):
+		_restamp_macos_linked_sdk(embedded)
+		_adhoc_codesign_macos(embedded)
+	return embedded
+
+
+def _venv_site_packages(prefix: Path) -> Path | None:
+	lib = prefix / ".venv" / "lib"
+	if not lib.is_dir():
+		return None
+	candidates = sorted(p for p in lib.glob("python*/site-packages") if p.is_dir())
+	return candidates[0] if candidates else None
+
+
+def _c_string_define(value: str) -> str:
+	"""Return a clang ``-DNAME="…"`` value with escapes for backslash and quotes."""
+	escaped = value.replace("\\", "\\\\").replace('"', '\\"')
+	return f'"{escaped}"'
+
+
+def _venv_python_home(prefix: Path) -> str | None:
+	"""Return ``sys.base_prefix`` for the prefix venv interpreter (for PYTHONHOME)."""
+	venv_python = prefix / ".venv" / "bin" / "python"
+	if not venv_python.exists():
+		return None
+	try:
+		out = subprocess.check_output(  # noqa: S603
+			[str(venv_python), "-c", "import sys; print(sys.base_prefix)"],
+			text=True,
+			stderr=subprocess.DEVNULL,
+		)
+	except (OSError, subprocess.CalledProcessError):
+		return None
+	home = out.strip()
+	if not home:
+		return None
+	return str(Path(home).resolve())
+
+
+def _compile_macos_app_launcher(prefix: Path, dest: Path):
+	"""Compile Mach-O ``CFBundleExecutable`` (macOS rejects shell scripts)."""
+	src = app_launcher_c_path()
+	if not src.is_file():
+		raise FileNotFoundError(f"missing macOS app launcher source: {src}")
+
+	site = _venv_site_packages(prefix)
+	if site is None:
+		# Editable / partial prefixes: still point at the expected layout.
+		site = prefix / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+
+	python_home = _venv_python_home(prefix)
+	if not python_home:
+		# Fall back to the resolved interpreter's parent chain when probe fails.
+		venv_python = prefix / ".venv" / "bin" / "python"
+		python_home = str(venv_python.resolve().parent.parent) if venv_python.exists() else ""
+	if not python_home:
+		raise RuntimeError("could not resolve PYTHONHOME for Srxy.app launcher")
+
+	tessdata = prefix / "vendor" / "tesseract" / "tessdata"
+	tessdata_dist = prefix / "vendor" / "tesseract" / "dist" / "tessdata"
+	tess = tessdata_dist if tessdata_dist.is_dir() else tessdata
+	path_prefix = ":".join(
+		[
+			(prefix / "vendor" / "tesseract" / "bin").as_posix(),
+			(prefix / "vendor" / "ffmpeg" / "bin").as_posix(),
+			(prefix / "vendor" / "uv").as_posix(),
+		]
+	)
+	log_dir = prefix / "logs"
+	log_dir.mkdir(parents=True, exist_ok=True)
+	log_file = log_dir / "srxy.log"
+
+	clang = shutil.which("clang")
+	if clang is None:
+		raise RuntimeError("clang is required to build Srxy.app (CFBundleExecutable must be Mach-O)")
+
+	cmd = [
+		clang,
+		"-O2",
+		"-Wall",
+		"-Wextra",
+		f"-DSRXY_HOME_PATH={_c_string_define(prefix.as_posix())}",
+		f"-DSRXY_PYTHONHOME={_c_string_define(python_home)}",
+		f"-DSRXY_SITE_PACKAGES={_c_string_define(site.as_posix())}",
+		f"-DSRXY_PATH_PREFIX={_c_string_define(path_prefix)}",
+		f"-DSRXY_TESSDATA={_c_string_define(tess.as_posix())}",
+		f"-DSRXY_LOG_FILE={_c_string_define(log_file.as_posix())}",
+		"-o",
+		str(dest),
+		str(src),
+	]
+	completed = subprocess.run(cmd, check=False, capture_output=True, text=True)  # noqa: S603
+	if completed.returncode != 0:
+		detail = (completed.stderr or completed.stdout or "").strip()
+		raise RuntimeError(f"clang failed building Srxy.app launcher: {detail}")
+	dest.chmod(0o755)
+	_adhoc_codesign_macos(dest)
+
+
+def _write_macos_bundle_executable(prefix: Path, dest: Path):
+	"""Write ``Contents/MacOS/srxy`` as Mach-O (or a non-shell stub off Darwin)."""
+	# Cross-platform tests monkeypatch ``platform.system`` to Darwin; only compile
+	# on a real macOS host. Stub must not look like a shell script — LaunchServices
+	# rejects ``#!/bin/sh`` as ``CFBundleExecutable`` (kLSNoExecutableErr).
+	if sys.platform != "darwin":
+		dest.write_bytes(b"\xcf\xfa\xed\xfeSRXY_MACOS_LAUNCHER_STUB\n")
+		dest.chmod(0o755)
+		return
+	_compile_macos_app_launcher(prefix, dest)
+
+
 def _write_macos_app(prefix: Path, *, launcher_text: str):
+	# ``launcher_text`` is the CLI ``bin/srxy`` shell script. The .app bundle
+	# executable must be Mach-O — LaunchServices rejects shell scripts
+	# (kLSNoExecutableErr / Dock "(null)").
+	_ = launcher_text
 	if platform.system().lower() != "darwin":
 		return
 	app_bundle = prefix / "Srxy.app"
@@ -349,30 +708,29 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 	resources_dir = app_bundle / "Contents" / "Resources"
 	macos_dir.mkdir(parents=True, exist_ok=True)
 	resources_dir.mkdir(parents=True, exist_ok=True)
-	app_launcher = macos_dir / "srxy"
-	app_launcher.write_text(launcher_text, encoding="utf-8")
-	app_launcher.chmod(0o755)
+
+	_embed_macos_app_python(prefix, macos_dir)
+	_write_macos_bundle_executable(prefix, macos_dir / "srxy")
 
 	# Prefer squircle-masked macOS artwork so Finder/Dock show rounded corners.
 	icon_png = macos_app_icon_path()
 	shutil.copy2(icon_png, resources_dir / "srxy.png")
 	icns_name = "srxy.icns"
 	icns_path = resources_dir / icns_name
-	if shutil.which("sips") and shutil.which("iconutil"):
-		iconset = resources_dir / "srxy.iconset"
-		if iconset.exists():
-			shutil.rmtree(iconset)
-		iconset.mkdir(parents=True, exist_ok=True)
-		for size in (16, 32, 128, 256, 512):
-			target = iconset / f"icon_{size}x{size}.png"
-			_run(["sips", "-z", str(size), str(size), str(icon_png), "--out", str(target)])
-			if size <= 512:
-				target2x = iconset / f"icon_{size}x{size}@2x.png"
-				_run(["sips", "-z", str(size * 2), str(size * 2), str(icon_png), "--out", str(target2x)])
-		_run(["iconutil", "-c", "icns", str(iconset), "-o", str(icns_path)])
-		shutil.rmtree(iconset, ignore_errors=True)
+	try:
+		# Deferred: Pillow is a macOS-only runtime need here (Windows offline
+		# installer venv installs srxy with ``--no-deps``, so importing this
+		# at module load time breaks the Windows relocatable-venv smoke test).
+		from srxy.resources.icons.icns import write_icns_from_png
 
-	plist = {
+		write_icns_from_png(icon_png, icns_path)
+	except Exception as exc:  # noqa: BLE001 — icon is best-effort; app still launches
+		print(f"warning: could not write {icns_path.name}: {exc}", file=sys.stderr)
+		if icns_path.exists():
+			icns_path.unlink(missing_ok=True)
+
+	# Keep modern Tahoe metrics: do NOT set UIDesignRequiresCompatibility.
+	plist: dict[str, object] = {
 		"CFBundleName": "Srxy",
 		"CFBundleDisplayName": "Srxy",
 		"CFBundleIdentifier": "com.srxy.app",
@@ -381,6 +739,11 @@ def _write_macos_app(prefix: Path, *, launcher_text: str):
 		"CFBundleExecutable": "srxy",
 		"CFBundlePackageType": "APPL",
 		"LSMinimumSystemVersion": "12.0",
+		"NSHighResolutionCapable": True,
+		"NSSupportsAutomaticGraphicsSwitching": True,
+		"LSEnvironment": {
+			"QT_QUICK_CONTROLS_STYLE": "macOS",
+		},
 	}
 	if icns_path.is_file():
 		plist["CFBundleIconFile"] = icns_name
@@ -450,13 +813,14 @@ def _is_windows() -> bool:
 
 
 def package_extras_for_host(*, install_semantic: bool) -> list[str]:
-	"""Extras required for a prefix install on the current host OS."""
-	extras: list[str] = []
+	"""Extras required for a prefix install on the current host OS.
+
+	``pywin32`` is a core Windows dependency (platform marker), so there is no
+	``[windows]`` extra to add here.
+	"""
 	if install_semantic:
-		extras.append("semantic")
-	if _is_windows():
-		extras.append("windows")
-	return extras
+		return ["semantic"]
+	return []
 
 
 def _venv_python(venv: Path) -> Path:
@@ -504,6 +868,29 @@ def _complete_phase(*, progress: ProgressCallback | None, label: str):
 		progress(1, 1, label)
 
 
+def _persist_installer_language(prefix: Path, ui_language: str | None):
+	"""Write installer UI language to prefix settings when no settings file exists yet."""
+	if not ui_language:
+		return
+	from srxy.application.settings import set_language_setting
+	from srxy.i18n import resolve_language
+
+	prefix_settings = prefix / "settings.json"
+	if prefix_settings.is_file():
+		return
+
+	code = resolve_language(ui_language)
+	prior_home = os.environ.get("SRXY_HOME")
+	os.environ["SRXY_HOME"] = str(prefix)
+	try:
+		set_language_setting(code)
+	finally:
+		if prior_home is None:
+			os.environ.pop("SRXY_HOME", None)
+		else:
+			os.environ["SRXY_HOME"] = prior_home
+
+
 def install_srxy(
 	options: InstallOptions,
 	*,
@@ -512,6 +899,7 @@ def install_srxy(
 	task: TaskCallback | None = None,
 	task_offset: int = 0,
 	task_total: int | None = None,
+	cancel_file: str | None = None,
 ) -> InstallManifest:
 	"""Install srxy into ``options.prefix``.
 
@@ -519,6 +907,38 @@ def install_srxy(
 	keeping a single overall k/n counter.
 	"""
 	prefix = options.prefix.expanduser().resolve()
+	prior_cancel_env = os.environ.get("SRXY_INSTALLER_CANCEL_FILE")
+	if cancel_file:
+		os.environ["SRXY_INSTALLER_CANCEL_FILE"] = cancel_file
+	try:
+		return _install_srxy_body(
+			options,
+			prefix=prefix,
+			status=status,
+			progress=progress,
+			task=task,
+			task_offset=task_offset,
+			task_total=task_total,
+			cancel_file=cancel_file,
+		)
+	finally:
+		if prior_cancel_env is None:
+			os.environ.pop("SRXY_INSTALLER_CANCEL_FILE", None)
+		else:
+			os.environ["SRXY_INSTALLER_CANCEL_FILE"] = prior_cancel_env
+
+
+def _install_srxy_body(
+	options: InstallOptions,
+	*,
+	prefix: Path,
+	status: StatusCallback | None = None,
+	progress: ProgressCallback | None = None,
+	task: TaskCallback | None = None,
+	task_offset: int = 0,
+	task_total: int | None = None,
+	cancel_file: str | None = None,
+) -> InstallManifest:
 	_validate_install_prefix(prefix, confirm_unsafe=options.confirm_unsafe)
 	if looks_like_partial_srxy_prefix(prefix):
 		_status(status, tr("installer.status.reclaiming_partial"))
@@ -532,6 +952,7 @@ def install_srxy(
 	overall_total = task_total if task_total is not None else len(phases)
 
 	def emit_task(local_index: int, label: str):
+		_raise_if_cancelled(cancel_file)
 		overall_index = task_offset + local_index
 		_status(status, label)
 		_task(task, index=overall_index, total=overall_total, label=label)
@@ -540,14 +961,14 @@ def install_srxy(
 
 	# --- 1. uv ---
 	emit_task(1, phases[0].label)
-	install_uv(prefix, progress=progress)
+	install_uv(prefix, progress=progress, cancel_file=cancel_file)
 	_complete_phase(progress=progress, label=phases[0].label)
 	uv = _resolve_uv(prefix)
 
 	# --- 2. venv ---
 	emit_task(2, phases[1].label)
 	venv = prefix / ".venv"
-	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)])
+	_run([str(uv), "venv", "--clear", "--python", "3.12", str(venv)], cancel_file=cancel_file)
 	_complete_phase(progress=progress, label=phases[1].label)
 
 	env = os.environ.copy()
@@ -556,7 +977,7 @@ def install_srxy(
 	env["PATH"] = f"{venv_bin}{_path_sep()}{env.get('PATH', '')}"
 
 	spec = (options.srxy_spec or "").strip() or resolve_srxy_install_spec()
-	# Windows installs always need pywin32 ([windows]); semantic is optional.
+	# semantic is optional; pywin32 is a core Windows dependency (no [windows] extra).
 	extra_names = package_extras_for_host(install_semantic=options.install_semantic)
 	if extra_names:
 		spec = with_extras(spec, *extra_names)
@@ -564,7 +985,13 @@ def install_srxy(
 	# --- 3. package ---
 	package_label = tr("installer.status.installing_package", spec=spec)
 	emit_task(3, package_label)
-	_run([str(uv), "pip", "install", spec], env=env)
+	_run_with_stdout_progress(
+		[str(uv), "pip", "install", spec],
+		env=env,
+		progress=progress,
+		cancel_file=cancel_file,
+		heartbeat_label=package_label,
+	)
 	_complete_phase(progress=progress, label=package_label)
 
 	probe = subprocess.run(  # noqa: S603
@@ -581,7 +1008,40 @@ def install_srxy(
 			f"{(probe.stderr or probe.stdout).strip()}"
 		)
 
+	# Keep the same PySide pin as packaging/macos offline builds. A floating
+	# 6.11.x patch can change Quick Controls macOS chrome vs ``uv run`` / the
+	# installer wizard the user just saw.
+	if platform.system().lower() == "darwin":
+		_run_with_stdout_progress(
+			[str(uv), "pip", "install", "PySide6==6.11.1"],
+			env=env,
+			progress=progress,
+			cancel_file=cancel_file,
+			heartbeat_label=package_label,
+		)
+
 	phase_by_key = {phase.key: (i + 1, phase) for i, phase in enumerate(phases)}
+
+	if "cuda_torch" in phase_by_key:
+		local_index, phase = phase_by_key["cuda_torch"]
+		emit_task(local_index, phase.label)
+
+		def cuda_run(cmd: list[str], env: dict[str, str] | None = None):
+			_run_with_stdout_progress(
+				cmd,
+				env=env,
+				progress=progress,
+				cancel_file=cancel_file,
+				heartbeat_label=phase.label,
+			)
+
+		ensure_windows_cuda_torch(
+			uv=uv,
+			python=_venv_python(venv),
+			env=env,
+			run=cuda_run,
+		)
+		_complete_phase(progress=progress, label=phase.label)
 
 	vendor_tesseract = False
 	vendor_ffmpeg = False
@@ -614,6 +1074,7 @@ def install_srxy(
 			],
 			env=env,
 			progress=progress,
+			cancel_file=cancel_file,
 		)
 		_complete_phase(progress=progress, label=phase.label)
 		models_prefetched = True
@@ -658,11 +1119,13 @@ def install_srxy(
 		},
 	)
 	write_manifest(prefix, manifest)
+	_persist_installer_language(prefix, options.ui_language)
 	_status(status, tr("installer.status.install_complete"))
 	return manifest
 
 
 __all__ = [
+	"InstallCancelledError",
 	"InstallOptions",
 	"InstallPhase",
 	"TaskCallback",

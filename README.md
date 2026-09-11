@@ -10,7 +10,41 @@ Fuzzy, phonetic, and semantic matching across filenames, documents, photos, audi
 
 ## Installation
 
-Needs **Python 3.11+**. `uv tool install 'srxy[semantic]'` recommended; `pipx install 'srxy[semantic]'` also works; `pipx install srxy` for core-only in a venv. Windows: add `[windows]` for Explorer tags. macOS: system `python3` may be too old — [Installation](docs/installation.md#macos).
+Needs **Python 3.11+**. Prefer [uv](https://docs.astral.sh/uv/) (`pipx install …` is fine too).
+
+### Desktop installers (preferred)
+
+Grab the latest installers from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) — AppImages, DMGs, and the Windows `.exe` are all there. You can also [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). Details: [docs/installers.md](docs/installers.md).
+
+<img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
+
+### Terminal install (PyPI release)
+
+| Hardware | Command |
+|----------|---------|
+| **Linux + NVIDIA GPU** /<br>**macOS Apple Silicon** | `uv tool install 'srxy[semantic]'` |
+| **Windows + NVIDIA GPU** | `uv tool install 'srxy[semantic]' --with torch --with torchvision --with torchaudio --index https://download.pytorch.org/whl/cu130` |
+| **No GPU / core-only** | `uv tool install srxy` |
+
+`[semantic]` adds smarter search (PyTorch, CLIP, Whisper) and is intended for machines with a GPU — CPU-only semantic is too slow for most users. On Windows, `pywin32` (Explorer tags) is included automatically. PyPI’s Windows torch is **CPU-only**, so the GPU line uses `--with`/`--index` to pull CUDA wheels. macOS system `python3` may be too old — [Installation](docs/installation.md#macos).
+
+### Latest development version
+
+Install the current `develop` branch as a standalone tool (same layout as PyPI, but built from git):
+
+```bash
+uv tool install "srxy @ git+https://github.com/illescasDaniel/srxy@develop"
+uv tool install "srxy[semantic] @ git+https://github.com/illescasDaniel/srxy@develop"   # GPU
+uv tool install --force "srxy @ git+https://github.com/illescasDaniel/srxy@develop"     # update in place
+```
+
+On **Windows + NVIDIA**, add the CUDA wheels (checkout `[tool.uv.sources]` does not apply to `uv tool install`):
+
+```bash
+uv tool install "srxy[semantic] @ git+https://github.com/illescasDaniel/srxy@develop" \
+  --with torch --with torchvision --with torchaudio \
+  --index https://download.pytorch.org/whl/cu130
+```
 
 **Platform setup (ffmpeg, tesseract):** [docs/installation.md](docs/installation.md). Privacy / third-party notice: [docs/privacy.md](docs/privacy.md).
 
@@ -28,14 +62,6 @@ srxy "registry" ./src         # pre-filled; auto-starts
 | <img src="docs/images/gui-macos.png" alt="srxy GUI on macOS" width="280" /> | <img src="docs/images/gui-linux.png" alt="srxy GUI on Linux" width="280" /> | <img src="docs/images/gui-windows.png" alt="srxy GUI on Windows" width="280" /> |
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
-
-**Desktop installers (Linux, macOS, Windows):**
-
-Grab the latest installers from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) — AppImages, DMGs, and the Windows `.exe` are all there. You can also [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). Details: [docs/installers.md](docs/installers.md).
-
-<img src="docs/images/installer.png" alt="srxy offline desktop installer" width="400" />
-
-<img src="docs/images/installer-online.png" alt="srxy online web installer" width="400" />
 
 **TUI:**
 
@@ -83,21 +109,35 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 | [Power-ups](docs/power-ups.md) | OCR, semantic, CLIP, transcription, models |
 | [Python API](docs/python-api.md) | `magic_file_search`, `search`, `Q`, match types |
 | [API reference](docs/api-reference.md) | Generated signatures from `srxy.__all__` |
-| [Development](docs/development.md) | Quality gate, `--full`, fixtures, pytest |
+| [Development](docs/development.md) | Sync tasks, quality gate, `--full`, fixtures, pytest |
 
 ## Development
 
-Requires [uv](https://docs.astral.sh/uv/).
+Requires [uv](https://docs.astral.sh/uv/). First-time checkout setup uses the platform-aware sync script (stdlib-only — no project venv required):
 
 ```bash
-uv sync --extra semantic
+uv run --no-project python scripts/dev/sync.py                     # dev env (default-groups = ["dev"])
+uv run --no-project python scripts/dev/sync.py --group uploader    # dev + twine (PyPI upload)
+uv run --no-project python scripts/dev/sync.py --no-default-groups # runtime only, no pytest/ruff
+```
+
+Wrappers: `./scripts/dev/sync.sh` (Unix) or `powershell -File .\scripts\dev\sync.ps1` (Windows).
+
+Once `.venv` exists, thin Taskipy aliases also work:
+
+```bash
+uv run task sync-dev
+uv run task sync-uploader
 uv run task checks-fix
-uv run task checks              # day-to-day
+uv run task checks              # day-to-day (auto-scope)
+uv run task checks-gui          # core+gui when working on the GUI
 uv run task checks-full         # before release
 uv run task checks-full-cpu     # + forced-CPU transcribe matrix
 ```
 
-CI runs unit tests only (`unit` marker, excluding `semantic` and `transcribe`). Details: [docs/development.md](docs/development.md).
+CI runs `core+gui+tui` buckets (no heavy/real-model suite). Details: [docs/development.md](docs/development.md).
+
+Agent memory bank (per-branch project state): [memory/README.md](memory/README.md).
 
 Try fixtures: `srxy "axolotl" ./tests/fixtures/file_search`
 

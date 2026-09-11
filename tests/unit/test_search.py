@@ -39,7 +39,6 @@ def test_given_special_query_when_composite_matching_then_spatial_beats_unrelate
 	assert score_special > score_spatial
 
 
-@pytest.mark.semantic
 @pytest.mark.usefixtures("mock_semantic_model")
 def test_given_salat_and_salad_when_composite_matching_then_returns_breakdown():
 	# given
@@ -291,10 +290,13 @@ def test_given_semantic_match_type_when_env_disabled_then_it_is_unavailable(monk
 	assert not available
 
 
-@pytest.mark.semantic
 def test_given_semantic_match_type_when_env_enabled_then_it_is_available(monkeypatch: pytest.MonkeyPatch):
-	# given
+	# given — env alone is not enough; CI has no sentence_transformers unless stubbed
 	monkeypatch.setenv("SRXY_SEMANTIC", "1")
+	monkeypatch.setattr(
+		"srxy.application.matching.semantic.sentence_transformers_installed",
+		lambda: True,
+	)
 	get_atomic_matcher.cache_clear()
 
 	# when

@@ -19,9 +19,9 @@ def _print_version() -> int:
 
 
 def _progress_text(value: object) -> str:
-	"""Normalize progress text for Inno ExecAndLogOutput (ASCII-safe).
+	"""Normalize progress text for wizard / script consumers (ASCII-safe).
 
-	Inno Setup reads the engine subprocess stdout via a Windows ANSI pipe.
+	Some Windows hosts read the engine subprocess stdout via an ANSI pipe.
 	Any non-ASCII byte sequence appears as diamond-question glyphs in the
 	progress page.  Steps: (1) replace Unicode ellipsis U+2026 with three
 	ASCII dots (it does not decompose via NFD); (2) NFD-decompose so accented
@@ -43,7 +43,7 @@ def _configure_headless_stdio():
 
 	On Windows the pipe encoding defaults to the OEM code page.  We force
 	UTF-8 here so the log file receives full Unicode, while _progress_text
-	already produces ASCII for the Inno progress-bar wire protocol.
+	already produces ASCII for the progress-bar wire protocol.
 	"""
 	for stream in (sys.stdout, sys.stderr):
 		reconfigure = getattr(stream, "reconfigure", None)
@@ -55,7 +55,7 @@ def _configure_headless_stdio():
 
 
 def _emit(kind: str, *parts: object):
-	"""Write a machine-readable progress line to stdout (Inno / scripts)."""
+	"""Write a machine-readable progress line to stdout (wizard / scripts)."""
 	payload = "\t".join(_progress_text(part) for part in parts)
 	sys.stdout.write(f"{kind}\t{payload}\n")
 	sys.stdout.flush()
@@ -135,6 +135,30 @@ def _build_parser() -> argparse.ArgumentParser:
 		default="",
 		help="UI language for progress messages (en|es). Defaults to system/settings.",
 	)
+	parser.add_argument(
+		"--cancel-file",
+		type=str,
+		default="",
+		help="Path watched for cooperative install cancellation.",
+	)
+	parser.add_argument(
+		"--remove-cache",
+		action=argparse.BooleanOptionalAction,
+		default=True,
+		help="During uninstall, remove srxy cache data (default: true).",
+	)
+	parser.add_argument(
+		"--remove-settings",
+		action=argparse.BooleanOptionalAction,
+		default=True,
+		help="During uninstall, remove persisted settings (default: true).",
+	)
+	parser.add_argument(
+		"--remove-models",
+		action=argparse.BooleanOptionalAction,
+		default=True,
+		help="During uninstall, remove downloaded AI models (default: true).",
+	)
 	return parser
 
 
@@ -157,6 +181,7 @@ def _run_headless(args: argparse.Namespace) -> int:
 
 	prefix_raw = (args.prefix or "").strip()
 	prefix = Path(prefix_raw).expanduser() if prefix_raw else default_install_prefix()
+	cancel_file = (args.cancel_file or "").strip() or None
 
 	if args.uninstall:
 		_status_cb(tr("installer.status.removing_app"))
@@ -166,6 +191,9 @@ def _run_headless(args: argparse.Namespace) -> int:
 			prefix,
 			status=_status_cb,
 			confirm_unsafe=bool(args.confirm_unsafe),
+			remove_cache=bool(args.remove_cache),
+			remove_settings=bool(args.remove_settings),
+			remove_models=bool(args.remove_models),
 		)
 		_task_cb(2, 2, tr("installer.status.uninstall_complete"))
 		_progress_cb(1, 1, tr("installer.status.uninstall_complete"))
@@ -175,13 +203,17 @@ def _run_headless(args: argparse.Namespace) -> int:
 
 	_require_privacy_ack(args.privacy_ack)
 	from srxy.adapters.inbound.installer.tessdata_langs import default_tessdata_langs, normalize_tessdata_langs
-	from srxy.i18n import get_language
+	from srxy.i18n import get_language, resolve_language
 
 	raw_langs = [part.strip() for part in str(args.tessdata_langs or "").split(",") if part.strip()]
 	if raw_langs:
 		tessdata_langs = normalize_tessdata_langs(raw_langs)
 	else:
 		tessdata_langs = default_tessdata_langs(get_language())
+	ui_language: str | None = None
+	lang_raw = (args.language or "").strip()
+	if lang_raw:
+		ui_language = resolve_language(lang_raw)
 	options = InstallOptions(
 		prefix=prefix,
 		download_tesseract=bool(args.tesseract),
@@ -192,6 +224,7 @@ def _run_headless(args: argparse.Namespace) -> int:
 		srxy_spec=(args.srxy_spec or "").strip(),
 		confirm_unsafe=bool(args.confirm_unsafe),
 		tessdata_langs=tessdata_langs,
+		ui_language=ui_language,
 	)
 
 	if args.reinstall:
@@ -204,6 +237,9 @@ def _run_headless(args: argparse.Namespace) -> int:
 			prefix,
 			status=_status_cb,
 			confirm_unsafe=bool(args.confirm_unsafe),
+			remove_cache=bool(args.remove_cache),
+			remove_settings=bool(args.remove_settings),
+			remove_models=bool(args.remove_models),
 		)
 		_progress_cb(1, 1, tr("installer.status.removing_app"))
 		install_srxy(
@@ -213,6 +249,7 @@ def _run_headless(args: argparse.Namespace) -> int:
 			task=_task_cb,
 			task_offset=1,
 			task_total=overall_total,
+			cancel_file=cancel_file,
 		)
 		_emit("OK", "reinstall")
 		return 0
@@ -222,6 +259,7 @@ def _run_headless(args: argparse.Namespace) -> int:
 		status=_status_cb,
 		progress=_progress_cb,
 		task=_task_cb,
+		cancel_file=cancel_file,
 	)
 	_emit("OK", "install")
 	return 0
@@ -246,8 +284,13 @@ def main(argv: list[str] | None = None) -> int:
 			from srxy.i18n import resolve_language, set_language
 
 			set_language(resolve_language(lang))
+		from srxy.adapters.inbound.installer.cancel import InstallCancelledError
+
 		try:
 			return _run_headless(args)
+		except InstallCancelledError:
+			_emit("CANCEL", "install")
+			return 1
 		except Exception as exc:
 			_emit("ERROR", str(exc))
 			print(str(exc), file=sys.stderr)

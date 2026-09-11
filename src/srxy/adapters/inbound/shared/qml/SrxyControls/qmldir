@@ -1,0 +1,5 @@
+module SrxyControls
+AccentButton 1.0 AccentButton.qml
+SecondaryButton 1.0 SecondaryButton.qml
+SrxyDialog 1.0 SrxyDialog.qml
+SrxyDialogFooter 1.0 SrxyDialogFooter.qml

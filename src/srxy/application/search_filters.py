@@ -3,8 +3,6 @@ from __future__ import annotations
 import argparse
 from dataclasses import dataclass
 
-from srxy.adapters.outbound.semantic.semantic_image import DEFAULT_SEMANTIC_IMAGE_THRESHOLD
-from srxy.adapters.outbound.transcribe.transcribe_text import DEFAULT_TRANSCRIBE_THRESHOLD
 from srxy.application.labels import (
 	filter_label_hits_per_file,
 	filter_label_max_results,
@@ -12,9 +10,17 @@ from srxy.application.labels import (
 	filter_label_speech_min,
 	filter_label_visual_min,
 )
+from srxy.application.search_defaults import (
+	DEFAULT_MAX_FILE_SIZE,
+	DEFAULT_OCR_MAX_FILE_SIZE,
+	DEFAULT_SEMANTIC_IMAGE_THRESHOLD,
+	DEFAULT_TRANSCRIBE_MAX_FILE_SIZE,
+	DEFAULT_TRANSCRIBE_THRESHOLD,
+)
 from srxy.application.size_limits import (
 	SizeLimits,
 	apply_size_limits_to_args,
+	bytes_to_mib_text,
 	size_limits_from_args,
 	validate_size_limits,
 )
@@ -36,6 +42,22 @@ class SearchFilters:
 
 def _percent_text(value: float) -> str:
 	return str(round(value * 100))
+
+
+def default_search_filters() -> SearchFilters:
+	"""Factory defaults for filters dialog Reset (empty top_files = all / GUI limit)."""
+	return SearchFilters(
+		top_files="",
+		max_matches="50",
+		size_limits=SizeLimits(
+			text_mib=bytes_to_mib_text(DEFAULT_MAX_FILE_SIZE, allow_zero=True),
+			ocr_mib=bytes_to_mib_text(DEFAULT_OCR_MAX_FILE_SIZE),
+			transcribe_mib=bytes_to_mib_text(DEFAULT_TRANSCRIBE_MAX_FILE_SIZE),
+		),
+		threshold=_percent_text(_DEFAULT_THRESHOLD),
+		semantic_image_threshold=_percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD),
+		transcribe_threshold=_percent_text(DEFAULT_TRANSCRIBE_THRESHOLD),
+	)
 
 
 def search_filters_from_args(args: argparse.Namespace) -> SearchFilters:

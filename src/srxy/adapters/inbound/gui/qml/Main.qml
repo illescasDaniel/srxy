@@ -2,27 +2,109 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import SrxyControls
 
 ApplicationWindow {
 	id: root
 	width: 1200
 	height: 800
-	visible: true
+	// run_gui shows this after Splash.qml + controller are ready (avoids empty flash).
+	// Direct engine.load in tests should set visible: true after load when needed.
+	visible: false
 	title: "srxy"
 	objectName: "mainWindow"
 
 	property bool syncingOptions: false
 	property bool syncingFilters: false
+	property bool filtersDraftValid: true
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
+	// Offscreen tests may still set srxyUseNativeAlerts; help/alerts use SrxyDialog.
+	readonly property bool useNativeAlerts: Qt.platform.os === "osx"
+		&& srxyUseNativeAlerts !== false
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
+	property int settingsRev: 0
+	property var settingsData: ({
+		models: [],
+		cache: { path: "", present: false, statusText: "", pathLabel: "" },
+		preferences: { path: "", present: false, statusText: "", pathLabel: "" },
+		busy: false
+	})
 
 	// Keep platform-native checkbox rendering (especially on macOS).
 	component StyledCheckBox: CheckBox {}
 
+	component SettingsModelRow: RowLayout {
+		required property string kind
+		readonly property var row: root.settingsModelRow(kind)
+		readonly property bool settingsLoading: !!(root.settingsData && root.settingsData.loading)
+		readonly property bool busy: settingsLoading || !!(root.settingsData && root.settingsData.busy)
+		spacing: 8
+		ColumnLayout {
+			Layout.fillWidth: true
+			spacing: 2
+			Label {
+				text: row.label
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+			}
+			Label {
+				text: row.statusText
+				opacity: 0.75
+				wrapMode: Text.WordWrap
+				Layout.fillWidth: true
+			}
+		}
+		SecondaryButton {
+			objectName: "settingsClear_" + kind
+			text: kind === "all"
+				? root.t("settings.action.clear_all")
+				: root.t("settings.action.clear")
+			enabled: !!row.installed && !busy
+			onClicked: if (controller) controller.confirmClearModel(kind)
+		}
+		SecondaryButton {
+			objectName: "settingsRedownload_" + kind
+			text: kind === "all"
+				? root.t("settings.action.redownload_all")
+				: (row.installed
+					? root.t("settings.action.redownload")
+					: root.t("settings.action.download"))
+			enabled: !busy
+			onClicked: if (controller) controller.redownloadModel(kind)
+		}
+	}
+
 	function t(key) {
 		const _ = root.langRev
 		return controller ? controller.i18nTr(key) : key
+	}
+
+	function reloadSettingsData() {
+		const _ = root.settingsRev
+		if (!controller)
+			return
+		try {
+			root.settingsData = JSON.parse(controller.settingsJson)
+		} catch (e) {
+			root.settingsData = {
+				loading: false,
+				models: [],
+				cache: { path: "", present: false, statusText: "", pathLabel: "" },
+				preferences: { path: "", present: false, statusText: "", pathLabel: "" },
+				busy: false
+			}
+		}
+	}
+
+	function settingsModelRow(kind) {
+		const data = root.settingsData
+		const models = data && data.models ? data.models : []
+		for (let i = 0; i < models.length; i++) {
+			if (models[i].kind === kind)
+				return models[i]
+		}
+		return { kind: kind, label: kind, installed: false, statusText: "", path: "" }
 	}
 
 	Connections {
@@ -30,10 +112,40 @@ ApplicationWindow {
 		function onLanguageChanged() {
 			root.langRev++
 		}
+		function onSettingsUiChanged() {
+			root.settingsRev++
+			root.reloadSettingsData()
+		}
 	}
 
+	onLightThemeChanged: if (controller) controller.setPreviewTheme(root.lightTheme)
 	menuBar: MenuBar {
 		objectName: "helpMenuBar"
+		Menu {
+			title: root.t("menu.settings")
+			objectName: "settingsMenu"
+			Action {
+				objectName: "downloadAllModelsAction"
+				text: root.t("menu.settings.download_all")
+				onTriggered: if (controller) controller.confirmDownloadAllModels()
+			}
+			Action {
+				objectName: "resetCacheAction"
+				text: root.t("menu.settings.reset_cache")
+				onTriggered: if (controller) controller.confirmClearCache()
+			}
+			Action {
+				objectName: "resetPreferencesAction"
+				text: root.t("menu.settings.reset_preferences")
+				onTriggered: if (controller) controller.confirmResetPreferences()
+			}
+			MenuSeparator {}
+			Action {
+				objectName: "settingsAction"
+				text: root.t("menu.settings.open")
+				onTriggered: if (controller) controller.openSettings()
+			}
+		}
 		Menu {
 			title: root.t("menu.help")
 			objectName: "helpMenu"
@@ -106,6 +218,29 @@ ApplicationWindow {
 		optMatchSkippedNames.checked = !!draft.match_skipped_names
 		optArchives.checked = !!draft.include_archives
 		optSubdirs.checked = draft.include_subdirectories !== false
+		optPersist.checked = !!draft.persist_options
+		syncContentDependentOptions()
+		syncingOptions = false
+	}
+
+	function resetOptionsDraft() {
+		if (!controller)
+			return
+		syncingOptions = true
+		const draft = JSON.parse(controller.defaultOptionsJson())
+		optNames.checked = !!draft.search_names
+		optContents.checked = !!draft.search_contents
+		optDocsTags.checked = draft.search_docs_tags !== false
+		optSemantic.checked = !!draft.semantic
+		optOcr.checked = !!draft.ocr
+		optTranscribe.checked = !!draft.transcribe
+		optSemanticImage.checked = !!draft.semantic_image
+		optHidden.checked = !!draft.include_hidden
+		optNoise.checked = !!draft.include_noise
+		optNoiseFiles.checked = !!draft.include_noise_files
+		optMatchSkippedNames.checked = !!draft.match_skipped_names
+		optArchives.checked = !!draft.include_archives
+		optSubdirs.checked = draft.include_subdirectories !== false
 		syncContentDependentOptions()
 		syncingOptions = false
 	}
@@ -133,7 +268,8 @@ ApplicationWindow {
 			include_noise_files: optNoiseFiles.checked,
 			match_skipped_names: optMatchSkippedNames.checked,
 			include_archives: optArchives.checked,
-			include_subdirectories: optSubdirs.checked
+			include_subdirectories: optSubdirs.checked,
+			persist_options: optPersist.checked
 		}))
 	}
 
@@ -150,13 +286,30 @@ ApplicationWindow {
 		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
 		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		fltPersist.checked = !!draft.persist_filters
 		syncingFilters = false
+		validateFiltersDraft()
 	}
 
-	function pushFiltersToController() {
-		if (!controller || syncingFilters)
-			return ""
-		return controller.applyFiltersJson(JSON.stringify({
+	function resetFiltersDraft() {
+		if (!controller)
+			return
+		syncingFilters = true
+		const draft = JSON.parse(controller.defaultFiltersJson())
+		fltTopFiles.text = draft.top_files ?? ""
+		fltMaxMatches.text = draft.max_matches ?? "50"
+		fltThreshold.text = draft.threshold ?? "35"
+		fltVisualMin.text = draft.semantic_image_threshold ?? "18"
+		fltSpeechMin.text = draft.transcribe_threshold ?? "25"
+		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
+		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
+		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		syncingFilters = false
+		validateFiltersDraft()
+	}
+
+	function filtersDraftPayload() {
+		return JSON.stringify({
 			top_files: fltTopFiles.text,
 			max_matches: fltMaxMatches.text,
 			threshold: fltThreshold.text,
@@ -166,32 +319,69 @@ ApplicationWindow {
 				text_mib: fltDocSize.text,
 				ocr_mib: fltOcrSize.text,
 				transcribe_mib: fltMediaSize.text
-			}
-		}))
+			},
+			persist_filters: fltPersist.checked
+		})
+	}
+
+	function validateFiltersDraft() {
+		if (!controller || syncingFilters || !filtersError)
+			return
+		const err = controller.validateFiltersJson(filtersDraftPayload())
+		if (err) {
+			filtersError.text = err
+			filtersError.visible = true
+			filtersDraftValid = false
+		} else {
+			filtersError.text = ""
+			filtersError.visible = false
+			filtersDraftValid = true
+		}
+	}
+
+	function pushFiltersToController() {
+		if (!controller || syncingFilters)
+			return ""
+		return controller.applyFiltersJson(filtersDraftPayload())
 	}
 
 	function showHelp(key) {
+		// Always SrxyDialog (AccentButton OK). Qt Quick MessageDialog falls back to
+		// Basic chrome on macOS and, when parented under/beside Popup.Native Options,
+		// stacks behind the sheet and is hard to dismiss.
+		const title = root.t("help.dialog_title")
+		const body = controller ? controller.helpText(key) : ""
 		helpTitle.text = key
-		helpBody.text = controller ? controller.helpText(key) : ""
-		helpDialog.title = root.t("help.dialog_title")
+		helpBody.text = body
+		helpDialog.title = title
 		helpDialog.open()
 	}
 
 	function showUnavailable(key) {
+		const title = root.t("options.unavailable_title")
+		const body = controller ? controller.unavailableReason(key) : ""
 		helpTitle.text = key
-		helpBody.text = controller ? controller.unavailableReason(key) : ""
-		helpDialog.title = root.t("options.unavailable_title")
+		helpBody.text = body
+		helpDialog.title = title
 		helpDialog.open()
 	}
 
 	component InfoButton: ToolButton {
+		id: infoBtn
 		property string helpKey: ""
+		objectName: helpKey.length > 0 ? ("infoButton_" + helpKey) : ""
 		text: "i"
 		flat: true
 		implicitWidth: 28
 		implicitHeight: 28
 		font.bold: true
-		ToolTip.visible: hovered
+		hoverEnabled: true
+		// HoverHandler keeps ToolTip working even if a style ignores ToolButton.hovered.
+		HoverHandler {
+			id: infoHover
+		}
+		ToolTip.visible: infoHover.hovered || infoBtn.hovered
+		ToolTip.delay: 400
 		ToolTip.text: root.t("gui.about_setting")
 		onClicked: showHelp(helpKey)
 	}
@@ -210,6 +400,63 @@ ApplicationWindow {
 		ToolTip.visible: hovered
 		ToolTip.text: root.t("options.unavailable_tooltip")
 		onClicked: showUnavailable(featureKey)
+	}
+
+	component TermRow: RowLayout {
+		property int termIndex: 0
+		property real trailingReserve: 0
+		property real sideInset: 8
+		// Capture ApplicationWindow before Repeater teardown; `root` is
+		// undefined while a removed delegate is destroyed.
+		readonly property var appWindow: root
+		readonly property var termRow: termIndex >= 0 && termIndex < termModel.count
+			? termModel.get(termIndex) : null
+		spacing: 4
+		ComboBox {
+			visible: termIndex > 0
+			model: 2
+			currentIndex: termRow && termRow.join === "and" ? 1 : 0
+			displayText: appWindow.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
+			delegate: ItemDelegate {
+				required property int index
+				width: parent ? parent.width : 80
+				text: appWindow.t(index === 1 ? "gui.join.and" : "gui.join.or")
+			}
+			onActivated: {
+				if (!termRow)
+					return
+				termModel.setProperty(termIndex, "join", currentIndex === 1 ? "and" : "or")
+				appWindow.syncTermRows()
+			}
+		}
+		TextField {
+			id: termField
+			Layout.fillWidth: true
+			text: termRow ? termRow.term : ""
+			placeholderText: appWindow.t("gui.term_placeholder")
+			leftPadding: sideInset
+			rightPadding: sideInset + trailingReserve
+			onTextChanged: {
+				if (!termRow)
+					return
+				termModel.setProperty(termIndex, "term", text)
+				appWindow.syncTermRows()
+			}
+			Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+		}
+		readonly property real fieldHeight: termField.height
+		SecondaryButton {
+			text: "−"
+			visible: termModel.count > 1
+			onClicked: {
+				const idx = termIndex
+				if (idx < 0 || idx >= termModel.count)
+					return
+				const sync = appWindow.syncTermRows
+				termModel.remove(idx)
+				Qt.callLater(sync)
+			}
+		}
 	}
 
 	FolderDialog {
@@ -234,234 +481,368 @@ ApplicationWindow {
 		anchors.margins: 8
 		spacing: 8
 
-		GroupBox {
-			title: root.t("gui.section.where")
+		ScrollView {
+			id: mainScroll
 			Layout.fillWidth: true
-			RowLayout {
-				anchors.fill: parent
-				Button {
-					objectName: "browseButton"
-					text: root.t("gui.browse")
-					onClicked: folderDialog.open()
-				}
-				TextField {
-					id: pathField
-					objectName: "pathField"
-					Layout.fillWidth: true
-					placeholderText: root.t("gui.path_placeholder")
-					text: controller ? controller.path : ""
-					onTextChanged: if (controller) controller.path = text
-					Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-				}
-				ToolButton {
-					objectName: "pathIssueButton"
-					text: "⚠"
-					flat: true
-					visible: controller && controller.pathIssue.length > 0
-					implicitWidth: 28
-					implicitHeight: 28
-					ToolTip.visible: hovered
-					ToolTip.text: controller ? controller.pathIssue : ""
-				}
-			}
-		}
+			Layout.fillHeight: true
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			readonly property bool scrollNeeded: contentHeight > height + 1
+			ScrollBar.vertical.policy: scrollNeeded ? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
 
-		GroupBox {
-			title: root.t("gui.section.what")
-			Layout.fillWidth: true
 			ColumnLayout {
-				anchors.fill: parent
+				id: mainContent
+				width: mainScroll.availableWidth
+				height: Math.max(implicitHeight, mainScroll.availableHeight)
 				spacing: 8
+
+				GroupBox {
+					title: root.t("gui.section.where")
+					Layout.fillWidth: true
+					RowLayout {
+						anchors.fill: parent
+						SecondaryButton {
+							objectName: "browseButton"
+							text: root.t("gui.browse")
+							onClicked: folderDialog.open()
+						}
+						TextField {
+							id: pathField
+							objectName: "pathField"
+							Layout.fillWidth: true
+							placeholderText: root.t("gui.path_placeholder")
+							text: controller ? controller.path : ""
+							onTextChanged: if (controller) controller.path = text
+							Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+						}
+						ToolButton {
+							objectName: "pathIssueButton"
+							text: "⚠"
+							flat: true
+							visible: controller && controller.pathIssue.length > 0
+							implicitWidth: 28
+							implicitHeight: 28
+							ToolTip.visible: hovered
+							ToolTip.text: controller ? controller.pathIssue : ""
+						}
+					}
+				}
+
 				RowLayout {
-					TextField {
-						id: simpleQuery
-						objectName: "simpleQueryField"
+					id: whatHowRow
+					Layout.fillWidth: true
+					Layout.alignment: Qt.AlignTop
+					spacing: 8
+
+					// Wrapper owns Layout width/height so Material GroupBox
+					// implicitWidth (content ↔ chrome) cannot loop.
+					Item {
+						id: whatWrapper
 						Layout.fillWidth: true
-						placeholderText: root.t("gui.search_placeholder")
-						visible: modeBox.currentIndex === 0
-						text: controller ? controller.simpleQuery : ""
-						onTextChanged: if (controller) controller.simpleQuery = text
-						Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-					}
-					ColumnLayout {
-						Layout.fillWidth: true
-						visible: modeBox.currentIndex === 1
-						spacing: 4
-						Repeater {
-							id: termRepeater
-							model: termModel
-							delegate: RowLayout {
-								required property int index
-								required property string term
-								required property string join
-								ComboBox {
-									visible: index > 0
-									model: 2
-									currentIndex: join === "and" ? 1 : 0
-									displayText: root.t(currentIndex === 1 ? "gui.join.and" : "gui.join.or")
-									delegate: ItemDelegate {
-										required property int index
-										width: parent ? parent.width : 80
-										text: root.t(index === 1 ? "gui.join.and" : "gui.join.or")
-									}
-									onActivated: {
-										termModel.setProperty(index, "join", currentIndex === 1 ? "and" : "or")
-										syncTermRows()
-									}
-								}
-								TextField {
-									Layout.fillWidth: true
-									text: term
-									placeholderText: root.t("gui.term_placeholder")
-									onTextChanged: {
-										termModel.setProperty(index, "term", text)
-										syncTermRows()
-									}
-									Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-								}
-								Button {
-									text: "−"
-									visible: termModel.count > 1
-									onClicked: {
-										termModel.remove(index)
-										syncTermRows()
-									}
-								}
-							}
-						}
-						Button {
-							text: root.t("gui.add_term")
-							onClicked: {
-								termModel.append({ term: "", join: "or" })
-								syncTermRows()
-							}
-						}
-					}
-					TextField {
-						id: advancedQuery
-						objectName: "advancedQueryField"
-						Layout.fillWidth: true
-						placeholderText: root.t("gui.advanced_placeholder")
-						visible: modeBox.currentIndex === 2
-						text: controller ? controller.advancedQuery : ""
-						onTextChanged: if (controller) controller.advancedQuery = text
-						Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-					}
-					ComboBox {
-						id: modeBox
-						objectName: "queryModeBox"
-						model: 3
-						implicitWidth: 120
+						Layout.preferredWidth: 1
 						Layout.alignment: Qt.AlignTop
-						displayText: root.t(
-							["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
+						readonly property real maxBodyHeight: 220
+						readonly property real chromeHeight: whatGroup.topPadding + whatGroup.bottomPadding
+						readonly property real desiredHeight: Math.min(
+							maxBodyHeight + chromeHeight,
+							whatBody.implicitHeight + chromeHeight
 						)
-						delegate: ItemDelegate {
-							required property int index
-							width: modeBox.width
-							text: root.t(
-								["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
-							)
-						}
-						onCurrentIndexChanged: {
-							const modes = ["simple", "multi", "advanced"]
-							if (controller)
-								controller.queryMode = modes[currentIndex]
-						}
-					}
-				}
-				Label {
-					objectName: "queryPreview"
-					visible: modeBox.currentIndex !== 0
-					text: controller ? controller.queryPreview : ""
-					opacity: 0.7
-					wrapMode: Text.Wrap
-					Layout.fillWidth: true
-				}
-			}
-		}
+						Layout.maximumHeight: maxBodyHeight + chromeHeight
+						Layout.preferredHeight: desiredHeight
+						implicitWidth: 100
+						implicitHeight: desiredHeight
 
-		GroupBox {
-			title: root.t("gui.section.how")
-			Layout.fillWidth: true
-			ColumnLayout {
-				anchors.fill: parent
-				spacing: 8
-
-				RowLayout {
-					Layout.fillWidth: true
-					Button {
-						id: optionsButton
-						objectName: "optionsButton"
-						text: root.t("gui.options")
-						onClicked: {
-							loadOptionsFromController()
-							optionsDialog.open()
+						GroupBox {
+							id: whatGroup
+							title: root.t("gui.section.what")
+							anchors.fill: parent
+							// Material computes implicitWidth from fill-anchored
+							// content (loops). Actual size comes from whatWrapper.
+							implicitWidth: 1
+							implicitHeight: 1
+							ScrollView {
+								id: whatScroll
+								anchors.fill: parent
+								// Only clip when scrolling — otherwise Material's
+								// outlined floating label gets cut by the viewport.
+								clip: contentHeight > height + 1
+								ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+								ScrollBar.vertical.policy: contentHeight > height + 1
+									? ScrollBar.AsNeeded : ScrollBar.AlwaysOff
+								contentWidth: width
+								ColumnLayout {
+									id: whatBody
+									width: whatScroll.width
+									spacing: 4
+									// Breathing room for Material outlined TextField
+									// floating labels / focus rings.
+									readonly property real fieldInset: 10
+									RowLayout {
+										Layout.fillWidth: true
+										Layout.leftMargin: whatBody.fieldInset
+										Layout.rightMargin: whatBody.fieldInset
+										Layout.topMargin: 12
+										Layout.bottomMargin: 4
+										spacing: 4
+										StackLayout {
+											id: queryModeStack
+											Layout.fillWidth: true
+											Layout.fillHeight: false
+											currentIndex: modeBox.currentIndex
+											Layout.preferredHeight: currentIndex === 0
+												? simpleQuery.implicitHeight
+												: (currentIndex === 1 ? multiTermColumn.implicitHeight : advancedQuery.implicitHeight)
+											TextField {
+												id: simpleQuery
+												objectName: "simpleQueryField"
+												Layout.fillWidth: true
+												Layout.fillHeight: false
+												Layout.preferredHeight: implicitHeight
+												placeholderText: root.t("gui.search_placeholder")
+												text: controller ? controller.simpleQuery : ""
+												onTextChanged: if (controller) controller.simpleQuery = text
+												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+											}
+											ColumnLayout {
+												id: multiTermColumn
+												spacing: 2
+												width: parent.width
+												Repeater {
+													id: multiTermRepeater
+													model: termModel.count
+													delegate: TermRow {
+														termIndex: index
+														Layout.fillWidth: true
+														width: parent.width
+													}
+												}
+												SecondaryButton {
+													text: root.t("gui.add_term")
+													onClicked: {
+														termModel.append({ term: "", join: "or" })
+														root.syncTermRows()
+													}
+												}
+											}
+											TextField {
+												id: advancedQuery
+												objectName: "advancedQueryField"
+												Layout.fillWidth: true
+												Layout.fillHeight: false
+												Layout.preferredHeight: implicitHeight
+												placeholderText: root.t("gui.advanced_placeholder")
+												text: controller ? controller.advancedQuery : ""
+												onTextChanged: if (controller) controller.advancedQuery = text
+												Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+											}
+										}
+										AccentButton {
+											id: searchButton
+											objectName: "searchButton"
+											// Stretch-to-field is a Fluent/Windows look. On macOS (and
+											// Linux Material) the native button is taller than the field;
+											// forcing matchHeight clips the bevel and mis-centres the label.
+											readonly property bool stretchToField: Qt.platform.os === "windows"
+											readonly property real matchHeight: {
+												if (modeBox.currentIndex === 0)
+													return simpleQuery.implicitHeight
+												if (modeBox.currentIndex === 2)
+													return advancedQuery.implicitHeight
+												const row = multiTermRepeater.itemAt(0)
+												return row && row.fieldHeight > 0 ? row.fieldHeight : simpleQuery.implicitHeight
+											}
+											Layout.alignment: stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Binding {
+												target: searchButton
+												property: "implicitHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.preferredHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.minimumHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "Layout.maximumHeight"
+												value: searchButton.matchHeight
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "leftPadding"
+												value: 12
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "rightPadding"
+												value: 14
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "topPadding"
+												value: 0
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											Binding {
+												target: searchButton
+												property: "bottomPadding"
+												value: 0
+												when: searchButton.stretchToField
+												restoreMode: Binding.RestoreBinding
+											}
+											spacing: 8
+											accent: controller ? controller.stale : true
+											enabled: controller !== null && controller !== undefined && controller.canSearch
+											focusPolicy: Qt.NoFocus
+											text: root.t("gui.search")
+											// Keep the style's own IconLabel: it paints the label, and
+											// AccentButton leaves ``icon.color`` unassigned so the glyph
+											// follows ``defaultIconColor`` (same colour as the dialogs' OK).
+											icon.source: "images/search.svg"
+											icon.width: 16
+											icon.height: 16
+											onClicked: if (controller) controller.startSearch()
+										}
+										ToolButton {
+											objectName: "queryIssueButton"
+											text: "⚠"
+											flat: true
+											visible: controller && controller.queryIssue.length > 0
+											implicitWidth: 28
+											implicitHeight: 28
+											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											ToolTip.visible: hovered
+											ToolTip.text: controller ? controller.queryIssue : ""
+										}
+										ToolButton {
+											objectName: "searchWarningsButton"
+											text: "⚠"
+											flat: true
+											visible: controller && controller.hasSearchWarnings
+											implicitWidth: 28
+											implicitHeight: 28
+											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											ToolTip.visible: hovered
+											ToolTip.text: root.t("gui.search_warnings.tooltip")
+											onClicked: searchWarningsDialog.open()
+										}
+									}
+									Label {
+										objectName: "queryPreview"
+										visible: modeBox.currentIndex !== 0
+										text: controller ? controller.queryPreview : ""
+										opacity: 0.7
+										wrapMode: Text.Wrap
+										Layout.fillWidth: true
+										Layout.leftMargin: whatBody.fieldInset
+										Layout.rightMargin: whatBody.fieldInset
+									}
+								}
+							}
 						}
 					}
-					Label {
-						text: controller ? controller.optionsSummary : ""
-						opacity: 0.7
-						elide: Text.ElideRight
-						Layout.fillWidth: true
-					}
-				}
-				RowLayout {
-					Layout.fillWidth: true
-					Button {
-						id: filtersButton
-						objectName: "filtersButton"
-						text: root.t("gui.filters")
-						onClicked: {
-							loadFiltersFromController()
-							filtersDialog.open()
+
+					GroupBox {
+						id: howGroup
+						title: root.t("gui.section.how")
+						Layout.fillWidth: false
+						Layout.alignment: Qt.AlignTop
+						ColumnLayout {
+							id: howBody
+							spacing: 4
+							ComboBox {
+								id: modeBox
+								objectName: "queryModeBox"
+								Layout.fillWidth: true
+								implicitWidth: 140
+								model: 3
+								displayText: root.t(
+									["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][currentIndex]
+								)
+								delegate: ItemDelegate {
+									required property int index
+									width: modeBox.width
+									text: root.t(
+										["gui.mode.simple", "gui.mode.multi", "gui.mode.advanced"][index]
+									)
+								}
+								onCurrentIndexChanged: {
+									const modes = ["simple", "multi", "advanced"]
+									if (controller)
+										controller.queryMode = modes[currentIndex]
+								}
+							}
+							RowLayout {
+								id: howButtonRow
+								spacing: 4
+								readonly property real sharedButtonWidth: Math.max(
+									optionsButton.implicitWidth,
+									filtersButton.implicitWidth
+								)
+								SecondaryButton {
+									id: optionsButton
+									objectName: "optionsButton"
+									text: root.t("gui.options")
+									Layout.preferredWidth: howButtonRow.sharedButtonWidth
+									ToolTip.visible: hovered && controller && controller.optionsSummary.length > 0
+									ToolTip.text: controller ? controller.optionsSummary : ""
+									onClicked: {
+										loadOptionsFromController()
+										optionsDialog.open()
+									}
+								}
+								SecondaryButton {
+									id: filtersButton
+									objectName: "filtersButton"
+									text: root.t("gui.filters")
+									Layout.preferredWidth: howButtonRow.sharedButtonWidth
+									ToolTip.visible: hovered && controller && controller.filtersSummary.length > 0
+									ToolTip.text: controller ? controller.filtersSummary : ""
+									onClicked: {
+										loadFiltersFromController()
+										filtersDialog.open()
+									}
+								}
+							}
 						}
 					}
-					Label {
-						text: controller ? controller.filtersSummary : ""
-						opacity: 0.7
-						elide: Text.ElideRight
-						Layout.fillWidth: true
-					}
 				}
-			}
-		}
-
-		GroupBox {
-			title: root.t("gui.section.search")
-			Layout.fillWidth: true
-			RowLayout {
-				Button {
-					id: searchButton
-					objectName: "searchButton"
-					text: root.t("gui.search")
-					highlighted: controller ? controller.stale : true
-					implicitWidth: 160
-					enabled: controller !== null && controller !== undefined && controller.canSearch
-					onClicked: if (controller) controller.startSearch()
-				}
-				ToolButton {
-					objectName: "queryIssueButton"
-					text: "⚠"
-					flat: true
-					visible: controller && controller.queryIssue.length > 0
-					implicitWidth: 28
-					implicitHeight: 28
-					ToolTip.visible: hovered
-					ToolTip.text: controller ? controller.queryIssue : ""
-				}
-			}
-		}
 
 		GroupBox {
 			title: root.t("gui.section.results")
 			Layout.fillWidth: true
 			Layout.fillHeight: true
-			enabled: controller ? controller.hasSearched : false
-			opacity: enabled ? 1.0 : 0.45
-			SplitView {
+			Layout.minimumHeight: 280
+			ColumnLayout {
 				anchors.fill: parent
-				orientation: Qt.Horizontal
+				spacing: 8
+				Item {
+					Layout.fillWidth: true
+					Layout.fillHeight: true
+					Layout.minimumHeight: 240
+					enabled: controller ? controller.hasSearched : false
+					opacity: enabled ? 1.0 : 0.45
+					SplitView {
+						anchors.fill: parent
+						orientation: Qt.Horizontal
 
 				Frame {
 					SplitView.preferredWidth: 380
@@ -480,13 +861,22 @@ ApplicationWindow {
 						Item {
 							Layout.fillWidth: true
 							Layout.fillHeight: true
+							property int contextResultRow: -1
 							ListView {
 								id: resultsView
 								objectName: "resultsView"
 								anchors.fill: parent
 								clip: true
+								reuseItems: true
+								cacheBuffer: 200
 								model: controller ? controller.resultsModel : null
 								currentIndex: controller ? controller.selectedResult : -1
+								ScrollBar.vertical: ScrollBar {
+									objectName: "resultsScrollBar"
+									policy: ScrollBar.AlwaysOn
+									visible: resultsView.count > 0
+										&& resultsView.contentHeight > resultsView.height + 1
+								}
 								delegate: Item {
 									id: resultRow
 									required property int index
@@ -494,41 +884,82 @@ ApplicationWindow {
 									required property string path
 									required property string labels
 									width: resultsView.width
-									height: resultRowLayout.implicitHeight
+									// Fixed height avoids per-row implicitHeight measure storms while streaming.
+									height: 28
 									Rectangle {
 										anchors.fill: parent
-										color: resultRow.index % 2 === 0
-											? (palette.alternateBase && palette.alternateBase !== palette.base
-												? palette.alternateBase
-												: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
-											: palette.base
-										opacity: resultsView.currentIndex === resultRow.index ? 0.65 : 1
+										color: resultsView.currentIndex === resultRow.index
+											? palette.highlight
+											: (resultRow.index % 2 === 0
+												? (palette.alternateBase && palette.alternateBase !== palette.base
+													? palette.alternateBase
+													: Qt.rgba(palette.base.r, palette.base.g, palette.base.b, 0.85))
+												: palette.base)
 									}
 									RowLayout {
 										id: resultRowLayout
 										anchors.fill: parent
 										spacing: 0
-										Label { text: String(resultRow.index + 1); Layout.preferredWidth: 36; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.score; Layout.preferredWidth: 56; padding: 6; elide: Text.ElideRight }
-										Label { text: resultRow.path; Layout.fillWidth: true; padding: 6; elide: Text.ElideMiddle }
-										Label { text: resultRow.labels; Layout.preferredWidth: 88; padding: 6; elide: Text.ElideRight }
+										Label {
+											text: String(resultRow.index + 1)
+											Layout.preferredWidth: 36
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.score
+											Layout.preferredWidth: 56
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.path
+											Layout.fillWidth: true
+											padding: 6
+											elide: Text.ElideMiddle
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
+										Label {
+											text: resultRow.labels
+											Layout.preferredWidth: 88
+											padding: 6
+											elide: Text.ElideRight
+											color: resultsView.currentIndex === resultRow.index ? palette.highlightedText : palette.text
+										}
 									}
 									MouseArea {
 										anchors.fill: parent
 										acceptedButtons: Qt.LeftButton | Qt.RightButton
 										onClicked: (mouse) => {
 											controller.selectResult(resultRow.index)
-											if (mouse.button === Qt.RightButton)
-												resultMenu.popup()
+											if (mouse.button === Qt.RightButton) {
+												resultsView.parent.contextResultRow = resultRow.index
+												resultContextMenu.popup()
+											}
 										}
 										onDoubleClicked: controller.openResult(resultRow.index)
 									}
-									Menu {
-										id: resultMenu
-										MenuItem { text: root.t("gui.menu.open_file"); onTriggered: controller.openResult(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_path"); onTriggered: controller.copyResultPath(resultRow.index) }
-										MenuItem { text: root.t("gui.menu.copy_all_matches"); onTriggered: controller.copyAllMatches(resultRow.index) }
-									}
+								}
+							}
+							Menu {
+								id: resultContextMenu
+								MenuItem {
+									text: root.t("gui.menu.open_file")
+									onTriggered: controller.openResult(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.open_containing_folder")
+									onTriggered: controller.openResultFolder(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_path")
+									onTriggered: controller.copyResultPath(resultsView.parent.contextResultRow)
+								}
+								MenuItem {
+									text: root.t("gui.menu.copy_all_matches")
+									onTriggered: controller.copyAllMatches(resultsView.parent.contextResultRow)
 								}
 							}
 							Label {
@@ -556,13 +987,27 @@ ApplicationWindow {
 						ColumnLayout {
 							anchors.fill: parent
 							Label { text: root.t("gui.matches_in_file"); font.bold: true }
-							RowLayout {
+							Item {
 								Layout.fillWidth: true
-								spacing: 0
-								Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
-								Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
-								Label { text: root.t("gui.col.location"); font.bold: true; Layout.preferredWidth: 120; padding: 6 }
-								Label { text: root.t("gui.col.text"); font.bold: true; Layout.fillWidth: true; padding: 6 }
+								height: matchesHeader.implicitHeight
+								clip: true
+								RowLayout {
+									id: matchesHeader
+									x: -matchesView.contentX
+									width: matchesView.contentWidth
+									spacing: 0
+									Label { text: root.t("gui.col.hash"); font.bold: true; Layout.preferredWidth: 36; padding: 6 }
+									Label { text: root.t("gui.col.match"); font.bold: true; Layout.preferredWidth: 56; padding: 6 }
+									Label { text: root.t("gui.col.location"); font.bold: true; Layout.preferredWidth: 120; padding: 6 }
+									Label { text: root.t("gui.col.text"); font.bold: true; Layout.fillWidth: true; padding: 6 }
+								}
+							}
+							TextMetrics {
+								id: matchCharMetrics
+								font.family: Qt.platform.os === "windows"
+									? "Consolas"
+									: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+								text: "0"
 							}
 							ListView {
 								id: matchesView
@@ -570,14 +1015,38 @@ ApplicationWindow {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
 								clip: true
+								cacheBuffer: 400
+								flickableDirection: Flickable.HorizontalAndVerticalFlick
 								model: controller ? controller.matchesModel : null
+								readonly property int fixedColumnsWidth: 212
+								readonly property int textPadding: 12
+								contentWidth: Math.max(
+									width,
+									fixedColumnsWidth
+										+ (controller && controller.matchesModel
+											? matchCharMetrics.advanceWidth * controller.matchesModel.maxTextLength
+											: 0)
+										+ textPadding)
+								ScrollBar.vertical: ScrollBar {
+									objectName: "matchesScrollBar"
+									policy: ScrollBar.AlwaysOn
+									visible: matchesView.count > 0
+										&& matchesView.contentHeight > matchesView.height + 1
+								}
+								ScrollBar.horizontal: ScrollBar {
+									objectName: "matchesHScrollBar"
+									policy: ScrollBar.AsNeeded
+									visible: matchesView.count > 0
+										&& matchesView.contentWidth > matchesView.width + 1
+								}
 								delegate: Item {
 									id: matchRow
 									required property int index
 									required property string score
 									required property string location
 									required property string text
-									width: matchesView.width
+									required property int lineNumber
+									width: matchesView.contentWidth
 									height: matchRowLayout.implicitHeight
 									Rectangle {
 										anchors.fill: parent
@@ -602,14 +1071,18 @@ ApplicationWindow {
 												: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 											Layout.fillWidth: true
 											padding: 6
-											elide: Text.ElideRight
 											wrapMode: Text.NoWrap
 										}
 									}
 									MouseArea {
 										anchors.fill: parent
-										acceptedButtons: Qt.RightButton
-										onClicked: matchMenu.popup()
+										acceptedButtons: Qt.LeftButton | Qt.RightButton
+										onClicked: (mouse) => {
+											if (mouse.button === Qt.RightButton)
+												matchMenu.popup()
+											else if (matchRow.lineNumber > 0 && controller)
+												controller.revealPreviewLine(matchRow.lineNumber)
+										}
 									}
 									Menu {
 										id: matchMenu
@@ -622,32 +1095,204 @@ ApplicationWindow {
 					}
 					Frame {
 						SplitView.fillHeight: true
+						objectName: "previewFrame"
+						function scrollPreviewToLine(line) {
+							if (line <= 0)
+								return
+							var flick = previewScroll.contentItem
+							if (!flick)
+								return
+							var lineHeight = controller && controller.previewLineHeight > 0
+								? controller.previewLineHeight
+								: previewTextArea.font.pixelSize
+							flick.contentY = Math.max(0, (line - 1) * lineHeight)
+						}
+						Connections {
+							target: controller
+							function onPreviewScrollLineChanged() {
+								scrollPreviewToLine(controller.previewScrollLine)
+							}
+						}
+					Shortcut {
+						sequences: [StandardKey.Find]
+						enabled: controller ? controller.previewHasFile : false
+						onActivated: controller.openPreviewFind()
+					}
+						Shortcut {
+							sequence: "F3"
+							enabled: controller ? controller.previewFindOpen : false
+							onActivated: controller.previewFindNext()
+						}
+						Shortcut {
+							sequence: "Shift+F3"
+							enabled: controller ? controller.previewFindOpen : false
+							onActivated: controller.previewFindPrevious()
+						}
 						ColumnLayout {
 							anchors.fill: parent
-							Label {
-								objectName: "previewHeader"
-								text: controller ? controller.previewHeader : ""
-								wrapMode: Text.Wrap
+							RowLayout {
+								Layout.fillWidth: true
+								spacing: 6
+								Label {
+									id: previewFilePathLabel
+									objectName: "previewFilePath"
+									text: controller ? controller.previewFilePath : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+									Layout.fillWidth: true
+									ToolTip.visible: previewFilePathHover.hovered && (controller ? controller.previewFilePath.length > 0 : false)
+									ToolTip.text: controller ? controller.previewFilePath : ""
+									HoverHandler {
+										id: previewFilePathHover
+									}
+								}
+								Label {
+									objectName: "previewContentType"
+									visible: controller && controller.previewContentType.length > 0
+									text: controller ? controller.previewContentType : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+									opacity: 0.85
+									ToolTip.visible: previewContentTypeHover.hovered && visible
+									ToolTip.text: root.t("gui.preview.content_type")
+									HoverHandler {
+										id: previewContentTypeHover
+									}
+								}
+								Label {
+									objectName: "previewHeader"
+									text: controller ? controller.previewHeader : ""
+									elide: Text.ElideRight
+									wrapMode: Text.NoWrap
+								}
 							}
-							ScrollView {
+							RowLayout {
+								id: findBar
+								visible: controller ? controller.previewFindOpen : false
+								onVisibleChanged: if (visible) findField.forceActiveFocus()
+								TextField {
+									id: findField
+									Layout.fillWidth: true
+									placeholderText: root.t("gui.preview.find_placeholder")
+									text: controller ? controller.previewFindQuery : ""
+									onTextEdited: if (controller) controller.setPreviewFindQuery(text)
+									onAccepted: if (controller) controller.previewFindNext()
+									Keys.onEscapePressed: if (controller) controller.closePreviewFind()
+								}
+								CheckBox {
+									text: root.t("gui.preview.find_approximate")
+									checked: controller ? controller.previewFindApproximate : false
+									onToggled: if (controller) controller.setPreviewFindApproximate(checked)
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_previous")
+									onClicked: if (controller) controller.previewFindPrevious()
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_next")
+									onClicked: if (controller) controller.previewFindNext()
+								}
+								Label {
+									text: controller ? controller.previewFindStatus : ""
+									Layout.preferredWidth: 70
+									elide: Text.ElideRight
+								}
+								ToolButton {
+									text: root.t("gui.preview.find_close")
+									onClicked: if (controller) controller.closePreviewFind()
+								}
+							}
+							RowLayout {
 								Layout.fillWidth: true
 								Layout.fillHeight: true
-								TextArea {
-									objectName: "previewText"
-									readOnly: true
-									wrapMode: TextEdit.Wrap
-									textFormat: TextEdit.RichText
-									font.family: Qt.platform.os === "windows"
-										? "Consolas"
-										: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
-									text: controller ? controller.previewText : ""
-									selectByMouse: true
+								spacing: 0
+								Item {
+									id: gutter
+									objectName: "previewGutter"
+									visible: controller && controller.previewLineCount > 0
+									Layout.fillHeight: true
+									Layout.preferredWidth: gutterText.implicitWidth + 12
+									clip: true
+									readonly property var flick: previewScroll.contentItem
+									Text {
+										id: gutterText
+										objectName: "previewGutterText"
+										width: gutter.width - 12
+										y: gutter.flick ? previewTextArea.topPadding - gutter.flick.contentY : 0
+										font: previewTextArea.font
+										color: controller ? controller.previewGutterColor : palette.text
+										horizontalAlignment: Text.AlignRight
+										text: controller ? controller.previewGutterText : ""
+									}
+									WheelHandler {
+										onWheel: (event) => {
+											if (!gutter.flick || !controller)
+												return
+											const step = Math.max(1, controller.previewLineHeight) * 3 * (event.angleDelta.y / 120)
+											const maxY = Math.max(0, gutter.flick.contentHeight - gutter.flick.height)
+											gutter.flick.contentY = Math.max(0, Math.min(maxY, gutter.flick.contentY - step))
+										}
+									}
 								}
+								ScrollView {
+									id: previewScroll
+									objectName: "previewScroll"
+									Layout.fillWidth: true
+									Layout.fillHeight: true
+									clip: true
+									// Keep the *default* attached bars (correctly anchored). Replacing
+									// ScrollBar.vertical with a bare ScrollBar {} drops Qt's anchors and
+									// parks the bar at (0,0) — looking "misplaced" over the text/gutter.
+									readonly property bool needsVScroll: previewTextArea.length > 0
+										&& previewTextArea.contentHeight > previewScroll.availableHeight + 1
+									readonly property bool needsHScroll: previewTextArea.length > 0
+										&& previewTextArea.contentWidth > previewScroll.availableWidth + 1
+									ScrollBar.vertical.policy: needsVScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+									ScrollBar.horizontal.policy: needsHScroll ? ScrollBar.AlwaysOn : ScrollBar.AlwaysOff
+									TextArea {
+										id: previewTextArea
+										objectName: "previewText"
+										readOnly: true
+										verticalAlignment: TextEdit.AlignTop
+										wrapMode: TextEdit.NoWrap
+										textFormat: TextEdit.PlainText
+										font.family: Qt.platform.os === "windows"
+											? "Consolas"
+											: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+										// Content is owned by Python via attachPreviewDocument / setPlainText.
+										selectByMouse: true
+										Component.onCompleted: if (controller) controller.attachPreviewDocument(previewTextArea.textDocument)
+										MouseArea {
+											anchors.fill: parent
+											acceptedButtons: Qt.RightButton
+											onClicked: previewMenu.popup()
+										}
+									}
+								}
+							}
+							Label {
+								objectName: "previewFooter"
+								visible: controller && controller.previewFooter.length > 0
+								text: controller ? controller.previewFooter : ""
+								opacity: 0.75
+								Layout.fillWidth: true
+								wrapMode: Text.WordWrap
+							}
+							Menu {
+								id: previewMenu
+								MenuItem { text: root.t("gui.menu.open_file"); enabled: controller ? controller.previewHasFile : false; onTriggered: controller.openPreviewFile() }
+								MenuItem { text: root.t("gui.menu.open_containing_folder"); enabled: controller ? controller.previewHasFile : false; onTriggered: controller.openPreviewFolder() }
+								MenuSeparator {}
+								MenuItem { text: root.t("gui.menu.copy"); enabled: previewTextArea.selectedText.length > 0; onTriggered: previewTextArea.copy() }
+								MenuItem { text: root.t("gui.menu.select_all"); onTriggered: previewTextArea.selectAll() }
+								MenuItem { text: root.t("gui.menu.find"); onTriggered: controller.openPreviewFind() }
 							}
 						}
 					}
 				}
 			}
+		}
+		}
 		}
 
 		GroupBox {
@@ -663,10 +1308,12 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					from: 0
 					to: 100
+					indeterminate: controller ? controller.progressIndeterminate : false
 					value: controller ? controller.progress : 0
 				}
 				Label {
 					objectName: "progressPercent"
+					visible: controller && !controller.progressIndeterminate
 					text: (controller ? Math.round(controller.progress) : 0) + "%"
 					Layout.preferredWidth: 48
 					horizontalAlignment: Text.AlignRight
@@ -681,20 +1328,28 @@ ApplicationWindow {
 				}
 				Label {
 					objectName: "statusLabel"
-					text: controller ? controller.status : ""
+					text: {
+						if (!controller)
+							return ""
+						var spin = controller.activitySpinner
+						return spin.length > 0 ? (spin + " " + controller.status) : controller.status
+					}
 					Layout.preferredWidth: 280
 					elide: Text.ElideRight
 				}
-				Button {
+				SecondaryButton {
+					objectName: "cancelSearchButton"
 					text: root.t("gui.cancel")
 					visible: controller && controller.searching
 					onClicked: controller.cancelSearch()
 				}
 			}
 		}
+			}
+		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: optionsDialog
 		objectName: "optionsDialog"
 		title: root.t("gui.options.title")
@@ -702,6 +1357,7 @@ ApplicationWindow {
 		anchors.centerIn: parent
 		width: 520
 		implicitWidth: 520
+		height: Math.min(620, parent.height - 40)
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
@@ -709,15 +1365,16 @@ ApplicationWindow {
 				controller.refreshCapabilities()
 			loadOptionsFromController()
 		}
-		footer: DialogButtonBox {
-			Button {
+		footer: SrxyDialogFooter {
+			defaultButton: optionsOkButton
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: optionsDialog.reject()
 			}
-			Button {
+			AccentButton {
+				id: optionsOkButton
+				objectName: "optionsOkButton"
 				text: root.t("common.ok")
-				highlighted: true
 				onClicked: {
 					const err = pushOptionsToController()
 					if (err) {
@@ -732,7 +1389,9 @@ ApplicationWindow {
 		}
 
 		ScrollView {
+			anchors.fill: parent
 			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
 			ColumnLayout {
 				spacing: 6
 				width: optionsDialog.availableWidth - 24
@@ -753,6 +1412,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optNames
+					objectName: "optNames"
 					text: root.t("gui.options.file_names")
 					checked: true
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
@@ -762,6 +1422,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optContents
+					objectName: "optContents"
 					text: root.t("gui.options.file_contents")
 					checked: true
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
@@ -801,6 +1462,7 @@ ApplicationWindow {
 			RowLayout {
 				StyledCheckBox {
 					id: optOcr
+					objectName: "optOcr"
 					text: root.t("gui.options.ocr")
 					enabled: optContents.checked
 						&& !!(controller && controller.capabilitiesJson)
@@ -879,37 +1541,57 @@ ApplicationWindow {
 					Layout.fillWidth: true
 					Layout.topMargin: 4
 				}
+				StyledCheckBox {
+					id: optPersist
+					objectName: "optPersist"
+					text: root.t("gui.options.persist")
+					Layout.topMargin: 12
+				}
+				SecondaryButton {
+					id: optReset
+					objectName: "optReset"
+					text: root.t("gui.options.reset")
+					onClicked: resetOptionsDraft()
+				}
 			}
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: filtersDialog
 		objectName: "filtersDialog"
 		title: root.t("gui.filters.title")
 		modal: true
 		anchors.centerIn: parent
-		width: 480
-		implicitWidth: 480
+		// macOS Native popup needs more width so label + field + info icon breathe.
+		width: Qt.platform.os === "osx" ? 560 : 480
+		implicitWidth: Qt.platform.os === "osx" ? 560 : 480
+		// Bounded height so ScrollView can scroll; keep a compact default sheet.
+		height: Math.min(420, Math.max(340, (parent ? parent.height : 420) - 120))
 		onAboutToShow: {
 			filtersError.text = ""
 			filtersError.visible = false
 			loadFiltersFromController()
 		}
-		footer: DialogButtonBox {
-			Button {
+		footer: SrxyDialogFooter {
+			defaultButton: filtersOkButton
+			SecondaryButton {
 				text: root.t("common.cancel")
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: filtersDialog.reject()
 			}
-			Button {
+			AccentButton {
+				id: filtersOkButton
+				objectName: "filtersOkButton"
 				text: root.t("common.ok")
-				highlighted: true
+				enabled: root.filtersDraftValid
 				onClicked: {
+					if (!root.filtersDraftValid)
+						return
 					const err = pushFiltersToController()
 					if (err) {
 						filtersError.text = err
 						filtersError.visible = true
+						root.filtersDraftValid = false
 						return
 					}
 					filtersError.visible = false
@@ -918,9 +1600,13 @@ ApplicationWindow {
 			}
 		}
 
-		ColumnLayout {
-			width: filtersDialog.availableWidth - 24
-			spacing: 6
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			ColumnLayout {
+				width: filtersDialog.availableWidth - 24
+				spacing: Qt.platform.os === "osx" ? 10 : 6
 
 			Label {
 				id: filtersError
@@ -933,103 +1619,194 @@ ApplicationWindow {
 
 		GridLayout {
 			columns: 3
-			columnSpacing: 8
-			rowSpacing: 6
+			columnSpacing: Qt.platform.os === "osx" ? 12 : 8
+			rowSpacing: Qt.platform.os === "osx" ? 10 : 6
 			Layout.fillWidth: true
 
 			Label { text: root.t("gui.filters.max_results") }
-			TextField { id: fltTopFiles; placeholderText: root.t("gui.filters.max_results_ph"); Layout.fillWidth: true }
+			TextField {
+				id: fltTopFiles
+				objectName: "fltTopFiles"
+				placeholderText: root.t("gui.filters.max_results_ph")
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "top_files" }
 
 			Label { text: root.t("gui.filters.hits_per_file") }
-			TextField { id: fltMaxMatches; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltMaxMatches
+				objectName: "fltMaxMatches"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "max_matches" }
 
 			Label { text: root.t("gui.filters.min_match") }
-			TextField { id: fltThreshold; text: "35"; Layout.fillWidth: true }
+			TextField {
+				id: fltThreshold
+				objectName: "fltThreshold"
+				text: "35"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "threshold" }
 
 			Label { text: root.t("gui.filters.visual_min") }
-			TextField { id: fltVisualMin; text: "18"; Layout.fillWidth: true }
+			TextField {
+				id: fltVisualMin
+				objectName: "fltVisualMin"
+				text: "18"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "semantic_image_threshold" }
 
 			Label { text: root.t("gui.filters.speech_min") }
-			TextField { id: fltSpeechMin; text: "25"; Layout.fillWidth: true }
+			TextField {
+				id: fltSpeechMin
+				objectName: "fltSpeechMin"
+				text: "25"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_threshold" }
 
 			Label { text: root.t("gui.filters.doc_mib") }
-			TextField { id: fltDocSize; text: "100"; Layout.fillWidth: true }
+			TextField {
+				id: fltDocSize
+				objectName: "fltDocSize"
+				text: "100"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "text_mib" }
 
 			Label { text: root.t("gui.filters.ocr_mib") }
-			TextField { id: fltOcrSize; text: "50"; Layout.fillWidth: true }
+			TextField {
+				id: fltOcrSize
+				objectName: "fltOcrSize"
+				text: "50"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "ocr_mib" }
 
 			Label { text: root.t("gui.filters.media_mib") }
-			TextField { id: fltMediaSize; text: "500"; Layout.fillWidth: true }
+			TextField {
+				id: fltMediaSize
+				objectName: "fltMediaSize"
+				text: "500"
+				Layout.fillWidth: true
+				onTextChanged: validateFiltersDraft()
+			}
 			InfoButton { helpKey: "transcribe_mib" }
 		}
-		}
+			StyledCheckBox {
+				id: fltPersist
+				objectName: "fltPersist"
+				text: root.t("gui.filters.persist")
+				Layout.topMargin: 12
+			}
+			SecondaryButton {
+				id: fltReset
+				objectName: "fltReset"
+				text: root.t("gui.filters.reset")
+				onClicked: resetFiltersDraft()
+			}
+			} // ColumnLayout
+		} // ScrollView
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: helpDialog
 		objectName: "helpDialog"
 		title: root.t("help.dialog_title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(520, parent.width - 40)
 		implicitWidth: 520
 		contentWidth: availableWidth
-		ColumnLayout {
-			width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
-			spacing: 8
-			Label {
-				id: helpTitle
-				font.bold: true
-				wrapMode: Text.WordWrap
-				Layout.fillWidth: true
-				Layout.maximumWidth: helpDialog.availableWidth - 24
+		// Fit short help; scroll only when text exceeds a compact max height.
+		readonly property real _helpTextH: helpTitle.implicitHeight + helpBody.implicitHeight + 8
+		readonly property real _helpChrome: Qt.platform.os === "osx" ? 108 : 96
+		readonly property real _helpMaxH: Math.min(280, (parent ? parent.height : 320) - 100)
+		height: Math.min(_helpMaxH, Math.max(140, _helpTextH + _helpChrome))
+		// Above Options/Filters: a second Popup.Native sheet often stacks *under*
+		// the open Options window; use a top-level Window instead. Offscreen tests
+		// keep Item popups via srxyUseNativeAlerts === false (SrxyDialog default).
+		popupType: {
+			if (typeof srxyUseNativeAlerts === "boolean" && srxyUseNativeAlerts === false)
+				return Popup.Item
+			if (optionsDialog.opened || filtersDialog.opened || settingsDialog.opened
+				|| aboutDialog.opened || updateDialog.opened)
+				return Popup.Window
+			return Popup.Native
+		}
+		z: 1000
+		footer: SrxyDialogFooter {
+			defaultButton: helpOkButton
+			AccentButton {
+				id: helpOkButton
+				objectName: "helpOkButton"
+				text: root.t("common.ok")
+				onClicked: helpDialog.accept()
 			}
-			Label {
-				id: helpBody
-				wrapMode: Text.WordWrap
-				Layout.fillWidth: true
-				Layout.maximumWidth: helpDialog.availableWidth - 24
-				textFormat: Text.PlainText
+		}
+		ScrollView {
+			id: helpScroll
+			objectName: "helpScroll"
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			ColumnLayout {
+				width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
+				spacing: 8
+				Label {
+					id: helpTitle
+					font.bold: true
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+					Layout.maximumWidth: helpDialog.availableWidth - 24
+				}
+				Label {
+					id: helpBody
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+					Layout.maximumWidth: helpDialog.availableWidth - 24
+					textFormat: Text.PlainText
+				}
 			}
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: updateDialog
 		objectName: "updateDialog"
 		title: root.t("update.title")
 		modal: true
 		anchors.centerIn: parent
 		width: Math.min(520, parent.width - 40)
-		visible: controller && controller.updateDialogOpen
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		closePolicy: controller && controller.updateBusy ? Popup.NoAutoClose : Popup.CloseOnEscape
 		onClosed: if (controller) controller.closeUpdateDialog()
-		footer: DialogButtonBox {
-			Button {
-				text: root.t("update.no")
+		footer: SrxyDialogFooter {
+			defaultButton: updateYesButton
+			SecondaryButton {
+				text: root.t("common.cancel")
 				visible: controller && controller.updateDialogMode === "prompt"
-				DialogButtonBox.buttonRole: DialogButtonBox.RejectRole
 				onClicked: updateDialog.reject()
 			}
-			Button {
+			AccentButton {
+				id: updateYesButton
 				text: root.t("update.yes")
 				visible: controller && controller.updateCanApply
-				highlighted: true
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: if (controller) controller.applyUpdate()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("update.ok")
 				visible: controller && controller.updateDialogMode === "info"
-				DialogButtonBox.buttonRole: DialogButtonBox.AcceptRole
 				onClicked: updateDialog.accept()
 			}
 		}
@@ -1040,17 +1817,174 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
+		id: settingsDialog
+		objectName: "settingsDialog"
+		title: root.t("settings.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(640, parent.width - 40)
+		height: Math.min(560, parent.height - 40)
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
+		onOpened: root.reloadSettingsData()
+		onClosed: if (controller) controller.closeSettings()
+		footer: SrxyDialogFooter {
+			SecondaryButton {
+				text: root.t("common.close")
+				onClicked: settingsDialog.accept()
+			}
+		}
+		BusyIndicator {
+			objectName: "settingsBusyIndicator"
+			anchors.centerIn: parent
+			running: !!(root.settingsData && root.settingsData.loading)
+			visible: running
+		}
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			visible: !(root.settingsData && root.settingsData.loading)
+			ColumnLayout {
+				width: settingsDialog.availableWidth - 24
+				spacing: 12
+
+				Label {
+					text: root.t("settings.section.models")
+					font.bold: true
+					Layout.fillWidth: true
+				}
+
+				SettingsModelRow {
+					kind: "semantic_text"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "semantic_image"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "transcribe"
+					Layout.fillWidth: true
+				}
+				SettingsModelRow {
+					kind: "all"
+					Layout.fillWidth: true
+				}
+
+				Label {
+					text: root.t("settings.section.cache")
+					font.bold: true
+					Layout.topMargin: 8
+					Layout.fillWidth: true
+				}
+
+				Label {
+					text: root.settingsData && root.settingsData.cache
+						? root.settingsData.cache.pathLabel
+						: ""
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.cache
+						? root.settingsData.cache.statusText
+						: ""
+					opacity: 0.75
+					Layout.fillWidth: true
+				}
+				SecondaryButton {
+					objectName: "settingsClearCache"
+					text: root.t("settings.action.clear_cache")
+					enabled: !!(root.settingsData && root.settingsData.cache
+						&& root.settingsData.cache.present
+						&& !root.settingsData.busy
+						&& !root.settingsData.loading)
+					Layout.alignment: Qt.AlignLeft
+					onClicked: if (controller) controller.confirmClearCache()
+				}
+
+				Label {
+					text: root.t("settings.section.preferences")
+					font.bold: true
+					Layout.topMargin: 8
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.preferences
+						? root.settingsData.preferences.pathLabel
+						: ""
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					text: root.settingsData && root.settingsData.preferences
+						? root.settingsData.preferences.statusText
+						: ""
+					opacity: 0.75
+					Layout.fillWidth: true
+				}
+				SecondaryButton {
+					objectName: "settingsResetPreferences"
+					text: root.t("settings.action.reset_preferences")
+					enabled: !!(root.settingsData && root.settingsData.preferences
+						&& root.settingsData.preferences.present
+						&& !root.settingsData.loading)
+					Layout.alignment: Qt.AlignLeft
+					onClicked: if (controller) controller.confirmResetPreferences()
+				}
+			}
+		}
+	}
+
+	SrxyDialog {
+		id: settingsConfirmDialog
+		objectName: "settingsConfirmDialog"
+		title: controller && controller.settingsConfirmTitle
+			? controller.settingsConfirmTitle
+			: root.t("settings.confirm.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(480, parent.width - 40)
+		closePolicy: Popup.NoAutoClose
+		footer: SrxyDialogFooter {
+			defaultButton: settingsConfirmAccept
+			SecondaryButton {
+				text: root.t("common.cancel")
+				onClicked: settingsConfirmDialog.reject()
+			}
+			AccentButton {
+				id: settingsConfirmAccept
+				text: controller ? controller.settingsConfirmAcceptLabel : ""
+				onClicked: settingsConfirmDialog.accept()
+			}
+		}
+		Label {
+			wrapMode: Text.WordWrap
+			width: settingsConfirmDialog.availableWidth > 0
+				? settingsConfirmDialog.availableWidth - 24
+				: 456
+			text: controller ? controller.settingsConfirmMessage : ""
+		}
+		onAccepted: if (controller) controller.acceptSettingsConfirm()
+		onRejected: if (controller) controller.rejectSettingsConfirm()
+	}
+
+	SrxyDialog {
 		id: aboutDialog
 		objectName: "aboutDialog"
 		title: root.t("about.title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(560, parent.width - 40)
 		height: Math.min(520, parent.height - 40)
-		visible: controller && controller.aboutOpen
+		// Drive open/close via Connections (not visible binding) — avoids macOS Dialog loops.
 		onClosed: if (controller) controller.closeAbout()
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: aboutDialog.accept()
+			}
+		}
 		ScrollView {
 			anchors.fill: parent
 			clip: true
@@ -1114,19 +2048,30 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: downloadConfirmDialog
 		objectName: "downloadConfirmDialog"
 		title: root.t("gui.download_model")
 		modal: true
-		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
 		width: Math.min(480, parent.width - 40)
 		implicitWidth: 480
 		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
+		footer: SrxyDialogFooter {
+			defaultButton: downloadConfirmAccept
+			SecondaryButton {
+				text: root.t("common.cancel")
+				onClicked: downloadConfirmDialog.reject()
+			}
+			AccentButton {
+				id: downloadConfirmAccept
+				text: root.t("settings.action.download")
+				onClicked: downloadConfirmDialog.accept()
+			}
+		}
 		Label {
-			wrapMode: Text.WrapAnywhere
+			wrapMode: Text.WordWrap
 			width: downloadConfirmDialog.availableWidth > 0
 				? downloadConfirmDialog.availableWidth - 24
 				: 456
@@ -1136,7 +2081,7 @@ ApplicationWindow {
 		onRejected: if (controller) controller.rejectDownloadConfirm()
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: downloadProgressDialog
 		objectName: "downloadProgressDialog"
 		title: root.t("gui.downloading")
@@ -1146,14 +2091,19 @@ ApplicationWindow {
 		implicitWidth: 420
 		contentWidth: availableWidth
 		closePolicy: Popup.NoAutoClose
-		standardButtons: Dialog.Cancel
+		footer: SrxyDialogFooter {
+			SecondaryButton {
+				text: root.t("common.cancel")
+				onClicked: downloadProgressDialog.reject()
+			}
+		}
 		ColumnLayout {
 			width: downloadProgressDialog.availableWidth > 0
 				? downloadProgressDialog.availableWidth - 24
 				: 396
 			Label {
 				text: controller ? controller.downloadStatus : ""
-				wrapMode: Text.WrapAnywhere
+				wrapMode: Text.WordWrap
 				Layout.fillWidth: true
 				Layout.maximumWidth: downloadProgressDialog.availableWidth - 24
 			}
@@ -1167,15 +2117,45 @@ ApplicationWindow {
 		onRejected: if (controller) controller.cancelDownload()
 	}
 
-	Dialog {
+	SrxyDialog {
+		id: searchWarningsDialog
+		objectName: "searchWarningsDialog"
+		title: root.t("gui.search_warnings.title")
+		modal: true
+		anchors.centerIn: parent
+		width: Math.min(560, parent.width - 40)
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: searchWarningsDialog.accept()
+			}
+		}
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			Label {
+				wrapMode: Text.Wrap
+				width: searchWarningsDialog.availableWidth - 24
+				text: controller ? controller.searchWarnings : ""
+			}
+		}
+	}
+
+	SrxyDialog {
 		id: errorDialog
 		objectName: "errorDialog"
 		title: root.t("gui.error")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: 420
 		implicitWidth: 420
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: errorDialog.accept()
+			}
+		}
 		Label {
 			id: errorLabel
 			wrapMode: Text.Wrap
@@ -1201,6 +2181,30 @@ ApplicationWindow {
 			else
 				downloadProgressDialog.close()
 		}
+		function onSettingsUiChanged() {
+			if (controller && controller.settingsOpen)
+				settingsDialog.open()
+			else
+				settingsDialog.close()
+		}
+		function onSettingsConfirmChanged() {
+			if (controller && controller.settingsConfirmOpen)
+				settingsConfirmDialog.open()
+			else
+				settingsConfirmDialog.close()
+		}
+		function onAboutUiChanged() {
+			if (controller && controller.aboutOpen)
+				aboutDialog.open()
+			else
+				aboutDialog.close()
+		}
+		function onUpdateUiChanged() {
+			if (controller && controller.updateDialogOpen)
+				updateDialog.open()
+			else
+				updateDialog.close()
+		}
 		function onCapabilitiesChanged() {
 			loadOptionsFromController()
 		}
@@ -1211,6 +2215,7 @@ ApplicationWindow {
 		const initialTerm = controller ? controller.simpleQuery : ""
 		termModel.append({ term: initialTerm, join: "" })
 		if (controller) {
+			controller.setPreviewTheme(root.lightTheme)
 			syncTermRows()
 			loadOptionsFromController()
 			loadFiltersFromController()

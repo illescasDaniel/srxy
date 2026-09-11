@@ -20,8 +20,9 @@ lib_run_with_watch() {
 	fi
 
 	local fifo log
-	fifo="$(mktemp -u "${TMPDIR:-/tmp}/srxy-watch.XXXXXX.fifo")"
-	log="$(mktemp "${TMPDIR:-/tmp}/srxy-watch.XXXXXX.log")"
+	# BSD mktemp (macOS) requires the template to end in X's; keep unique stems.
+	log="$(mktemp "${TMPDIR:-/tmp}/srxy-watch.XXXXXX")"
+	fifo="${log}.fifo"
 	mkfifo "${fifo}"
 
 	export PYTHONUNBUFFERED=1

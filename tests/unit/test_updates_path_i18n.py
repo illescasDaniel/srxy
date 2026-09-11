@@ -32,7 +32,7 @@ def test_given_installer_meta_when_loaded_then_has_version_and_min_srxy():
 
 	# then
 	assert meta.installer_version == "16"
-	assert version_at_least(meta.min_srxy_version, "1.6.5")
+	assert version_at_least(meta.min_srxy_version, "1.7.0")
 
 
 def test_given_versions_when_comparing_then_orders_correctly():
@@ -111,7 +111,7 @@ def test_given_uv_tool_path_when_detecting_method_then_uv_tool(tmp_path: Path):
 	assert upgrade_command(InstallMethod.UV_TOOL)[1:3] == ["tool", "upgrade"]
 
 
-def test_given_inno_language_names_when_resolving_then_maps_to_codes():
+def test_given_installer_language_names_when_resolving_then_maps_to_codes():
 	from srxy.i18n import resolve_language
 
 	assert resolve_language("english") == "en"

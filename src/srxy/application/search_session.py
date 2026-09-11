@@ -14,6 +14,7 @@ from srxy.application.search_control import (
 	emit_result_if_under_cap,
 	finished_results_payload,
 )
+from srxy.application.search_formatting import match_labels
 from srxy.application.worker_env import bootstrap_worker_env
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
@@ -34,6 +35,7 @@ class SearchActivityEvent:
 @dataclass(frozen=True, slots=True)
 class SearchResultEvent:
 	result: FileSearchResult
+	labels: str = ""
 
 
 @dataclass(frozen=True, slots=True)
@@ -99,9 +101,15 @@ class SearchSession:
 			on_event(SearchActivityEvent(update))
 
 		def on_result(result: FileSearchResult):
+			labels = match_labels(
+				result,
+				threshold=args.threshold,
+				semantic_image_threshold=args.semantic_image_threshold,
+				transcribe_threshold=args.transcribe_threshold,
+			)
 			emit_result_if_under_cap(
 				emit_state,
-				lambda: on_event(SearchResultEvent(result)),
+				lambda: on_event(SearchResultEvent(result, labels=labels)),
 				cancel_check=cancel_check,
 			)
 

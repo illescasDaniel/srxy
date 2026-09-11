@@ -26,7 +26,7 @@ def test_given_cancel_during_listing_when_iter_files_then_raises(tmp_path: Path)
 
 
 def test_given_root_path_when_iter_files_then_skips_pseudo_filesystems():
-	def fake_walk(root: str):
+	def fake_walk(root: str, **_kwargs: object):
 		yield root, ["proc", "home", "sys"], []
 		yield str(Path(root) / "home"), [], ["notes.txt"]
 

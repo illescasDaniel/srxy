@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Dialogs
 import QtQuick.Layouts
+import SrxyControls
 
 ApplicationWindow {
 	id: root
@@ -71,6 +72,9 @@ ApplicationWindow {
 	property string browseTarget: "prefix"
 	// Bump when language changes so every t() binding re-evaluates.
 	property int langRev: 0
+	// Interactive macOS uses NSAlert via MessageDialog; offscreen tests force false.
+	readonly property bool useNativeAlerts: Qt.platform.os === "osx"
+		&& srxyUseNativeAlerts !== false
 	readonly property color primaryText: palette.windowText
 	// Do not use palette.placeholderText — on macOS light themes it is nearly invisible.
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
@@ -96,8 +100,16 @@ ApplicationWindow {
 	}
 
 	function showHelp(key) {
+		const body = c ? c.helpText(key) : ""
+		if (root.useNativeAlerts) {
+			helpNativeDialog.title = root.t("help.option_title")
+			helpNativeDialog.text = key
+			helpNativeDialog.informativeText = body
+			helpNativeDialog.open()
+			return
+		}
 		helpTitle.text = key
-		helpBody.text = c ? c.helpText(key) : ""
+		helpBody.text = body
 		helpDialog.open()
 	}
 
@@ -217,7 +229,7 @@ ApplicationWindow {
 						text: c.prefix
 						onTextChanged: c.setPrefix(text)
 					}
-					Button {
+					SecondaryButton {
 						objectName: "browsePrefixButton"
 						text: root.t("gui.browse")
 						onClicked: {
@@ -516,7 +528,7 @@ ApplicationWindow {
 						text: c.uninstallPrefix
 						onTextChanged: c.setUninstallPrefix(text)
 					}
-					Button {
+					SecondaryButton {
 						objectName: "browseUninstallButton"
 						text: root.t("gui.browse")
 						onClicked: {
@@ -531,6 +543,21 @@ ApplicationWindow {
 					color: root.secondaryText
 					font.pixelSize: 12
 					Layout.fillWidth: true
+				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_cache")
+					checked: c.uninstallRemoveCache
+					onToggled: function() { c.setUninstallRemoveCache(checked) }
+				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_settings")
+					checked: c.uninstallRemoveSettings
+					onToggled: function() { c.setUninstallRemoveSettings(checked) }
+				}
+				CheckBox {
+					text: root.t("installer.uninstall.remove_models")
+					checked: c.uninstallRemoveModels
+					onToggled: function() { c.setUninstallRemoveModels(checked) }
 				}
 			}
 
@@ -627,55 +654,54 @@ ApplicationWindow {
 		RowLayout {
 			width: parent.width
 			spacing: 8
-			Button {
+			SecondaryButton {
 				text: root.t("common.back")
 				visible: c.page !== "mode"
 				enabled: c.canGoBack
 				onClicked: c.goBack()
 			}
 			Item { Layout.fillWidth: true }
-			Button {
+			SecondaryButton {
 				text: root.t("common.next")
 				visible: (c.mode === "install" || c.mode === "reinstall") && c.page !== "path" && c.page !== "progress"
 				enabled: !c.busy && (c.page !== "privacy" || c.privacyAck)
 				onClicked: c.goNext()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.install")
 				visible: c.mode === "install" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startInstall()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.reinstall")
 				visible: c.mode === "reinstall" && c.page === "path"
 				enabled: !c.busy && c.privacyAck
 				onClicked: c.startReinstall()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.next")
 				visible: c.mode === "uninstall" && c.page === "mode"
 				enabled: !c.busy
 				onClicked: c.goNext()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("installer.button.uninstall")
 				visible: c.mode === "uninstall" && c.page === "uninstall"
 				enabled: !c.busy
 				onClicked: c.startUninstall()
 			}
-			Button {
+			AccentButton {
 				text: root.t("installer.button.launch")
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
-				highlighted: true
 				onClicked: c.launchInstalled()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.finish")
 				visible: c.page === "progress" && c.finished && (c.mode === "install" || c.mode === "reinstall")
 				onClicked: Qt.quit()
 			}
-			Button {
+			SecondaryButton {
 				text: root.t("common.close")
 				visible: c.page === "progress" && !c.busy && !(c.finished && (c.mode === "install" || c.mode === "reinstall"))
 				onClicked: Qt.quit()
@@ -699,13 +725,18 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: helpDialog
 		title: root.t("help.option_title")
 		modal: true
-		standardButtons: Dialog.Ok
 		anchors.centerIn: parent
 		width: Math.min(root.width - 40, 480)
+		footer: SrxyDialogFooter {
+			AccentButton {
+				text: root.t("common.ok")
+				onClicked: helpDialog.accept()
+			}
+		}
 
 		ColumnLayout {
 			anchors.fill: parent
@@ -723,15 +754,33 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	MessageDialog {
+		id: helpNativeDialog
+		title: root.t("help.option_title")
+		buttons: MessageDialog.Ok
+		parentWindow: root
+	}
+
+	SrxyDialog {
 		id: unsafePrefixDialog
 		objectName: "unsafePrefixDialog"
 		title: root.t("installer.confirm.unsafe_prefix_title")
 		modal: true
-		standardButtons: Dialog.Yes | Dialog.No
 		anchors.centerIn: parent
 		width: Math.min(root.width - 40, 480)
 		closePolicy: Popup.NoAutoClose
+		footer: SrxyDialogFooter {
+			defaultButton: unsafePrefixContinue
+			SecondaryButton {
+				text: root.t("common.cancel")
+				onClicked: unsafePrefixDialog.reject()
+			}
+			AccentButton {
+				id: unsafePrefixContinue
+				text: root.t("installer.confirm.button.continue")
+				onClicked: unsafePrefixDialog.accept()
+			}
+		}
 		Label {
 			wrapMode: Text.WordWrap
 			width: parent ? parent.width : implicitWidth
@@ -742,13 +791,31 @@ ApplicationWindow {
 		onRejected: if (c) c.rejectUnsafeConfirm()
 	}
 
+	MessageDialog {
+		id: unsafePrefixNativeDialog
+		title: root.t("installer.confirm.unsafe_prefix_title")
+		text: c ? c.unsafeConfirmMessage : ""
+		buttons: MessageDialog.Ok | MessageDialog.Cancel
+		parentWindow: root
+		onAccepted: if (c) c.acceptUnsafeConfirm()
+		onRejected: if (c) c.rejectUnsafeConfirm()
+	}
+
 	Connections {
 		target: c
 		function onUnsafeConfirmOpenChanged() {
-			if (c && c.unsafeConfirmOpen)
+			if (root.useNativeAlerts) {
+				if (c && c.unsafeConfirmOpen) {
+					unsafePrefixNativeDialog.text = c.unsafeConfirmMessage
+					unsafePrefixNativeDialog.open()
+				} else {
+					unsafePrefixNativeDialog.close()
+				}
+			} else if (c && c.unsafeConfirmOpen) {
 				unsafePrefixDialog.open()
-			else
+			} else {
 				unsafePrefixDialog.close()
+			}
 		}
 	}
 }

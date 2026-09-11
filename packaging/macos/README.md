@@ -7,7 +7,7 @@ Build two macOS `.app` wrappers that launch existing srxy installer flows:
 
 Both installers target a user-owned prefix under `~/Applications/srxy` by default.
 
-Third-party runtime binaries (tesseract, ffmpeg, …) are **not** embedded in these `.app` bundles. On Apple Silicon, the installer downloads pinned upstream artifacts at install time (Homebrew core bottles via `ghcr.io` for tesseract; martin-riedl builds for ffmpeg).
+Third-party runtime binaries (tesseract, ffmpeg, …) are **not** embedded in these `.app` bundles. On Apple Silicon and Intel Macs, the installer resolves and downloads upstream artifacts at install time (Homebrew core bottles via `ghcr.io` for tesseract; martin-riedl builds for ffmpeg).
 
 The installed `Srxy.app` Dock/Finder icon uses squircle-masked artwork under [`src/srxy/resources/icons/macos/`](../../src/srxy/resources/icons/macos/) (master: `srxy.png`), laid out on Apple’s 1024 canvas with an 824 art box (~100 px gutter). The uncompressed original lives at [`assets/icons/srxy.png`](../../assets/icons/srxy.png). Regenerate packaged icons after changing the original:
 

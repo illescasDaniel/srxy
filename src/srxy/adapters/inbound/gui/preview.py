@@ -1,31 +1,81 @@
-"""Lightweight HTML preview formatting for the GUI file pane."""
+"""Preview text helpers for the GUI file pane (Qt-free).
+
+Document content is plain file text; colours come from ``PreviewHighlighter``
+and line numbers live in a separate QML gutter.
+"""
 
 from __future__ import annotations
 
-import html
 import re
-from pathlib import Path
+import sys
+from dataclasses import dataclass
 
 
 __all__ = [
 	"PREVIEW_MAX_BYTES",
 	"PREVIEW_MAX_LINES",
-	"format_preview_html",
-	"format_preview_message",
-	"format_preview_plain",
+	"PreviewPalette",
+	"PREVIEW_PALETTES",
 	"prepare_preview_text",
+	"preview_font_family",
+	"preview_gutter_text",
+	"segments_for_line",
 ]
 
 PREVIEW_MAX_BYTES = 64 * 1024
 PREVIEW_MAX_LINES = 2000
-_PLAIN_PREVIEW_BYTES = 16 * 1024
 
-_LN_COLOR = "#888888"
-_KW_COLOR = "#0550ae"
-_STR_COLOR = "#0a3069"
-_CMT_COLOR = "#6a737d"
-_MD_HEADING = "#0550ae"
-_TRUNC_FOOTER_COLOR = "#6a737d"
+
+def preview_font_family() -> str:
+	"""Return the monospace face used in the preview pane (matches QML)."""
+	# Bare CSS "monospace" mapped to TypeWriter bitmap fonts on Windows in the
+	# old RichText path; keep the same platform faces for the PlainText TextArea.
+	if sys.platform == "win32":
+		return "Consolas"
+	if sys.platform == "darwin":
+		return "Menlo"
+	return "monospace"
+
+
+@dataclass(frozen=True)
+class PreviewPalette:
+	"""Colors used when rendering the file preview for a light/dark theme."""
+
+	gutter: str
+	keyword: str
+	string: str
+	comment: str
+	heading: str
+	footer: str
+	hit_background: str
+	find_background: str
+	find_current_background: str
+
+
+PREVIEW_PALETTES: dict[str, PreviewPalette] = {
+	"light": PreviewPalette(
+		gutter="#888888",
+		keyword="#0550ae",
+		string="#0a3069",
+		comment="#6a737d",
+		heading="#0550ae",
+		footer="#6a737d",
+		hit_background="#fff8c5",
+		find_background="#ffe58f",
+		find_current_background="#ffc107",
+	),
+	"dark": PreviewPalette(
+		gutter="#6e7681",
+		keyword="#ff7b72",
+		string="#a5d6ff",
+		comment="#8b949e",
+		heading="#79c0ff",
+		footer="#8b949e",
+		hit_background="#3d3400",
+		find_background="#574700",
+		find_current_background="#7a5c00",
+	),
+}
 
 _PY_KEYWORDS = frozenset(
 	{
@@ -150,6 +200,10 @@ _TOKEN_RE = re.compile(
 	re.VERBOSE | re.DOTALL,
 )
 
+# ``(start, end, kind)`` segments — ``kind`` is one of "comment", "string",
+# "keyword", "heading", or None (plain).  Offsets refer to the raw line.
+Segment = tuple[int, int, str | None]
+
 
 def prepare_preview_text(text: str) -> tuple[str, bool]:
 	"""Cap preview payload by bytes and line count; return text and whether it was truncated."""
@@ -166,91 +220,24 @@ def prepare_preview_text(text: str) -> tuple[str, bool]:
 	return text, truncated
 
 
-def format_preview_message(message: str) -> str:
-	"""Escape a non-code status line for RichText preview."""
-	return f'<span style="font-family:monospace">{html.escape(message)}</span>'
+def preview_gutter_text(line_count: int) -> str:
+	"""Return right-aligned line numbers ``\"1\\n2\\n…\\nN\"`` for the QML gutter."""
+	if line_count <= 0:
+		return ""
+	width = max(3, len(str(line_count)))
+	return "\n".join(f"{number:>{width}}" for number in range(1, line_count + 1))
 
 
-def format_preview_truncated_footer(message: str) -> str:
-	"""Append a muted footer when preview content was capped."""
-	body = html.escape(message)
-	return f'<div style="font-family:monospace; margin-top:8px; color:{_TRUNC_FOOTER_COLOR}">{body}</div>'
-
-
-def format_preview_plain(path: Path | str, text: str) -> str:
-	"""Return HTML with line numbers but no syntax highlighting."""
-	lines = text.splitlines() or [""]
-	width = max(3, len(str(len(lines))))
-	parts = [
-		'<div style="font-family:monospace; white-space:pre-wrap;">',
-	]
-	for number, line in enumerate(lines, start=1):
-		gutter = html.escape(f"{number:>{width}}")
-		body = html.escape(line)
-		parts.append(f'<span style="color:{_LN_COLOR}">{gutter}</span>  {body}<br/>')
-	parts.append("</div>")
-	return "".join(parts)
-
-
-def format_preview_html(path: Path | str, text: str) -> str:
-	"""Return HTML with line numbers and basic syntax colors for ``text``."""
-	text, _truncated = prepare_preview_text(text)
-	suffix = Path(path).suffix.lower()
-	if len(text.encode("utf-8")) > _PLAIN_PREVIEW_BYTES or text.count("\n") >= 500:
-		return format_preview_plain(path, text)
-	lines = text.splitlines() or [""]
-	width = max(3, len(str(len(lines))))
-	parts = [
-		'<div style="font-family:monospace; white-space:pre-wrap;">',
-	]
-	for number, line in enumerate(lines, start=1):
-		gutter = html.escape(f"{number:>{width}}")
-		body = _highlight_line(line, suffix)
-		parts.append(f'<span style="color:{_LN_COLOR}">{gutter}</span>  {body}<br/>')
-	parts.append("</div>")
-	return "".join(parts)
-
-
-def format_preview_for_file(
-	path: Path | str,
-	text: str,
-	*,
-	truncated: bool = False,
-	truncated_footer: str = "",
-) -> str:
-	"""Format capped preview text, using plain layout for large payloads."""
-	text, was_truncated = prepare_preview_text(text)
-	truncated = truncated or was_truncated
-	use_plain = len(text.encode("utf-8")) > _PLAIN_PREVIEW_BYTES or text.count("\n") >= 500
-	if use_plain:
-		body = format_preview_plain(path, text)
-	else:
-		suffix = Path(path).suffix.lower()
-		lines = text.splitlines() or [""]
-		width = max(3, len(str(len(lines))))
-		parts = [
-			'<div style="font-family:monospace; white-space:pre-wrap;">',
-		]
-		for number, line in enumerate(lines, start=1):
-			gutter = html.escape(f"{number:>{width}}")
-			line_body = _highlight_line(line, suffix)
-			parts.append(f'<span style="color:{_LN_COLOR}">{gutter}</span>  {line_body}<br/>')
-		parts.append("</div>")
-		body = "".join(parts)
-	if truncated and truncated_footer:
-		body += format_preview_truncated_footer(truncated_footer)
-	return body
-
-
-def _highlight_line(line: str, suffix: str) -> str:
+def segments_for_line(line: str, suffix: str) -> list[Segment]:
+	"""Tokenize one source line into coloured segments for ``PreviewHighlighter``."""
 	if suffix in {".md", ".markdown"}:
-		return _highlight_markdown_line(line)
+		return _markdown_segments(line)
 	if suffix == ".json":
-		return _highlight_json_line(line)
+		return _json_segments(line)
 	keywords = _keywords_for_suffix(suffix)
 	if keywords is None:
-		return html.escape(line)
-	return _highlight_tokens(line, keywords)
+		return [(0, len(line), None)]
+	return _code_segments(line, keywords)
 
 
 def _keywords_for_suffix(suffix: str) -> frozenset[str] | None:
@@ -265,47 +252,45 @@ def _keywords_for_suffix(suffix: str) -> frozenset[str] | None:
 	return None
 
 
-def _span(color: str, text: str) -> str:
-	return f'<span style="color:{color}">{html.escape(text)}</span>'
-
-
-def _highlight_tokens(line: str, keywords: frozenset[str]) -> str:
+def _code_segments(line: str, keywords: frozenset[str]) -> list[Segment]:
 	# Line comments only for # and // (block comments rare in single-line pass).
 	if line.lstrip().startswith("#") or line.lstrip().startswith("//"):
-		return _span(_CMT_COLOR, line)
-	parts: list[str] = []
+		return [(0, len(line), "comment")]
+	segments: list[Segment] = []
 	for match in _TOKEN_RE.finditer(line):
 		kind = match.lastgroup
 		value = match.group()
+		start, end = match.span()
 		if kind == "comment":
-			parts.append(_span(_CMT_COLOR, value))
+			segments.append((start, end, "comment"))
 		elif kind == "string":
-			parts.append(_span(_STR_COLOR, value))
+			segments.append((start, end, "string"))
 		elif kind == "word" and value in keywords:
-			parts.append(_span(_KW_COLOR, value))
+			segments.append((start, end, "keyword"))
 		else:
-			parts.append(html.escape(value))
-	return "".join(parts)
+			segments.append((start, end, None))
+	return segments
 
 
-def _highlight_markdown_line(line: str) -> str:
+def _markdown_segments(line: str) -> list[Segment]:
 	stripped = line.lstrip()
 	if stripped.startswith("#"):
-		return _span(_MD_HEADING, line)
+		return [(0, len(line), "heading")]
 	if stripped.startswith("```"):
-		return _span(_CMT_COLOR, line)
-	return html.escape(line)
+		return [(0, len(line), "comment")]
+	return [(0, len(line), None)]
 
 
-def _highlight_json_line(line: str) -> str:
-	parts: list[str] = []
+def _json_segments(line: str) -> list[Segment]:
+	segments: list[Segment] = []
 	for match in _TOKEN_RE.finditer(line):
 		kind = match.lastgroup
 		value = match.group()
+		start, end = match.span()
 		if kind == "string":
-			parts.append(_span(_STR_COLOR, value))
+			segments.append((start, end, "string"))
 		elif kind == "word" and value in {"true", "false", "null"}:
-			parts.append(_span(_KW_COLOR, value))
+			segments.append((start, end, "keyword"))
 		else:
-			parts.append(html.escape(value))
-	return "".join(parts)
+			segments.append((start, end, None))
+	return segments

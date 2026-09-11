@@ -42,7 +42,11 @@ def subprocess_event_to_search_event(event: dict[str, Any]) -> SearchEvent | Non
 	if kind == "result":
 		data = event.get("result")
 		if isinstance(data, dict):
-			return SearchResultEvent(file_result_from_dict(data))
+			labels = event.get("labels")
+			return SearchResultEvent(
+				file_result_from_dict(data),
+				labels=labels if isinstance(labels, str) else "",
+			)
 		return None
 	if kind == "error":
 		return SearchErrorEvent(str(event.get("message")))

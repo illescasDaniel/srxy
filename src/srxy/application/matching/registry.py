@@ -5,9 +5,7 @@ from functools import lru_cache
 from srxy.application.matching.base import Matcher
 from srxy.application.matching.contains import ContainsMatcher
 from srxy.application.matching.exact import ExactMatcher
-from srxy.application.matching.fuzzy import FuzzyMatcher
 from srxy.application.matching.partial import PartialMatcher
-from srxy.application.matching.phonetic import PhoneticMatcher
 from srxy.domain.models import MatchType
 
 
@@ -44,8 +42,12 @@ def get_atomic_matcher(match_type: MatchType) -> Matcher:
 	if match_type == MatchType.PARTIAL:
 		return PartialMatcher()
 	if match_type == MatchType.FUZZY:
+		from srxy.application.matching.fuzzy import FuzzyMatcher
+
 		return FuzzyMatcher()
 	if match_type == MatchType.PHONETIC:
+		from srxy.application.matching.phonetic import PhoneticMatcher
+
 		return PhoneticMatcher()
 	if not is_matcher_available(MatchType.SEMANTIC):
 		raise RuntimeError(_semantic_unavailable_message())

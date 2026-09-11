@@ -1,5 +1,6 @@
 .venv/
 .venv-bare/
+.venv-ci/
 examples/.venv-package-test/
 __pycache__/
 *.py[cod]
@@ -15,12 +16,16 @@ packaging/macos/signing/
 .testmondata
 .testmondata-*
 .srxy-quality-gate.lock
+.gate-cache/
+.gate-baseline/
+.sandbox/
 .coverage
 .coverage.*
 htmlcov/
 .ruff_cache/
 .mypy_cache/
 .basedpyright/
+.ty/cache/
 .DS_Store
 
 *.log

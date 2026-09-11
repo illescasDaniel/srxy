@@ -18,10 +18,27 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Sync dependencies
         run: uv sync --frozen
+
+      - name: Probe installer catalog URLs
+        id: probe_catalog
+        # Advisory health check for third-party vendor download URLs (GitHub
+        # releases, Homebrew, martin-riedl) — not part of the code quality gate.
+        # continue-on-error keeps a transient upstream 5xx/timeout from blocking
+        # the real quality gate below; failures are still visible in this step's
+        # own logs/annotation and in the summary step underneath.
+        continue-on-error: true
+        run: uv run python -m srxy.adapters.inbound.installer.probe_catalog
+
+      - name: Report catalog probe outcome
+        if: always()
+        run: |
+          if [ "${{ steps.probe_catalog.outcome }}" != "success" ]; then
+            echo "::warning::Installer catalog probe failed (advisory, non-blocking) — see 'Probe installer catalog URLs' step logs above. This checks third-party vendor download URLs, not code quality; it does not affect this job's pass/fail status."
+          fi
 
       - name: Install shell linting tools
         run: |
@@ -37,7 +54,8 @@ jobs:
           CI: true
           GITHUB_ACTIONS: true
           QT_QPA_PLATFORM: offscreen
-        run: ./scripts/quality/checks.sh
+        # Explicit scope: core+gui+tui (no heavy/real-model suite under CI=true).
+        run: ./scripts/quality/checks.sh --scope=core,gui,tui
 
   test-macos:
     runs-on: macos-latest
@@ -47,18 +65,22 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Sync dependencies
         run: uv sync --frozen
 
-      - name: Unit tests
+      - name: Unit + GUI + TUI buckets
         env:
           CI: true
           QT_QPA_PLATFORM: offscreen
+          LIB_GATE_SCOPE: core,gui,tui
         # max-worker-restart=0: a crashed Qt/xdist worker fails fast instead of
         # hanging while trying to replace the node ("Not properly terminated").
-        run: uv run pytest tests -n auto --dist=loadgroup --max-worker-restart=0 -m "unit and not semantic and not transcribe"
+        run: |
+          uv run pytest tests/unit tests/cli -n auto --dist=loadgroup --max-worker-restart=0 -p no:pytest-qt
+          QT_QPA_PLATFORM=offscreen uv run pytest tests/gui
+          uv run pytest tests/tui -p no:pytest-qt
 
   test-windows:
     runs-on: windows-latest
@@ -68,15 +90,23 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
 
-      - uses: astral-sh/setup-uv@c771a70e6277c0a99b617c7a806ffedaca235ff9 # v9.0.0
+      - uses: astral-sh/setup-uv@20cfd1bf945f4377ade1205e4dbc17946fc9a30d # v10.0.1
 
       - name: Sync dependencies
-        run: uv sync --frozen --extra windows
+        run: uv sync --frozen
 
-      - name: Unit tests
+      - name: Unit + GUI + TUI buckets
         env:
           CI: true
           QT_QPA_PLATFORM: offscreen
+          LIB_GATE_SCOPE: core,gui,tui
         # max-worker-restart=0: a crashed Qt/xdist worker fails fast instead of
         # hanging while trying to replace the node ("Not properly terminated").
-        run: uv run pytest tests -n auto --dist=loadgroup --max-worker-restart=0 -m "unit and not semantic and not transcribe"
+        # Check each exit code: pwsh otherwise reports only the last command's status.
+        run: |
+          uv run pytest tests/unit tests/cli -n auto --dist=loadgroup --max-worker-restart=0 -p no:pytest-qt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:QT_QPA_PLATFORM='offscreen'; uv run pytest tests/gui
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          uv run pytest tests/tui -p no:pytest-qt
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from concurrent.futures import Future
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -13,9 +14,14 @@ pytestmark = pytest.mark.unit
 
 def _mock_process_pool(*_args: object, **_kwargs: object):
 	pool = MagicMock()
-	pool.__enter__.return_value = pool
-	pool.__exit__.return_value = False
-	pool.submit.return_value = MagicMock(result=lambda: (None, []))
+
+	def submit(*_submit_args: object, **_submit_kwargs: object) -> Future[tuple[object, list[object]]]:
+		_ = (_submit_args, _submit_kwargs)
+		future: Future[tuple[object, list[object]]] = Future()
+		future.set_result((None, []))
+		return future
+
+	pool.submit.side_effect = submit
 	return pool
 
 
@@ -39,10 +45,7 @@ def test_given_allow_process_pool_on_when_searching_large_tree_then_uses_process
 	for index in range(60):
 		(tmp_path / f"file{index:03d}.txt").write_text(f"needle {index}\n", encoding="utf-8")
 
-	with (
-		patch("concurrent.futures.ProcessPoolExecutor", side_effect=_mock_process_pool) as process_pool,
-		patch("concurrent.futures.as_completed", return_value=[]),
-	):
+	with patch("concurrent.futures.ProcessPoolExecutor", side_effect=_mock_process_pool) as process_pool:
 		magic_file_search(
 			tmp_path,
 			"needle",
@@ -51,6 +54,22 @@ def test_given_allow_process_pool_on_when_searching_large_tree_then_uses_process
 		)
 
 	assert process_pool.called is True
+
+
+def test_given_allow_process_pool_on_when_searching_small_tree_then_skips_process_pool(tmp_path: Path):
+	for index in range(20):
+		(tmp_path / f"file{index:03d}.txt").write_text(f"needle {index}\n", encoding="utf-8")
+
+	with patch("concurrent.futures.ProcessPoolExecutor", side_effect=_mock_process_pool) as process_pool:
+		results = magic_file_search(
+			tmp_path,
+			"needle",
+			search_names=False,
+			allow_process_pool=True,
+		)
+
+	assert process_pool.called is False
+	assert results
 
 
 def test_given_cancel_during_listing_when_searching_then_raises(tmp_path: Path):

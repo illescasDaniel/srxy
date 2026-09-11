@@ -24,6 +24,28 @@ def open_path(path: Path):
 		subprocess.run(["xdg-open", str(open_target)], check=False)  # noqa: S603, S607
 
 
+def reveal_path(path: Path):
+	"""Reveal ``path`` in the OS file manager (select a file, open a directory)."""
+	from srxy.adapters.outbound.archive.archive_search import split_archive_member_path
+
+	archive_path, member = split_archive_member_path(path)
+	target = archive_path if member is not None else path
+	system = platform.system()
+	if system == "Darwin":
+		if target.is_dir():
+			subprocess.run(["open", str(target)], check=False)  # noqa: S603, S607
+		else:
+			subprocess.run(["open", "-R", str(target)], check=False)  # noqa: S603, S607
+	elif system == "Windows":
+		if target.is_dir():
+			os.startfile(str(target))  # type: ignore[attr-defined]  # noqa: S606
+		else:
+			subprocess.run(["explorer", f"/select,{target}"], check=False)  # noqa: S603, S607
+	else:
+		open_target = target if target.is_dir() else target.parent
+		subprocess.run(["xdg-open", str(open_target)], check=False)  # noqa: S603, S607
+
+
 def copy_text(text: str):
 	"""Copy plain text to the system clipboard when possible."""
 	system = platform.system()
@@ -73,6 +95,9 @@ class OsDesktopAdapter:
 
 	def open_path(self, path: Path):
 		open_path(path)
+
+	def reveal_path(self, path: Path):
+		reveal_path(path)
 
 	def copy_text(self, text: str):
 		copy_text(text)

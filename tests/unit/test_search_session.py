@@ -84,6 +84,9 @@ def test_given_fake_file_search_when_session_runs_then_uses_injected_port(tmp_pa
 
 	assert fake.calls == 1  # type: ignore[attr-defined]
 	assert any(isinstance(event, SearchResultEvent) and event.result is result for event in events)
+	progressive = [event for event in events if isinstance(event, SearchResultEvent)]
+	assert progressive
+	assert progressive[0].labels  # computed off the GUI thread before emit
 	finished = [event for event in events if isinstance(event, SearchFinishedEvent)]
 	assert len(finished) == 1
 	finished_results = finished[0].results or [event.result for event in events if isinstance(event, SearchResultEvent)]
@@ -117,6 +120,27 @@ def test_given_many_results_when_session_runs_then_caps_progressive_result_event
 	assert len(progressive) == MAX_PROGRESSIVE_RESULT_EVENTS
 	assert len(finished) == 1
 	assert len(finished[0].results) == len(results)
+
+
+def test_given_subprocess_result_payload_when_decoding_then_labels_round_trip(tmp_path: Path):
+	from srxy.application.subprocess_events import subprocess_event_to_search_event
+
+	path = tmp_path / "note.txt"
+	event = subprocess_event_to_search_event(
+		{
+			"type": "result",
+			"result": {
+				"path": str(path),
+				"score": 0.9,
+				"breakdown": {"content": 0.9},
+				"lines": [],
+			},
+			"labels": "name, content",
+		}
+	)
+	assert isinstance(event, SearchResultEvent)
+	assert event.labels == "name, content"
+	assert event.result.path == path
 
 
 def test_given_cancel_during_progress_when_session_runs_then_returns_partial_finished(tmp_path: Path):

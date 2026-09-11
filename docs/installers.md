@@ -1,6 +1,6 @@
 # Desktop installers
 
-Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline Inno Setup installer are available.
+Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline fat PySide installer are available.
 
 Download free builds from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), or [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build). PyPI / `uv tool install` remain the primary install paths on every platform. Privacy / third-party downloads: [privacy.md](privacy.md).
 
@@ -52,26 +52,25 @@ GitHub Release DMGs are currently **unsigned** (Gatekeeper may warn or block on 
 Notes:
 
 - The online macOS wrapper installs srxy from PyPI and adds PATH in your shell rc.
-- On Apple Silicon, optional installer toggles can vendor ffmpeg (martin-riedl static build) and tesseract (pinned Homebrew core bottles from `ghcr.io`, relocated at install time; Homebrew itself is not required).
-- On Intel Macs, the installer pins and vendors `uv`; third-party tesseract/ffmpeg vendor downloads remain unavailable.
+- On Apple Silicon and Intel Macs, optional installer toggles can vendor ffmpeg (martin-riedl static build, latest release resolved at install time) and tesseract (Homebrew core bottles from `ghcr.io`, digests resolved at install time and relocated; Homebrew itself is not required).
 - No admin rights are required for the default `~/Applications` prefix.
 - First **Launch** after install can take several seconds while Qt libraries load cold; later opens from Finder are normal.
 
 ## Windows (supported)
 
-Offline Inno Setup installer (x86_64):
+Offline fat self-extracting installer (x86_64) — same PySide6/QML wizard as macOS / Linux:
 
 | Artifact name pattern | Role |
 |-----------------------|------|
-| `srxy-*-installer-<installer_version>-x86_64.exe.zip` | **Offline wizard** — native Inno UI (zip of the setup `.exe`); headless Python engine; install / update / reinstall / uninstall |
+| `srxy-*-installer-<installer_version>-x86_64.zip` | **Offline wizard** — unzip to `SrxyInstaller.exe`; embeds wizard `python\` / `venv\` / `share\`; install / update / reinstall / uninstall |
 
-Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest) and run. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required).
+Download from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), unzip, and run `SrxyInstaller.exe`. Default prefix: `%LOCALAPPDATA%\Programs\srxy` (per-user; no admin required). Packaging details: [`packaging/windows/README.md`](../packaging/windows/README.md).
 
 ### Offline wizard
 
 - Choose **Install or update**, **Reinstall**, or **Uninstall**.
 - Acknowledge the privacy notice, then pick a setup type:
-  - **Recommended (GPU)** — Tesseract, ffmpeg, and smarter-search packages (no model prefetch)
+  - **Recommended (GPU)** — Tesseract, ffmpeg, and smarter-search packages (no model prefetch); on Windows this also installs CUDA PyTorch into the prefix venv when an NVIDIA GPU is detected
   - **Recommended (no GPU)** — Tesseract and ffmpeg only
   - **Simple** — app only (not recommended)
   - **Complete** — recommended GPU set plus AI model download

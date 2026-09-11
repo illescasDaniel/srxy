@@ -1,20 +1,32 @@
 #Requires -Version 5.1
 <#
 .SYNOPSIS
-  Build the offline Windows Inno Setup installer (bootstrap Python + bundled wheel).
+  Build the Windows offline installer (fat self-extracting PySide wizard —
+  parity with the macOS offline .app and Linux offline AppImage).
 
 .DESCRIPTION
-  Stages a relocatable CPython with the installer package installed into its
-  site-packages (--no-deps, no PySide), a full srxy wheel for prefix installs,
-  privacy.txt, then compiles packaging/windows/srxy-offline.iss.
+  Stages a relocatable managed CPython + a wizard-only venv (PySide6 + srxy
+  --no-deps, same policy as macOS/Linux offline) under dist\windows-pyside-installer-stage\payload,
+  a full srxy wheel for prefix installs under payload\share\srxy\ (same layout
+  SRXY_INSTALLER_PAYLOAD already resolves — see
+  srxy.adapters.inbound.installer.package_spec / meta), and a prebuilt app
+  launcher + icon under payload\share\srxy\windows\ (reused at prefix-install
+  time by install.py's _write_windows_gui_exe). Compiles a self-extracting
+  SrxyInstaller.exe that embeds python\ + venv\ + share\ (appended zip +
+  SRXYISFX trailer); on launch it extracts once under
+  %LOCALAPPDATA%\srxy\is\<sha16>\p\ and runs the PySide wizard.
 
-  Prerequisites: uv, Inno Setup 7 (preferred) or 6.2+ with ExecAndLogOutput
-  (ISCC.exe on PATH or under Program Files).
+  The distribution zip contains only the fat SrxyInstaller.exe.
+
+.PARAMETER OutDir
+  Output directory (default: dist).
+
+.PARAMETER PythonVersion
+  Managed CPython version to bundle (default: 3.12).
 #>
 param(
 	[string]$OutDir = "",
-	[string]$PythonVersion = "3.12",
-	[string]$IsccPath = ""
+	[string]$PythonVersion = "3.12"
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,35 +35,8 @@ if (-not $OutDir) {
 	$OutDir = Join-Path $Root "dist"
 }
 
-function Find-Iscc {
-	param([string]$Explicit)
-	if ($Explicit -and (Test-Path -LiteralPath $Explicit)) {
-		return (Resolve-Path -LiteralPath $Explicit).Path
-	}
-	$cmd = Get-Command iscc.exe -ErrorAction SilentlyContinue
-	if ($cmd) {
-		return $cmd.Source
-	}
-	# Prefer Inno Setup 7 (64-bit Program Files), then 6.
-	$candidates = @(
-		"${env:ProgramFiles}\Inno Setup 7\ISCC.exe",
-		"${env:LocalAppData}\Programs\Inno Setup 7\ISCC.exe",
-		"${env:ProgramFiles(x86)}\Inno Setup 7\ISCC.exe",
-		"${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
-		"${env:LocalAppData}\Programs\Inno Setup 6\ISCC.exe",
-		"${env:ProgramFiles}\Inno Setup 6\ISCC.exe"
-	)
-	foreach ($path in $candidates) {
-		if ($path -and (Test-Path -LiteralPath $path)) {
-			return $path
-		}
-	}
-	throw "ISCC.exe not found. Install Inno Setup 7 (or 6.2+) or pass -IsccPath. See https://jrsoftware.org/isdl.php"
-}
-
 function Get-Sha256Hex {
 	param([Parameter(Mandatory = $true)][string]$Path)
-	# Prefer .NET over Get-FileHash: some hosts (older/constrained PowerShell) lack the cmdlet.
 	$sha = [System.Security.Cryptography.SHA256]::Create()
 	try {
 		$stream = [System.IO.File]::OpenRead($Path)
@@ -68,19 +53,100 @@ function Get-Sha256Hex {
 	return ([BitConverter]::ToString($bytes) -replace "-", "").ToLowerInvariant()
 }
 
+function Find-Csc {
+	$roots = @(
+		(Join-Path $env:WINDIR "Microsoft.NET\Framework64"),
+		(Join-Path $env:WINDIR "Microsoft.NET\Framework")
+	)
+	foreach ($root in $roots) {
+		if (-not (Test-Path -LiteralPath $root)) {
+			continue
+		}
+		$versions = Get-ChildItem -LiteralPath $root -Directory -ErrorAction SilentlyContinue |
+			Where-Object { $_.Name -like "v*" } |
+			Sort-Object Name -Descending
+		foreach ($v in $versions) {
+			$csc = Join-Path $v.FullName "csc.exe"
+			if (Test-Path -LiteralPath $csc) {
+				return $csc
+			}
+		}
+	}
+	return $null
+}
+
+function New-FatSrxyInstaller {
+	param(
+		[Parameter(Mandatory = $true)][string]$StubExe,
+		[Parameter(Mandatory = $true)][string]$PayloadZip,
+		[Parameter(Mandatory = $true)][string]$OutExe
+	)
+	# Layout: [stub PE][zip][sha256 32][zip_length uint64 LE][magic "SRXYISFX"]
+	$sha = [System.Security.Cryptography.SHA256]::Create()
+	try {
+		$zipStream = [System.IO.File]::OpenRead($PayloadZip)
+		try {
+			$zipHash = $sha.ComputeHash($zipStream)
+			$zipLength = $zipStream.Length
+		}
+		finally {
+			$zipStream.Dispose()
+		}
+	}
+	finally {
+		$sha.Dispose()
+	}
+	if ($zipLength -le 0) {
+		throw "payload zip is empty: $PayloadZip"
+	}
+
+	$outDir = Split-Path -Parent $OutExe
+	if ($outDir -and -not (Test-Path -LiteralPath $outDir)) {
+		New-Item -ItemType Directory -Force -Path $outDir | Out-Null
+	}
+	if (Test-Path -LiteralPath $OutExe) {
+		Remove-Item -LiteralPath $OutExe -Force
+	}
+
+	$out = [System.IO.File]::Open($OutExe, [System.IO.FileMode]::CreateNew, [System.IO.FileAccess]::Write, [System.IO.FileShare]::None)
+	try {
+		$stub = [System.IO.File]::OpenRead($StubExe)
+		try {
+			$stub.CopyTo($out)
+		}
+		finally {
+			$stub.Dispose()
+		}
+		$zip = [System.IO.File]::OpenRead($PayloadZip)
+		try {
+			$zip.CopyTo($out)
+		}
+		finally {
+			$zip.Dispose()
+		}
+		$out.Write($zipHash, 0, $zipHash.Length)
+		$lengthBytes = [BitConverter]::GetBytes([uint64]$zipLength)
+		$out.Write($lengthBytes, 0, $lengthBytes.Length)
+		$magic = [System.Text.Encoding]::ASCII.GetBytes("SRXYISFX")
+		$out.Write($magic, 0, $magic.Length)
+	}
+	finally {
+		$out.Dispose()
+	}
+}
+
 if (-not (Get-Command uv -ErrorAction SilentlyContinue)) {
-	throw "uv is required to build the Windows offline installer."
+	throw "uv is required to build the Windows PySide offline installer."
 }
 
 New-Item -ItemType Directory -Force -Path $OutDir | Out-Null
-$Stage = Join-Path $OutDir "windows-installer-stage"
+$Stage = Join-Path $OutDir "windows-pyside-installer-stage"
 $Payload = Join-Path $Stage "payload"
-$WheelDir = Join-Path $OutDir "windows-installer-wheels"
 
 if (Test-Path -LiteralPath $Stage) {
 	Remove-Item -LiteralPath $Stage -Recurse -Force
 }
-New-Item -ItemType Directory -Force -Path (Join-Path $Payload "share\srxy") | Out-Null
+New-Item -ItemType Directory -Force -Path (Join-Path $Payload "share\srxy\windows") | Out-Null
 
 Push-Location $Root
 try {
@@ -89,8 +155,10 @@ try {
 		uv run python -c "import tomllib,sys; from pathlib import Path; print(tomllib.loads(Path(sys.argv[1]).read_text(encoding='utf-8'))['installer_version'])" `
 			(Join-Path $Root "packaging\installer_meta.toml")
 	).Trim()
+	$Arch = "x86_64"
 
 	Write-Host "Building srxy wheel for offline payload..."
+	$WheelDir = Join-Path $OutDir "windows-pyside-installer-wheels"
 	if (Test-Path -LiteralPath $WheelDir) {
 		Remove-Item -LiteralPath $WheelDir -Recurse -Force
 	}
@@ -113,67 +181,108 @@ try {
 	New-Item -ItemType Directory -Force -Path $PythonNest | Out-Null
 	uv python install $PythonVersion --install-dir $PythonNest --no-bin
 
-	$AppPython = Get-ChildItem -LiteralPath $PythonNest -Recurse -Filter "python.exe" |
-		Select-Object -First 1
-	if (-not $AppPython) {
+	$NestedPython = Get-ChildItem -LiteralPath $PythonNest -Recurse -Filter "python.exe" | Select-Object -First 1
+	if (-not $NestedPython) {
 		throw "managed python.exe not found under $PythonNest"
 	}
-	$ManagedRoot = $AppPython.Directory.FullName
-	Write-Host "Using interpreter: $($AppPython.FullName)"
+	$ManagedRoot = $NestedPython.Directory.FullName
 
-	# Flatten to payload\python\python.exe (+ DLLs/Lib) so Inno has a stable path.
+	# Flatten to payload\python\python.exe (+ DLLs/Lib) for a stable embedded layout.
 	$StablePythonDir = Join-Path $Payload "python"
-	if (Test-Path -LiteralPath $StablePythonDir) {
-		Remove-Item -LiteralPath $StablePythonDir -Recurse -Force
-	}
 	New-Item -ItemType Directory -Force -Path $StablePythonDir | Out-Null
 	Copy-Item -Path (Join-Path $ManagedRoot "*") -Destination $StablePythonDir -Recurse -Force
 	Remove-Item -LiteralPath $PythonNest -Recurse -Force
-	$BootPy = Join-Path $StablePythonDir "python.exe"
-	if (-not (Test-Path -LiteralPath $BootPy)) {
-		throw "stable python missing at $BootPy"
+	$AppPython = Join-Path $StablePythonDir "python.exe"
+	if (-not (Test-Path -LiteralPath $AppPython)) {
+		throw "stable python missing at $AppPython"
 	}
 
-	$Site = Join-Path $StablePythonDir "Lib\site-packages"
-	New-Item -ItemType Directory -Force -Path $Site | Out-Null
-	Write-Host "Installing installer package into bootstrap site-packages (no PySide)..."
-	uv pip install --python $BootPy --target $Site --no-deps $Root
+	Write-Host "Creating relocatable wizard venv (PySide6 + srxy --no-deps)..."
+	$Venv = Join-Path $Payload "venv"
+	uv venv --python $AppPython --relocatable --link-mode copy $Venv
+	$VenvPy = Join-Path $Venv "Scripts\python.exe"
+	$VenvPyw = Join-Path $Venv "Scripts\pythonw.exe"
+	if (-not (Test-Path -LiteralPath $VenvPy)) {
+		throw "venv python missing at $VenvPy"
+	}
+	if (-not (Test-Path -LiteralPath $VenvPyw)) {
+		throw "venv pythonw missing at $VenvPyw"
+	}
 
-	# Relocate probe: copy payload python tree elsewhere and import.
-	$RelocProbe = Join-Path $OutDir "windows-reloc-probe"
+	uv pip install --python $VenvPy "PySide6>=6.6"
+	uv pip install --python $VenvPy --no-deps $Root
+
+	# Relocation guard: copy the payload elsewhere and import the wizard from
+	# there. A build-host-relative-but-not-truly-portable venv would still
+	# work in place but break once the zip is extracted on a user's machine
+	# (mirrors the macOS/Linux offline relocation checks).
+	Write-Host "Verifying wizard venv is relocatable..."
+	$RelocProbe = Join-Path $OutDir "windows-pyside-reloc-probe"
 	if (Test-Path -LiteralPath $RelocProbe) {
 		Remove-Item -LiteralPath $RelocProbe -Recurse -Force
 	}
-	Copy-Item -Path $StablePythonDir -Destination (Join-Path $RelocProbe "python") -Recurse -Force
-	$ProbePy = Join-Path $RelocProbe "python\python.exe"
-	& $ProbePy -c "from srxy.adapters.inbound.installer.install import InstallOptions; print('bootstrap-ok')"
+	Copy-Item -Path $Payload -Destination (Join-Path $RelocProbe "payload") -Recurse -Force
+	$ProbePy = Join-Path $RelocProbe "payload\venv\Scripts\python.exe"
+	& $ProbePy -c "import PySide6; from srxy.adapters.inbound.installer.install import InstallOptions; print('wizard-reloc-ok')"
 	if ($LASTEXITCODE -ne 0) {
-		throw "relocatable bootstrap import smoke failed"
+		throw "relocated wizard venv import smoke failed"
 	}
 	Remove-Item -LiteralPath $RelocProbe -Recurse -Force
 
-	Write-Host "Exporting privacy notices (en/es, UTF-8 BOM)..."
-	$PrivacyEn = Join-Path $Stage "privacy-en.txt"
-	$PrivacyEs = Join-Path $Stage "privacy-es.txt"
-	uv run python -c @"
-from pathlib import Path
-import sys
-from srxy.adapters.inbound.installer.privacy import write_privacy_notice_utf8
-write_privacy_notice_utf8(Path(sys.argv[1]), language='en')
-write_privacy_notice_utf8(Path(sys.argv[2]), language='es')
-"@ $PrivacyEn $PrivacyEs
-	if ($LASTEXITCODE -ne 0) {
-		throw "privacy notice export failed"
-	}
+	Write-Host "Pruning unused PySide6 / Qt payload..."
+	& (Join-Path $PSScriptRoot "prune-pyside.ps1") $Venv
 
-	Write-Host "Building Windows GUI launcher + installer icons..."
+	Write-Host "Smoke-testing pruned wizard imports / QML (offscreen)..."
+	$env:QT_QPA_PLATFORM = "offscreen"
+	& $VenvPy -c "import srxy.adapters.inbound.installer"
+	if ($LASTEXITCODE -ne 0) {
+		throw "pruned wizard import smoke failed"
+	}
+	& $VenvPy -m srxy.adapters.inbound.installer --help | Out-Null
+	if ($LASTEXITCODE -ne 0) {
+		throw "pruned wizard --help smoke failed"
+	}
+	$QmlSmoke = @"
+import sys
+from PySide6.QtCore import QByteArray, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlApplicationEngine
+
+app = QGuiApplication(sys.argv)
+engine = QQmlApplicationEngine()
+qml = b'''
+import QtQuick
+import QtQuick.Controls
+import QtQuick.Dialogs
+import QtQuick.Layouts
+ApplicationWindow {
+	visible: false
+	width: 100
+	height: 100
+	FolderDialog {}
+}
+'''
+engine.loadData(QByteArray(qml), QUrl())
+if not engine.rootObjects():
+	raise SystemExit('pruned QML smoke failed: no root objects')
+print('qml smoke OK')
+"@
+	& $VenvPy -c $QmlSmoke
+	if ($LASTEXITCODE -ne 0) {
+		throw "pruned QML smoke failed"
+	}
+	Remove-Item Env:\QT_QPA_PLATFORM -ErrorAction SilentlyContinue
+
+	Write-Host "Building installer + app icons and prebuilt app launcher..."
 	$WinShare = Join-Path $Payload "share\srxy\windows"
-	New-Item -ItemType Directory -Force -Path $WinShare | Out-Null
 	$SetupIco = Join-Path $Stage "srxy-installer.ico"
 	$AppIco = Join-Path $WinShare "srxy.ico"
-	$LauncherExe = Join-Path $WinShare "Srxy.exe"
-	# Use project env (Pillow) — bootstrap is --no-deps and lacks imaging deps.
-	uv run python -c @"
+	$AppLauncherExe = Join-Path $WinShare "Srxy.exe"
+	$Csc = Find-Csc
+	if (-not $Csc) {
+		throw "csc.exe not found; install .NET Framework 4.x developer pack tools."
+	}
+	$IcoAndLauncherScript = @"
 from pathlib import Path
 import subprocess
 import sys
@@ -197,97 +306,84 @@ cmd = [
 ]
 subprocess.run(cmd, check=True)
 print(f'wrote {out_exe}')
-"@ $SetupIco $AppIco $LauncherExe
+"@
+	uv run python -c $IcoAndLauncherScript $SetupIco $AppIco $AppLauncherExe
 	if ($LASTEXITCODE -ne 0) {
-		throw "Windows launcher / icon build failed"
+		throw "app icon / prebuilt app launcher build failed"
 	}
 
-	$Iscc = Find-Iscc -Explicit $IsccPath
-	$Iss = Join-Path $Root "packaging\windows\srxy-offline.iss"
-	# Inno Setup 6.2 treats UTF-8 CustomMessages correctly only with a BOM.
-	uv run python -c @"
-from pathlib import Path
-import sys
-path = Path(sys.argv[1])
-raw = path.read_bytes()
-if not raw.startswith(b'\xef\xbb\xbf'):
-    text = raw.decode('utf-8-sig')
-    path.write_bytes(b'\xef\xbb\xbf' + text.encode('utf-8'))
-    print(f'added UTF-8 BOM to {path}')
-else:
-    print(f'UTF-8 BOM already present on {path}')
-"@ $Iss
+	Write-Host "Compiling SrxyInstaller.exe stub launcher..."
+	$LauncherCs = Join-Path $Root "src\srxy\resources\windows\SrxyInstallerLauncher.cs"
+	if (-not (Test-Path -LiteralPath $LauncherCs)) {
+		throw "missing $LauncherCs"
+	}
+	$StubExe = Join-Path $Stage "SrxyInstaller.stub.exe"
+	& $Csc /nologo /target:winexe "/win32icon:$SetupIco" `
+		/reference:System.Windows.Forms.dll `
+		/reference:System.IO.Compression.dll `
+		/reference:System.IO.Compression.FileSystem.dll `
+		"/out:$StubExe" $LauncherCs
 	if ($LASTEXITCODE -ne 0) {
-		throw "failed to ensure UTF-8 BOM on Inno script"
-	}
-	$Arch = "x86_64"
-	# Compile into a private staging folder first: writing the setup EXE directly
-	# under dist\ while Explorer/Defender has a handle often yields
-	# EndUpdateResource failed (110) when embedding SetupIconFile.
-	$IsccOut = Join-Path $Stage "iscc-out"
-	if (Test-Path -LiteralPath $IsccOut) {
-		Remove-Item -LiteralPath $IsccOut -Recurse -Force
-	}
-	New-Item -ItemType Directory -Force -Path $IsccOut | Out-Null
-	$PrivacyAckVersion = (uv run python -c "from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION; print(PRIVACY_NOTICE_VERSION)").Trim()
-	if (-not $PrivacyAckVersion) {
-		throw "failed to read PRIVACY_NOTICE_VERSION"
-	}
-	Write-Host "Compiling Inno Setup script with $Iscc (privacy-ack=$PrivacyAckVersion) ..."
-	& $Iscc `
-		"/DMyAppVersion=$Version" `
-		"/DInstallerVersion=$InstallerVersion" `
-		"/DArch=$Arch" `
-		"/DPayloadDir=$Payload" `
-		"/DOutputDir=$IsccOut" `
-		"/DPrivacyEnFile=$PrivacyEn" `
-		"/DPrivacyEsFile=$PrivacyEs" `
-		"/DSetupIconFile=$SetupIco" `
-		"/DPrivacyAckVersion=$PrivacyAckVersion" `
-		$Iss
-	if ($LASTEXITCODE -ne 0) {
-		throw "ISCC failed with exit code $LASTEXITCODE"
+		throw "SrxyInstaller stub compile failed"
 	}
 
-	$ExeName = "srxy-$Version-installer-$InstallerVersion-$Arch.exe"
-	$StagedExe = Join-Path $IsccOut $ExeName
-	if (-not (Test-Path -LiteralPath $StagedExe)) {
-		throw "expected ISCC output missing: $StagedExe"
+	Write-Host "Packing payload zip (python + venv + share) for embedding..."
+	$PayloadZip = Join-Path $Stage "payload-embed.zip"
+	if (Test-Path -LiteralPath $PayloadZip) {
+		Remove-Item -LiteralPath $PayloadZip -Force
 	}
-	$ExePath = Join-Path $OutDir $ExeName
-	Copy-Item -LiteralPath $StagedExe -Destination $ExePath -Force
-	$Hash = Get-Sha256Hex -Path $ExePath
-	Set-Content -LiteralPath "$ExePath.sha256" -Value "$Hash  $ExeName`n" -Encoding ASCII
+	# Compress-Archive paths become zip root entries named after the leaf folders.
+	Compress-Archive -Path @(
+		(Join-Path $Payload "python"),
+		(Join-Path $Payload "venv"),
+		(Join-Path $Payload "share")
+	) -DestinationPath $PayloadZip -CompressionLevel Optimal
 
-	$ZipName = "$ExeName.zip"
+	$FatExe = Join-Path $Stage "SrxyInstaller.exe"
+	Write-Host "Building fat self-extracting SrxyInstaller.exe..."
+	New-FatSrxyInstaller -StubExe $StubExe -PayloadZip $PayloadZip -OutExe $FatExe
+	Copy-Item -LiteralPath $FatExe -Destination (Join-Path $Payload "SrxyInstaller.exe") -Force
+
+	Write-Host "Smoke-testing fat SrxyInstaller.exe headless install/uninstall..."
+	$SmokePrefix = Join-Path $OutDir ("windows-pyside-smoke-" + [guid]::NewGuid().ToString("n"))
+	$ack = (& $VenvPy -c "from srxy.adapters.inbound.installer.privacy import PRIVACY_NOTICE_VERSION; print(PRIVACY_NOTICE_VERSION)").Trim()
+	# Start-Process -Wait so winexe exit codes are reliable (unlike &$exe + $LASTEXITCODE).
+	$install = Start-Process -FilePath $FatExe -ArgumentList @(
+		"--install", "--prefix", $SmokePrefix, "--privacy-ack", $ack, "--confirm-unsafe", "--no-add-path"
+	) -Wait -PassThru -NoNewWindow
+	if ($install.ExitCode -ne 0) {
+		throw "fat SrxyInstaller.exe headless install smoke failed (exit $($install.ExitCode))"
+	}
+	if (-not (Test-Path -LiteralPath (Join-Path $SmokePrefix "bin\Srxy.exe"))) {
+		throw "prebuilt app launcher was not copied from embedded payload during smoke install"
+	}
+	$uninstall = Start-Process -FilePath $FatExe -ArgumentList @(
+		"--uninstall", "--prefix", $SmokePrefix, "--confirm-unsafe"
+	) -Wait -PassThru -NoNewWindow
+	if ($uninstall.ExitCode -ne 0) {
+		throw "fat SrxyInstaller.exe headless uninstall smoke failed (exit $($uninstall.ExitCode))"
+	}
+	Remove-Item -LiteralPath $SmokePrefix -Recurse -Force -ErrorAction SilentlyContinue
+
+	$PayloadBytes = (Get-ChildItem -LiteralPath $Payload -Recurse -Force | Measure-Object -Property Length -Sum).Sum
+	$FatBytes = (Get-Item -LiteralPath $FatExe).Length
+	Write-Host ("Payload folder size: {0:N1} MiB" -f ($PayloadBytes / 1MB))
+	Write-Host ("Fat SrxyInstaller.exe size: {0:N1} MiB" -f ($FatBytes / 1MB))
+
+	$ZipName = "srxy-$Version-installer-$InstallerVersion-$Arch.zip"
 	$ZipPath = Join-Path $OutDir $ZipName
 	if (Test-Path -LiteralPath $ZipPath) {
 		Remove-Item -LiteralPath $ZipPath -Force
 	}
-	Write-Host "Creating max-compressed zip $ZipName ..."
-	uv run python -c @"
-import sys
-import zipfile
-from pathlib import Path
-exe = Path(sys.argv[1])
-zip_path = Path(sys.argv[2])
-with zipfile.ZipFile(zip_path, 'w', compression=zipfile.ZIP_DEFLATED, compresslevel=9) as zf:
-    zf.write(exe, arcname=exe.name)
-print(f'wrote {zip_path} ({zip_path.stat().st_size} bytes)')
-"@ $ExePath $ZipPath
-	if ($LASTEXITCODE -ne 0) {
-		throw "installer zip failed"
-	}
-	$ZipHash = Get-Sha256Hex -Path $ZipPath
-	Set-Content -LiteralPath "$ZipPath.sha256" -Value "$ZipHash  $ZipName`n" -Encoding ASCII
-	# Published checksum list is zip-only (release / CI artifact).
+	Write-Host "Creating $ZipName (fat SrxyInstaller.exe only)..."
+	Compress-Archive -Path $FatExe -DestinationPath $ZipPath -CompressionLevel Optimal
+	$Hash = Get-Sha256Hex -Path $ZipPath
+	Set-Content -LiteralPath "$ZipPath.sha256" -Value "$Hash  $ZipName`n" -Encoding ASCII
 	$Sums = Join-Path $OutDir "SHA256SUMS-windows-offline"
-	Set-Content -LiteralPath $Sums -Value "$ZipHash  $ZipName`n" -Encoding ASCII
+	Set-Content -LiteralPath $Sums -Value "$Hash  $ZipName`n" -Encoding ASCII
 
-	Write-Host "Built $ExePath"
+	Write-Host "Built $ZipPath"
 	Write-Host "SHA256 $Hash"
-	Write-Host "Zip $ZipPath"
-	Write-Host "Zip SHA256 $ZipHash"
 }
 finally {
 	Pop-Location

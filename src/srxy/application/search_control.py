@@ -50,6 +50,12 @@ def emit_progress_if_due(
 ):
 	raise_if_cancelled(cancel_check)
 	now = time.monotonic()
+	# Listing catch-up (0/N) must always reach the UI so file counts appear while
+	# slow OCR workers run — do not throttle this milestone.
+	if current == 0 and total > 0:
+		state.last_progress_at = now
+		emit(current, total)
+		return
 	if current >= total or (now - state.last_progress_at) >= PROGRESS_EMIT_INTERVAL_S:
 		state.last_progress_at = now
 		emit(current, total)

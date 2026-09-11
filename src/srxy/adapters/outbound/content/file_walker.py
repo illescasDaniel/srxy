@@ -15,7 +15,9 @@ from srxy.adapters.outbound.archive.archive_search import (
 	list_archive_members,
 	split_archive_member_path,
 )
+from srxy.adapters.outbound.content.path_access import append_permission_skip, is_access_denied
 from srxy.application.search_control import SearchCancelled
+from srxy.domain.models import SkippedFile
 
 
 _NOISE_DIR_NAMES = frozenset({"__pycache__", "node_modules"})
@@ -217,16 +219,40 @@ def iter_files(
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
 	cancel_check: Callable[[], bool] | None = None,
+	skipped_files: list[SkippedFile] | None = None,
 ) -> Iterator[Path]:
-	if root.is_file():
+	try:
+		root_is_file = root.is_file()
+		root_is_dir = root.is_dir()
+	except OSError as exc:
+		if is_access_denied(exc):
+			append_permission_skip(skipped_files, root)
+			return
+		raise
+	if root_is_file:
 		yield root
 		return
-	if not root.is_dir():
+	if not root_is_dir:
 		return
 
 	listed = 0
-	at_filesystem_root = root.resolve() == Path("/")
-	for dirpath, dirnames, filenames in os.walk(root):
+	recorded_denied_dirs: set[str] = set()
+
+	def onerror(err: OSError):
+		# os.walk calls this when listdir/scandir fails; default is silent prune.
+		if not is_access_denied(err) or err.filename is None:
+			return
+		key = os.path.normcase(os.path.abspath(err.filename))
+		if key in recorded_denied_dirs:
+			return
+		recorded_denied_dirs.add(key)
+		append_permission_skip(skipped_files, Path(err.filename))
+
+	try:
+		at_filesystem_root = root.resolve() == Path("/")
+	except OSError:
+		at_filesystem_root = False
+	for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
 		if cancel_check is not None and cancel_check():
 			raise SearchCancelled()
 		if not include_subdirectories:
@@ -268,6 +294,7 @@ def collect_files(
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
 	cancel_check: Callable[[], bool] | None = None,
+	skipped_files: list[SkippedFile] | None = None,
 ) -> list[Path]:
 	return list(
 		iter_files(
@@ -279,6 +306,7 @@ def collect_files(
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
 			cancel_check=cancel_check,
+			skipped_files=skipped_files,
 		)
 	)
 
@@ -297,6 +325,7 @@ class DefaultFileWalker:
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 		cancel_check: Callable[[], bool] | None = None,
+		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]:
 		yield from iter_files(
 			root,
@@ -307,6 +336,7 @@ class DefaultFileWalker:
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
 			cancel_check=cancel_check,
+			skipped_files=skipped_files,
 		)
 
 	def collect_files(
@@ -320,6 +350,7 @@ class DefaultFileWalker:
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
 		cancel_check: Callable[[], bool] | None = None,
+		skipped_files: list[SkippedFile] | None = None,
 	) -> list[Path]:
 		return collect_files(
 			root,
@@ -330,6 +361,7 @@ class DefaultFileWalker:
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
 			cancel_check=cancel_check,
+			skipped_files=skipped_files,
 		)
 
 	def is_searchable(self, path: Path) -> bool:

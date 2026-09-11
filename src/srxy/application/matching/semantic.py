@@ -5,7 +5,6 @@ import sys
 import threading
 from pathlib import Path
 
-from srxy.adapters.outbound.models.device import resolve_torch_device
 from srxy.application.matching.base import Matcher
 
 
@@ -16,6 +15,13 @@ _model_lock = threading.Lock()
 _run_embedding_cache: dict[tuple[str, str], object] = {}
 
 _TRUTHY_ENV_VALUES = frozenset({"1", "true", "yes", "on"})
+
+
+def resolve_torch_device() -> str:
+	"""Re-export for tests that patch ``matching.semantic.resolve_torch_device``."""
+	from srxy.adapters.outbound.models.device import resolve_torch_device as _resolve
+
+	return _resolve()
 
 
 def semantic_env_enabled() -> bool:
