@@ -11,6 +11,7 @@ User-facing notes live on the GitHub Release (not duplicated here). Installers (
 ### Open (post-1.7.0)
 
 - [ ] Optional: Authenticode signing for Windows fat `SrxyInstaller.exe` (SmartScreen).
+- [x] Sync #49 hotfix (Windows Property Store subprocess isolation) from `main` @ `182649f` onto `develop` — ported `windows_metadata.py` / `windows_metadata_worker.py` / `tests/unit/test_windows_metadata.py` verbatim via a dedicated sync PR (avoids dirty full main→develop merge from squash history, same pattern as #47/#48). Daniel OK'd this sync; Tech Lead authorized merge.
 
 ## Next train — v1.8.0
 
