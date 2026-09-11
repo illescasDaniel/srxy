@@ -18,7 +18,7 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 
 ## Hotfix — `main` CI #147 test-windows crash (2026-09-11)
 
-Branch `hotfix/windows-corrupt-jpeg-property-store-cdc4` off `main`. **Merge waits on Daniel's fresh OK on that specific PR — do not merge.** No retag / no v1.7.0 rebuild.
+Branch `cursor/hotfix-windows-corrupt-jpeg-property-store-cdc4` off `main`. **Merge waits on Daniel's fresh OK on that specific PR — do not merge.** No retag / no v1.7.0 rebuild.
 
 - [x] Root-caused: native `0xc0000002` (STATUS_NOT_IMPLEMENTED) fatal exception in `windows_metadata.py::_open_property_store` -> `propsys.SHGetPropertyStoreFromParsingName`, triggered by the corrupt-JPEG fixture in `test_given_corrupt_jpeg_when_searching_contents_then_skips_gracefully`; confirmed via `gh run view --job 103189783873 --log` against https://github.com/illescasDaniel/srxy/actions/runs/34576418507/job/103189783873.
 - [x] Fix: isolate Property Store reads used for content search (`_read_searchable_property_entries`) in a lazily-spawned, reused worker subprocess (`windows_metadata_worker.py`) on real Windows only (`sys.platform == "win32"`); worker crash/hang fails soft to `[]` (same contract as `except OSError: return []`) and respawns for the next call. Direct in-process path (`_read_searchable_property_entries_direct`) kept for the existing mocked cross-platform unit tests.

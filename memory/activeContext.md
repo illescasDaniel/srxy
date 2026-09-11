@@ -4,7 +4,7 @@ _Last updated: 2026-09-11_
 
 ## Branch
 
-- `hotfix/windows-corrupt-jpeg-property-store-cdc4` (off `main`, not `develop`/`feature/1.8.0`) — CI #147 `test-windows` hotfix. **Merge waits on Daniel's fresh OK on that specific PR; do not merge.** No retag / no v1.7.0 rebuild.
+- `cursor/hotfix-windows-corrupt-jpeg-property-store-cdc4` (off `main`, not `develop`/`feature/1.8.0`) — CI #147 `test-windows` hotfix. **Merge waits on Daniel's fresh OK on that specific PR; do not merge.** No retag / no v1.7.0 rebuild.
 - `main` — v1.7.0 released (`2c64f08`, tag `v1.7.0`); latest commit `2506b53` (memory-only #46, no product code change).
 - `develop` — packaging trunk; sync from `main` after memory hygiene PR merges (pending Daniel OK).
 - `feature/1.8.0` — active 1.8.0 release train (OCR, media preview, folder search, GUI Ideas, NSIS, etc.).
@@ -20,7 +20,7 @@ HOTFIX only: `main` @ `2506b53` CI #147 `test-windows` failed — native Windows
 - `tests/unit/test_windows_metadata.py` — added: Windows-platform dispatch test (asserts isolated path used, direct path not called); dead-worker (`readline()` -> `""`) fail-soft + respawn test; healthy-worker reuse test (one spawn serves two requests); hung-worker timeout test (patched `_ISOLATED_WORKER_TIMEOUT_SECONDS`); worker `_handle_request` tests (valid + malformed input). All via fake `Popen`-like mocks — no real Windows/pywin32 needed to exercise the harness logic.
 - Verified against the real CI failure via `gh run view --job 103189783873 --log`: crash frame is exactly `windows_metadata.py:143 _open_property_store` <- `:89 _read_searchable_property_entries` <- `:71 iter_windows_metadata_lines` <- `line_sources.py:281 iter_searchable_lines`, matching the brief's root-cause description.
 - Local verification (fresh VM, no prebuilt env — had to `curl -LsSf https://astral.sh/uv/install.sh | sh`, `uv run task sync-dev`, and `apt-get install -y libegl1 shellcheck shfmt` before the gate would run clean): `tests/unit/test_windows_metadata.py` 18/18 passed; `tests/unit/test_file_search.py -k corrupt_jpeg` passed; full `tests/unit tests/cli` (772 tests) passed; `./scripts/quality/checks.sh --quiet --all` → PASSED (ruff, shell, ty, pip-audit, build, pytest all green). Real Windows COM crash reproduction isn't possible on this Linux VM — the actual regression proof is CI's `test-windows` job on the PR.
-- Pushed `hotfix/windows-corrupt-jpeg-property-store-cdc4`; opened PR -> `main` (see progress.md for URL). **Do not merge without Daniel's fresh OK on that specific PR.**
+- Pushed `cursor/hotfix-windows-corrupt-jpeg-property-store-cdc4`; opened PR -> `main` (see progress.md for URL). **Do not merge without Daniel's fresh OK on that specific PR.**
 
 ## Next steps
 
