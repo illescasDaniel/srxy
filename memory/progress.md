@@ -16,3 +16,10 @@ User-facing notes live on the GitHub Release (not duplicated here). Installers (
 ## Next train — v1.8.0
 
 Active work lives on `feature/1.8.0` (and its topic branches). Track Open items there / Trello 1.8.0 — do not dump 1.8.0 Done into this file until that train ships.
+
+## Docs — README GUI screenshot (2026-09-11)
+
+- [x] Regenerated `docs/images/gui-linux.png` via `./scripts/docs/export_gui_screenshot.sh`.
+- [x] Fixed script for `SrxyControls` import path + theme context props.
+- [x] Fixed missing Search / flat Options/Filters: headless Material fills often omit from `grabWindow`; script prefers a real display, falls back to software RHI, and composites button faces from QML props when chrome is missing.
+- [ ] Optional: regenerate on a real Linux display (no composite); regenerate `gui-macos.png` / `gui-windows.png` on those hosts; commit when Daniel asks.

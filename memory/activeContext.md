@@ -4,22 +4,22 @@ _Last updated: 2026-09-11_
 
 ## Branch
 
-- `main` — v1.7.0 released (`2c64f08`, tag `v1.7.0`); memory hygiene merged @ `2506b53` (#46).
-- `develop` — packaging trunk; this PR syncs #46 memory files after squash-based main history blocked a full main→develop merge.
+- `main` @ `fff4427` — v1.7.0 + #49 hotfix + README Linux screenshot update.
+- `develop` @ `38c2466` — `main` merged in (ahead of `origin/develop` by 6).
 - `feature/1.8.0` — active 1.8.0 release train (OCR, media preview, folder search, GUI Ideas, NSIS, etc.).
 
 ## Current focus
 
-1. Keep `memory/` lean post-1.7.0 (release notes on GitHub Release).
-2. 1.8.0 train on `feature/1.8.0` — Product/Design/Dev as already briefed; no kickoff without Daniel OK where required.
+Post-merge on `develop`: screenshot + installer workflow updates from `main` are in; memory reconciled.
 
 ## Just changed
 
-- v1.7.0 tagged and installers published.
-- `memory/progress.md` / `activeContext.md` matched to main after #46.
-- Synced #49 hotfix (Windows Property Store subprocess isolation) from `main` @ `182649f` onto `develop`: ported `src/srxy/adapters/outbound/metadata/windows_metadata.py`, `src/srxy/adapters/outbound/metadata/windows_metadata_worker.py` (new), and `tests/unit/test_windows_metadata.py` verbatim (no full main→develop merge, per the #47/#48 squash-history lesson).
+- Merged `main` → `develop` (`38c2466`): `scripts/docs/export_gui_screenshot.sh`, `docs/images/gui-linux.png`, README, installer workflow `action-gh-release` bumps.
+- Resolved memory conflicts: kept develop's #49 sync note; added main's Docs screenshot checklist.
+- #49 Windows Property Store isolation already on develop via #50 (`8990f7d`).
 
 ## Next steps
 
-1. Continue 1.8.0 work off `feature/1.8.0`.
-2. PATCH v1.7.0 release body if not already done (no retag/rebuild).
+1. Push `develop` when ready (`git push`).
+2. Optional: re-run `./scripts/docs/export_gui_screenshot.sh` on a real Linux display (no composite); regenerate macOS/Windows tiles on those hosts.
+3. Continue 1.8.0 work off `feature/1.8.0`.
