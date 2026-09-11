@@ -1,22 +1,24 @@
 # Active Context
 
-_Last updated: 2026-09-10_
+_Last updated: 2026-09-11_
 
 ## Branch
 
-- `develop` — macOS Srxy.app Liquid Glass fix merged from `cursor/61a81fe5` (mdvs).
+- `main` — v1.7.0 released (`2c64f08`, tag `v1.7.0`); memory hygiene merged @ `2506b53` (#46).
+- `develop` — packaging trunk; this PR syncs #46 memory files after squash-based main history blocked a full main→develop merge.
+- `feature/1.8.0` — active 1.8.0 release train (OCR, media preview, folder search, GUI Ideas, NSIS, etc.).
 
 ## Current focus
 
-Installed Srxy.app “old macOS look”: Mach-O launcher + copy/`vtool` SDK 26 restamp on `SrxyPython` so AppKit draws Tahoe chrome (matches `uv run task gui`).
+1. Keep `memory/` lean post-1.7.0 (release notes on GitHub Release).
+2. 1.8.0 train on `feature/1.8.0` — Product/Design/Dev as already briefed; no kickoff without Daniel OK where required.
 
 ## Just changed
 
-- Applied `/apply-worktree-srxy` from `cursor/61a81fe5`: embed copied `SrxyPython`, restamp sdk 26.0, Mach-O `SrxyAppLauncher`, repair script, dialog/style harden, tests.
-- Prefix already repaired from mdvs (`SrxyPython` sdk 26.0; uv CPython remains sdk 15.5).
+- v1.7.0 tagged and installers published.
+- `memory/progress.md` / `activeContext.md` matched to main after #46.
 
 ## Next steps
 
-1. User: visually confirm `open ~/Applications/srxy/Srxy.app` matches `uv run task gui`.
-2. Push develop when desired.
-3. `/delete-worktree-srxy` for mdvs when no longer needed.
+1. Continue 1.8.0 work off `feature/1.8.0`.
+2. PATCH v1.7.0 release body if not already done (no retag/rebuild).
