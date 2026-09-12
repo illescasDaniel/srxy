@@ -7,6 +7,89 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** `SearchOptions.search_names` / the names-only path scored files only — a folder whose name matched the query never showed up, even though the CLI/GUI/TUI already treat `FileSearchResult.path` generically (preview/desktop/`open_path`/`reveal_path` already branch on `path.is_dir()`). Needed folder-name search across CLI, TUI, and GUI without duplicating the directory walk or diverging from the existing matching/scoring pipeline.
 - **Decision:** (1) **True folder-as-result**, not "only matching files under matching folders" — `FileWalkerPort.iter_files`/`collect_files` gained `include_directories: bool = False`; when set, every subdirectory that survives hidden/noise/`match_skipped_names` filtering is yielded from the *same* `os.walk` pass used for files (no second tree walk). The search root itself is never yielded. Directories are yielded even when `include_subdirectories=False` — the walker still sees root's immediate children in that case, it just does not recurse past them, so a top-level folder name is still matchable. (2) `_execute_file_search` passes `include_directories=search_names` to both the listing walk and the parallel file-count probe, so folder search is gated by the existing **File names** toggle only — no new SearchOptions field, no new CLI/GUI/TUI flag. Content-only search (`search_names=False`) never yields directories. (3) `_search_single_file` detects `file_path.is_dir()` and forces `search_contents=False`/`semantic_image=False` for that path — folders only ever score via `_score_name`/`_score_name_term` (the exact same composite matcher used for filenames), so ranking is identical to a file-name hit for the same text; they never attempt OCR/transcribe/CLIP/tags. (4) CLI JSON output gained a `"type": "file"|"directory"` field (additive, not a breaking schema change) so tooling can distinguish folder hits; grouped/flat text output and the GUI/TUI result rows already worked unchanged since they render `result.path`/`result.path.name` generically.
 - **Rationale:** Reusing one walk avoids doubling `os.walk` cost (important for large trees the perf notes above already optimize for) and keeps directory candidates flowing through the identical streaming/progress/cancel machinery as files (no separate code path to keep in sync). Gating on `search_names` matches the product ask ("when name search is enabled, folder names should surface as results") without growing the options surface. Forcing content off inside `_search_single_file` (rather than upstream in `_submit_file`/`_proc_submit`) means the process-pool and thread-pool submission paths needed no changes — a directory simply never triggers heavy work no matter what flags are passed in. Preview/desktop/open paths already handled non-file `FileSearchResult.path` gracefully, so no GUI/TUI rendering changes were required beyond the i18n hint text; CLI/GUI/TUI wiring is limited to help copy (`--names`/`--names-only` help, `tui.hint.file_names`, `gui.help.search_names`) plus new tests.
+## 2026-09-11 — Parallel pytest progress + checks.py Ctrl+C forwarding
+
+- **Context:** `uv run task checks --full` looked frozen after printing bucket args (parallel buckets wrote to temp logs with no live progress). Ctrl+C in `checks.py` raised `KeyboardInterrupt` in Python instead of stopping the bash gate tree.
+- **Decision:** Keep pytest buckets **parallel**. `pytest.sh` polls running buckets: emit `[gate] pytest[bucket]: still running (Ns)` every `LIB_PYTEST_PROGRESS_INTERVAL` (default 25s); in quiet mode also tail `[gate]` lines from per-bucket logs (with `LIB_GATE_BUCKET_NAME` prefix in `agent_progress`). `checks.sh` overlaps pytest with light steps via `tee`. `checks.py` uses `Popen(start_new_session=True)` + SIGINT/SIGTERM → `killpg`, exit 130. **Do not** serialize buckets for verbose mode.
+- **Rationale:** Speed from overlap; liveness from periodic progress without dumping full verbose interleave. Taskipy: pass flags after `--` (`uv run task checks -- --fix --full`).
+
+## 2026-09-11 — Gate lock file records holder PIDs
+
+- **Context:** When the gate refused a second run, `.srxy-quality-gate.lock` was empty — no hint which process held the flock / exclusive file lock.
+- **Decision:** While the gate runs, write key=value metadata to the lock file: `pid`, `pids` (main + tracked children), `started`, `script`, `status` (`running`/`exited`/`interrupted`), `updated`. On lock contention, print the file plus a per-PID alive check (`kill -0` / `Get-Process`). Unix updates via `lib.sh`; Windows writes through the held `LockStream`.
+- **Rationale:** Makes stale-lock diagnosis actionable (`kill <pid>`) without spelunking `pgrep`. Tests: `tests/unit/test_gate_lock_file.py`.
+
+## 2026-09-11 — Quality gate interrupt cleanup (Ctrl+C)
+
+- **Context:** Cancelling `checks.sh` / `checks-win.ps1` with Ctrl+C left parallel pytest bucket subprocesses and lock holders running (orphan bash/pytest/xdist trees).
+- **Decision:** Track background PIDs in `lib.sh` with INT/TERM/EXIT traps that recursively kill process trees (`pgrep` + group kill). Apply in `checks.sh` (parallel light steps + pytest subshell), `pytest.sh` (concurrent buckets), and `run_with_watch.sh` (setsid pytest leader). Windows: register `Start-Process` children, handle `[Console]::CancelKeyPress`, and `Stop-ProcessTree` / `taskkill /T` in `finally` blocks.
+- **Rationale:** Ctrl+C should tear down the whole gate, not just the foreground `wait`. Verified scoped gate PASSED after changes.
+
+## 2026-09-11 — Single OS-aware Taskipy `checks` task
+
+- **Context:** The quality gate had ~34 Taskipy entries (`checks`, `checks-win`, `*-quiet`, scoped variants) duplicating the same flag combinations across Unix and Windows.
+- **Decision:** Replace the matrix with one Taskipy task (`python scripts/quality/checks.py`) that detects the OS and forwards documented flags (`--fix`, `--full`, `--full+cpu`, `--quiet`, `--scope`, bucket shorthands) to `checks.sh` or `checks-win.ps1`. Pass flags after `--` in Taskipy so `uv run` does not consume `--quiet`. Keep verbose as the default; agents pass `--quiet` explicitly. CI still invokes `checks.sh` directly.
+- **Rationale:** One discoverable entry point with `--help`; same flags on every OS; removes Windows/Unix task naming drift. Verified: unit tests for dispatch, `uv run task checks -- --help`, scoped gate `uv run task checks -- --quiet --scope=core,gui,tui` PASSED.
+
+## 2026-09-10 — SrxyPython copy + vtool SDK 26 for Liquid Glass
+
+- **Context:** After Mach-O ``Srxy.app`` + in-bundle ``SrxyPython``, ``NSBundle.mainBundle`` was correct (``com.srxy.app``) but the installed GUI still looked like legacy Aqua vs ``uv run task gui``. Measured: after ``execv`` the process image is uv’s CPython with ``LC_BUILD_VERSION sdk 15.5``; Homebrew ``Python.app`` used by ``uv run`` is ``sdk 26.4``. AppKit enables Tahoe Liquid Glass from the main executable’s linked SDK ([cpython#139404](https://github.com/python/cpython/issues/139404)).
+- **Decision:** Always ``shutil.copy2`` the venv interpreter into ``Contents/MacOS/SrxyPython`` (never hardlink — ``vtool`` must not mutate ``~/.local/share/uv/python``); ``xcrun vtool -set-build-version macos 12.0 26.0 -replace``; ad-hoc ``codesign`` the copy and the Mach-O stub. Repair script asserts ``sdk 26``; unit tests cover restamp + embed.
+- **Rationale:** Bundle identity alone cannot unlock Liquid Glass; restamping the *exec’d* interpreter matches AppKit’s linked-on-or-after check without switching the prefix off uv-managed CPython.
+
+## 2026-09-10 — Srxy.app PYTHONHOME; help ScrollView; repair script quoting
+
+- **Context:** In-bundle ``SrxyPython`` failed at startup (``Could not find platform independent libraries`` / prefix ``/install``) so Finder/Dock opened nothing. ``repair-prefix-gui.sh`` used ``Path($(printf '%q' "$PREFIX"))`` → ``Path(/Users/…)`` SyntaxError. Help body lacked a ScrollView; Filters sheet was oversized (520–640).
+- **Decision:** Bake ``PYTHONHOME`` (resolved ``sys.base_prefix``) into the Mach-O launcher; repair script uses ``Path(os.environ["SRXY_HOME"])`` + heredoc and clean-env ``--help`` smoke; help content always in ``ScrollView``; Filters height ~340–420.
+- **Rationale:** Relocating the interpreter changes argv[0]; PYTHONHOME is required. Quoting via env avoids shell/Python string bugs. ScrollView + shorter Filters match normal dialog UX.
+
+## 2026-09-10 — Help/alerts use SrxyDialog+AccentButton (drop MessageDialog)
+
+- **Context:** Info-button help used Qt Quick ``MessageDialog``. On macOS it fell back to Basic chrome (weird OK) and, with ``parentWindow`` null/root under ``Popup.Native`` Options, stacked *behind* the Options sheet so OK was almost unclickable.
+- **Decision:** Help/unavailable always open ``helpDialog`` (``SrxyDialog`` + ``AccentButton``). When another sheet is open, force ``Popup.Window`` so help sits above Options; otherwise ``Popup.Native`` / Item for tests. Remove remaining MessageDialog error/confirm paths in Main.qml (same stacking/chrome issues).
+- **Rationale:** AccentButton matches Options/Filters; Window-above-sheet is reliable where Native-on-Native and NSAlert parenting are not.
+
+## 2026-09-10 — Srxy.app CFBundleExecutable is Mach-O; MessageDialog parent is QWindow*
+
+- **Context:** Installing with a shell script as `Contents/MacOS/srxy` made LaunchServices fail (`kLSNoExecutableErr` / Dock “(null)”). Separately, help `MessageDialog.parentWindow = open SrxyDialog` raised `Cannot assign QObject* to QWindow*`. InfoButton ToolTip broke after the macOS pill background swap. Tests never clicked “i” with native alerts on.
+- **Decision:** Compile packaged `SrxyAppLauncher.c` to Mach-O at install time (paths baked via `-D`); still embed `SrxyPython`. When a sheet is open, set `MessageDialog.parentWindow` to `null` (app-modal NSAlert); otherwise `root`. InfoButton uses HoverHandler-driven ToolTip + objectNames; `capture_qt_messages` fails tests on QML assign/runtime errors; installer tests assert Mach-O magic and LaunchServices open without `kLSNoExecutableErr`.
+- **Rationale:** Modern macOS rejects shell `CFBundleExecutable`; `parentWindow` is `QWindow*`; app-modal null stacks above sheets; tests must exercise the user click path.
+
+## 2026-09-10 — Srxy.app embeds interpreter for AppKit mainBundle
+
+- **Context:** After pinning PySide and exporting `QT_QUICK_CONTROLS_STYLE=macOS`, the installed GUI still looked like older macOS vs `uv run`. The `.app` entrypoint was a shell script that `exec`’d `prefix/.venv/bin/python` (uv CPython outside the bundle). AppKit then treated the process as that interpreter’s bundle, so Qt’s macOS NativeStyle used a compatibility / non-app chrome path. Separately: Filters lacked ScrollView; info `ToolButton` hover was a heavy slab; help `MessageDialog` parented to the main window appeared under Popup.Native Options/Filters sheets.
+- **Decision:** Hardlink/copy the venv Python into `Srxy.app/Contents/MacOS/SrxyPython` and have the bundle Mach-O launcher exec that binary with `PYTHONPATH` → venv site-packages; Info.plist gains `NSHighResolutionCapable`, `LSSupportsAutomaticGraphicsSwitching`, and `LSEnvironment.QT_QUICK_CONTROLS_STYLE=macOS` (never `UIDesignRequiresCompatibility`). Filters get ScrollView + bounded height; info hover uses a light pill on macOS; native alerts use a QWindow-compatible parent (see Mach-O / parentWindow decision above); remove the style stdout line.
+- **Rationale:** `NSBundle.mainBundle` follows the running Mach-O path; keeping the interpreter inside the `.app` is the standard fix for script-launched Python GUIs.
+
+## 2026-09-10 — macOS dialog footer opacity + installed Quick style harden
+
+- **Context:** Native Filters sheets looked good but OK sat flush to the right edge, the Cancel/OK strip was transparent (form content visible underneath), and Filters felt cramped. Installed `Srxy.app` could still look “old” vs `uv run` because Finder launches omit style env, QML disk caches linger, and pip floated PySide to 6.11.2 while offline/`uv run` stay on 6.11.1.
+- **Decision:** Opaque macOS `SrxyDialogFooter` with 16px side padding; Filters width 560 on Darwin; Unix launcher exports `QT_QUICK_CONTROLS_STYLE=macOS`; clear `~/Library/Caches/{srxy,Python}/qmlcache` on `write_launcher`; after Darwin package install pin `PySide6==6.11.1`; ship `scripts/macos/repair-prefix-gui.sh` for existing prefixes.
+- **Rationale:** Footer is laid out full-bleed (Dialog padding does not inset it); env+pin+cache removes the three installed-vs-dev skews we can control without requiring a full offline rebuild.
+
+## 2026-09-10 — Offline install: payload wheel beats PyPI; macOS Dialog uses Popup.Native
+
+- **Context:** Local installer wizard looked correct (live tree) while `~/Applications/srxy` stayed on an older install (Fusion `Dialog`, no `+macos` sheet). Separately, packaged offline installers could prefer a newer PyPI `srxy` than the wheel they shipped. Custom sheet chrome with stacked fake shadows still felt non-native. On macOS 26, `iconutil -c icns` rejects valid iconsets (`Invalid Iconset`), breaking launcher tests and `.app` icon generation.
+- **Decision:** (1) When `APPDIR` / `SRXY_INSTALLER_PAYLOAD` has a wheel, `resolve_srxy_install_spec` always returns that path (no PyPI upgrade). (2) macOS `+macos/SrxyDialog.qml` uses `Popup.Native` for interactive runs; offscreen tests keep `Popup.Item` when `srxyUseNativeAlerts === false`. Drop double drop-shadow rectangles; footer gets a hairline only. (3) Pack `.icns` via `srxy.resources.icons.icns.write_icns_from_png` (Pillow + PNG ICNS chunks); use it from `install.py` and macOS packaging `build_icns`.
+- **Rationale:** Wizard UI and installed package must match the payload; Cocoa-hosted popups beat hand-drawn Fusion sheets; tests need overlay Item popups for `findChild` / synthetic clicks; Apple’s encoder is broken on Tahoe while a pure-Python ICNS still round-trips through `iconutil --convert iconset`.
+
+## 2026-09-10 — macOS: terminal quit signals, Quick style harden, native alerts
+
+- **Context:** (1) Ctrl+C from `uv run task gui` left the Qt window open because `app.exec()` never saw SIGINT — and a TTY-only install skipped some launch trees; background/parent jobs often leave SIGINT as ``SIG_IGN``. (2) Packaged offline installer / installed app could look non-native if the macOS Quick style failed to load silently (Basic/Fusion). (3) Qt’s macOS Quick `Dialog` is Fusion-derived; Options/Filters/etc. looked like old Qt boxes vs WinUI/Material.
+- **Decision:** (1) `install_terminal_quit_signals` always on Unix: un-ignore SIGINT, handlers + ``signal.set_wakeup_fd`` + ``QSocketNotifier`` + 200ms ``QTimer`` pump → ``QCoreApplication.quit()``; wired in GUI + installer. (2) `prefer_macos_quick_controls_style` sets `QT_QUICK_CONTROLS_STYLE=macOS` before `QGuiApplication`; Darwin theme path warns if `QQuickStyle.name() != "macOS"`; offline build pins `PySide6==6.11.1`; smoke asserts style; packaging contract tests. (3) Form modals use shared ``SrxyDialog``; on macOS ``+macos/SrxyDialog.qml`` (QFileSelector) is a ``Templates.Dialog`` with sheet-like chrome (radius 14, centered title, dim scrim) — Windows/Linux keep a plain ``Dialog`` passthrough. Simple confirms/help/error use native ``MessageDialog`` (NSAlert) with ``parentWindow`` when not offscreen.
+- **Rationale:** Matches Python+Qt best practice for Ctrl+C (wakeup fd + timer); makes packaged style failures visible; Qt has no native form Dialog on macOS, so sheet chrome + NSAlert is the practical native-feeling split without touching other platforms.
+
+## 2026-09-07 — Windows offline: fat PySide SFX replaces Inno Setup
+
+- **Context:** The PySide fat self-extracting `SrxyInstaller.exe` proved clearly better UX than the Inno Setup wizard. Keeping both doubled CI/docs/maintenance cost and left a commercial-license cliff for Inno.
+- **Decision:** Remove Inno Setup packaging (`srxy-offline.iss`, Inno `build-offline.ps1` / `smoke-offline.ps1`, tessdata-langs.txt, ISS contract tests, Inno CI job/tasks). The Windows offline artifact is solely the fat PySide zip (`srxy-*-installer-*-x86_64.zip` → `SrxyInstaller.exe`). Release attach uses that artifact. NSIS remains optional future outer packaging, not a prerequisite to ship.
+- **Rationale:** One Windows installer stack aligned with macOS/Linux PySide wizards; no Inno commercial license exposure; simpler releases.
+
+## 2026-09-06 — Windows PySide offline: fat self-extracting SrxyInstaller.exe
+
+- **Context:** The PySide offline zip previously expanded to a portable folder (`python\` + `venv\` + `share\` + thin `SrxyInstaller.exe`). Users wanted a single fat exe after unzip.
+- **Decision:** Keep the distribution zip name, but put only a self-extracting `SrxyInstaller.exe` inside. Build appends `payload-embed.zip` (python/venv/share) plus a `SRXYISFX` trailer (sha256 + length + magic) to a csc-compiled stub. On launch the stub extracts once to `%LOCALAPPDATA%\srxy\is\<sha16>\p\` (short path to stay under MAX_PATH for deep Qt trees) and sets `SRXY_INSTALLER_PAYLOAD` as before. Headless args use `python.exe` + WaitForExit (no MessageBox).
+- **Rationale:** Same embedded payload contract as macOS/Linux offline wizards without introducing NSIS yet; unzip UX is one double-clickable exe; cache avoids re-extract on every launch.
 
 ## 2026-09-01 — Windows installer: Inno for now; migrate to PySide wrapper + NSIS
 
@@ -331,3 +414,9 @@ _Log of significant technical, structural, or dependency choices. Newest first._
 - **Context:** Windows OCR language data for the installer.
 - **Decision:** Ship language packs as opt-in downloads from pinned upstream HTTPS sources; no bundled third-party runtime binaries.
 - **Rationale:** Third-party binary policy (`AGENTS.md`) — keep tesseract/ffmpeg/CUDA etc. out of installer artifacts, the repo, and Releases.
+
+## `write_icns_from_png` import deferred to call site in `install.py`
+
+- **Context:** develop `61855d4` (macOS Mach-O launcher / Tahoe restamp merge) added a module-level `from srxy.resources.icons.icns import write_icns_from_png` in `install.py`. `icns.py` imports Pillow. The Windows offline installer's relocatable wizard venv installs `srxy` with `--no-deps` (only `PySide6` is installed explicitly), so Pillow isn't present — the venv-relocation import smoke test (`from srxy.adapters.inbound.installer.install import InstallOptions`) failed with `ModuleNotFoundError: No module named 'PIL'`, breaking `build-offline.ps1` (Windows Installer CI, `build-offline` job).
+- **Decision:** Import `write_icns_from_png` lazily inside `_write_macos_app`, right before use (which is already `sys.platform != "darwin"`-guarded and wrapped in a best-effort `try/except`), instead of at module top level.
+- **Rationale:** `write_icns_from_png` is macOS-only functionality; deferring the import keeps `install.py` importable without Pillow on platforms/venvs that don't need it, restoring Windows Installer CI without touching shared packaging behavior on macOS/Linux.

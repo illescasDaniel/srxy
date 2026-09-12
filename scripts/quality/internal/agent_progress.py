@@ -36,7 +36,12 @@ def _report() -> None:
 	total = _count("total")
 	denominator = total if total else done
 	ok = done - _count("failed")
-	sys.stdout.write(f"[gate] {done}/{denominator} (ok={ok} fail={_count('failed')})\n")
+	bucket = os.environ.get("LIB_GATE_BUCKET_NAME", "").strip()
+	if bucket:
+		prefix = f"[gate] pytest[{bucket}] "
+	else:
+		prefix = "[gate] "
+	sys.stdout.write(f"{prefix}{done}/{denominator} (ok={ok} fail={_count('failed')})\n")
 	sys.stdout.flush()
 	_state["last"] = done
 

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 import json
+import os
 import platform
+import time
+from collections.abc import Callable
 from pathlib import Path
 
 import pytest
@@ -24,6 +27,29 @@ from srxy.application.install_paths import MANIFEST_NAME
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.gui, pytest.mark.xdist_group("gui")]
+
+# Background QThread worker tests (install/uninstall/reinstall) wait on real
+# threading.Event / QCoreApplication signal delivery rather than fixed sleeps.
+# CI runners can be heavily oversubscribed (parallel jobs, throttled VMs), so
+# give these a generous, overridable budget instead of a short hardcoded one.
+_WAIT_SECONDS = float(os.environ.get("SRXY_TEST_WORKER_WAIT_SECONDS", "20.0"))
+
+
+def _pump_until(predicate: Callable[[], bool], *, timeout: float = _WAIT_SECONDS) -> bool:
+	"""Pump the Qt event loop until ``predicate()`` is true or ``timeout`` elapses.
+
+	Used instead of a plain sleep loop so queued cross-thread signals (worker
+	status/finished/failed) are actually delivered while waiting.
+	"""
+	from PySide6.QtCore import QCoreApplication
+
+	deadline = time.monotonic() + timeout
+	while time.monotonic() < deadline:
+		QCoreApplication.processEvents()
+		if predicate():
+			return True
+		time.sleep(0.01)
+	return predicate()
 
 
 def test_given_manifest_when_writing_and_reading_then_round_trips(tmp_path: Path):
@@ -546,7 +572,6 @@ def test_given_unsafe_confirm_accepted_when_installing_then_passes_confirm_unsaf
 	import os
 	import threading
 	import time
-	from collections.abc import Callable
 
 	from PySide6.QtCore import QCoreApplication
 
@@ -664,8 +689,6 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 ):
 	# given — uninstall uses a spinner, not file progress
 	import threading
-	import time
-	from collections.abc import Callable
 	from typing import cast
 
 	from PySide6.QtCore import QCoreApplication
@@ -703,7 +726,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 		if status is not None:
 			status("Removing srxy app…")
 		started.set()
-		assert release.wait(5.0)
+		assert release.wait(_WAIT_SECONDS)
 
 	monkeypatch.setattr(controller_mod, "uninstall_prefix", fake_uninstall)
 	controller = InstallerController()
@@ -711,13 +734,8 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 
 	# when
 	controller.startUninstall()
-	assert started.wait(5.0)
-	deadline = time.monotonic() + 2.0
-	while time.monotonic() < deadline:
-		QCoreApplication.processEvents()
-		if "Removing srxy app" in str(controller.status):
-			break
-		time.sleep(0.01)
+	assert started.wait(_WAIT_SECONDS)
+	assert _pump_until(lambda: "Removing srxy app" in str(controller.status), timeout=2.0)
 
 	# then — busy with indeterminate bar while deleting
 	assert bool(controller.busy) is True
@@ -725,10 +743,7 @@ def test_given_uninstall_when_started_then_shows_removing_status_and_indetermina
 	assert "Removing srxy app" in str(controller.status)
 
 	release.set()
-	deadline = time.monotonic() + 5.0
-	while bool(controller.busy) and time.monotonic() < deadline:
-		QCoreApplication.processEvents()
-		time.sleep(0.01)
+	assert _pump_until(lambda: not bool(controller.busy))
 	controller.shutdown()
 
 	assert bool(controller.finished) is True
@@ -866,8 +881,6 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 ):
 	# given
 	import threading
-	import time
-	from collections.abc import Callable
 	from typing import cast
 
 	from PySide6.QtCore import QCoreApplication
@@ -905,7 +918,7 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 		calls.append(f"uninstall:{path}")
 		if status is not None:
 			status("Removing srxy app…")
-		assert release.wait(5.0)
+		assert release.wait(_WAIT_SECONDS)
 
 	def fake_install(
 		options: InstallOptions,
@@ -935,19 +948,11 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 
 	# when
 	controller.startReinstall()
-	deadline = time.monotonic() + 2.0
-	while time.monotonic() < deadline:
-		QCoreApplication.processEvents()
-		if bool(controller.busy) and "uninstall:" in "".join(calls):
-			break
-		time.sleep(0.01)
 	assert bool(controller.busy) is True
 	assert str(controller.page) == "progress"
+	assert _pump_until(lambda: "uninstall:" in "".join(calls), timeout=_WAIT_SECONDS)
 	release.set()
-	deadline = time.monotonic() + 5.0
-	while bool(controller.busy) and time.monotonic() < deadline:
-		QCoreApplication.processEvents()
-		time.sleep(0.01)
+	assert _pump_until(lambda: not bool(controller.busy))
 
 	# then
 	assert calls == [f"uninstall:{prefix.resolve()}", f"install:{prefix.resolve()}"]
@@ -961,7 +966,6 @@ def test_given_srxy_prefix_when_starting_reinstall_then_uninstalls_then_installs
 def test_given_install_mode_when_starting_then_does_not_call_uninstall(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
 	# given — install-or-update must not wipe via uninstall_prefix
 	import time
-	from collections.abc import Callable
 
 	from PySide6.QtCore import QCoreApplication
 
@@ -1061,6 +1065,10 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	# Fake venv python so Srxy.app can embed an in-bundle interpreter.
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1073,6 +1081,23 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	assert 'echo "argv: $*"' not in content or "SRXY_DEBUG:-" in content
 	assert "Applications/srxy" in content or "Applications\\/srxy" in content
 	assert 'exec ">>"$LOG_FILE"' not in content.replace("\n", " ")
+	if platform.system().lower() == "darwin":
+		assert "QT_QUICK_CONTROLS_STYLE" in content
+		assert "macOS" in content
+		plist = prefix / "Srxy.app" / "Contents" / "Info.plist"
+		assert plist.is_file()
+		import plistlib
+
+		data = plistlib.loads(plist.read_bytes())
+		assert data.get("NSHighResolutionCapable") is True
+		assert (data.get("LSEnvironment") or {}).get("QT_QUICK_CONTROLS_STYLE") == "macOS"
+		# In-bundle interpreter so AppKit keeps com.srxy.app as mainBundle.
+		assert (prefix / "Srxy.app" / "Contents" / "MacOS" / "SrxyPython").exists()
+		app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+		raw = app_exe.read_bytes()
+		# LaunchServices rejects shell scripts as CFBundleExecutable (kLSNoExecutableErr).
+		assert not raw.startswith(b"#!"), "Srxy.app executable must be Mach-O, not a shell script"
+		assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
 
 
 @pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
@@ -1084,6 +1109,9 @@ def test_given_prefix_when_writing_launcher_then_no_unconditional_redirect_befor
 	prefix.mkdir()
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1105,11 +1133,13 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	from srxy.adapters.inbound.installer import install as install_mod
 
 	monkeypatch.setattr(install_mod.platform, "system", lambda: "Darwin")
-	monkeypatch.setattr(install_mod.shutil, "which", lambda _name: None)
 	prefix = tmp_path / "Applications" / "srxy"
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1117,8 +1147,37 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	# then
 	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
 	assert app_exe.is_file()
-	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
+	raw = app_exe.read_bytes()
+	assert not raw.startswith(b"#!"), "CFBundleExecutable must not be a shell script"
+	assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
 	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
+
+
+@pytest.mark.skipif(platform.system().lower() != "darwin", reason="Mach-O CFBundleExecutable only on macOS")
+def test_given_darwin_app_bundle_when_writing_launcher_then_executable_is_macho_not_shell(
+	tmp_path: Path,
+):
+	"""Regression: shell CFBundleExecutable → Dock '(null)' / kLSNoExecutableErr."""
+	# given
+	prefix = tmp_path / "Applications" / "srxy"
+	(prefix / ".venv" / "bin").mkdir(parents=True)
+	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"#!/bin/sh\necho stub-python\n")
+	fake_py.chmod(0o755)
+	site = prefix / ".venv" / "lib" / "python3.12" / "site-packages"
+	site.mkdir(parents=True)
+
+	# when
+	write_launcher(prefix)
+	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+	raw = app_exe.read_bytes()
+
+	# then — do not call ``open`` here; LaunchServices can destabilize the shared
+	# QGuiApplication used by other GUI tests in this process.
+	assert not raw.startswith(b"#!"), "CFBundleExecutable must not be a shell script"
+	assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
+	assert os.access(app_exe, os.X_OK)
 
 
 def test_given_windows_prefix_when_writing_launcher_then_writes_cmd(
@@ -1215,7 +1274,6 @@ def test_given_task_and_download_progress_when_installing_then_exposes_dual_bars
 	# given
 	import os
 	import time
-	from collections.abc import Callable
 	from typing import cast
 
 	from PySide6.QtCore import QCoreApplication
@@ -1289,7 +1347,6 @@ def test_given_multi_gb_bytes_when_updating_progress_then_shows_human_sizes(
 	# given
 	import os
 	import time
-	from collections.abc import Callable
 
 	from PySide6.QtCore import QCoreApplication
 

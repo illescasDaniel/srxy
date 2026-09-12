@@ -1,83 +1,28 @@
 # Progress
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-12_
 
-## v1.7.0 — fixes and improvements
+## v1.7.0 — shipped 2026-09-11
 
-_(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope beyond a patch.)_
+Shipped on `main` @ `2c64f08` (PR #44 develop→main). Tag/release: https://github.com/illescasDaniel/srxy/releases/tag/v1.7.0
 
-### Done
+User-facing notes live on the GitHub Release (not duplicated here). Installers (Windows offline zip, macOS offline/online DMG, Linux AppImage) attached to that release; CI tag jobs green.
 
-- [x] Preview lifetime / stuck “Loading…” — hold `QQuickTextDocument`, re-resolve live doc + `isValid`, Python `setPlainText`, drop QML text binding, fixed line-height (no shiboken `documentLayout`).
-- [x] Magika content routing — NUL-first binary gate; escalate Magika for extensionless / parse fail / wrong extension; wire body/media/doc/preview; fixtures + unit/GUI tests. Dependency `magika>=1.0.3`.
-- [x] Quality type checker `basedpyright` → `ty` (Unix + Windows gate).
-- [x] Windows GUI (PR #28) — FluentWinUI3 theme, fallback Universal → Windows.
-- [x] Shared `AccentButton` + button GUI improvements.
-- [x] Windows installer UX — dynamic disk-space estimates, `n/m - step` progress titles, pip/CUDA progress heartbeats + cancel-file, installer language → prefix `settings.json`, uninstall cleanup checkboxes (cache/settings/models default on). Inno + shared engine + PySide parity.
-- [x] macOS installer/signing path hardening + icon regen.
-- [x] OCR orientation fixtures + orientation-aware OCR text.
-- [x] GPU availability + installer (catalog/vendor/path-setup) refactors.
-- [x] en/es i18n updates.
-- [x] Test expansion (theme, installer, OCR orientation, tessdata, search worker, GUI snapshots).
-- [x] Preview theme-aware highlighting, in-preview find, context menus, reveal_path (merged `feature/preview-highlight-find` → `feature/fixes_1.6.6`, `95f499e`).
-- [x] Preview syntax highlighting applies to all file sizes (removed the 16 KB / 500-line plain fallback in `gui/preview.py`; added regression test).
-- [x] Preview header file-path elision: long file names in the preview panel now elide with `...` (right) and show the full path on hover (`ToolTip`); metadata `score · matched` stays visible. Added `previewFilePath` property + unit test. Gate passed.
-- [x] Dialog OK buttons render dark in dark mode — `AccentButton` relied on the standard `highlighted` property, which `DialogButtonBox` clobbers on its child buttons (FluentWinUI3 delegate drives it from `buttonRole`). Replaced with an explicit `accent` bool; Search button now toggles `accent` instead of `highlighted`. Regression test asserts OK buttons render accent fill/foreground. Gate passed.
-- [x] Linux "Browse" button now opens the native folder picker — `prefer_native_file_dialogs()` sets `QT_QPA_PLATFORMTHEME=xdgdesktopportal` on Linux before `QGuiApplication` (gui + installer), routing `FolderDialog` through the desktop portal. macOS/Windows untouched. Unit tests added; gate passed; committed (`2b9e722`).
-- [x] Host-portal registration warning gone — set Qt app identity (name/org/desktop file name) via static setters **before** `QGuiApplication` construction (`apply_app_identity` in `app_icon.py`), so Qt registers with `org.freedesktop.host.portal.Registry` at init time instead of after a portal colour-scheme read (which logged `Connection already associated with an application ID`).
-- [x] Agent-verbosity quality gate — `--quiet` (Unix) / `-Quiet` (Windows) on `checks.sh`/`checks-win.ps1`: pytest collapses to sparse `[gate] N/total` progress lines (new `scripts/quality/internal/agent_progress.py` plugin), passing light-step logs are suppressed on the verify path, and the heavy pass silences HF/transformers/tqdm noise. Failures still print short tracebacks + `-ra` summary; `--full`/CI unchanged. Day-to-day Taskipy tasks stay verbose; dedicated `*-quiet` tasks (`checks-quiet`/`checks-fix-quiet`/`checks-full-quiet`/`checks-full-cpu-quiet`/`checks-win-quiet`/`checks-win-fix-quiet`/`checks-win-full-quiet`/`checks-win-full-cpu-quiet`) exist for agents, and `AGENTS.md` instructs agents to always use them. Verified: `uv run task checks` (verbose) and `uv run task checks-quiet` (quiet) both PASSED.
-- [x] Native-first `AccentButton` — dropped the custom `Rectangle`/`Text` background+contentItem (and hardcoded 80x32 size) in favour of native chrome recoloured via `highlighted`. Qt 6.11 `DialogButtonBox` calls `setHighlighted(button == defaultButton)` on all children every layout pass, so dialog OK/Yes buttons now set `DialogButtonBox.defaultButton` (plus `AcceptRole`) instead of relying on a `highlighted` binding. `qt_theme.py` pins `QPalette.Accent` to the button accent so FluentWinUI3's highlighted fill matches `SrxyTheme.accent`. Regression test now asserts `highlighted`/`foreground`. Gate passed.
-- [x] QML results ListView warning (`DelegateModel::cancel: index out range`) — `ResultsModel.clear()`/`replace_results()` now use row-based `beginRemoveRows`/`endRemoveRows` (+ `beginInsertRows`) instead of a full `beginResetModel()`, so the delegate model cancels in-flight items with valid indices. Added `tests/unit/test_gui_models.py` (deterministic signal assertions: rows removed/inserted, never `modelReset`) + a GUI regression test in `test_gui_qml_load.py` (drives two search cycles through loaded QML, asserts no `DelegateModel`/`index out range` warning). Gate passed.
-- [x] Version bump `1.6.5` → `1.6.6` (interim) then **`1.6.6` → `1.7.0`** — skip shipping 1.6.6; `pyproject.toml` `1.7.0`, `min_srxy_version` `1.7.0` in both `installer_meta.toml` copies, `uv.lock` regenerated, tests synced (`test_updates_path_i18n.py` / `test_installer_online.py` → `1.7.0`). Checklist documented in `docs/development.md` → **Bumping the release version**.
-- [x] Full quality gate before release — `checks-fix-quiet` PASSED (ruff/shell/basedpyright/pip-audit/build/pytest all clean, 123 heavy tests in ~4:44; first `checks-quiet` run flagged only a Ruff format issue in the new test file, fixed). Clean cache-free unit pass: 791 passed, 2 skipped.
-- [x] macOS Search button alignment + accent label color — Search stretch-to-field only on Windows; macOS/Linux native size + `AlignVCenter`. `AccentButton` sets `palette.buttonText: foreground`; darwin `SrxyTheme.onAccent` always white (Aqua). Tests: platform-aware layout assert, OK `palette.buttonText == onAccent`, darwin onAccent unit test. Gate passed (`checks-quiet`). Committed (`4f3b8e2`, `a3344ed`); visually tested on macOS.
-- [x] Linux Material pinkish window background — Qt 6.11 M3 default surface `#fffbfe`; Linux now sets `QT_QUICK_CONTROLS_MATERIAL_BACKGROUND` to `#ffffff` (light) / `#303030` (dark) from the active colour scheme after `follow_system_color_scheme`. Unit tests added. Committed (`8216a59`); visually tested light/dark on Linux.
-- [x] Windows dark-mode GUI visual QA (theme / results `SplitView` grips) — confirmed OK by user (2026-08-29).
-- [x] Search button dark tint after cancel — commit `_last_snapshot` only on successful finish; clear on cancel/error so `stale`/`accent` stay true. Unit + QML tests. Gate passed (`checks-win` fix+verify).
-- [x] `AccentButton` binding loop on `foreground` — sibling `SystemPalette` for face/disabled colours; gate passed.
-- [x] Overlap file listing with search — `_execute_file_search` streams `iter_files` into sequential/thread/process workers (process pool opens at 50 files mid-walk); CLIP encodes up front when semantic image is active; determinate progress only after the walk. Unit tests for early results / cancel / progress / process-pool threshold. Committed (`9e5f08b`).
-- [x] Permission denied (Error 13 / EACCES) during search — skip as `SkippedFile(reason="permission_denied")`, warn via existing ⚠ UI, walker `onerror` + parent-dir prune when unlistable. Unit tests added. Committed (`9e5f08b`).
-- [x] Preview RichText font warnings on Windows — HTML `font-family:monospace` mapped to bitmap TypeWriter fonts; now uses platform faces matching QML. Gate passed (`checks-win-quiet`). Applied from worktree `r9oj`.
-- [x] Faster GUI launch — application-layer shared helpers (GUI stops importing CLI); deferred capability probe; lazy OCR/transcribe/cryptography/rapidfuzz on cold path; `SRXY_STARTUP_TIMING=1`. Offscreen: `cli_imported` ~0.30s→~0.10s, `qml_loaded` ~1.06s→~0.73–0.92s. Worktree `78e5153`.
-- [x] Splash screen + PySide6/QML startup — early `Splash.qml` (`Qt.SplashScreen`), defer controller after splash paint, `Main.qml` hidden until `_reveal_main`, branding (name/author/version) + staged status, `QQuickWindow.setDefaultAlphaBuffer(False)`, `SRXY_NO_SPLASH=1`. Docs: [gui.md](../docs/gui.md#startup-splash) (limits + disable/remove), [development.md](../docs/development.md) timing envs. Offscreen: `splash_shown` ~0.43s, `qml_loaded` ~0.92s. Worktree `b8e0902`.
-- [x] Faster quality gate — path buckets (core/gui/tui/heavy), git-diff auto-scope, Windows parallel light steps + inherited pytest stdout + direct venv exes + wall watchdog, per-bucket testmon, `.gate-cache`, test reorg (Qt→gui, Textual→tui, real OCR/whisper→integration), docs/AGENTS/CI/tasks. Collection parity 962=962. `checks-win-quiet` PASSED. Committed (`09aac8d`).
-- [x] Project skills: `apply-worktree-srxy` / `delete-worktree-srxy` under `.cursor/skills/` (`c543b19`).
-- [x] Windows CUDA torch ensure — bare `uv sync` leaves/restores CPU-only PyTorch; added `sync-win` task + `ensure-windows-cuda-torch.ps1`, gate auto-runs before `heavy`, docs/AGENTS/`apply-worktree-srxy` updated. Verified `2.13.0+cu130` / `cuda=True` on RTX 4070.
-- [x] Windows installer CUDA PyTorch phase — after semantic package on Windows+NVIDIA, reinstall `cu130` (fallback `cu126`) into prefix `.venv` via `installer/cuda_torch.py`; unit + flow tests; docs. Gate passed.
-- [x] `semantic-gpu` extra + uv sources — Windows CUDA torch locked via `[tool.uv.sources]` / pytorch-cu130 index; `sync-win` uses `--extra semantic-gpu` on NVIDIA so sync no longer thrash-reinstalls CUDA wheels. Verified: `Checked 121 packages` + `OK (2.13.0+cu130, cuda=True)`.
-- [x] Unix `copy-venv.sh` for `copy-venv-to-worktree-srxy` (rsync + `uv sync --extra semantic`); SKILL.md updated; primary-abort smoke + shellcheck/shfmt clean.
-- [x] Linux validation of bucketed quality gate — fixed ShellCheck (SC2155 `LIB_PYTEST_WORKERS`, unused `cov_append`, SC2034 `LIB_SCOPE_REASON`); `checks-fix-quiet` + `checks-all-quiet` PASSED (full bucket pytest: heavy 45 / gui 167 / tui 90 / core 671).
-- [x] copy-venv shebang / editable-path rewrite — `rewrite_venv_paths.py` after rsync/robocopy (shebangs, `srxy.pth`, `direct_url.json`, Windows trampoline `UV_PYTHON_PATH`); then `--offline --reinstall-package srxy`; verify shebang + `srxy.__file__`. Unit tests + shellcheck/shfmt; core 673 passed.
+### Open (post-1.7.0)
 
-- [x] GUI heavy-search freeze — subprocess isolation (no GIL on Qt thread), no process pool for light worker searches, stream-append + sort-on-finish, coalesced status/list updates, lighter results delegates; `profile-gui-freeze.sh` helper. User confirmed buttery UI (`c20d4dc`).
-- [x] Activity spinner via separate `activitySpinner` property; progress bar indeterminate until file total known, then 0–100%. Docs + `memory/decisions.md` annotated.
-- [x] Search button label/icon colour now matches the dialogs' OK button — dropped the hand-tinted custom `contentItem` (and the `Qt5Compat.GraphicalEffects` import, which packaging already prunes); `AccentButton` pins `palette.brightText` and only assigns `icon.color` on macOS. Regression test in `test_gui_qml_load.py`; gate passed.
-- [x] Platform-aware `sync` / `sync-dev` / `sync-uploader` Taskipy tasks + `scripts/dev/sync.py` (NVIDIA / Apple Silicon → `--extra semantic`; else core+dev); docs/AGENTS/copy-venv updated; `sync-win` alias kept.
-- [x] `pywin32` core Windows dependency (`platform_system == 'Windows'`); dropped `[windows]` extra; installer/sync/CI/docs simplified.
-- [x] Collapse extras: single GPU-oriented `[semantic]` (former `semantic-gpu`); drop CPU semantic + `semantic-gpu` name; README no “Fast CPU, no GPU”.
-- [x] Search progress UX — emit `0/N` when listing finishes; thread-pool fan-in for per-file OCR/CLIP/transcribe activity; GUI/TUI sticky Searching yields to Scanning N/M. Applied from worktree `cursor/5ebdc811`.
-- [x] Parallel light + heavy search — OCR/transcribe/CLIP candidates use the thread pool; plain text/name/doc files score inline so results keep streaming during OCR. Port predicates `ocr_candidate_path` / `transcribe_candidate_path`; mixed streaming unit test.
-- [x] Progress bar non-monotonic during OCR — GUI no longer maps determinate activity (page/segment %) onto the file-scan progress bar; status line still shows `N% OCR · file`.
-- [x] GUI Settings menu + maintenance dialog — Settings → Settings… with per-model Clear/Re-download (text/image/transcribe/all) and Clear results cache; confirm dialogs; reuses download progress worker.
-- [x] Settings menu shortcuts — Download All Models / Reset Cache / Reset All Settings (deletes `settings.json`); **All Settings…** opens full dialog including preferences reset. Applied from worktree `cursor/5852d6f1`.
-- [x] GUI persist options/filters — opt-in checkboxes + Reset; `settings.json` (`$SRXY_HOME` or `~/.config/srxy`); flag on OK, payload on exit; restore on next GUI launch. Unit + GUI tests; docs. Applied from `cursor/5648e20a`.
-- [x] Filters dialog live validation — validate while typing; disable OK when draft invalid (`validateFiltersJson`). Applied from `cursor/5648e20a`.
-- [x] Reset All Settings also clears live options/filters + persist flags (and quit does not recreate `settings.json` when file absent / persist off).
-- [x] QML click-driven GUI flow tests — `tests/gui/helpers.py` + `test_gui_flows.py` (full path/query/options/filters/search, names-only via Options UI, filters live validation via click). ~1.6s for 3 tests offscreen; gui bucket.
-- [x] OCR screenshot slowness + flaky `0/N` progress — full-frame OCR fast path (skips redundant region grid when OSD+lexical OK); OCR max dimension 2000px; Tesseract per-call timeout (60s default, `SRXY_OCR_TESSERACT_TIMEOUT`); `ocr_timeout` skip + warning; listing catch-up `(0,N)` always emitted through progress throttle; GUI flow test for OCR `progressCount`; gate passed (core+gui).
-- [x] Parallel OCR/CLIP activity label sync — fan-in summarizes concurrent workers as `OCR · N files` (not one stale filename); listing `Searching…` bypasses worker fan-in so it does not prefix CLIP/OCR labels.
+- [ ] Optional: Authenticode signing for Windows fat `SrxyInstaller.exe` (SmartScreen).
+- [x] Sync #49 hotfix (Windows Property Store subprocess isolation) from `main` @ `182649f` onto `develop` — ported `windows_metadata.py` / `windows_metadata_worker.py` / `tests/unit/test_windows_metadata.py` verbatim via a dedicated sync PR (avoids dirty full main→develop merge from squash history, same pattern as #47/#48). Daniel OK'd this sync; Tech Lead authorized merge.
 
-- [x] GUI cache/model clear off main thread — `_SettingsMaintenanceWorker` runs delete + settings snapshot rebuild on `QThread`; avoids UI hitch from `build_settings_snapshot` size walks after cache reset. Worktree `38v7`.
-- [x] `SecondaryButton` + `SrxyDialogFooter` — dialog Cancel matches Options/Filter on Linux Material (avoids Qt Material `DialogButtonBox` flat+accent foreground); migrated GUI + installer footers and secondary CTAs. Gate passed (`checks-quiet --scope=gui`).
+## Next train — v1.8.0
 
-### Windows fixes batch (2026-09-01)
+Active work lives on `feature/1.8.0` (and its topic branches). Track Open items there / Trello 1.8.0 — do not dump 1.8.0 Done into this file until that train ships.
 
-- [x] Sync script rework — `scripts/dev/sync.py` mirrors uv flags (`--group`, `--no-default-groups` passthrough); pruning guard refuses sync from inside `.venv` without `--force`; bootstrap via `uv run --no-project python scripts/dev/sync.py`; deleted `sync`/`sync-win` Taskipy tasks and wrappers; docs/README/AGENTS/installation restructured around three install paths (release installers, `uv tool install git+…`, checkout sync).
-- [x] All Settings async — settings snapshot built off main thread (stdlib `threading.Thread` + queued apply); loading spinner in dialog; per-kind size cache avoids duplicate walks for `all` row; torch removed from snapshot hot path.
-- [x] Matches horizontal scroll — `MatchesModel.maxTextLength` + `TextMetrics` contentWidth; horizontal ScrollBar; header tracks scroll.
-- [x] File total probe — parallel counting thread emits `0/N` before OCR-backpressured main walk finishes.
-- [x] Preview vertical alignment — `verticalAlignment: TextEdit.AlignTop` on `previewTextArea` (overrides FluentWinUI3 `AlignVCenter`).
-- [x] Gate — `checks-win.ps1 -Fix -Quiet -Scope core,gui` + verify PASSED.
+## Docs — README GUI screenshot (2026-09-11)
+
+- [x] Regenerated `docs/images/gui-linux.png` via `./scripts/docs/export_gui_screenshot.sh`.
+- [x] Fixed script for `SrxyControls` import path + theme context props.
+- [x] Fixed missing Search / flat Options/Filters: headless Material fills often omit from `grabWindow`; script prefers a real display, falls back to software RHI, and composites button faces from QML props when chrome is missing.
+- [ ] Optional: regenerate on a real Linux display (no composite); regenerate `gui-macos.png` / `gui-windows.png` on those hosts; commit when Daniel asks.
 
 - [x] **Manual QA (user):** Windows Inno installer — disk-space label updates with components/tessdata; cancel during CUDA torch; uninstall extras checkboxes; English installer → English GUI on first launch. Confirmed by user 2026-09-01.
 - [x] **Manual QA (user):** OCR search on a folder with a multi-page PDF + other files — confirm progress bar never jumps to 100% then back while OCR status is active. Confirmed by user 2026-09-01.
@@ -99,7 +44,8 @@ _(Shipped as a minor release instead of 1.6.6 — UI overhaul + feature scope be
 - [x] **Search by folder name — QA nits addressed (2026-09-06):** (1) `test_file_search.py` gained a symmetric search-level case: with `include_subdirectories=False`, a top-level folder still matches as a directory result while a deeper one does not (walker-level guarantee was already covered directly in `test_file_walker_directories.py`; this exercises it through the full search API). (2) Closed a JSON `"type"` TOCTOU — `FileSearchResult` gained `is_dir: bool = False`, captured once by `_search_single_file` when the hit is produced (reusing the `is_directory` check it already computes) instead of `format_json_result` re-`stat`-ing `path.is_dir()` at format time. Threaded through the worker subprocess round-trip (`file_result_to_dict`/`file_result_from_dict`) so heavy GUI/TUI searches keep the correct type across the subprocess boundary. `docs/api-reference.md` regenerated. Gate passed clean.
 - [x] **Search by folder name (CLI/TUI/GUI):** Folders whose name matches the query now surface as true directory results (same `FileSearchResult`/scoring pipeline as files), not just files inside matching folders. `FileWalkerPort.iter_files`/`collect_files` gained `include_directories` (one combined `os.walk` pass, no duplicate tree walk); gated by the existing **File names** / `search_names` toggle only — no new option surface. Directories never participate in content/OCR/transcribe/CLIP matching (`_search_single_file` forces `search_contents=False` for `path.is_dir()`); respects `include_subdirectories`, hidden/noise filters, and `match_skipped_names` the same way files do. CLI JSON gained an additive `"type": "file"|"directory"` field; CLI `--names`/`--names-only` help text and `tui.hint.file_names` / `gui.help.search_names` (en/es) mention folder names. Tests: new `tests/unit/test_file_walker_directories.py` (10 cases), 12 new cases in `tests/unit/test_file_search.py` (folder-as-result, content-only exclusion, root excluded, nested + `include_subdirectories`, hidden/noise, fuzzy ranking parity vs. filenames), CLI (`tests/cli/test_cli.py`: flat + JSON `type` + content-only exclusion), TUI (`tests/tui/test_file_search_tui.py`: real-engine names-only hit + content-only exclusion; regenerated 4 snapshot files for the changed hint copy), GUI (`tests/gui/test_gui_flows.py`: click-driven names-only folder hit + selection/preview path, content-only exclusion). Docs: `docs/cli.md` (Scope section), `docs/gui.md`, `docs/tui.md`. Design rationale in `memory/decisions.md` (2026-09-06). Branch `cursor/search-by-folder-name-b203`; PR → `feature/1.8.0`.
 - [ ] **Unlimited OCR (semantic):** When `[semantic]` deps are installed, download/use [`baidu/Unlimited-OCR`](https://huggingface.co/baidu/Unlimited-OCR); else keep Tesseract. Benchmarks (quality+speed), unit + integration tests. Draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-- [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Topic branch off `feature/1.8.0`.
+- [ ] **Media preview panel:** Improve content preview to show **images**, **video**, and **audio** (not only text). Draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual smoke before undraft.
+- [ ] **Search by folder name:** Match folder/directory names in search across **GUI**, **TUI**, and **CLI**. Topic branch off `feature/1.8.0`; unit + GUI/TUI/CLI tests required. Team Lead marks PR ready-for-review when OK.
 - [ ] **Windows installer migration — NSIS:** Replace Inno Setup outer shell with NSIS (permissive license for commercial distribution).
 
 ## Bugs / sub-tasks discovered

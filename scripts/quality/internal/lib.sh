@@ -55,6 +55,173 @@ lib_require_venv() {
 	fi
 }
 
+# ---------------------------------------------------------------------------
+# Interrupt cleanup (Ctrl+C / SIGTERM — kill tracked child trees)
+# ---------------------------------------------------------------------------
+
+LIB_GATE_CHILD_PIDS=()
+LIB_GATE_CLEANUP_FUNCS=()
+LIB_GATE_INTERRUPTED=false
+LIB_GATE_TRAPS_INSTALLED=false
+LIB_GATE_LOCK_FILE=""
+LIB_GATE_LOCK_MAIN_PID=""
+LIB_GATE_LOCK_SCRIPT=""
+LIB_GATE_LOCK_STARTED=""
+
+lib_gate_lock_pid_csv() {
+	local seen="" pid out=""
+	for pid in "${LIB_GATE_LOCK_MAIN_PID:-$$}" "${LIB_GATE_CHILD_PIDS[@]}"; do
+		[[ -n "${pid}" ]] || continue
+		case ",${seen}," in
+		*",${pid},"*) continue ;;
+		esac
+		seen="${seen},${pid}"
+		if [[ -n "${out}" ]]; then
+			out="${out},${pid}"
+		else
+			out="${pid}"
+		fi
+	done
+	echo "${out:-${LIB_GATE_LOCK_MAIN_PID:-$$}}"
+}
+
+lib_gate_write_lock_file() {
+	local status="${1:-running}"
+	local lock_path="${LIB_GATE_LOCK_FILE:-}"
+	local updated pids
+
+	[[ -n "${lock_path}" ]] || return 0
+	updated="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+	pids="$(lib_gate_lock_pid_csv)"
+	{
+		echo "pid=${LIB_GATE_LOCK_MAIN_PID:-$$}"
+		echo "pids=${pids}"
+		echo "started=${LIB_GATE_LOCK_STARTED:-unknown}"
+		echo "script=${LIB_GATE_LOCK_SCRIPT:-checks.sh}"
+		echo "status=${status}"
+		echo "updated=${updated}"
+	} >"${lock_path}"
+}
+
+lib_gate_pid_alive() {
+	local pid="$1"
+	kill -0 "${pid}" 2>/dev/null
+}
+
+lib_gate_print_lock_holder() {
+	local lock_path="$1"
+	local line pid note
+
+	echo "error: another quality gate is already running (lock: ${lock_path})." >&2
+	if [[ -f "${lock_path}" && -s "${lock_path}" ]]; then
+		echo "Lock holder metadata:" >&2
+		while IFS= read -r line || [[ -n "${line}" ]]; do
+			[[ -n "${line}" ]] || continue
+			echo "  ${line}" >&2
+		done <"${lock_path}"
+		if grep -q '^pids=' "${lock_path}" 2>/dev/null; then
+			note=""
+			while IFS= read -r pid; do
+				[[ -n "${pid}" ]] || continue
+				if lib_gate_pid_alive "${pid}"; then
+					note="${note}  pid ${pid}: running"$'\n'
+				else
+					note="${note}  pid ${pid}: not running (stale?) "$'\n'
+				fi
+			done < <(grep '^pids=' "${lock_path}" | head -1 | cut -d= -f2- | tr ',' '\n')
+			if [[ -n "${note}" ]]; then
+				echo "Process check:" >&2
+				printf '%s' "${note}" >&2
+			fi
+		fi
+	fi
+	echo "Stop leftover checks.sh / checks-win.ps1 / pytest processes for this repo, then retry." >&2
+}
+
+lib_gate_track_pid() {
+	local pid="$1"
+	[[ -n "${pid}" ]] || return 0
+	LIB_GATE_CHILD_PIDS+=("${pid}")
+	lib_gate_write_lock_file running
+}
+
+lib_gate_add_cleanup() {
+	LIB_GATE_CLEANUP_FUNCS+=("$1")
+}
+
+lib_gate_kill_pid_tree() {
+	local pid="$1"
+	local child
+
+	[[ -n "${pid}" ]] || return 0
+	if ! kill -0 "${pid}" 2>/dev/null; then
+		return 0
+	fi
+
+	# Prefer process group (setsid / monitor-mode background jobs).
+	kill -INT -"${pid}" 2>/dev/null || kill -TERM -"${pid}" 2>/dev/null || kill -TERM "${pid}" 2>/dev/null || true
+
+	while IFS= read -r child; do
+		[[ -n "${child}" && "${child}" != "${pid}" ]] || continue
+		lib_gate_kill_pid_tree "${child}"
+	done < <(pgrep -P "${pid}" 2>/dev/null || true)
+
+	if kill -0 "${pid}" 2>/dev/null; then
+		kill -TERM "${pid}" 2>/dev/null || true
+	fi
+	sleep 0.3
+	if kill -0 "${pid}" 2>/dev/null; then
+		kill -KILL -"${pid}" 2>/dev/null || kill -KILL "${pid}" 2>/dev/null || true
+	fi
+}
+
+lib_gate_kill_children() {
+	local pid fn
+
+	for pid in "${LIB_GATE_CHILD_PIDS[@]}"; do
+		lib_gate_kill_pid_tree "${pid}"
+	done
+	LIB_GATE_CHILD_PIDS=()
+
+	for fn in "${LIB_GATE_CLEANUP_FUNCS[@]}"; do
+		${fn} 2>/dev/null || true
+	done
+}
+
+lib_gate_on_interrupt() {
+	LIB_GATE_INTERRUPTED=true
+	echo "note: quality gate interrupted — stopping child processes..." >&2
+	lib_gate_kill_children
+}
+
+lib_gate_on_exit() {
+	local fn status
+
+	if [[ "${LIB_GATE_INTERRUPTED}" == true ]]; then
+		status="interrupted"
+	else
+		status="exited"
+	fi
+	lib_gate_write_lock_file "${status}"
+
+	for fn in "${LIB_GATE_CLEANUP_FUNCS[@]}"; do
+		${fn} 2>/dev/null || true
+	done
+	if [[ "${LIB_GATE_INTERRUPTED}" == true ]]; then
+		lib_gate_kill_children
+	fi
+}
+
+lib_gate_setup_interrupt_traps() {
+	if [[ "${LIB_GATE_TRAPS_INSTALLED}" == true ]]; then
+		return 0
+	fi
+	LIB_GATE_TRAPS_INSTALLED=true
+	trap 'lib_gate_on_interrupt; exit 130' INT
+	trap 'lib_gate_on_interrupt; exit 143' TERM
+	trap 'lib_gate_on_exit' EXIT
+}
+
 # Prefer direct venv executables (skip uv env revalidation). Fall back to `uv run`.
 lib_venv_bin() {
 	local name="$1"

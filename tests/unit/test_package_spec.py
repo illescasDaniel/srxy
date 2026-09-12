@@ -109,6 +109,40 @@ def test_given_env_override_when_resolving_spec_then_uses_override(monkeypatch: 
 	assert resolve_pypi_install_spec() == "srxy==9.9.9"
 
 
+def test_given_packaged_payload_wheel_when_resolving_then_ignores_newer_pypi(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — offline APPDIR payload must win over a newer PyPI version
+	monkeypatch.delenv("SRXY_INSTALL_WHEEL", raising=False)
+	monkeypatch.delenv("SRXY_INSTALL_SPEC", raising=False)
+	monkeypatch.delenv("SRXY_INSTALLER_PAYLOAD", raising=False)
+	share = tmp_path / "Contents" / "usr" / "share" / "srxy"
+	share.mkdir(parents=True)
+	wheel = share / "srxy-1.7.0-py3-none-any.whl"
+	wheel.write_bytes(b"PK")
+	monkeypatch.setenv("APPDIR", str(tmp_path / "Contents"))
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.package_spec.fetch_pypi_srxy_info",
+		lambda: {"info": {"version": "9.9.9"}, "releases": {"9.9.9": []}},
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.package_spec.pypi_latest_version",
+		lambda _info: "9.9.9",
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.package_spec.pypi_requires_pyside6",
+		lambda _info, _ver: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.inbound.installer.package_spec.version_at_least",
+		lambda _ver, _min: True,
+	)
+
+	# when / then
+	assert resolve_srxy_install_spec() == str(wheel.resolve())
+
+
 def test_given_install_wheel_env_when_resolving_then_prefers_wheel_over_spec(
 	tmp_path: Path,
 	monkeypatch: pytest.MonkeyPatch,

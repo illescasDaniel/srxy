@@ -124,7 +124,12 @@ echo "  to   : ${dst_venv}"
 echo ""
 
 mkdir -p "${dst_venv}"
-rsync -a --info=progress2 "${src_venv}/" "${dst_venv}/"
+# GNU rsync supports --info=progress2; macOS/BSD rsync does not.
+if rsync --help 2>&1 | grep -q -- '--info='; then
+	rsync -a --info=progress2 "${src_venv}/" "${dst_venv}/"
+else
+	rsync -a --progress "${src_venv}/" "${dst_venv}/"
+fi
 
 echo ""
 echo "copy-venv: copy complete"

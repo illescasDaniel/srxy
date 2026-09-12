@@ -1,9 +1,10 @@
 # Active Context
 
-_Last updated: 2026-09-06_
+_Last updated: 2026-09-12_
 
 ## Branch
 
+- `develop` — post-v1.7.0 (shipped `main` @ `2c64f08`, 2026-09-11).
 - Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
 
 ## Current focus
@@ -26,3 +27,7 @@ _Last updated: 2026-09-06_
 ## Memory protocol (2026-09-01)
 
 - `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory.
+
+## Sync note (2026-09-12)
+
+- Synced `develop` (@ `0fcda8b`, includes signed/notarized v1.7.0 macOS installer work + `docs/images/gui-linux.png` regeneration) into `feature/1.8.0` via PR #52. v1.7.0 macOS installer distribution work is complete/shipped; no outstanding action here.
