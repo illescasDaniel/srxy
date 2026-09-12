@@ -521,9 +521,17 @@ def _search_single_file(
 	images = _get_image_similarity()
 	cache = _get_content_cache()
 
-	if not walker.is_searchable(file_path):
-		return None, local_skipped
-	archive_member = walker.is_archive_member(file_path)
+	# Directories only ever participate via name search — there is no body text,
+	# tags, OCR/transcribe candidacy, or visual embedding to score for a folder.
+	is_directory = file_path.is_dir()
+	if is_directory:
+		archive_member = False
+		search_contents = False
+		semantic_image = False
+	else:
+		if not walker.is_searchable(file_path):
+			return None, local_skipped
+		archive_member = walker.is_archive_member(file_path)
 
 	breakdown: dict[str, float] = {}
 	term_bests: dict[str, float] = {term: 0.0 for term in iter_terms(query_expr)}
@@ -655,6 +663,7 @@ def _search_single_file(
 			breakdown=breakdown,
 			lines=line_matches,
 			term_surfaces=term_surfaces,
+			is_dir=is_directory,
 		),
 		local_skipped,
 	)
@@ -1036,6 +1045,7 @@ def _execute_file_search(
 				match_skipped_names=match_skipped_names,
 				include_archives=include_archives,
 				include_subdirectories=include_subdirectories,
+				include_directories=search_names,
 				cancel_check=cancel_check,
 				skipped_files=None,
 			):
@@ -1128,6 +1138,7 @@ def _execute_file_search(
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			include_directories=search_names,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
 		):

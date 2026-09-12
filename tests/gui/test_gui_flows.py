@@ -117,6 +117,72 @@ def test_given_names_only_options_when_searching_then_filename_hit_appears(qapp,
 	harness.shutdown()
 
 
+def test_given_names_only_options_when_searching_then_folder_hit_appears(qapp, tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", True)
+	harness.set_checked("optContents", False)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then — the folder itself is a selectable result, not just files inside it
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert any(Path(path) == invoices for path in result_paths)
+
+	folder_row = next(row for row, path in enumerate(result_paths) if Path(path) == invoices)
+	controller.selectResult(folder_row)
+	assert controller.selectedResult == folder_row
+	assert Path(controller.previewFilePath) == invoices
+
+	harness.shutdown()
+
+
+def test_given_content_only_options_when_searching_then_folder_hit_excluded(qapp, tmp_path: Path):
+	# given — folders have no body text, so content-only search must never return them.
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", False)
+	harness.set_checked("optContents", True)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert not any(Path(path) == invoices for path in result_paths)
+	assert any(path.endswith("notes.txt") for path in result_paths)
+
+	harness.shutdown()
+
+
 def test_given_invalid_threshold_when_filters_ok_clicked_then_ok_disabled_and_error_visible(
 	qapp,
 	tmp_path: Path,

@@ -22,6 +22,7 @@ class FileWalkerPort(Protocol):
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]: ...
@@ -36,6 +37,7 @@ class FileWalkerPort(Protocol):
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> list[Path]: ...

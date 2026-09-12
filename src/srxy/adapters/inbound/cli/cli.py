@@ -44,6 +44,7 @@ _SPINNER_FRAMES = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
 def format_json_result(result: FileSearchResult, *, query: str = "") -> dict[str, object]:
 	return {
 		"path": result.path.as_posix(),
+		"type": "directory" if result.is_dir else "file",
 		"score": result.score,
 		"breakdown": result.breakdown,
 		"term_surfaces": result.term_surfaces,
@@ -462,19 +463,23 @@ def build_parser() -> argparse.ArgumentParser:
 
 	mode_group = parser.add_mutually_exclusive_group()
 	mode_group.add_argument(
-		"--names-only", action="store_true", help="Search file names only (disables docs/tags/metadata)"
+		"--names-only",
+		action="store_true",
+		help="Search file and folder names only (disables docs/tags/metadata)",
 	)
 	mode_group.add_argument(
 		"--content-only",
 		action="store_true",
-		help="Search docs/tags/metadata only (disables file names; power-ups still optional)",
+		help="Search docs/tags/metadata only (disables file/folder names; power-ups still optional)",
 	)
 
 	search_group = parser.add_mutually_exclusive_group()
 	search_group.add_argument(
-		"--names", action="store_true", dest="search_names", default=None, help="Search file names"
+		"--names", action="store_true", dest="search_names", default=None, help="Search file and folder names"
 	)
-	search_group.add_argument("--no-names", action="store_false", dest="search_names", help="Skip file name search")
+	search_group.add_argument(
+		"--no-names", action="store_false", dest="search_names", help="Skip file/folder name search"
+	)
 
 	content_group = parser.add_mutually_exclusive_group()
 	content_group.add_argument(

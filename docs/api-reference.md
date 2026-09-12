@@ -62,10 +62,10 @@ Fields:
 
 Dataclass (`srxy.domain.models.FileSearchResult`)
 
-FileSearchResult(path: 'Path', score: 'float', breakdown: 'dict[str, float]' = <factory>, lines: 'list[LineMatch]' = <factory>, term_surfaces: 'dict[str, dict[str, float]]' = <factory>)
+FileSearchResult(path: 'Path', score: 'float', breakdown: 'dict[str, float]' = <factory>, lines: 'list[LineMatch]' = <factory>, term_surfaces: 'dict[str, dict[str, float]]' = <factory>, is_dir: 'bool' = False)
 
 ```python
-FileSearchResult(path: Path, score: float, breakdown: dict[str, float] = ..., lines: list[LineMatch] = ..., term_surfaces: dict[str, dict[str, float]] = ...)
+FileSearchResult(path: Path, score: float, breakdown: dict[str, float] = ..., lines: list[LineMatch] = ..., term_surfaces: dict[str, dict[str, float]] = ..., is_dir: bool = False)
 ```
 
 Fields:
@@ -75,6 +75,7 @@ Fields:
 - `breakdown`: `dict[str, float]`
 - `lines`: `list[LineMatch]`
 - `term_surfaces`: `dict[str, dict[str, float]]`
+- `is_dir`: `bool`
 
 ## `LineMatch`
 
