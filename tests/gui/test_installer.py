@@ -1055,6 +1055,10 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	# Fake venv python so Srxy.app can embed an in-bundle interpreter.
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
@@ -1067,6 +1071,23 @@ def test_given_prefix_when_writing_launcher_then_tty_branch_and_quoted_paths_exi
 	assert 'echo "argv: $*"' not in content or "SRXY_DEBUG:-" in content
 	assert "Applications/srxy" in content or "Applications\\/srxy" in content
 	assert 'exec ">>"$LOG_FILE"' not in content.replace("\n", " ")
+	if platform.system().lower() == "darwin":
+		assert "QT_QUICK_CONTROLS_STYLE" in content
+		assert "macOS" in content
+		plist = prefix / "Srxy.app" / "Contents" / "Info.plist"
+		assert plist.is_file()
+		import plistlib
+
+		data = plistlib.loads(plist.read_bytes())
+		assert data.get("NSHighResolutionCapable") is True
+		assert (data.get("LSEnvironment") or {}).get("QT_QUICK_CONTROLS_STYLE") == "macOS"
+		# In-bundle interpreter so AppKit keeps com.srxy.app as mainBundle.
+		assert (prefix / "Srxy.app" / "Contents" / "MacOS" / "SrxyPython").exists()
+		app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
+		raw = app_exe.read_bytes()
+		# LaunchServices rejects shell scripts as CFBundleExecutable (kLSNoExecutableErr).
+		assert not raw.startswith(b"#!"), "Srxy.app executable must be Mach-O, not a shell script"
+		assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
 
 
 @pytest.mark.skipif(platform.system().lower() == "windows", reason="Unix shell launcher")
@@ -1104,14 +1125,23 @@ def test_given_darwin_when_writing_launcher_then_creates_srxy_app_bundle(
 	prefix.mkdir(parents=True)
 	(prefix / ".venv" / "bin").mkdir(parents=True)
 	(prefix / ".venv" / "bin" / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	# Fake venv python so Srxy.app can embed an in-bundle interpreter.
+	fake_py = prefix / ".venv" / "bin" / "python"
+	fake_py.write_bytes(b"\x00ELF")
+	fake_py.chmod(0o755)
 
 	# when
 	write_launcher(prefix)
 
-	# then
+	# then — LaunchServices rejects shell scripts as CFBundleExecutable
+	# (kLSNoExecutableErr), so the bundle executable must be Mach-O (or, off a
+	# real Darwin host, a non-shell stub with the same magic bytes).
 	app_exe = prefix / "Srxy.app" / "Contents" / "MacOS" / "srxy"
 	assert app_exe.is_file()
-	assert "SRXY_HOME=" in app_exe.read_text(encoding="utf-8")
+	raw = app_exe.read_bytes()
+	assert not raw.startswith(b"#!"), "Srxy.app executable must be Mach-O, not a shell script"
+	assert raw.startswith((b"\xcf\xfa\xed\xfe", b"\xfe\xed\xfa\xcf", b"\xca\xfe\xba\xbe", b"\xbe\xba\xfe\xca"))
+	assert (prefix / "Srxy.app" / "Contents" / "MacOS" / "SrxyPython").exists()
 	assert (prefix / "Srxy.app" / "Contents" / "Info.plist").is_file()
 
 
