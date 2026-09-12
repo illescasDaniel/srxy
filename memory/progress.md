@@ -17,6 +17,8 @@ User-facing notes live on the GitHub Release (not duplicated here). Installers (
 
 Active work lives on `feature/1.8.0` (and its topic branches). Track Open items there / Trello 1.8.0 — do not dump 1.8.0 Done into this file until that train ships.
 
+- [x] Sync `develop` → `feature/1.8.0` (`develop` @ `0fcda8b` → `feature/1.8.0` @ `7d8e9d4`, PR #52, merged). Daniel OK'd via Coordinator. Refreshed open PRs targeting `feature/1.8.0` onto the new tip: #40 merged cleanly; #38, #39, #41, #42, #51 have conflicts (mostly `memory/*.md` scratch files; #42 also `Main.qml`) — left unresolved for each PR owner, not force-resolved.
+
 ## Docs — README GUI screenshot (2026-09-11)
 
 - [x] Regenerated `docs/images/gui-linux.png` via `./scripts/docs/export_gui_screenshot.sh`.

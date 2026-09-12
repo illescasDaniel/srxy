@@ -30,4 +30,9 @@ _Last updated: 2026-09-12_
 
 ## Sync note (2026-09-12)
 
-- Synced `develop` (@ `0fcda8b`, includes signed/notarized v1.7.0 macOS installer work + `docs/images/gui-linux.png` regeneration) into `feature/1.8.0` via PR #52. v1.7.0 macOS installer distribution work is complete/shipped; no outstanding action here.
+- Synced `develop` (@ `0fcda8b`, includes signed/notarized v1.7.0 macOS installer work + `docs/images/gui-linux.png` regeneration) into `feature/1.8.0` via PR #52 (merged, merge commit `7d8e9d4`). v1.7.0 macOS installer distribution work is complete/shipped; no outstanding action here.
+- Refreshed the 6 open PRs targeting `feature/1.8.0` onto the new tip:
+  - #40 (search-by-folder-name) — merged base cleanly, pushed. Now `MERGEABLE`.
+  - #38 (Unlimited OCR), #39 (media preview), #41 (DnD path field), #51 (search button top-fixed) — conflict only in `memory/*.md` (each branch's own scratch notes vs. the new `feature/1.8.0` tip). Left unresolved for the PR owner/agent to reconcile — not force-resolved on their branches.
+  - #42 (recent searches) — conflict in `memory/activeContext.md` **and** `src/srxy/adapters/inbound/gui/qml/Main.qml` (real code conflict, not trivial). Left unresolved.
+  - Did not find open PRs from `feature/macos-sdk26-offline-pyside` or `feature/gui-search-button-top-fixed` branches by those exact names; #51 (`cursor/gui-search-button-top-fixed-0e77`) appears to be the corresponding PR.
