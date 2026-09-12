@@ -20,6 +20,7 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.qt_theme import (
 	apply_qt_quick_theme,
+	prefer_macos_quick_controls_style,
 	prefer_native_file_dialogs,
 	prefer_stable_wayland_rendering,
 	shared_qml_import_path,
@@ -78,6 +79,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	ensure_windows_app_user_model_id()
 	prefer_stable_wayland_rendering()
 	prefer_native_file_dialogs()
+	prefer_macos_quick_controls_style()
 	apply_app_identity("srxy")
 	# Opaque windows are cheaper to composite; must be set before any Quick window.
 	QQuickWindow.setDefaultAlphaBuffer(False)

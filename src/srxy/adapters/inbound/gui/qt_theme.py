@@ -278,6 +278,23 @@ def prefer_native_file_dialogs():
 		os.environ.setdefault("QT_QPA_PLATFORMTHEME", "xdgdesktopportal")
 
 
+def prefer_macos_quick_controls_style():
+	"""Prefer the native macOS Qt Quick Controls style before the app starts.
+
+	Must run before ``QGuiApplication`` so the style is selected for the first
+	QML engine load. A user-set ``QT_QUICK_CONTROLS_STYLE`` is preserved.
+	``apply_qt_quick_theme`` still calls ``setStyle("macOS")`` and verifies.
+	"""
+	if sys.platform != "darwin":
+		return
+	os.environ.setdefault("QT_QUICK_CONTROLS_STYLE", "macOS")
+	try:
+		from PySide6.QtQuickControls2 import QQuickStyle
+	except ImportError:
+		return
+	QQuickStyle.setStyle("macOS")
+
+
 def _rgb01_to_hex(r: float, g: float, b: float) -> str | None:
 	"""Convert sRGB [0,1] components to ``#rrggbb``, or ``None`` if unset/out of range."""
 	if not all(0.0 <= c <= 1.0 for c in (r, g, b)):
@@ -552,6 +569,7 @@ __all__ = [
 	"apply_qt_quick_theme",
 	"contrast_text_on",
 	"follow_system_color_scheme",
+	"prefer_macos_quick_controls_style",
 	"prefer_native_file_dialogs",
 	"prefer_stable_wayland_rendering",
 	"resolve_button_accent",

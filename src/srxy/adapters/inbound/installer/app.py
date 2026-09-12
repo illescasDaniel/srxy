@@ -17,6 +17,7 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.qt_theme import (
 	apply_qt_quick_theme,
+	prefer_macos_quick_controls_style,
 	prefer_native_file_dialogs,
 	prefer_stable_wayland_rendering,
 	shared_qml_import_path,
@@ -32,6 +33,7 @@ def run_installer() -> int:
 	ensure_windows_app_user_model_id("srxy.Installer")
 	prefer_stable_wayland_rendering()
 	prefer_native_file_dialogs()
+	prefer_macos_quick_controls_style()
 	apply_app_identity("srxy-installer")
 	app = QGuiApplication(sys.argv)
 	srxy_theme = apply_qt_quick_theme(app)
