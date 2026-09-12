@@ -106,6 +106,9 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 		patch("srxy.adapters.inbound.gui.app.apply_app_identity"),
 		patch("srxy.adapters.inbound.gui.app.apply_icon_to_windows"),
 		patch("srxy.adapters.inbound.gui.app.prefer_native_file_dialogs"),
+		patch("srxy.adapters.inbound.gui.app.prefer_macos_quick_controls_style"),
+		patch("srxy.adapters.inbound.gui.app.install_terminal_quit_signals"),
+		patch("srxy.adapters.inbound.gui.app.silence_noisy_qt_logging"),
 		patch("srxy.adapters.inbound.gui.app.apply_qt_quick_theme", return_value=MagicMock()),
 		patch("srxy.adapters.inbound.gui.app.shared_qml_import_path", return_value="/fake/qml"),
 		patch("srxy.i18n.qt.install_qt_translator"),
@@ -122,3 +125,73 @@ def test_given_run_gui_when_loading_then_connects_shutdown_to_about_to_quit(
 	assert len(quit_slots) == 1
 	assert callable(quit_slots[0])
 	assert code == 0
+
+
+def test_given_run_gui_when_loading_then_installs_terminal_quit_and_macos_style_pref(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	monkeypatch.setenv("SRXY_SKIP_UPDATE_CHECK", "1")
+	monkeypatch.setenv("SRXY_NO_SPLASH", "1")
+
+	class FakeApp:
+		def __init__(self, _argv: list[str]):
+			self.aboutToQuit = MagicMock()
+			self.aboutToQuit.connect = MagicMock()
+
+		def exec(self) -> int:
+			return 0
+
+		def sendPostedEvents(self, _receiver: object, _event_type: object):
+			return None
+
+		def processEvents(self):
+			return None
+
+	class FakeEngine:
+		def __init__(self):
+			self.rootContext = MagicMock(return_value=MagicMock(setContextProperty=MagicMock()))
+			self._main = MagicMock()
+			self._main.objectName.return_value = "mainWindow"
+			self._main.setProperty = MagicMock()
+			self._main.deleteLater = MagicMock()
+
+		def addImportPath(self, _path: str):
+			return None
+
+		def rootObjects(self) -> list[object]:
+			return [self._main]
+
+		def load(self, _url: Any):
+			return None
+
+		def deleteLater(self):
+			return None
+
+	with (
+		patch("srxy.adapters.inbound.gui.app.QGuiApplication", FakeApp),
+		patch("srxy.adapters.inbound.gui.app.QQmlApplicationEngine", FakeEngine),
+		patch("srxy.adapters.inbound.gui.app.QQuickWindow"),
+		patch("srxy.adapters.inbound.gui.app.apply_app_icon"),
+		patch("srxy.adapters.inbound.gui.app.apply_app_identity"),
+		patch("srxy.adapters.inbound.gui.app.apply_icon_to_windows"),
+		patch("srxy.adapters.inbound.gui.app.prefer_native_file_dialogs"),
+		patch("srxy.adapters.inbound.gui.app.prefer_macos_quick_controls_style") as prefer_macos,
+		patch("srxy.adapters.inbound.gui.app.install_terminal_quit_signals") as install_quit,
+		patch("srxy.adapters.inbound.gui.app.silence_noisy_qt_logging"),
+		patch("srxy.adapters.inbound.gui.app.apply_qt_quick_theme", return_value=MagicMock()),
+		patch("srxy.adapters.inbound.gui.app.shared_qml_import_path", return_value="/fake/qml"),
+		patch("srxy.i18n.qt.install_qt_translator"),
+		patch("srxy.i18n.get_language", return_value="en"),
+		patch(
+			"srxy.bootstrap.build_app_services", return_value=MagicMock(search_runner=MagicMock(), desktop=MagicMock())
+		),
+	):
+		from srxy.adapters.inbound.gui.app import run_gui
+
+		assert run_gui(args) == 0
+
+	prefer_macos.assert_called_once_with()
+	assert install_quit.call_count == 1
+	assert isinstance(install_quit.call_args.args[0], FakeApp)

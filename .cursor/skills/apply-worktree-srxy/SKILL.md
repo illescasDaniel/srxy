@@ -45,9 +45,9 @@ Commit any pending work on this worktree branch first, then merge that branch in
 
 5. **Quality gate (required)**
    - Run the **project’s** quality gate from the main checkout until it passes cleanly.
-   - Prefer repo docs / `AGENTS.md` / Taskipy tasks. Typical patterns:
-     - Windows: before the gate, `uv run task sync-dev` (CUDA torch on NVIDIA). Verify with `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` (`+cu*` and `True`). Then: `uv run task checks-win-fix-quiet` then `uv run task checks-win-quiet` (or the repo’s documented equivalent).
-     - Unix/macOS: `uv run task sync-dev` if the venv is missing or extras are wrong, then `./scripts/quality/checks.sh --quiet --fix` then `./scripts/quality/checks.sh --quiet`.
+   - Prefer repo docs / `AGENTS.md` / Taskipy tasks. Typical pattern (all OSes):
+     - `uv run task sync-dev` if the venv is missing or extras are wrong (on Windows + NVIDIA, verify CUDA torch: `.\.venv\Scripts\python.exe -c "import torch; print(torch.__version__, torch.cuda.is_available())"` — expect `+cu*` and `True`).
+     - `uv run task checks -- --quiet --fix` then `uv run task checks -- --quiet`.
    - If the gate fails, fix issues in the **main checkout** and re-run until clean. Do not finish with a red gate.
    - If you see `warning: no GPU found; … will use CPU` despite a real NVIDIA GPU, stop and fix the venv (run `uv run task sync-dev`) before continuing — do not treat that as a normal gate message.
 

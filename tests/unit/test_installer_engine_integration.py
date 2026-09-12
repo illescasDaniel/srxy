@@ -18,7 +18,7 @@ from srxy.i18n import get_language, set_language, tr
 pytestmark = pytest.mark.integration
 
 
-def test_given_english_inno_install_when_headless_then_progress_matches_language(
+def test_given_english_install_when_headless_then_progress_matches_language(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 	capsys: pytest.CaptureFixture[str],
@@ -32,7 +32,7 @@ def test_given_english_inno_install_when_headless_then_progress_matches_language
 		status = kwargs.get("status")
 		progress = kwargs.get("progress")
 		task = kwargs.get("task")
-		# Simulate the STATUS/TASK/PROGRESS protocol the Inno wizard consumes.
+		# Simulate the STATUS/TASK/PROGRESS protocol the wizard UI consumes.
 		label = tr("installer.status.installing_uv")
 		if callable(status):
 			status(label)
@@ -79,7 +79,7 @@ def test_given_english_inno_install_when_headless_then_progress_matches_language
 	assert "OK\tinstall" in out
 
 
-def test_given_spanish_inno_install_when_headless_then_progress_is_spanish_ascii(
+def test_given_spanish_install_when_headless_then_progress_is_spanish_ascii(
 	monkeypatch: pytest.MonkeyPatch,
 	tmp_path: Path,
 	capsys: pytest.CaptureFixture[str],

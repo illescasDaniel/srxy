@@ -1,4 +1,4 @@
-"""Desktop install / uninstall wizard (PySide on Linux/macOS; headless CLI for Windows Inno)."""
+"""Desktop install / uninstall wizard (PySide QML + shared headless engine)."""
 
 from __future__ import annotations
 
