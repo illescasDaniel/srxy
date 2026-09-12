@@ -23,22 +23,12 @@ fi
 build_icns() {
 	local src_png="$1"
 	local out_icns="$2"
-	if ! command -v sips >/dev/null 2>&1 || ! command -v iconutil >/dev/null 2>&1; then
-		return 1
-	fi
-	local tmpdir
-	tmpdir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-installer-iconset.XXXXXX")"
-	local iconset="$tmpdir/srxy-installer.iconset"
-	mkdir -p "$iconset"
-	for size in 16 32 128 256 512; do
-		sips -z "$size" "$size" "$src_png" --out "$iconset/icon_${size}x${size}.png" >/dev/null
-		if [[ "$size" -le 512 ]]; then
-			local size2x=$((size * 2))
-			sips -z "$size2x" "$size2x" "$src_png" --out "$iconset/icon_${size}x${size}@2x.png" >/dev/null
-		fi
-	done
-	iconutil -c icns "$iconset" -o "$out_icns"
-	rm -rf "$tmpdir"
+	# macOS 26+ iconutil -c rejects valid iconsets; pack ICNS in Python instead.
+	uv run python -c "
+from pathlib import Path
+from srxy.resources.icons.icns import write_icns_from_png
+write_icns_from_png(Path(r'''${src_png}'''), Path(r'''${out_icns}'''))
+"
 }
 
 cd "$ROOT"
@@ -165,7 +155,11 @@ cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 fi
 
-uv pip install --python "$VENV_PY" "PySide6>=6.6"
+# Keep this pinned to the same PySide6 build as install.py's runtime pin
+# (packaging/macos/build-offline.sh + srxy.adapters.inbound.installer.install)
+# so the offline wrapper's Quick Controls chrome matches what the SDK-26
+# restamped Srxy.app draws after install (Tahoe Liquid Glass parity).
+uv pip install --python "$VENV_PY" "PySide6==6.11.1"
 uv pip install --python "$VENV_PY" --no-deps "$ROOT"
 
 # Fail closed if the venv python still points at the build host uv cache / home dir.
@@ -228,7 +222,7 @@ chmod +x "$MACOS_DIR/srxy-installer-offline"
 
 cp "$ICON_SRC" "$RES_DIR/srxy-installer.png"
 if ! build_icns "$ICON_SRC" "$RES_DIR/$ICON_ICNS_NAME"; then
-	echo "warning: could not generate $ICON_ICNS_NAME (sips/iconutil unavailable); Finder may show generic app icon" >&2
+	echo "warning: could not generate $ICON_ICNS_NAME; Finder may show generic app icon" >&2
 fi
 cat >"$CONTENTS/Info.plist" <<EOF
 <?xml version="1.0" encoding="UTF-8"?>
