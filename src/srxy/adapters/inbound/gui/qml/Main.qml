@@ -605,6 +605,7 @@ ApplicationWindow {
 											}
 											ColumnLayout {
 												id: multiTermColumn
+												objectName: "multiTermColumn"
 												spacing: 2
 												width: parent.width
 												Repeater {
@@ -643,6 +644,13 @@ ApplicationWindow {
 											// Linux Material) the native button is taller than the field;
 											// forcing matchHeight clips the bevel and mis-centres the label.
 											readonly property bool stretchToField: Qt.platform.os === "windows"
+											// Multi-term mode grows the term list downward; without this,
+											// VCenter alignment (macOS/Linux) re-centres Search as the
+											// RowLayout gets taller, sliding it away from its initial
+											// (single-term) y position. Pin it to the top in that mode on
+											// every platform so Search never moves vertically as terms are
+											// added or removed.
+											readonly property bool pinTop: stretchToField || modeBox.currentIndex === 1
 											readonly property real matchHeight: {
 												if (modeBox.currentIndex === 0)
 													return simpleQuery.implicitHeight
@@ -651,7 +659,7 @@ ApplicationWindow {
 												const row = multiTermRepeater.itemAt(0)
 												return row && row.fieldHeight > 0 ? row.fieldHeight : simpleQuery.implicitHeight
 											}
-											Layout.alignment: stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											Binding {
 												target: searchButton
 												property: "implicitHeight"
@@ -728,7 +736,7 @@ ApplicationWindow {
 											visible: controller && controller.queryIssue.length > 0
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: searchButton.pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: controller ? controller.queryIssue : ""
 										}
@@ -739,7 +747,7 @@ ApplicationWindow {
 											visible: controller && controller.hasSearchWarnings
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: searchButton.pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: root.t("gui.search_warnings.tooltip")
 											onClicked: searchWarningsDialog.open()

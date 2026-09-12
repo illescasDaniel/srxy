@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+import json
 import sys
 import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, Qt, QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QPointF, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtQml import QQmlProperty
+from PySide6.QtQuick import QQuickItem
 from tests.gui.helpers import ensure_qapp, load_main
 
 from srxy.adapters.inbound.cli.cli import build_parser
@@ -108,6 +110,67 @@ def test_given_multi_terms_when_removing_term_then_no_root_reference_error(qapp:
 	qInstallMessageHandler(previous)
 	assert not msgs, "QML ReferenceErrors:\n" + "\n".join(msgs)
 	assert controller.queryMode in {"simple", "multi", "advanced"}
+	harness.shutdown()
+
+
+def test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_pinned(
+	qapp: QCoreApplication,
+):
+	# given — start multi-term mode with a single term (initial/top position).
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	search_button = harness.find("searchButton")
+	assert isinstance(search_button, QQuickItem)
+
+	def _search_button_scene_y() -> float:
+		return search_button.mapToScene(QPointF(0.0, 0.0)).y()
+
+	QMetaObject.invokeMethod(
+		harness.window,
+		"applyDemoMultiTerms",
+		Qt.ConnectionType.DirectConnection,
+		Q_ARG("QVariant", json.dumps(["one"])),
+	)
+	for _ in range(15):
+		qapp.processEvents()
+	initial_y = _search_button_scene_y()
+	initial_height = float(harness.prop("multiTermColumn", "height") or 0)
+
+	# when — grow the term list well beyond a single row.
+	QMetaObject.invokeMethod(
+		harness.window,
+		"applyDemoMultiTerms",
+		Qt.ConnectionType.DirectConnection,
+		Q_ARG("QVariant", json.dumps(["one", "two", "three", "four", "five", "six"])),
+	)
+	for _ in range(15):
+		qapp.processEvents()
+	grown_height = float(harness.prop("multiTermColumn", "height") or 0)
+	grown_y = _search_button_scene_y()
+
+	# then — the term list actually grew taller, yet Search stayed at its
+	# initial (top) y instead of re-centring within the taller row.
+	assert grown_height > initial_height + 10.0, (
+		f"expected term list to grow: initial={initial_height} grown={grown_height}"
+	)
+	assert abs(grown_y - initial_y) < 1.0, f"searchButton moved: initial_y={initial_y} grown_y={grown_y}"
+
+	# and — shrinking back to one term restores the exact same y (idempotent).
+	QMetaObject.invokeMethod(
+		harness.window,
+		"applyDemoMultiTerms",
+		Qt.ConnectionType.DirectConnection,
+		Q_ARG("QVariant", json.dumps(["one"])),
+	)
+	for _ in range(15):
+		qapp.processEvents()
+	shrunk_y = _search_button_scene_y()
+	assert abs(shrunk_y - initial_y) < 1.0, f"searchButton did not restore y: initial_y={initial_y} shrunk_y={shrunk_y}"
+
 	harness.shutdown()
 
 

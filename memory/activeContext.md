@@ -4,25 +4,26 @@ _Last updated: 2026-09-12_
 
 ## Branch
 
+- `cursor/gui-search-button-top-fixed-0e77` off `feature/1.8.0` — Trello `yO4X6JDM` (Search button top-fixed, multi-term).
 - `develop` — post-v1.7.0 (shipped `main` @ `2c64f08`, 2026-09-11).
 - Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
 
 ## Current focus
 
-1. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-2. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
-3. **Search by folder name** — GUI + TUI + CLI; topic branch off `feature/1.8.0`; tests required; Team Lead marks ready-for-review when OK.
+Done: pin Search button to the top of the What-to-search row in multi-term mode so it does not re-centre as the term list grows.
 
-## Planned (also 1.8.0)
+## Just changed
 
-- **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng).
+- `src/srxy/adapters/inbound/gui/qml/Main.qml`:
+  - `searchButton.pinTop: stretchToField || modeBox.currentIndex === 1` — pins Search (and the query-issue/search-warnings `ToolButton`s) to `Qt.AlignTop` in multi-term mode on every platform, not only the Windows `stretchToField` case.
+  - Added `objectName: "multiTermColumn"` on the multi-term `ColumnLayout` for test hooks.
+- `tests/gui/test_gui_query_layout.py`: new geometry test `test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_pinned` — drives `applyDemoMultiTerms` from 1→6→1 terms, asserts `searchButton.mapToScene(QPointF(0,0)).y()` stays within 1px of the initial value while `multiTermColumn.height` actually grows. Confirmed it fails without the fix (`initial_y=186.0 grown_y=324.0`). Also switched pre-existing `applyDemoMultiTerms` invocations to `Q_ARG("QVariant", ...)` in the new test (the QML function's untyped param is `QVariant`, not `QString`; `Q_ARG(str, ...)` silently fails to invoke).
+- Merged latest `origin/feature/1.8.0` (post `develop` sync, PR #52) onto this branch — pulls in the already-landed catalog-probe resilience (`ci.yml` `continue-on-error` + advisory warning, resilient `probe_catalog.py` lazy-resolver retries, `pypdf>=6.16.1`, fixed `fake_uninstall` stub kwargs in `test_installer.py`) that PR #51's first CI run hit before the sync (quality job hard-failed in ~17s on a Homebrew bottle-tag probe miss). No additional porting needed — the sync already carries all of it; only resolved a memory/`activeContext.md` merge conflict.
 
 ## Next steps
 
-1. Folder-name search — Srxy Developer implements (GUI/TUI/CLI + tests); PR into `feature/1.8.0`.
-2. Unlimited OCR — Daniel GPU QA; keep draft until then.
-3. Media preview — Daniel smoke; then undraft/merge into `feature/1.8.0`.
-4. NSIS Windows installer (later in 1.8.0).
+1. PR #51 opened into `feature/1.8.0` (draft). Re-push after merging the sync; awaiting green CI.
+2. Do not touch PRs #38–#41 (Unlimited OCR / media preview / folder-name search / drag-and-drop) — untouched this session.
 
 ## Memory protocol (2026-09-01)
 
