@@ -1,6 +1,9 @@
 from __future__ import annotations
 
+import contextlib
 import importlib.util
+import json
+import subprocess
 import sys
 import threading
 from collections.abc import Iterator
@@ -85,6 +88,19 @@ def _read_windows_keywords(path: Path) -> list[str]:
 def _read_searchable_property_entries(path: Path) -> list[tuple[str, str]]:
 	if not windows_metadata_supported():
 		return []
+	# A malformed/unsupported file (e.g. a corrupt JPEG) can make the Windows
+	# Property Store / shell property handler raise a native SEH fault (observed:
+	# ``0xc0000002`` STATUS_NOT_IMPLEMENTED) instead of a catchable COM error.
+	# That crashes the whole process, bypassing this module's ``except OSError``
+	# guards. On real Windows, run the read in a short-lived, reusable worker
+	# subprocess so a native fault only kills that child; a dead/unresponsive
+	# child is treated the same as ``except OSError: return []``.
+	if sys.platform == "win32":
+		return _read_searchable_property_entries_isolated(path)
+	return _read_searchable_property_entries_direct(path)
+
+
+def _read_searchable_property_entries_direct(path: Path) -> list[tuple[str, str]]:
 	try:
 		store = _open_property_store(path)
 	except OSError:
@@ -103,6 +119,104 @@ def _read_searchable_property_entries(path: Path) -> list[tuple[str, str]]:
 		for value in _format_property_values(raw_value):
 			entries.append((label, value))
 	return entries
+
+
+_ISOLATED_WORKER_LOCK = threading.Lock()
+_ISOLATED_WORKER_TIMEOUT_SECONDS = 5.0
+_isolated_worker_process: subprocess.Popen[str] | None = None
+
+
+def _isolated_worker_command() -> list[str]:
+	return [sys.executable, "-u", "-m", "srxy.adapters.outbound.metadata.windows_metadata_worker"]
+
+
+def _spawn_isolated_worker() -> subprocess.Popen[str]:
+	creationflags = getattr(subprocess, "CREATE_NO_WINDOW", 0)
+	return subprocess.Popen(  # noqa: S603
+		_isolated_worker_command(),
+		stdin=subprocess.PIPE,
+		stdout=subprocess.PIPE,
+		stderr=subprocess.DEVNULL,
+		text=True,
+		bufsize=1,
+		creationflags=creationflags,
+	)
+
+
+def _terminate_isolated_worker():
+	global _isolated_worker_process
+	process = _isolated_worker_process
+	_isolated_worker_process = None
+	if process is None:
+		return
+	with contextlib.suppress(Exception):
+		process.kill()
+	with contextlib.suppress(Exception):
+		process.wait(timeout=1)
+
+
+def reset_isolated_worker_for_tests():
+	"""Kill and drop any live isolated worker subprocess. For unit tests only."""
+	with _ISOLATED_WORKER_LOCK:
+		_terminate_isolated_worker()
+
+
+def _readline_with_timeout(stream, timeout: float) -> str | None:
+	"""Read one line, returning ``None`` if nothing arrives within ``timeout``.
+
+	A hung Property Store call (rather than a hard crash) must not block the
+	search worker forever, so the read happens on a daemon thread we can give
+	up on without joining it.
+	"""
+	box: list[str] = []
+
+	def _read():
+		try:
+			box.append(stream.readline())
+		except (OSError, ValueError):
+			box.append("")
+
+	reader = threading.Thread(target=_read, daemon=True)
+	reader.start()
+	reader.join(timeout)
+	if reader.is_alive():
+		return None
+	return box[0] if box else ""
+
+
+def _read_searchable_property_entries_isolated(path: Path) -> list[tuple[str, str]]:
+	global _isolated_worker_process
+	with _ISOLATED_WORKER_LOCK:
+		try:
+			if _isolated_worker_process is None or _isolated_worker_process.poll() is not None:
+				_isolated_worker_process = _spawn_isolated_worker()
+			worker = _isolated_worker_process
+			if worker.stdin is None or worker.stdout is None:
+				raise OSError("isolated Property Store worker missing stdio pipes")
+			worker.stdin.write(json.dumps({"path": str(path)}) + "\n")
+			worker.stdin.flush()
+			line = _readline_with_timeout(worker.stdout, _ISOLATED_WORKER_TIMEOUT_SECONDS)
+		except (OSError, ValueError):
+			line = ""
+
+		if not line:
+			# The worker died (native fault) or hung/produced nothing. Drop it so
+			# the next call respawns a clean one, and fail soft for this file.
+			_terminate_isolated_worker()
+			return []
+
+		try:
+			payload = json.loads(line)
+		except ValueError:
+			return []
+		entries = payload.get("entries") if isinstance(payload, dict) else None
+		if not isinstance(entries, list):
+			return []
+		return [
+			(entry[0], entry[1])
+			for entry in entries
+			if isinstance(entry, list) and len(entry) == 2 and isinstance(entry[0], str) and isinstance(entry[1], str)
+		]
 
 
 def reset_thread_com_state_for_tests():

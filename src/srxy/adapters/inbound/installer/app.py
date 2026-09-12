@@ -17,9 +17,13 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.qt_theme import (
 	apply_qt_quick_theme,
+	install_terminal_quit_signals,
+	native_macos_alerts_enabled,
+	prefer_macos_quick_controls_style,
 	prefer_native_file_dialogs,
 	prefer_stable_wayland_rendering,
 	shared_qml_import_path,
+	silence_noisy_qt_logging,
 )
 from srxy.adapters.inbound.installer.controller import InstallerController
 
@@ -32,9 +36,12 @@ def run_installer() -> int:
 	ensure_windows_app_user_model_id("srxy.Installer")
 	prefer_stable_wayland_rendering()
 	prefer_native_file_dialogs()
+	prefer_macos_quick_controls_style()
+	silence_noisy_qt_logging()
 	apply_app_identity("srxy-installer")
 	app = QGuiApplication(sys.argv)
 	srxy_theme = apply_qt_quick_theme(app)
+	install_terminal_quit_signals(app)
 	apply_installer_icon(app)
 	from srxy.i18n import get_language, resolve_language, set_language
 	from srxy.i18n.qt import install_qt_translator
@@ -46,6 +53,7 @@ def run_installer() -> int:
 	controller = InstallerController()
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", native_macos_alerts_enabled())
 	qml_path = qml_dir() / "Main.qml"
 	engine.load(QUrl.fromLocalFile(str(qml_path)))
 	if not engine.rootObjects():

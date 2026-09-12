@@ -20,9 +20,13 @@ from srxy.adapters.inbound.gui.app_icon import (
 )
 from srxy.adapters.inbound.gui.qt_theme import (
 	apply_qt_quick_theme,
+	install_terminal_quit_signals,
+	native_macos_alerts_enabled,
+	prefer_macos_quick_controls_style,
 	prefer_native_file_dialogs,
 	prefer_stable_wayland_rendering,
 	shared_qml_import_path,
+	silence_noisy_qt_logging,
 )
 from srxy.adapters.inbound.gui.splash import SplashBridge
 from srxy.application.startup_timing import exit_after_qml, mark
@@ -78,17 +82,21 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 	ensure_windows_app_user_model_id()
 	prefer_stable_wayland_rendering()
 	prefer_native_file_dialogs()
+	prefer_macos_quick_controls_style()
+	silence_noisy_qt_logging()
 	apply_app_identity("srxy")
 	# Opaque windows are cheaper to composite; must be set before any Quick window.
 	QQuickWindow.setDefaultAlphaBuffer(False)
 	app = QGuiApplication(sys.argv)
 	# Theme before splash so palette.window / Fluent match the eventual Main window.
 	srxy_theme = apply_qt_quick_theme(app)
+	install_terminal_quit_signals(app)
 	mark("qt_ready")
 
 	engine = QQmlApplicationEngine()
 	engine.addImportPath(shared_qml_import_path())
 	engine.rootContext().setContextProperty("srxyTheme", srxy_theme)
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", native_macos_alerts_enabled())
 
 	bridge: SplashBridge | None = None
 	if splash_enabled():

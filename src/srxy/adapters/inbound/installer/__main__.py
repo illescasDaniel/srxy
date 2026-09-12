@@ -19,9 +19,9 @@ def _print_version() -> int:
 
 
 def _progress_text(value: object) -> str:
-	"""Normalize progress text for Inno ExecAndLogOutput (ASCII-safe).
+	"""Normalize progress text for wizard / script consumers (ASCII-safe).
 
-	Inno Setup reads the engine subprocess stdout via a Windows ANSI pipe.
+	Some Windows hosts read the engine subprocess stdout via an ANSI pipe.
 	Any non-ASCII byte sequence appears as diamond-question glyphs in the
 	progress page.  Steps: (1) replace Unicode ellipsis U+2026 with three
 	ASCII dots (it does not decompose via NFD); (2) NFD-decompose so accented
@@ -43,7 +43,7 @@ def _configure_headless_stdio():
 
 	On Windows the pipe encoding defaults to the OEM code page.  We force
 	UTF-8 here so the log file receives full Unicode, while _progress_text
-	already produces ASCII for the Inno progress-bar wire protocol.
+	already produces ASCII for the progress-bar wire protocol.
 	"""
 	for stream in (sys.stdout, sys.stderr):
 		reconfigure = getattr(stream, "reconfigure", None)
@@ -55,7 +55,7 @@ def _configure_headless_stdio():
 
 
 def _emit(kind: str, *parts: object):
-	"""Write a machine-readable progress line to stdout (Inno / scripts)."""
+	"""Write a machine-readable progress line to stdout (wizard / scripts)."""
 	payload = "\t".join(_progress_text(part) for part in parts)
 	sys.stdout.write(f"{kind}\t{payload}\n")
 	sys.stdout.flush()
