@@ -249,13 +249,25 @@ def parse_args(argv: Sequence[str] | None = None) -> ChecksOptions:
 def _kill_process_group(proc: subprocess.Popen[bytes], sig: signal.Signals) -> None:
 	if proc.poll() is not None:
 		return
-	try:
-		os.killpg(proc.pid, sig)
-	except (ProcessLookupError, PermissionError):
+	# os.killpg (process groups) is POSIX-only; it does not exist on Windows at
+	# all, so calling it there would raise AttributeError — not one of the
+	# exceptions below — and escape uncaught. Guard the attribute lookup itself.
+	killpg = getattr(os, "killpg", None)
+	if killpg is not None:
 		try:
-			proc.send_signal(sig)
-		except ProcessLookupError:
+			killpg(proc.pid, sig)
+			return
+		except (ProcessLookupError, PermissionError):
 			pass
+	try:
+		proc.send_signal(sig)
+	except (ProcessLookupError, OSError):
+		pass
+
+
+def _force_kill_signal() -> signal.Signals:
+	# SIGKILL is Unix-only; Windows Python exposes SIGTERM (and proc.kill()).
+	return getattr(signal, "SIGKILL", signal.SIGTERM)
 
 
 def _wait_after_interrupt(proc: subprocess.Popen[bytes]) -> int:
@@ -265,7 +277,7 @@ def _wait_after_interrupt(proc: subprocess.Popen[bytes]) -> int:
 	while proc.poll() is None and time.monotonic() < deadline:
 		time.sleep(0.1)
 	if proc.poll() is None:
-		_kill_process_group(proc, signal.SIGKILL)
+		_kill_process_group(proc, _force_kill_signal())
 		try:
 			proc.wait(timeout=5)
 		except subprocess.TimeoutExpired:
