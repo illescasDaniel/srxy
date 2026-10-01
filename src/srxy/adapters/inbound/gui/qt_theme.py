@@ -388,26 +388,94 @@ def install_terminal_quit_signals(app: QCoreApplication) -> bool:
 	return True
 
 
+# FFmpeg av_log levels (libavutil). INFO (32) dumps demuxer ``Input #0`` spam;
+# ERROR (16) keeps real failures visible without the stream dump.
+_AV_LOG_ERROR = 16
+
+
+def _pyside_avutil_library_paths() -> list[Path]:
+	"""Candidate paths for PySide6's bundled libavutil (Qt Multimedia FFmpeg)."""
+	try:
+		import PySide6
+	except ImportError:
+		return []
+	root = Path(PySide6.__file__).resolve().parent
+	patterns = (
+		"Qt/lib/libavutil.*.dylib",  # macOS (prefer shorter match via sort)
+		"Qt/lib/libavutil.so*",  # Linux
+		"Qt/bin/avutil-*.dll",  # Windows
+		"Qt/bin/avutil*.dll",
+	)
+	found: list[Path] = []
+	for pattern in patterns:
+		found.extend(p for p in root.glob(pattern) if p.is_file())
+	# Prefer the unversioned-minor symlink/name (libavutil.59.dylib) over the
+	# fully versioned dylib so we load the same handle Qt Multimedia uses.
+	return sorted(found, key=lambda p: (len(p.name), p.name))
+
+
+def silence_ffmpeg_av_log(*, level: int = _AV_LOG_ERROR) -> bool:
+	"""Lower FFmpeg ``av_log`` so Qt Multimedia stops dumping demuxer info to stderr.
+
+	Qt's ``qt.multimedia.ffmpeg`` logging category does **not** cover the raw
+	``Input #0, mov,mp4…`` stream dumps — those come from libavutil's default
+	stderr callback. Set the level on PySide6's bundled ``libavutil`` (same
+	copy the multimedia plugin links). Returns True when the level was set.
+	"""
+	import ctypes
+
+	for path in _pyside_avutil_library_paths():
+		try:
+			lib = ctypes.CDLL(str(path))
+			lib.av_log_set_level.argtypes = [ctypes.c_int]
+			lib.av_log_set_level.restype = None
+			lib.av_log_set_level(level)
+			return True
+		except OSError:
+			continue
+	return False
+
+
 def silence_noisy_qt_logging():
 	"""Suppress known-harmless Qt log spam that floods the console.
 
 	``qt.qpa.mime: Retrying to obtain clipboard.`` is emitted when another
 	process briefly holds the clipboard (IDE, terminal, browser) while a ComboBox
 	or similar control queries it — a Qt bug (QTBUG-130316 / QTBUG-97930), not an
-	srxy fault. Silence that category unless the user already configured
-	``QT_LOGGING_RULES`` for ``qt.qpa.mime``.
-	"""
-	rule = "qt.qpa.mime=false"
-	existing = os.environ.get("QT_LOGGING_RULES", "").strip()
-	if "qt.qpa.mime" not in existing:
-		os.environ["QT_LOGGING_RULES"] = f"{existing};{rule}" if existing else rule
-	try:
-		from PySide6.QtCore import QLoggingCategory
+	srxy fault.
 
-		QLoggingCategory.setFilterRules(rule)
-	except (ImportError, AttributeError, RuntimeError):
-		# Qt not importable / older build without the API — env rule still helps.
-		pass
+	``qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version … LGPL …``
+	is an informational notice from Qt's FFmpeg backend. Raw demuxer dumps
+	(``Input #0, …``) bypass Qt categories and need ``silence_ffmpeg_av_log``.
+
+	Silence the categories unless the user already configured
+	``QT_LOGGING_RULES`` for them, then lower FFmpeg ``av_log``.
+
+	``QLoggingCategory.setFilterRules`` must receive newline-separated rules;
+	a single ``;``-joined string is treated as one malformed rule (Qt then
+	ignores it and the spam remains). The env var still uses ``;``.
+	"""
+	desired = (
+		("qt.qpa.mime", "qt.qpa.mime=false"),
+		("qt.multimedia.ffmpeg", "qt.multimedia.ffmpeg=false"),
+	)
+	existing = os.environ.get("QT_LOGGING_RULES", "").strip()
+	# Normalize both ; and newline separators so we can rebuild cleanly.
+	parts = [part.strip() for part in existing.replace("\n", ";").split(";") if part.strip()]
+	for key, rule in desired:
+		if key not in existing:
+			parts.append(rule)
+	if parts:
+		os.environ["QT_LOGGING_RULES"] = ";".join(parts)
+		try:
+			from PySide6.QtCore import QLoggingCategory
+
+			# Newlines — not semicolons — for the API (see docstring).
+			QLoggingCategory.setFilterRules("\n".join(parts))
+		except (ImportError, AttributeError, RuntimeError):
+			# Qt not importable / older build without the API — env rule still helps.
+			pass
+	silence_ffmpeg_av_log()
 
 
 def _rgb01_to_hex(r: float, g: float, b: float) -> str | None:
@@ -702,6 +770,7 @@ __all__ = [
 	"prefer_stable_wayland_rendering",
 	"resolve_button_accent",
 	"shared_qml_import_path",
+	"silence_ffmpeg_av_log",
 	"silence_noisy_qt_logging",
 	"vulkan_runtime_available",
 ]

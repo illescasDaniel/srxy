@@ -8,7 +8,7 @@ import time
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QPointF, Qt, QtMsgType, qInstallMessageHandler
+from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, Qt, QtMsgType, qInstallMessageHandler
 from PySide6.QtQml import QQmlProperty
 from PySide6.QtQuick import QQuickItem
 from tests.gui.helpers import ensure_qapp, load_main
@@ -126,8 +126,11 @@ def test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_p
 	search_button = harness.find("searchButton")
 	assert isinstance(search_button, QQuickItem)
 
-	def _search_button_scene_y() -> float:
-		return search_button.mapToScene(QPointF(0.0, 0.0)).y()
+	def _search_button_row_y() -> float:
+		# Parent-local y (not mapToScene): scene coords also shift when the
+		# What GroupBox/ScrollView chrome reflows as the term list grows, which
+		# is unrelated to AlignTop vs VCenter. Local y isolates the pinTop check.
+		return float(search_button.y())
 
 	QMetaObject.invokeMethod(
 		harness.window,
@@ -137,7 +140,7 @@ def test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_p
 	)
 	for _ in range(15):
 		qapp.processEvents()
-	initial_y = _search_button_scene_y()
+	initial_y = _search_button_row_y()
 	initial_height = float(harness.prop("multiTermColumn", "height") or 0)
 
 	# when — grow the term list well beyond a single row.
@@ -150,7 +153,7 @@ def test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_p
 	for _ in range(15):
 		qapp.processEvents()
 	grown_height = float(harness.prop("multiTermColumn", "height") or 0)
-	grown_y = _search_button_scene_y()
+	grown_y = _search_button_row_y()
 
 	# then — the term list actually grew taller, yet Search stayed at its
 	# initial (top) y instead of re-centring within the taller row.
@@ -168,7 +171,7 @@ def test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_p
 	)
 	for _ in range(15):
 		qapp.processEvents()
-	shrunk_y = _search_button_scene_y()
+	shrunk_y = _search_button_row_y()
 	assert abs(shrunk_y - initial_y) < 1.0, f"searchButton did not restore y: initial_y={initial_y} shrunk_y={shrunk_y}"
 
 	harness.shutdown()

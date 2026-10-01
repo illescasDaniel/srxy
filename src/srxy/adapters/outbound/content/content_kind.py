@@ -9,6 +9,7 @@ from pathlib import Path
 from srxy.adapters.outbound.documents.document_text import DOCUMENT_SUFFIXES
 from srxy.adapters.outbound.documents.image_formats import DECODABLE_IMAGE_SUFFIXES
 from srxy.adapters.outbound.metadata.media_metadata import (
+	ALL_IMAGE_SUFFIXES,
 	AUDIO_SUFFIXES,
 	MEDIA_SUFFIXES,
 	VIDEO_SUFFIXES,
@@ -234,6 +235,18 @@ def is_transcribe_logical_suffix(suffix: str) -> bool:
 
 def is_ocr_image_logical_suffix(suffix: str) -> bool:
 	return suffix in DECODABLE_IMAGE_SUFFIXES
+
+
+def classify_preview_media_kind(suffix: str) -> str:
+	"""Classify a logical suffix into a GUI preview media kind: ``image``/``audio``/``video``, or ``""``."""
+	suffix = suffix.lower()
+	if suffix in ALL_IMAGE_SUFFIXES or suffix in {".gif", ".bmp", ".svg"}:
+		return "image"
+	if suffix in AUDIO_SUFFIXES or suffix == ".wav":
+		return "audio"
+	if suffix in VIDEO_SUFFIXES or suffix in {".webm", ".mkv", ".avi"}:
+		return "video"
+	return ""
 
 
 def format_detected_type_label(path: Path, route: ContentRoute) -> str:

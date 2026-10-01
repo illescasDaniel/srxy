@@ -721,20 +721,34 @@ def test_given_linux_when_native_alerts_then_disabled(monkeypatch: pytest.Monkey
 	assert qt_theme.native_macos_alerts_enabled() is False
 
 
-def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_rule(
+def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_and_ffmpeg_rules(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
 	monkeypatch.delenv("QT_LOGGING_RULES", raising=False)
+	calls: list[str] = []
+
+	class _FakeLoggingCategory:
+		@staticmethod
+		def setFilterRules(rules: str):
+			calls.append(rules)
+
+	monkeypatch.setattr(
+		"PySide6.QtCore.QLoggingCategory",
+		_FakeLoggingCategory,
+		raising=False,
+	)
 
 	# when
 	qt_theme.silence_noisy_qt_logging()
 
-	# then
-	assert "qt.qpa.mime=false" in os.environ["QT_LOGGING_RULES"]
+	# then — env uses ';'; the API must use newlines ('; makes one malformed rule)
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert rules == "qt.qpa.mime=false;qt.multimedia.ffmpeg=false"
+	assert calls == ["qt.qpa.mime=false\nqt.multimedia.ffmpeg=false"]
 
 
-def test_given_existing_mime_rule_when_silencing_qt_then_preserves_env(
+def test_given_existing_mime_rule_when_silencing_qt_then_preserves_mime_adds_ffmpeg(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -744,10 +758,12 @@ def test_given_existing_mime_rule_when_silencing_qt_then_preserves_env(
 	qt_theme.silence_noisy_qt_logging()
 
 	# then
-	assert os.environ["QT_LOGGING_RULES"] == "qt.qpa.mime=true"
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.qpa.mime=true" in rules
+	assert "qt.multimedia.ffmpeg=false" in rules
 
 
-def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_rule(
+def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_and_ffmpeg_rules(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -757,4 +773,74 @@ def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_rule(
 	qt_theme.silence_noisy_qt_logging()
 
 	# then
-	assert os.environ["QT_LOGGING_RULES"] == "*.debug=false;qt.qpa.mime=false"
+	assert os.environ["QT_LOGGING_RULES"] == ("*.debug=false;qt.qpa.mime=false;qt.multimedia.ffmpeg=false")
+
+
+def test_given_existing_ffmpeg_rule_when_silencing_qt_then_preserves_ffmpeg_adds_mime(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "qt.multimedia.ffmpeg=true")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.multimedia.ffmpeg=true" in rules
+	assert "qt.qpa.mime=false" in rules
+	assert "qt.multimedia.ffmpeg=false" not in rules
+
+
+def test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level():
+	# given — use the real bundled lib when present *and* ctypes-loadable.
+	# Ubuntu CI often ships libavutil.so that fails CDLL with unresolved
+	# OPENSSL_3.0.0 symbols (Qt loads it via its own RPATH; bare ctypes does not).
+	paths = qt_theme._pyside_avutil_library_paths()  # pyright: ignore[reportPrivateUsage]
+	if not paths:
+		pytest.skip("PySide6 libavutil not present")
+
+	import ctypes
+
+	loadable: ctypes.CDLL | None = None
+	for path in paths:
+		try:
+			loadable = ctypes.CDLL(str(path))
+			break
+		except OSError:
+			continue
+	if loadable is None:
+		assert qt_theme.silence_ffmpeg_av_log() is False
+		pytest.skip("PySide6 libavutil present but not ctypes-loadable")
+
+	# when
+	ok = qt_theme.silence_ffmpeg_av_log()
+
+	# then
+	assert ok is True
+	loadable.av_log_get_level.restype = ctypes.c_int
+	assert loadable.av_log_get_level() == qt_theme._AV_LOG_ERROR  # pyright: ignore[reportPrivateUsage]
+
+
+def test_given_avutil_cdll_oserror_when_silencing_ffmpeg_av_log_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — path listed but loading fails (mirrors Ubuntu CI OPENSSL unresolved)
+	monkeypatch.setattr(
+		qt_theme,
+		"_pyside_avutil_library_paths",
+		lambda: [Path("/nonexistent/libavutil.so")],
+	)
+
+	# when / then
+	assert qt_theme.silence_ffmpeg_av_log() is False
+
+
+def test_given_no_avutil_when_silencing_ffmpeg_av_log_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme, "_pyside_avutil_library_paths", lambda: [])
+
+	# when / then
+	assert qt_theme.silence_ffmpeg_av_log() is False

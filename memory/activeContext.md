@@ -4,19 +4,16 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/1.8.0` @ `b93dc97` — includes squash-merges of PR #40 (folder-name search), PR #51 (Search button top-fixed), PR #41 (path drag-and-drop), and PR #42 (recent searches).
+- `feature/media-preview-panel` @ fixing Ubuntu CI: avutil ctypes OSError in silence test (not pinTop).
 
 ## Current focus
 
-1. Next 1.8.0 topics (Unlimited OCR #38, media preview #39, etc.).
-
-## Done this session
-
-- Synced `cursor/gui-recent-searches-cf28` with `feature/1.8.0`, fixed Windows CI flake (skip Linux AppImage go bootstrap on win32), CI green; undrafted and squash-merged PR #42 into `feature/1.8.0` @ `b93dc97`.
+1. **Ship PR #39** — Ubuntu `quality` fails on `test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level` (OPENSSL_3.0.0 / RAND_bytes); skip when not ctypes-loadable.
+2. Unlimited OCR — not touched.
 
 ## Next steps
 
-1. Work remaining 1.8.0 drafts from their topic branches off updated `feature/1.8.0`.
+1. Push avutil test fix; on CI green squash-merge; pull `feature/1.8.0`.
 
 ## Memory protocol (2026-09-01)
 
