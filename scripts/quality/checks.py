@@ -258,6 +258,11 @@ def _kill_process_group(proc: subprocess.Popen[bytes], sig: signal.Signals) -> N
 			pass
 
 
+def _force_kill_signal() -> signal.Signals:
+	# SIGKILL is Unix-only; Windows Python exposes SIGTERM (and proc.kill()).
+	return getattr(signal, "SIGKILL", signal.SIGTERM)
+
+
 def _wait_after_interrupt(proc: subprocess.Popen[bytes]) -> int:
 	print("note: quality gate interrupted — stopping child processes...", flush=True)
 	_kill_process_group(proc, signal.SIGINT)
@@ -265,7 +270,7 @@ def _wait_after_interrupt(proc: subprocess.Popen[bytes]) -> int:
 	while proc.poll() is None and time.monotonic() < deadline:
 		time.sleep(0.1)
 	if proc.poll() is None:
-		_kill_process_group(proc, signal.SIGKILL)
+		_kill_process_group(proc, _force_kill_signal())
 		try:
 			proc.wait(timeout=5)
 		except subprocess.TimeoutExpired:

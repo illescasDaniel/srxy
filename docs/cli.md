@@ -53,13 +53,18 @@ srxy "token" . --no-include-subdirectories
 
 Recursive walk by default (`--include-subdirectories`). Use `--no-include-subdirectories` to search only files directly in the chosen folder. Default skips dot-hidden entries, noise dirs (`__pycache__`, `node_modules`), and junk/lock files (`uv.lock`, `package-lock.json`, …). Use `--match-skipped-names` to still match those paths by filename. Archive traversal (`.zip`, `.tar`, `.tar.gz`, `.gz`) is off unless `--include-archives` is set; inner paths appear as `archive.zip::path/inside.txt`.
 
-Name search (on by default; disable with `--no-names` or `--content-only`) matches **folder names as well as file names** — a folder whose name matches the query shows up as its own result (score/rank the same as a file name hit), in addition to any matching files inside it. Folders never match on content (no OCR/tags/CLIP), so `--content-only` never returns folders.
+Name search is split into two independent toggles (both on by default):
+
+- **File names** (`--names` / `--no-names`) — match paths and filenames
+- **Folder names** (`--folders` / `--no-folders`) — match folder names and surface matching folders as their own results (same score/rank path as file-name hits)
+
+Folders never match on content (no OCR/tags/CLIP), so `--content-only` turns both name toggles off and never returns folders. `--names-only` keeps content off while leaving folder-name search at its default (on) unless you also pass `--no-folders`.
 
 ## Flags
 
 | | |
 |---|---|
-| **Scope** | `--names-only`, `--content-only`, `--names` / `--no-names`, `--content` / `--no-content` |
+| **Scope** | `--names-only`, `--content-only`, `--names` / `--no-names`, `--folders` / `--no-folders`, `--content` / `--no-content` |
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
 | **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |

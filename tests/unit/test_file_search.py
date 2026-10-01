@@ -125,11 +125,44 @@ def test_given_matching_folder_when_search_names_disabled_then_folder_excluded(t
 	(invoices / "notes.txt").write_text("quarterly invoices figures", encoding="utf-8")
 
 	# when — content-only search never returns a folder (folders have no content)
-	results = magic_file_search(tmp_path, "invoices", search_names=False, threshold=0.3)
+	results = magic_file_search(tmp_path, "invoices", search_names=False, search_folders=False, threshold=0.3)
 
 	# then
 	assert all(result.path != invoices for result in results)
 	assert any(result.path == invoices / "notes.txt" for result in results)
+
+
+def test_given_matching_folder_when_search_folders_disabled_then_folder_excluded(tmp_path: Path):
+	# given — file-name search stays on; folder-name search is independent
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated", encoding="utf-8")
+	(tmp_path / "invoices-report.txt").write_text("unrelated", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "invoices", search_folders=False, search_contents=False, threshold=0.5)
+
+	# then
+	paths = {result.path for result in results}
+	assert invoices not in paths
+	assert (tmp_path / "invoices-report.txt") in paths
+
+
+def test_given_matching_folder_when_only_folders_enabled_then_returns_folder(tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(tmp_path / "invoices-report.txt").write_text("unrelated", encoding="utf-8")
+
+	# when
+	results = magic_file_search(
+		tmp_path, "invoices", search_names=False, search_folders=True, search_contents=False, threshold=0.5
+	)
+
+	# then
+	paths = {result.path for result in results}
+	assert invoices in paths
+	assert (tmp_path / "invoices-report.txt") not in paths
 
 
 def test_given_search_root_when_searching_names_then_root_itself_is_not_a_result(tmp_path: Path):
@@ -671,8 +704,8 @@ def test_given_no_search_modes_when_searching_then_raises_value_error(tmp_path: 
 	(tmp_path / "item.txt").write_text("hello", encoding="utf-8")
 
 	# when
-	with pytest.raises(ValueError, match="File names and/or File contents"):
-		magic_file_search(tmp_path, "hello", search_names=False, search_contents=False)
+	with pytest.raises(ValueError, match="File names, Folder names, and/or File contents"):
+		magic_file_search(tmp_path, "hello", search_names=False, search_folders=False, search_contents=False)
 
 	# then
 	assert True

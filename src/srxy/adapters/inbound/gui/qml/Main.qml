@@ -206,6 +206,7 @@ ApplicationWindow {
 		syncingOptions = true
 		const draft = JSON.parse(controller.optionsJson())
 		optNames.checked = !!draft.search_names
+		optFolders.checked = draft.search_folders !== false
 		optContents.checked = !!draft.search_contents
 		optDocsTags.checked = draft.search_docs_tags !== false
 		optSemantic.checked = !!draft.semantic
@@ -229,6 +230,7 @@ ApplicationWindow {
 		syncingOptions = true
 		const draft = JSON.parse(controller.defaultOptionsJson())
 		optNames.checked = !!draft.search_names
+		optFolders.checked = draft.search_folders !== false
 		optContents.checked = !!draft.search_contents
 		optDocsTags.checked = draft.search_docs_tags !== false
 		optSemantic.checked = !!draft.semantic
@@ -257,6 +259,7 @@ ApplicationWindow {
 			return ""
 		return controller.applyOptionsJson(JSON.stringify({
 			search_names: optNames.checked,
+			search_folders: optFolders.checked,
 			search_contents: optContents.checked,
 			search_docs_tags: optDocsTags.checked,
 			semantic: optSemantic.checked && controller.isFeatureEnabled("semantic"),
@@ -1418,6 +1421,15 @@ ApplicationWindow {
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 				}
 				InfoButton { helpKey: "search_names" }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optFolders
+					objectName: "optFolders"
+					text: root.t("gui.options.folder_names")
+					checked: true
+				}
+				InfoButton { helpKey: "search_folders" }
 			}
 			RowLayout {
 				StyledCheckBox {

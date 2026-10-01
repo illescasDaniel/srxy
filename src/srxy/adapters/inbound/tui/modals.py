@@ -517,6 +517,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			with VerticalScroll(id="search-options-scroll"):
 				yield Static(search_options_section_where(), classes="search-options-section")
 				yield from self._compose_option("so-names", value=self._initial.search_names)
+				yield from self._compose_option("so-folders", value=self._initial.search_folders)
 				yield from self._compose_option("so-content", value=self._initial.search_contents)
 				yield Static(search_options_section_how(), classes="search-options-section")
 				yield Static(classic_matching_hint(), classes="search-options-hint")
@@ -609,6 +610,7 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		semantic, ocr, transcribe, semantic_image = self._powerup_values()
 		return SearchOptions(
 			search_names=self.query_one("#so-names", Checkbox).value,
+			search_folders=self.query_one("#so-folders", Checkbox).value,
 			search_contents=self._content_enabled(),
 			search_docs_tags=self.query_one("#so-docs-tags", Checkbox).value,
 			semantic=semantic,

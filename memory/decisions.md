@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-10-01 — Folder names as a separate SearchOptions toggle
+
+- **Context:** Folder-name search shipped gated only by **File names** (`include_directories=search_names`). Product feedback: Options needed an explicit **Folder names** checkbox, independent of file names, both on by default.
+- **Decision:** Add `SearchOptions.search_folders: bool = True`. Walker uses `include_directories=search_folders`. File-name scoring stays on `search_names`; directories (only yielded when folders are on) always name-score. Thread through CLI (`--folders`/`--no-folders`), GUI `optFolders`, TUI `#so-folders`, i18n, and summaries. `--content-only` forces folders off; `--names-only` leaves folders at their own default.
+- **Rationale:** Lets users search file names without folder hits (and the reverse) without growing a second walk. Supersedes the “no new option / gate only on search_names” part of the 2026-09-06 folder-name decision; the true-folder-as-result + one-walk design is unchanged.
+
 ## 2026-09-06 — Folder-name search: true directory results via one combined walk
 
 - **Context:** `SearchOptions.search_names` / the names-only path scored files only — a folder whose name matched the query never showed up, even though the CLI/GUI/TUI already treat `FileSearchResult.path` generically (preview/desktop/`open_path`/`reveal_path` already branch on `path.is_dir()`). Needed folder-name search across CLI, TUI, and GUI without duplicating the directory walk or diverging from the existing matching/scoring pipeline.

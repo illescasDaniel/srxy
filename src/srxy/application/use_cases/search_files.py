@@ -523,6 +523,7 @@ def _search_single_file(
 
 	# Directories only ever participate via name search — there is no body text,
 	# tags, OCR/transcribe candidacy, or visual embedding to score for a folder.
+	# The walker only yields directories when search_folders is on, so name-score them.
 	is_directory = file_path.is_dir()
 	if is_directory:
 		archive_member = False
@@ -544,7 +545,7 @@ def _search_single_file(
 	effective_transcribe = transcribe if search_contents else False
 	effective_semantic_image = semantic_image if search_contents else False
 
-	if search_names:
+	if search_names or is_directory:
 		name_score = _score_name(matcher, query_expr, file_path, search_root)
 		breakdown["name"] = name_score
 		for term in iter_terms(query_expr):
@@ -745,6 +746,7 @@ def _execute_file_search(
 	query: str | FileQ,
 	*,
 	search_names: bool = True,
+	search_folders: bool = True,
 	search_contents: bool = True,
 	search_docs_tags: bool = True,
 	threshold: float = 0.35,
@@ -778,7 +780,7 @@ def _execute_file_search(
 			stacklevel=2,
 		)
 		max_matches = max_line_matches
-	if not search_names and not search_contents:
+	if not search_names and not search_folders and not search_contents:
 		raise ValueError(search_source_required_message())
 	extractor = _get_text_extractor()
 	images = _get_image_similarity()
@@ -1045,7 +1047,7 @@ def _execute_file_search(
 				match_skipped_names=match_skipped_names,
 				include_archives=include_archives,
 				include_subdirectories=include_subdirectories,
-				include_directories=search_names,
+				include_directories=search_folders,
 				cancel_check=cancel_check,
 				skipped_files=None,
 			):
@@ -1138,7 +1140,7 @@ def _execute_file_search(
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
-			include_directories=search_names,
+			include_directories=search_folders,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
 		):
@@ -1255,6 +1257,7 @@ class FileSearchUseCase:
 		query: str | FileQ,
 		*,
 		search_names: bool = True,
+		search_folders: bool = True,
 		search_contents: bool = True,
 		search_docs_tags: bool = True,
 		threshold: float = 0.35,
@@ -1294,6 +1297,7 @@ class FileSearchUseCase:
 				path,
 				query,
 				search_names=search_names,
+				search_folders=search_folders,
 				search_contents=search_contents,
 				search_docs_tags=search_docs_tags,
 				threshold=threshold,
@@ -1329,6 +1333,7 @@ def magic_file_search(
 	query: str | FileQ,
 	*,
 	search_names: bool = True,
+	search_folders: bool = True,
 	search_contents: bool = True,
 	search_docs_tags: bool = True,
 	threshold: float = 0.35,
@@ -1360,6 +1365,7 @@ def magic_file_search(
 		path,
 		query,
 		search_names=search_names,
+		search_folders=search_folders,
 		search_contents=search_contents,
 		search_docs_tags=search_docs_tags,
 		threshold=threshold,
