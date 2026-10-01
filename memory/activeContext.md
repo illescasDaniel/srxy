@@ -4,21 +4,22 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `cursor/gui-search-button-top-fixed-0e77` off `feature/1.8.0` — Trello `yO4X6JDM` (Search button top-fixed, multi-term).
-- Release train **`feature/1.8.0`** @ `e88cb39` (includes squash-merge of PR #40 search-by-folder-name).
+- `cursor/gui-search-button-top-fixed-0e77` @ `2cee201` — merged latest `origin/feature/1.8.0` (@ `e88cb39`, includes PR #40 folder-name search). Ahead of `origin/cursor/gui-search-button-top-fixed-0e77` by 1 merge commit.
+- Release train **`feature/1.8.0`** @ `e88cb39`.
 
 ## Current focus
 
-Sync this branch with latest `feature/1.8.0` (folder-name search #40), run quality gate, fix if needed, then re-push PR #51.
+Done this session: sync branch with `feature/1.8.0` + quality gate green.
 
 ## Just changed
 
-- Merged `origin/feature/1.8.0` @ `e88cb39` into this branch. `Main.qml` auto-merged cleanly (pinTop + Folder names option coexist). Conflicts only in `memory/activeContext.md` / `memory/progress.md` — resolved keeping this branch's focus plus the landed #40 Done items.
+- Merged `origin/feature/1.8.0` into this branch (`2cee201`). `Main.qml` auto-merged (pinTop + `optFolders` coexist). Memory conflicts resolved.
+- Quality gate `core,gui,tui`: autofix + verify both PASSED (no code fixes needed).
 
 ## Next steps
 
-1. Run quality gate (`core,gui` at minimum given GUI + shared search surfaces); fix failures.
-2. Push and await green CI on PR #51.
+1. Push branch (`git push`) so PR #51 picks up the sync.
+2. Await green CI on PR #51.
 
 ## Memory protocol (2026-09-01)
 
