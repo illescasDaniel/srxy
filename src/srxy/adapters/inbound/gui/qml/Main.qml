@@ -807,7 +807,12 @@ ApplicationWindow {
 											objectName: "recentSearchesButton"
 											// SVG (not Unicode ▾): emoji/glyph text paints poorly under
 											// macOS/Material/Fluent IconLabel chrome and often looks
-											// broken/mis-sized next to Search.
+											// broken/mis-sized next to Search. Keep the same 28×28 flat
+											// chrome as pathIssue/queryIssue so RowLayout height (and
+											// Search's pinTop y) stays stable as multi-term grows.
+											flat: true
+											implicitWidth: 28
+											implicitHeight: 28
 											icon.source: "images/chevron-down.svg"
 											icon.width: 16
 											icon.height: 16

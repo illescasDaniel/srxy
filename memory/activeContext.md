@@ -4,16 +4,16 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/media-preview-panel` — committing chevron fix, push PR #39, merge into `feature/1.8.0` when CI green.
+- `feature/media-preview-panel` — CI quality red on pinTop layout drift from chevron ToolButton sizing; restoring flat 28×28, re-push.
 
 ## Current focus
 
-1. **Ship PR #39** — recent-searches chevron SVG + media preview panel → `feature/1.8.0`.
+1. **Ship PR #39** — fix Search pinTop regression from chevron change, then merge when CI green.
 2. Unlimited OCR — not touched.
 
 ## Next steps
 
-1. Wait for CI green on PR #39; merge; pull `feature/1.8.0` locally.
+1. Push fix; on CI green squash-merge PR #39; pull `feature/1.8.0` locally.
 
 ## Memory protocol (2026-09-01)
 
