@@ -249,13 +249,20 @@ def parse_args(argv: Sequence[str] | None = None) -> ChecksOptions:
 def _kill_process_group(proc: subprocess.Popen[bytes], sig: signal.Signals) -> None:
 	if proc.poll() is not None:
 		return
-	try:
-		os.killpg(proc.pid, sig)
-	except (ProcessLookupError, PermissionError):
+	# os.killpg (process groups) is POSIX-only; it does not exist on Windows at
+	# all, so calling it there would raise AttributeError — not one of the
+	# exceptions below — and escape uncaught. Guard the attribute lookup itself.
+	killpg = getattr(os, "killpg", None)
+	if killpg is not None:
 		try:
-			proc.send_signal(sig)
-		except ProcessLookupError:
+			killpg(proc.pid, sig)
+			return
+		except (ProcessLookupError, PermissionError):
 			pass
+	try:
+		proc.send_signal(sig)
+	except (ProcessLookupError, OSError):
+		pass
 
 
 def _force_kill_signal() -> signal.Signals:
