@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Shapes
 import SrxyControls
 
 ApplicationWindow {
@@ -18,6 +19,9 @@ ApplicationWindow {
 	property bool syncingFilters: false
 	property bool filtersDraftValid: true
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
+	// Offscreen tests may still set srxyUseNativeAlerts; help/alerts use SrxyDialog.
+	readonly property bool useNativeAlerts: Qt.platform.os === "osx"
+		&& srxyUseNativeAlerts !== false
 	// Bump when language changes so every t() / privacy binding re-evaluates.
 	property int langRev: 0
 	property int settingsRev: 0
@@ -249,6 +253,7 @@ ApplicationWindow {
 		syncingOptions = true
 		const draft = JSON.parse(controller.optionsJson())
 		optNames.checked = !!draft.search_names
+		optFolders.checked = draft.search_folders !== false
 		optContents.checked = !!draft.search_contents
 		optDocsTags.checked = draft.search_docs_tags !== false
 		optSemantic.checked = !!draft.semantic
@@ -272,6 +277,7 @@ ApplicationWindow {
 		syncingOptions = true
 		const draft = JSON.parse(controller.defaultOptionsJson())
 		optNames.checked = !!draft.search_names
+		optFolders.checked = draft.search_folders !== false
 		optContents.checked = !!draft.search_contents
 		optDocsTags.checked = draft.search_docs_tags !== false
 		optSemantic.checked = !!draft.semantic
@@ -300,6 +306,7 @@ ApplicationWindow {
 			return ""
 		return controller.applyOptionsJson(JSON.stringify({
 			search_names: optNames.checked,
+			search_folders: optFolders.checked,
 			search_contents: optContents.checked,
 			search_docs_tags: optDocsTags.checked,
 			semantic: optSemantic.checked && controller.isFeatureEnabled("semantic"),
@@ -389,27 +396,42 @@ ApplicationWindow {
 	}
 
 	function showHelp(key) {
+		// Always SrxyDialog (AccentButton OK). Qt Quick MessageDialog falls back to
+		// Basic chrome on macOS and, when parented under/beside Popup.Native Options,
+		// stacks behind the sheet and is hard to dismiss.
+		const title = root.t("help.dialog_title")
+		const body = controller ? controller.helpText(key) : ""
 		helpTitle.text = key
-		helpBody.text = controller ? controller.helpText(key) : ""
-		helpDialog.title = root.t("help.dialog_title")
+		helpBody.text = body
+		helpDialog.title = title
 		helpDialog.open()
 	}
 
 	function showUnavailable(key) {
+		const title = root.t("options.unavailable_title")
+		const body = controller ? controller.unavailableReason(key) : ""
 		helpTitle.text = key
-		helpBody.text = controller ? controller.unavailableReason(key) : ""
-		helpDialog.title = root.t("options.unavailable_title")
+		helpBody.text = body
+		helpDialog.title = title
 		helpDialog.open()
 	}
 
 	component InfoButton: ToolButton {
+		id: infoBtn
 		property string helpKey: ""
+		objectName: helpKey.length > 0 ? ("infoButton_" + helpKey) : ""
 		text: "i"
 		flat: true
 		implicitWidth: 28
 		implicitHeight: 28
 		font.bold: true
-		ToolTip.visible: hovered
+		hoverEnabled: true
+		// HoverHandler keeps ToolTip working even if a style ignores ToolButton.hovered.
+		HoverHandler {
+			id: infoHover
+		}
+		ToolTip.visible: infoHover.hovered || infoBtn.hovered
+		ToolTip.delay: 400
 		ToolTip.text: root.t("gui.about_setting")
 		onClicked: showHelp(helpKey)
 	}
@@ -554,31 +576,109 @@ ApplicationWindow {
 				GroupBox {
 					title: root.t("gui.section.where")
 					Layout.fillWidth: true
-					RowLayout {
-						anchors.fill: parent
-						SecondaryButton {
-							objectName: "browseButton"
-							text: root.t("gui.browse")
-							onClicked: folderDialog.open()
+
+					// Size from the row's natural height. Sibling items that all
+					// use anchors.fill (RowLayout + DropArea) collapse the
+					// GroupBox contentItem on macOS Aqua — no gap before What/
+					// How, and a zero-height drop target so Finder never shows +.
+					Item {
+						id: pathDropTarget
+						objectName: "pathDropTarget"
+						width: parent.width
+						implicitHeight: pathRow.implicitHeight
+						height: implicitHeight
+
+						readonly property bool dropActive: pathDropArea.containsDrag
+							|| (controller && controller.pathDropHover)
+
+						RowLayout {
+							id: pathRow
+							objectName: "pathRow"
+							width: parent.width
+							SecondaryButton {
+								objectName: "browseButton"
+								text: root.t("gui.browse")
+								opacity: pathDropTarget.dropActive ? 0.5 : 1.0
+								onClicked: folderDialog.open()
+							}
+							TextField {
+								id: pathField
+								objectName: "pathField"
+								Layout.fillWidth: true
+								placeholderText: root.t("gui.path_placeholder")
+								text: controller ? controller.path : ""
+								onTextChanged: if (controller) controller.path = text
+								Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+							}
+							ToolButton {
+								objectName: "pathIssueButton"
+								text: "⚠"
+								flat: true
+								visible: controller && controller.pathIssue.length > 0
+								implicitWidth: 28
+								implicitHeight: 28
+								ToolTip.visible: hovered
+								ToolTip.text: controller ? controller.pathIssue : ""
+							}
 						}
-						TextField {
-							id: pathField
-							objectName: "pathField"
-							Layout.fillWidth: true
-							placeholderText: root.t("gui.path_placeholder")
-							text: controller ? controller.path : ""
-							onTextChanged: if (controller) controller.path = text
-							Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-						}
-						ToolButton {
-							objectName: "pathIssueButton"
-							text: "⚠"
-							flat: true
-							visible: controller && controller.pathIssue.length > 0
-							implicitWidth: 28
-							implicitHeight: 28
-							ToolTip.visible: hovered
-							ToolTip.text: controller ? controller.pathIssue : ""
+
+						// QML DropArea (Linux/Windows). macOS Finder acceptance
+						// is handled by PathDropWindowFilter on the QQuickWindow;
+						// both share pathDropTarget for hit-testing / chrome.
+						DropArea {
+							id: pathDropArea
+							objectName: "pathDropArea"
+							anchors.fill: parent
+							z: 1
+							keys: ["text/uri-list"]
+							onEntered: (drag) => {
+								drag.accepted = drag.hasUrls
+							}
+							onDropped: (drop) => {
+								if (!drop.hasUrls || !controller)
+									return
+								var urls = []
+								for (var i = 0; i < drop.urls.length; i++)
+									urls.push(drop.urls[i].toString())
+								controller.handleDroppedPathUrls(urls)
+							}
+
+							Rectangle {
+								id: pathDropFill
+								objectName: "pathDropHighlight"
+								anchors.fill: parent
+								visible: pathDropTarget.dropActive
+								color: palette.highlight
+								opacity: 0.10
+								radius: 4
+							}
+
+							Shape {
+								id: pathDropOutline
+								anchors.fill: parent
+								visible: pathDropTarget.dropActive
+								ShapePath {
+									strokeColor: palette.highlight
+									strokeWidth: 2
+									fillColor: "transparent"
+									strokeStyle: ShapePath.DashLine
+									dashPattern: [4, 3]
+									startX: 1
+									startY: 1
+									PathLine { x: pathDropOutline.width - 1; y: 1 }
+									PathLine { x: pathDropOutline.width - 1; y: pathDropOutline.height - 1 }
+									PathLine { x: 1; y: pathDropOutline.height - 1 }
+									PathLine { x: 1; y: 1 }
+								}
+							}
+
+							Label {
+								anchors.centerIn: parent
+								visible: pathDropTarget.dropActive
+								text: root.t("gui.drop_folder_here")
+								color: palette.highlight
+								font.bold: true
+							}
 						}
 					}
 				}
@@ -660,6 +760,7 @@ ApplicationWindow {
 											}
 											ColumnLayout {
 												id: multiTermColumn
+												objectName: "multiTermColumn"
 												spacing: 2
 												width: parent.width
 												Repeater {
@@ -713,6 +814,13 @@ ApplicationWindow {
 											// Linux Material) the native button is taller than the field;
 											// forcing matchHeight clips the bevel and mis-centres the label.
 											readonly property bool stretchToField: Qt.platform.os === "windows"
+											// Multi-term mode grows the term list downward; without this,
+											// VCenter alignment (macOS/Linux) re-centres Search as the
+											// RowLayout gets taller, sliding it away from its initial
+											// (single-term) y position. Pin it to the top in that mode on
+											// every platform so Search never moves vertically as terms are
+											// added or removed.
+											readonly property bool pinTop: stretchToField || modeBox.currentIndex === 1
 											readonly property real matchHeight: {
 												if (modeBox.currentIndex === 0)
 													return simpleQuery.implicitHeight
@@ -721,7 +829,7 @@ ApplicationWindow {
 												const row = multiTermRepeater.itemAt(0)
 												return row && row.fieldHeight > 0 ? row.fieldHeight : simpleQuery.implicitHeight
 											}
-											Layout.alignment: stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											Binding {
 												target: searchButton
 												property: "implicitHeight"
@@ -798,7 +906,7 @@ ApplicationWindow {
 											visible: controller && controller.queryIssue.length > 0
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: searchButton.pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: controller ? controller.queryIssue : ""
 										}
@@ -809,7 +917,7 @@ ApplicationWindow {
 											visible: controller && controller.hasSearchWarnings
 											implicitWidth: 28
 											implicitHeight: 28
-											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											Layout.alignment: searchButton.pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: root.t("gui.search_warnings.tooltip")
 											onClicked: searchWarningsDialog.open()
@@ -1534,7 +1642,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: optionsDialog
 		objectName: "optionsDialog"
 		title: root.t("gui.options.title")
@@ -1603,6 +1711,15 @@ ApplicationWindow {
 					onCheckedChanged: if (!syncingOptions) syncContentDependentOptions()
 				}
 				InfoButton { helpKey: "search_names" }
+			}
+			RowLayout {
+				StyledCheckBox {
+					id: optFolders
+					objectName: "optFolders"
+					text: root.t("gui.options.folder_names")
+					checked: true
+				}
+				InfoButton { helpKey: "search_folders" }
 			}
 			RowLayout {
 				StyledCheckBox {
@@ -1742,14 +1859,17 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: filtersDialog
 		objectName: "filtersDialog"
 		title: root.t("gui.filters.title")
 		modal: true
 		anchors.centerIn: parent
-		width: 480
-		implicitWidth: 480
+		// macOS Native popup needs more width so label + field + info icon breathe.
+		width: Qt.platform.os === "osx" ? 560 : 480
+		implicitWidth: Qt.platform.os === "osx" ? 560 : 480
+		// Bounded height so ScrollView can scroll; keep a compact default sheet.
+		height: Math.min(420, Math.max(340, (parent ? parent.height : 420) - 120))
 		onAboutToShow: {
 			filtersError.text = ""
 			filtersError.visible = false
@@ -1782,9 +1902,13 @@ ApplicationWindow {
 			}
 		}
 
-		ColumnLayout {
-			width: filtersDialog.availableWidth - 24
-			spacing: 6
+		ScrollView {
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			ColumnLayout {
+				width: filtersDialog.availableWidth - 24
+				spacing: Qt.platform.os === "osx" ? 10 : 6
 
 			Label {
 				id: filtersError
@@ -1797,8 +1921,8 @@ ApplicationWindow {
 
 		GridLayout {
 			columns: 3
-			columnSpacing: 8
-			rowSpacing: 6
+			columnSpacing: Qt.platform.os === "osx" ? 12 : 8
+			rowSpacing: Qt.platform.os === "osx" ? 10 : 6
 			Layout.fillWidth: true
 
 			Label { text: root.t("gui.filters.max_results") }
@@ -1893,10 +2017,11 @@ ApplicationWindow {
 				text: root.t("gui.filters.reset")
 				onClicked: resetFiltersDraft()
 			}
-		}
+			} // ColumnLayout
+		} // ScrollView
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: helpDialog
 		objectName: "helpDialog"
 		title: root.t("help.dialog_title")
@@ -1905,33 +2030,60 @@ ApplicationWindow {
 		width: Math.min(520, parent.width - 40)
 		implicitWidth: 520
 		contentWidth: availableWidth
+		// Fit short help; scroll only when text exceeds a compact max height.
+		readonly property real _helpTextH: helpTitle.implicitHeight + helpBody.implicitHeight + 8
+		readonly property real _helpChrome: Qt.platform.os === "osx" ? 108 : 96
+		readonly property real _helpMaxH: Math.min(280, (parent ? parent.height : 320) - 100)
+		height: Math.min(_helpMaxH, Math.max(140, _helpTextH + _helpChrome))
+		// Above Options/Filters: a second Popup.Native sheet often stacks *under*
+		// the open Options window; use a top-level Window instead. Offscreen tests
+		// keep Item popups via srxyUseNativeAlerts === false (SrxyDialog default).
+		popupType: {
+			if (typeof srxyUseNativeAlerts === "boolean" && srxyUseNativeAlerts === false)
+				return Popup.Item
+			if (optionsDialog.opened || filtersDialog.opened || settingsDialog.opened
+				|| aboutDialog.opened || updateDialog.opened)
+				return Popup.Window
+			return Popup.Native
+		}
+		z: 1000
 		footer: SrxyDialogFooter {
+			defaultButton: helpOkButton
 			AccentButton {
+				id: helpOkButton
+				objectName: "helpOkButton"
 				text: root.t("common.ok")
 				onClicked: helpDialog.accept()
 			}
 		}
-		ColumnLayout {
-			width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
-			spacing: 8
-			Label {
-				id: helpTitle
-				font.bold: true
-				wrapMode: Text.WordWrap
-				Layout.fillWidth: true
-				Layout.maximumWidth: helpDialog.availableWidth - 24
-			}
-			Label {
-				id: helpBody
-				wrapMode: Text.WordWrap
-				Layout.fillWidth: true
-				Layout.maximumWidth: helpDialog.availableWidth - 24
-				textFormat: Text.PlainText
+		ScrollView {
+			id: helpScroll
+			objectName: "helpScroll"
+			anchors.fill: parent
+			clip: true
+			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
+			ColumnLayout {
+				width: helpDialog.availableWidth > 0 ? helpDialog.availableWidth - 24 : 480
+				spacing: 8
+				Label {
+					id: helpTitle
+					font.bold: true
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+					Layout.maximumWidth: helpDialog.availableWidth - 24
+				}
+				Label {
+					id: helpBody
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+					Layout.maximumWidth: helpDialog.availableWidth - 24
+					textFormat: Text.PlainText
+				}
 			}
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: updateDialog
 		objectName: "updateDialog"
 		title: root.t("update.title")
@@ -1967,7 +2119,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: settingsDialog
 		objectName: "settingsDialog"
 		title: root.t("settings.title")
@@ -2086,7 +2238,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: settingsConfirmDialog
 		objectName: "settingsConfirmDialog"
 		title: controller && controller.settingsConfirmTitle
@@ -2119,7 +2271,7 @@ ApplicationWindow {
 		onRejected: if (controller) controller.rejectSettingsConfirm()
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: aboutDialog
 		objectName: "aboutDialog"
 		title: root.t("about.title")
@@ -2198,7 +2350,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: downloadConfirmDialog
 		objectName: "downloadConfirmDialog"
 		title: root.t("gui.download_model")
@@ -2231,7 +2383,7 @@ ApplicationWindow {
 		onRejected: if (controller) controller.rejectDownloadConfirm()
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: downloadProgressDialog
 		objectName: "downloadProgressDialog"
 		title: root.t("gui.downloading")
@@ -2267,7 +2419,7 @@ ApplicationWindow {
 		onRejected: if (controller) controller.cancelDownload()
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: searchWarningsDialog
 		objectName: "searchWarningsDialog"
 		title: root.t("gui.search_warnings.title")
@@ -2292,7 +2444,7 @@ ApplicationWindow {
 		}
 	}
 
-	Dialog {
+	SrxyDialog {
 		id: errorDialog
 		objectName: "errorDialog"
 		title: root.t("gui.error")

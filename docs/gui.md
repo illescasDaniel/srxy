@@ -14,11 +14,11 @@ Named sections top to bottom:
 
 | Section | Purpose |
 |---------|---------|
-| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory |
+| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory; a folder can also be dragged from the OS file manager and dropped anywhere on this row (dashed highlight + "Drop folder here" while dragging) |
 | **What to search** | Query field with mode selector on the right (Simple / Multi-term / Advanced); preview shown for Multi-term and Advanced only |
 | **How to search** | Options and Filters buttons (stacked) open popup dialogs; Options uses the same sections as the TUI (Where / How / Which files); each control has an **(i)** info button. Each dialog ends with an opt-in **Persist … after srxy exits** checkbox and a **Reset** button (factory defaults in the draft; OK still required). When Persist is on, values are written to `settings.json` on quit and restored on the next GUI launch. |
 | **Search** | Wider Search button (enabled only when path + query are usable); warning icon when the query is invalid; system highlight tint when settings are stale |
-| **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits |
+| **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits (a matching folder shows up as its own row alongside file hits — see [cli.md](cli.md#scope)) |
 | **Search progress** | Progress bar (indeterminate until the file total is known, then 0–100%), percentage, `current/total` file count, animated status spinner during OCR/transcribe/semantic work, Cancel; inactive until the first search |
 
 Power-ups that need optional deps or a GPU (CUDA/MPS) are grayed out when unavailable; **(i)** stays clickable and explains how to fix (install `srxy[semantic]`, Tesseract, ffmpeg, GPU PyTorch). Missing **AI model caches** do not gray out — Search prompts to download with confirm + progress dialogs (same idea as the TUI).
@@ -63,6 +63,21 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 | **Simple** | One literal search term (`|` / `&` / `()` are not operators; path separators are ignored) |
 | **Multi-term** | Literal term rows joined with AND/OR (same as the TUI builder) |
 | **Advanced** | Raw `|` / `&` / `()` boolean syntax |
+
+## Drag-and-drop path field
+
+The **Where to search** strip (`objectName: pathDropTarget`) accepts OS file-manager folder drops (`text/uri-list`):
+
+- **macOS Finder:** a window-level `PathDropWindowFilter` (see [`path_drop.py`](../src/srxy/adapters/inbound/gui/path_drop.py)) accepts the drag so Finder shows the green ``+`` cursor, drives `controller.pathDropHover` for the dashed highlight, and calls `handleDroppedPathUrls` on drop. QML `DropArea` alone often never receives Finder events on Aqua.
+- **Linux / Windows:** the same filter runs; a QML `DropArea` (`pathDropArea`, `z: 1` above the Browse/path row) remains as a fallback. Highlight binds to `containsDrag || pathDropHover`.
+- The GroupBox content is sized from the path row’s `implicitHeight` (not mutual `anchors.fill` siblings), so the section keeps its gap before **What to search** / **How to search**.
+- Dropping resolves the first local `file://` URI via `resolve_dropped_folder_path()` in [`controller.py`](../src/srxy/adapters/inbound/gui/controller.py) and assigns it to `controller.path`, going through the same normalization (`_normalize_browsed_path`, percent-decoding) and validation (`pathIssue`) as the Browse dialog and manual typing.
+- **Directories** update the path and clear any warning; **files** update the path but surface the existing "Not a directory" warning (same affordance as typing a file path).
+- **Multiple dropped items**: only the first local URI is used; the rest are ignored (a multi-selection drag is not a multi-root search).
+- **Non-local URIs** (`http://`, `ftp://`, UNC/network-share hosts) are ignored outright — the path field is left unchanged.
+- Dropping never starts a search; it only updates `path`/`pathIssue`, same as editing `pathField` by hand.
+
+Covered by unit tests for the URI→path helper (`resolve_dropped_folder_path`, `handleDroppedPathUrls`) in [`tests/gui/test_gui_controller.py`](../tests/gui/test_gui_controller.py) and flow tests in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py) (layout height / z-order, synthesised window `QDragEnterEvent`/`QDropEvent` through the filter).
 
 ## Snapshots
 

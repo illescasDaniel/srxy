@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import threading
 from pathlib import Path
 from unittest.mock import MagicMock, patch
@@ -8,13 +9,16 @@ import pytest
 
 from srxy.adapters.outbound.metadata.windows_metadata import (
 	_ensure_com_initialized,
+	_read_searchable_property_entries,
 	_read_windows_keywords,
 	has_windows_tags,
 	iter_windows_metadata_lines,
 	normalize_windows_keywords,
+	reset_isolated_worker_for_tests,
 	reset_thread_com_state_for_tests,
 	windows_tags_supported,
 )
+from srxy.adapters.outbound.metadata.windows_metadata_worker import _handle_request
 
 
 _RPC_E_CHANGED_MODE = -2147417850
@@ -279,3 +283,126 @@ def test_given_changed_mode_runtime_when_scanning_files_then_does_not_crash(tmp_
 	# then
 	assert len(results) == 1
 	assert results[0].path.name == "notes.txt"
+
+
+def test_given_windows_platform_when_reading_searchable_entries_then_uses_isolated_worker(tmp_path: Path):
+	# given -- real Windows dispatches through the crash-isolated subprocess path,
+	# not the in-process ``_open_property_store`` call that a native SEH fault
+	# (0xc0000002) can take down.
+	file_path = tmp_path / "broken.jpg"
+
+	# when
+	with (
+		patch("srxy.adapters.outbound.metadata.windows_metadata.sys.platform", "win32"),
+		patch(
+			"srxy.adapters.outbound.metadata.windows_metadata._read_searchable_property_entries_isolated",
+			return_value=[("Windows tag", "cursor")],
+		) as isolated,
+		patch("srxy.adapters.outbound.metadata.windows_metadata._read_searchable_property_entries_direct") as direct,
+		patch("srxy.adapters.outbound.metadata.windows_metadata.windows_metadata_supported", return_value=True),
+	):
+		entries = _read_searchable_property_entries(file_path)
+
+	# then
+	assert entries == [("Windows tag", "cursor")]
+	isolated.assert_called_once_with(file_path)
+	direct.assert_not_called()
+
+
+def test_given_dead_worker_process_when_reading_isolated_entries_then_fails_soft_and_respawns(tmp_path: Path):
+	# given -- simulates a native SEH fault killing the worker subprocess: the
+	# pipe hits EOF (``readline()`` returns ``""``) instead of raising anything
+	# Python can catch.
+	from srxy.adapters.outbound.metadata import windows_metadata as module
+
+	reset_isolated_worker_for_tests()
+	crashed_worker = MagicMock()
+	crashed_worker.poll.return_value = None
+	crashed_worker.stdin = MagicMock()
+	crashed_worker.stdout = MagicMock()
+	crashed_worker.stdout.readline.return_value = ""
+
+	try:
+		with patch.object(module, "_spawn_isolated_worker", return_value=crashed_worker):
+			entries = module._read_searchable_property_entries_isolated(tmp_path / "broken.jpg")
+
+		# then
+		assert entries == []
+		# The dead worker must be dropped so the next call respawns a clean one.
+		assert module._isolated_worker_process is None
+	finally:
+		reset_isolated_worker_for_tests()
+
+
+def test_given_healthy_worker_process_when_reading_isolated_entries_then_reuses_it(tmp_path: Path):
+	# given
+	from srxy.adapters.outbound.metadata import windows_metadata as module
+
+	reset_isolated_worker_for_tests()
+	healthy_worker = MagicMock()
+	healthy_worker.poll.return_value = None
+	healthy_worker.stdin = MagicMock()
+	healthy_worker.stdout = MagicMock()
+	healthy_worker.stdout.readline.return_value = json.dumps({"entries": [["Windows tag", "cursor"]]}) + "\n"
+
+	try:
+		with patch.object(module, "_spawn_isolated_worker", return_value=healthy_worker) as spawn:
+			first = module._read_searchable_property_entries_isolated(tmp_path / "clip.mp4")
+			second = module._read_searchable_property_entries_isolated(tmp_path / "clip2.mp4")
+
+		# then -- one worker process serves both requests.
+		assert first == [("Windows tag", "cursor")]
+		assert second == [("Windows tag", "cursor")]
+		spawn.assert_called_once()
+		assert healthy_worker.stdin.write.call_count == 2
+	finally:
+		reset_isolated_worker_for_tests()
+
+
+def test_given_hung_worker_when_reading_isolated_entries_then_times_out_and_fails_soft(tmp_path: Path):
+	# given -- a worker that never responds (hangs inside the property handler)
+	# must not block the caller forever.
+	import time
+
+	from srxy.adapters.outbound.metadata import windows_metadata as module
+
+	reset_isolated_worker_for_tests()
+	hung_worker = MagicMock()
+	hung_worker.poll.return_value = None
+	hung_worker.stdin = MagicMock()
+	hung_worker.stdout = MagicMock()
+	hung_worker.stdout.readline.side_effect = lambda: time.sleep(10) or ""
+
+	try:
+		with (
+			patch.object(module, "_spawn_isolated_worker", return_value=hung_worker),
+			patch.object(module, "_ISOLATED_WORKER_TIMEOUT_SECONDS", 0.05),
+		):
+			entries = module._read_searchable_property_entries_isolated(tmp_path / "broken.jpg")
+
+		# then
+		assert entries == []
+		assert module._isolated_worker_process is None
+	finally:
+		reset_isolated_worker_for_tests()
+
+
+def test_given_valid_request_when_worker_handles_it_then_returns_direct_entries(tmp_path: Path):
+	# given
+	file_path = tmp_path / "report.docx"
+
+	# when
+	with patch(
+		"srxy.adapters.outbound.metadata.windows_metadata._read_searchable_property_entries_direct",
+		return_value=[("Program name", "Microsoft Office Word")],
+	):
+		response = _handle_request(json.dumps({"path": str(file_path)}))
+
+	# then
+	assert json.loads(response) == {"entries": [["Program name", "Microsoft Office Word"]]}
+
+
+def test_given_malformed_request_when_worker_handles_it_then_returns_empty_entries():
+	# then
+	assert json.loads(_handle_request("not-json")) == {"entries": []}
+	assert json.loads(_handle_request(json.dumps({}))) == {"entries": []}

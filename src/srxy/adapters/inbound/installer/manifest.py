@@ -135,7 +135,7 @@ def is_non_empty_foreign_prefix(prefix: Path) -> bool:
 	ignored_names = {
 		".srxy-installer-marker",
 		".srxy-bootstrap",
-		"logs",  # Inno / engine may create logs before the prefix install finishes
+		"logs",  # engine may create logs before the prefix install finishes
 	}
 	meaningful = [
 		path

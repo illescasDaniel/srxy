@@ -5,7 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import threading
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
@@ -103,6 +103,36 @@ def _normalize_browsed_path(path: str) -> str:
 	# /C:/path → C:/path (Windows drive letter with stray leading slash)
 	text = re.sub(r"^/([A-Za-z]:)", r"\1", text)
 	return text
+
+
+def resolve_dropped_folder_path(urls: Sequence[str]) -> str | None:
+	"""Resolve the first local ``file://`` URI dropped onto the path field.
+
+	Non-local URIs (``http://``, ``ftp://``, UNC/network hosts, etc.) are
+	skipped. When several URIs are dropped at once (e.g. a multi-selection),
+	only the first *local* one is used — the rest are ignored, matching the
+	single-path nature of the search-root field. The returned path is not
+	required to be a directory; callers are expected to feed it through the
+	normal path validation (``pathIssue``) so dropping a file surfaces the
+	same "not a directory" warning as typing one in manually.
+	"""
+	from urllib.parse import unquote, urlparse
+
+	for url in urls:
+		text = (url or "").strip()
+		if not text:
+			continue
+		parsed = urlparse(text)
+		if parsed.scheme != "file":
+			continue
+		if parsed.netloc and parsed.netloc.lower() not in {"localhost", ""}:
+			# UNC/network share (e.g. file://server/share) — not a local path.
+			continue
+		# Rebuild without an explicit `localhost` authority so
+		# `_normalize_browsed_path` sees a plain `file:///...` form.
+		local_url = f"file://{parsed.path}" if parsed.netloc else text
+		return unquote(_normalize_browsed_path(local_url))
+	return None
 
 
 def resolve_gui_search_path(raw: str | None) -> str:
@@ -286,6 +316,7 @@ class SearchController(QObject):
 	queryPreviewChanged = Signal()
 	pathChanged = Signal()
 	pathIssueChanged = Signal()
+	pathDropHoverChanged = Signal()
 	canSearchChanged = Signal()
 	previewChanged = Signal()
 	findChanged = Signal()
@@ -332,6 +363,7 @@ class SearchController(QObject):
 		if self._simple_query:
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
 		self._path = resolve_gui_search_path(getattr(args, "path", None))
+		self._path_drop_hover = False
 		self._status = ""
 		self._activity_spinner = ""
 		self._progress = 0.0
@@ -784,6 +816,31 @@ class SearchController(QObject):
 			self._refresh_stale()
 
 	path = Property(str, _get_path, _set_path, notify=pathChanged)
+
+	def _get_path_drop_hover(self) -> bool:
+		return self._path_drop_hover
+
+	def set_path_drop_hover(self, active: bool):
+		"""Drive Where-to-search drop chrome while an OS drag hovers the strip."""
+		flag = bool(active)
+		if self._path_drop_hover == flag:
+			return
+		self._path_drop_hover = flag
+		self.pathDropHoverChanged.emit()
+
+	pathDropHover = Property(bool, _get_path_drop_hover, notify=pathDropHoverChanged)
+
+	@Slot(list)
+	def handleDroppedPathUrls(self, urls: list):
+		"""Handle a drag-and-drop of one or more ``file://`` URIs onto the path field.
+
+		Only the first local URI is used (see ``resolve_dropped_folder_path``);
+		non-local drops are ignored outright and never touch ``path``.
+		"""
+		resolved = resolve_dropped_folder_path([str(url) for url in urls])
+		if resolved is not None:
+			self._set_path(resolved)
+		self.set_path_drop_hover(False)
 
 	def _compute_path_issue(self) -> str:
 		from srxy.i18n import tr
