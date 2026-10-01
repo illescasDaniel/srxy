@@ -70,6 +70,10 @@ def test_given_gui_qml_when_engine_loads_and_opens_dialogs_then_no_binding_loops
 	window.setProperty("visible", True)
 	assert window.objectName() == "mainWindow"
 	assert window.findChild(QObject, "searchButton") is not None
+	recent_button = window.findChild(QObject, "recentSearchesButton")
+	assert recent_button is not None
+	# Unicode ▾ as ToolButton text paints poorly across styles; must be an SVG icon.
+	assert "chevron-down.svg" in QQmlProperty(recent_button, "icon.source").read().toString()
 	assert window.findChild(QObject, "browseButton") is not None
 	assert window.findChild(QObject, "queryModeBox") is not None
 	assert window.findChild(QObject, "simpleQueryField") is not None

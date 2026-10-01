@@ -805,13 +805,16 @@ ApplicationWindow {
 										ToolButton {
 											id: recentSearchesButton
 											objectName: "recentSearchesButton"
-											text: "▾"
-											flat: true
-											implicitWidth: 28
-											implicitHeight: 28
-											Layout.alignment: searchButton.stretchToField ? Qt.AlignTop : Qt.AlignVCenter
+											// SVG (not Unicode ▾): emoji/glyph text paints poorly under
+											// macOS/Material/Fluent IconLabel chrome and often looks
+											// broken/mis-sized next to Search.
+											icon.source: "images/chevron-down.svg"
+											icon.width: 16
+											icon.height: 16
+											Layout.alignment: searchButton.pinTop ? Qt.AlignTop : Qt.AlignVCenter
 											ToolTip.visible: hovered
 											ToolTip.text: root.t("gui.recent.button")
+											Accessible.name: ToolTip.text
 											onClicked: {
 												root.reloadRecentSearches()
 												recentSearchesPopup.open()

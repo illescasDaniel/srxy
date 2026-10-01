@@ -4,17 +4,16 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/media-preview-panel` — polish committed (`5201dcb`); FFmpeg demuxer-silence follow-up uncommitted (awaiting Daniel `uv run task gui` confirm).
+- `feature/media-preview-panel` — committing chevron fix, push PR #39, merge into `feature/1.8.0` when CI green.
 
 ## Current focus
 
-1. **FFmpeg `Input #0` silence** — those dumps are libavutil stderr from Qt Multimedia, not Qt logging categories. `silence_ffmpeg_av_log()` sets `av_log` to ERROR on PySide6's bundled `libavutil` (ctypes). Combined with newline `setFilterRules` for the LGPL category notice.
+1. **Ship PR #39** — recent-searches chevron SVG + media preview panel → `feature/1.8.0`.
 2. Unlimited OCR — not touched.
 
 ## Next steps
 
-1. Daniel confirms GUI is quiet on video select; then commit the silence fix(es).
-2. Visual smoke (poster + icons); undraft PR #39 when ready.
+1. Wait for CI green on PR #39; merge; pull `feature/1.8.0` locally.
 
 ## Memory protocol (2026-09-01)
 
