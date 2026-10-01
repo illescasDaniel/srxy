@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import importlib.util
 import io
+import signal
 import sys
 from pathlib import Path
 from unittest.mock import patch
@@ -188,3 +189,94 @@ def test_given_keyboard_interrupt_when_running_gate_command_then_returns_130(mon
 
 	# then
 	assert code == 130
+
+
+def test_given_no_sigkill_attribute_when_resolving_force_kill_signal_then_falls_back_to_sigterm(
+	monkeypatch,
+):
+	"""Windows Python has no signal.SIGKILL at all — the real failure mode this
+	guards against is an AttributeError raised just from *referencing*
+	signal.SIGKILL, which crashed the interrupted-gate path under Windows CI (and,
+	via a dead xdist worker, took unrelated tests down alongside it)."""
+	# given — simulate Windows: signal.SIGKILL does not exist on the real module
+	# (checks.py does `import signal`, so this is the same module object).
+	checks = _load_checks_module()
+	monkeypatch.delattr(checks.signal, "SIGKILL", raising=False)
+
+	# when
+	resolved = checks._force_kill_signal()
+
+	# then
+	assert resolved == signal.SIGTERM
+
+
+def test_given_no_killpg_when_kill_process_group_then_falls_back_to_send_signal(monkeypatch):
+	"""os.killpg does not exist on Windows (process groups are a POSIX concept);
+	_kill_process_group must fall back to Popen.send_signal instead of letting an
+	AttributeError escape (it is not a ProcessLookupError/PermissionError, so the
+	original try/except around os.killpg alone did not catch it)."""
+	# given
+	checks = _load_checks_module()
+	monkeypatch.delattr(checks.os, "killpg", raising=False)
+	sent: list[object] = []
+
+	class _FakeProc:
+		def poll(self):
+			return None
+
+		def send_signal(self, sig):
+			sent.append(sig)
+
+	# when
+	checks._kill_process_group(_FakeProc(), signal.SIGTERM)
+
+	# then
+	assert sent == [signal.SIGTERM]
+
+
+def test_given_no_sigkill_and_no_killpg_when_wait_after_interrupt_then_sends_sigterm_fallback(
+	monkeypatch,
+):
+	"""End-to-end repro of the Windows crash: no signal.SIGKILL, no os.killpg.
+	_wait_after_interrupt must still send SIGINT then the SIGTERM kill fallback
+	via Popen.send_signal, and return the process's exit code — no AttributeError."""
+	# given
+	monkeypatch.delattr(signal, "SIGKILL", raising=False)
+	checks = _load_checks_module()
+	monkeypatch.delattr(checks.os, "killpg", raising=False)
+	sent: list[object] = []
+
+	class _FakeProc:
+		pid = 4242
+		returncode = None
+
+		def poll(self):
+			# Never finishes on its own — forces the real control flow to reach the
+			# post-deadline kill fallback instead of exiting the wait loop early.
+			return None
+
+		def send_signal(self, sig):
+			sent.append(sig)
+
+		def wait(self, timeout=None):
+			self.returncode = 130
+			return 130
+
+	# Fake clock that advances past the 5s deadline after a few calls, without a
+	# real sleep (poll() always reports "still running", so only the deadline
+	# — not poll() turning non-None — can end the wait loop).
+	clock = {"t": 0.0}
+
+	def _fake_monotonic() -> float:
+		clock["t"] += 1.0
+		return clock["t"]
+
+	monkeypatch.setattr(checks.time, "monotonic", _fake_monotonic)
+	monkeypatch.setattr(checks.time, "sleep", lambda _seconds: None)
+
+	# when
+	code = checks._wait_after_interrupt(_FakeProc())
+
+	# then
+	assert code == 130
+	assert sent == [checks.signal.SIGINT, checks.signal.SIGTERM]

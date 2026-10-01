@@ -25,7 +25,7 @@ Search options
 Search options
 █
 █
-ives
+can: Archives
 █
 █
 Filters
@@ -41,7 +41,6 @@ File names
 ┌
 █
 Match the path and filename
-▃▃
 █
 ┐
 │
@@ -54,9 +53,24 @@ Mat
 │
 █
 X
-File contents
+Folder names
 █
 Text
+│
+│
+█
+Match folder names as results
+█
+│
+│
+█
+█
+│
+│
+█
+X
+File contents
+█
 │
 │
 █
@@ -68,6 +82,7 @@ Search inside files (docs, images, audio, …)
 █
 │
 │
+Run a search to
 █
 How to match
 █
@@ -75,22 +90,6 @@ How to match
 │
 █
 Fuzzy, phonetic, and substring matching (always on)
-█
-│
-│
-█
-█
-│
-│
-Run a search to
-█
-X
-Docs, tags & metadata (recommended ON)
-█
-│
-│
-█
-Text inside documents, tags, and metadata
 █
 │
 │

@@ -213,17 +213,22 @@ def test_given_powershell_available_when_parsing_scripts_then_no_syntax_errors()
 	import shutil
 	import subprocess
 
+	# Windows PowerShell 5.1 rejects ``[ref]$null``; bind errors to a real variable.
+	# Prefer pwsh when present (GHA windows-latest has both).
+	shell = shutil.which("pwsh") or shutil.which("powershell") or "powershell"
 	for name in ("build-offline.ps1", "prune-pyside.ps1", "smoke-offline.ps1"):
 		path = _WINDOWS / name
+		# -LiteralPath + single-quoted path: backslashes must stay literal.
+		command = (
+			"$errs = $null; "
+			f"$null = [System.Management.Automation.PSParser]::Tokenize("
+			f"(Get-Content -LiteralPath '{path}' -Raw), [ref]$errs); "
+			"if ($errs -and $errs.Count -gt 0) { $errs | ForEach-Object { $_.Message }; exit 1 }"
+		)
 		result = subprocess.run(  # noqa: S603
-			[
-				shutil.which("powershell") or "powershell",
-				"-NoProfile",
-				"-Command",
-				f"$null = [System.Management.Automation.PSParser]::Tokenize((Get-Content -Raw '{path}'), [ref]$null)",
-			],
+			[shell, "-NoProfile", "-Command", command],
 			capture_output=True,
 			text=True,
 			check=False,
 		)
-		assert result.returncode == 0, result.stderr
+		assert result.returncode == 0, result.stderr or result.stdout
