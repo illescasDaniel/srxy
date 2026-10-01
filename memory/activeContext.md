@@ -4,17 +4,16 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/media-preview-panel` — CI quality still red after 28×28 fix (macOS/Windows ✓); pinTop test now uses parent-local y.
+- `feature/media-preview-panel` @ fixing Ubuntu CI: avutil ctypes OSError in silence test (not pinTop).
 
 ## Current focus
 
-1. **Ship PR #39** — push local-y pinTop assertion fix; merge when CI green.
+1. **Ship PR #39** — Ubuntu `quality` fails on `test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level` (OPENSSL_3.0.0 / RAND_bytes); skip when not ctypes-loadable.
 2. Unlimited OCR — not touched.
 
 ## Next steps
 
-1. On CI green: squash-merge PR #39 into `feature/1.8.0`, then `git checkout feature/1.8.0 && git pull`.
-2. `gh` keyring token invalid — re-auth needed to fetch Actions logs locally.
+1. Push avutil test fix; on CI green squash-merge; pull `feature/1.8.0`.
 
 ## Memory protocol (2026-09-01)
 

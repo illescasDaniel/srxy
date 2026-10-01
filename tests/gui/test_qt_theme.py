@@ -792,24 +792,48 @@ def test_given_existing_ffmpeg_rule_when_silencing_qt_then_preserves_ffmpeg_adds
 	assert "qt.multimedia.ffmpeg=false" not in rules
 
 
-def test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level(
-	monkeypatch: pytest.MonkeyPatch,
-):
-	# given — use the real bundled lib when present; otherwise skip
+def test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level():
+	# given — use the real bundled lib when present *and* ctypes-loadable.
+	# Ubuntu CI often ships libavutil.so that fails CDLL with unresolved
+	# OPENSSL_3.0.0 symbols (Qt loads it via its own RPATH; bare ctypes does not).
 	paths = qt_theme._pyside_avutil_library_paths()  # pyright: ignore[reportPrivateUsage]
 	if not paths:
 		pytest.skip("PySide6 libavutil not present")
+
+	import ctypes
+
+	loadable: ctypes.CDLL | None = None
+	for path in paths:
+		try:
+			loadable = ctypes.CDLL(str(path))
+			break
+		except OSError:
+			continue
+	if loadable is None:
+		assert qt_theme.silence_ffmpeg_av_log() is False
+		pytest.skip("PySide6 libavutil present but not ctypes-loadable")
 
 	# when
 	ok = qt_theme.silence_ffmpeg_av_log()
 
 	# then
 	assert ok is True
-	import ctypes
+	loadable.av_log_get_level.restype = ctypes.c_int
+	assert loadable.av_log_get_level() == qt_theme._AV_LOG_ERROR  # pyright: ignore[reportPrivateUsage]
 
-	lib = ctypes.CDLL(str(paths[0]))
-	lib.av_log_get_level.restype = ctypes.c_int
-	assert lib.av_log_get_level() == qt_theme._AV_LOG_ERROR  # pyright: ignore[reportPrivateUsage]
+
+def test_given_avutil_cdll_oserror_when_silencing_ffmpeg_av_log_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — path listed but loading fails (mirrors Ubuntu CI OPENSSL unresolved)
+	monkeypatch.setattr(
+		qt_theme,
+		"_pyside_avutil_library_paths",
+		lambda: [Path("/nonexistent/libavutil.so")],
+	)
+
+	# when / then
+	assert qt_theme.silence_ffmpeg_av_log() is False
 
 
 def test_given_no_avutil_when_silencing_ffmpeg_av_log_then_returns_false(
