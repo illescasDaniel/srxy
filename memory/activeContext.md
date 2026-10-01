@@ -4,18 +4,23 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/1.8.0` @ `a86d14d` — includes squash-merge of PR #40 (search by folder name).
-- Topic branch `cursor/search-by-folder-name-b203` merged; PR #40 closed.
+- `cursor/gui-search-button-top-fixed-0e77` @ `2cee201` — merged latest `origin/feature/1.8.0` (@ `e88cb39`, includes PR #40 folder-name search). Ahead of `origin/cursor/gui-search-button-top-fixed-0e77` by 1 merge commit.
+- Release train **`feature/1.8.0`** @ `e88cb39`.
 
 ## Current focus
 
-1. Next 1.8.0 topics (Unlimited OCR #38, media preview #39, etc.) — not this branch.
+Done this session: sync branch with `feature/1.8.0` + quality gate green.
 
-## Done this session
+## Just changed
 
-- Folder names as independent Options toggle; Windows CI SIGKILL/`killpg` fixes; CI green; PR #40 squash-merged into `feature/1.8.0`; local `feature/1.8.0` tracking updated.
+- Merged `origin/feature/1.8.0` into this branch (`2cee201`). `Main.qml` auto-merged (pinTop + `optFolders` coexist). Memory conflicts resolved.
+- Quality gate `core,gui,tui`: autofix + verify both PASSED (no code fixes needed).
 
 ## Next steps
 
-1. Work remaining 1.8.0 drafts from their topic branches off updated `feature/1.8.0`.
-2. Optional: check out `feature/1.8.0` locally if continuing train work here.
+1. Push branch (`git push`) so PR #51 picks up the sync.
+2. Await green CI on PR #51.
+
+## Memory protocol (2026-09-01)
+
+- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory.
