@@ -89,7 +89,7 @@ def _video_poster_url(path: Path) -> str:
 				"-nostdin",
 				"-hide_banner",
 				"-loglevel",
-				"error",
+				"quiet",
 				"-y",
 				"-ss",
 				"0",
@@ -105,7 +105,8 @@ def _video_poster_url(path: Path) -> str:
 				"png",
 				"-",
 			],
-			capture_output=True,
+			stdout=subprocess.PIPE,
+			stderr=subprocess.DEVNULL,
 			check=False,
 			timeout=VIDEO_POSTER_TIMEOUT_SECONDS,
 		)
