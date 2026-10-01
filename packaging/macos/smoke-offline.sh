@@ -70,8 +70,21 @@ import sys
 from PySide6.QtCore import QByteArray, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
+from PySide6.QtQuickControls2 import QQuickStyle
 
+from srxy.adapters.inbound.gui.qt_theme import (
+	apply_qt_quick_theme,
+	prefer_macos_quick_controls_style,
+)
+
+prefer_macos_quick_controls_style()
 app = QGuiApplication(sys.argv)
+apply_qt_quick_theme(app)
+style = QQuickStyle.name()
+if style != "macOS":
+	raise SystemExit(f"offline smoke: expected Quick style macOS, got {style!r}")
+print(f"offline Quick style OK: {style}")
+
 engine = QQmlApplicationEngine()
 qml = b"""
 import QtQuick

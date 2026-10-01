@@ -23,6 +23,14 @@ def resolve_search_modes(args: argparse.Namespace) -> tuple[bool, bool]:
 	return search_names, search_contents
 
 
+def resolve_search_folders(args: argparse.Namespace) -> bool:
+	"""Folder-name search is independent of file names; content-only turns it off."""
+	if getattr(args, "content_only", False):
+		return False
+	raw = getattr(args, "search_folders", None)
+	return True if raw is None else bool(raw)
+
+
 def resolve_file_query(args: argparse.Namespace) -> FileQ:
 	if getattr(args, "query_expr", None) is not None:
 		value = args.query_expr
@@ -82,6 +90,7 @@ def execute_search(
 	from srxy.application.use_cases.search_files import magic_file_search
 
 	search_names, search_contents = resolve_search_modes(args)
+	search_folders = resolve_search_folders(args)
 	raw_docs = getattr(args, "search_docs_tags", None)
 	search_docs_tags = True if raw_docs is None else bool(raw_docs)
 	if not search_contents:
@@ -95,6 +104,7 @@ def execute_search(
 			args.path,
 			query_expr,
 			search_names=search_names,
+			search_folders=search_folders,
 			search_contents=search_contents,
 			search_docs_tags=search_docs_tags,
 			threshold=args.threshold,

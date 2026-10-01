@@ -4,7 +4,7 @@ Requires **Python 3.11+**.
 
 ## Desktop installers (preferred)
 
-Linux AppImages, macOS `.app` / DMG wrappers, and a Windows offline Inno Setup installer are available. Short reference: [installers.md](installers.md).
+Linux AppImages, macOS `.app` / DMG wrappers, and a Windows offline fat PySide installer are available. Short reference: [installers.md](installers.md).
 
 Download free builds from [GitHub Releases](https://github.com/illescasDaniel/srxy/releases/latest), or [buy the installers](https://www.daniel-ir.eu/shop/p/srxy) from the official site (includes a **signed** macOS build).
 

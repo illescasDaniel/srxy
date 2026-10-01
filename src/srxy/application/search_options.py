@@ -13,6 +13,7 @@ def search_source_required_message() -> str:
 @dataclass(frozen=True, slots=True)
 class SearchOptions:
 	search_names: bool = True
+	search_folders: bool = True
 	search_contents: bool = True
 	search_docs_tags: bool = True
 	semantic: bool = False
@@ -32,7 +33,7 @@ def content_match_sources_enabled(options: SearchOptions) -> bool:
 
 
 def has_search_source(options: SearchOptions) -> bool:
-	if options.search_names:
+	if options.search_names or options.search_folders:
 		return True
 	return bool(options.search_contents and content_match_sources_enabled(options))
 
@@ -49,6 +50,7 @@ def effective_search_options(options: SearchOptions) -> SearchOptions:
 	if options.search_contents:
 		return SearchOptions(
 			search_names=options.search_names,
+			search_folders=options.search_folders,
 			search_contents=True,
 			search_docs_tags=options.search_docs_tags,
 			semantic=options.semantic,
@@ -64,6 +66,7 @@ def effective_search_options(options: SearchOptions) -> SearchOptions:
 		)
 	return SearchOptions(
 		search_names=options.search_names,
+		search_folders=options.search_folders,
 		search_contents=False,
 		search_docs_tags=False,
 		semantic=options.semantic,
@@ -85,10 +88,12 @@ normalize_content_dependent_options = effective_search_options
 
 def search_options_from_args(args: argparse.Namespace) -> SearchOptions:
 	search_names, search_contents = _resolve_search_modes(args)
+	search_folders = _resolve_search_folders(args)
 	raw_docs = getattr(args, "search_docs_tags", None)
 	search_docs_tags = True if raw_docs is None else bool(raw_docs)
 	return SearchOptions(
 		search_names=search_names,
+		search_folders=search_folders,
 		search_contents=search_contents,
 		search_docs_tags=search_docs_tags,
 		semantic=bool(args.semantic or args.semantic_all),
@@ -108,6 +113,7 @@ def sync_options_to_args(
 	args: argparse.Namespace,
 	*,
 	search_names: bool,
+	search_folders: bool = True,
 	search_contents: bool,
 	search_docs_tags: bool = True,
 	semantic: bool,
@@ -121,9 +127,10 @@ def sync_options_to_args(
 	include_archives: bool,
 	include_subdirectories: bool = True,
 ):
-	args.names_only = search_names and not search_contents
-	args.content_only = search_contents and not search_names
+	args.names_only = (search_names or search_folders) and not search_contents
+	args.content_only = search_contents and not search_names and not search_folders
 	args.search_names = search_names
+	args.search_folders = search_folders
 	args.search_contents = search_contents
 	args.search_docs_tags = search_docs_tags
 	args.semantic = semantic
@@ -143,6 +150,7 @@ def apply_search_options_to_args(args: argparse.Namespace, options: SearchOption
 	sync_options_to_args(
 		args,
 		search_names=options.search_names,
+		search_folders=options.search_folders,
 		search_contents=options.search_contents,
 		search_docs_tags=options.search_docs_tags,
 		semantic=options.semantic,
@@ -167,6 +175,8 @@ def format_search_options_summary(options: SearchOptions) -> str:
 	where_labels: list[str] = []
 	if effective.search_names:
 		where_labels.append(tr("summary.where.names"))
+	if effective.search_folders:
+		where_labels.append(tr("summary.where.folders"))
 	if effective.search_contents:
 		where_labels.append(tr("summary.where.content"))
 	if where_labels:
@@ -215,3 +225,11 @@ def _resolve_search_modes(args: argparse.Namespace) -> tuple[bool, bool]:
 	search_names = True if args.search_names is None else args.search_names
 	search_contents = True if args.search_contents is None else args.search_contents
 	return search_names, search_contents
+
+
+def _resolve_search_folders(args: argparse.Namespace) -> bool:
+	"""Folder-name search is independent of file names; content-only turns it off."""
+	if getattr(args, "content_only", False):
+		return False
+	raw = getattr(args, "search_folders", None)
+	return True if raw is None else bool(raw)

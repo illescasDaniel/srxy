@@ -12,6 +12,7 @@ from srxy.i18n import tr
 
 _HELP_KEYS = {
 	"search_names": "gui.help.search_names",
+	"search_folders": "gui.help.search_folders",
 	"search_contents": "gui.help.search_contents",
 	"search_docs_tags": "gui.help.search_docs_tags",
 	"semantic": "gui.help.semantic",

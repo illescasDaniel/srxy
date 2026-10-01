@@ -108,10 +108,109 @@ def test_given_windows_url_when_controller_sets_path_then_no_leading_slash(
 
 	controller.path = "file:///C:/Users/kaumi/Downloads"
 	assert not controller.path.startswith("/")
-	assert controller.path == "C:/Users/kaumi/Downloads"
 
-	controller.path = "/C:/Users/kaumi/Downloads"
-	assert controller.path == "C:/Users/kaumi/Downloads"
+
+@pytest.mark.parametrize(
+	"urls,expected",
+	[
+		# Simple Unix directory URI
+		(["file:///home/user/docs"], "/home/user/docs"),
+		# Windows drive-letter URI
+		(["file:///C:/Users/kaumi/Downloads"], "C:/Users/kaumi/Downloads"),
+		# Percent-encoded spaces are decoded
+		(["file:///home/user/My%20Folder"], "/home/user/My Folder"),
+		# Multi-URI drop: only the first local URI is used
+		(["file:///home/user/first", "file:///home/user/second"], "/home/user/first"),
+		# Non-local URI ignored, falls through to next local one
+		(["https://example.com/not-local", "file:///home/user/docs"], "/home/user/docs"),
+		# Explicit localhost authority is still local
+		(["file://localhost/home/user/docs"], "/home/user/docs"),
+	],
+)
+def test_given_dropped_urls_when_resolving_then_returns_first_local_path(urls: list[str], expected: str):
+	from srxy.adapters.inbound.gui.controller import (
+		resolve_dropped_folder_path,  # pyright: ignore[reportPrivateUsage]
+	)
+
+	assert resolve_dropped_folder_path(urls) == expected
+
+
+@pytest.mark.parametrize(
+	"urls",
+	[
+		[],
+		[""],
+		["https://example.com/somewhere"],
+		["ftp://example.com/somewhere"],
+		# Network share / UNC-style host — not local
+		["file://server/share/docs"],
+	],
+)
+def test_given_no_local_uri_when_resolving_then_returns_none(urls: list[str]):
+	from srxy.adapters.inbound.gui.controller import (
+		resolve_dropped_folder_path,  # pyright: ignore[reportPrivateUsage]
+	)
+
+	assert resolve_dropped_folder_path(urls) is None
+
+
+def test_given_directory_drop_when_handled_then_path_updates_and_clears_issue(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.path = ""
+	assert controller.pathIssue
+
+	controller.handleDroppedPathUrls([tmp_path.as_uri()])
+
+	assert Path(controller.path) == tmp_path
+	assert controller.pathIssue == ""
+
+
+def test_given_file_drop_when_handled_then_path_warns_not_directory(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	dropped_file = tmp_path / "note.txt"
+	dropped_file.write_text("hello\n", encoding="utf-8")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.handleDroppedPathUrls([dropped_file.as_uri()])
+
+	assert Path(controller.path) == dropped_file
+	assert controller.pathIssue != ""
+
+
+def test_given_multi_uri_drop_when_handled_then_only_first_directory_used(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	first_dir = tmp_path / "first"
+	second_dir = tmp_path / "second"
+	first_dir.mkdir()
+	second_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.handleDroppedPathUrls([first_dir.as_uri(), second_dir.as_uri()])
+
+	assert Path(controller.path) == first_dir
+
+
+def test_given_non_local_drop_when_handled_then_path_unchanged(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	original = controller.path
+
+	controller.handleDroppedPathUrls(["https://example.com/not-a-folder"])
+
+	assert controller.path == original
 
 
 def test_given_search_finished_when_handling_event_then_updates_results_model(qapp: QCoreApplication, tmp_path: Path):

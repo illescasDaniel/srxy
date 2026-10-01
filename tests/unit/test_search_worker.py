@@ -68,6 +68,26 @@ def test_given_file_search_result_when_round_trip_dict_then_preserves_fields(tmp
 
 	# then
 	assert restored == result
+	assert restored.is_dir is False
+
+
+def test_given_directory_search_result_when_round_trip_dict_then_preserves_is_dir(tmp_path: Path):
+	# given — the GUI/TUI heavy-search worker subprocess round-trips results through
+	# JSON; is_dir must survive that trip so a folder hit does not become a "file"
+	# hit after crossing the subprocess boundary.
+	result = FileSearchResult(
+		path=tmp_path / "Invoices",
+		score=0.9,
+		breakdown={"name": 0.9},
+		is_dir=True,
+	)
+
+	# when
+	restored = file_result_from_dict(file_result_to_dict(result))
+
+	# then
+	assert restored == result
+	assert restored.is_dir is True
 
 
 def test_given_light_search_when_run_worker_main_then_disables_process_pool(monkeypatch: pytest.MonkeyPatch):
