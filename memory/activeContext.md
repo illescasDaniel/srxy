@@ -4,21 +4,18 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `cursor/search-by-folder-name-b203` (PR #40 → `feature/1.8.0`)
+- `feature/1.8.0` @ `a86d14d` — includes squash-merge of PR #40 (search by folder name).
+- Topic branch `cursor/search-by-folder-name-b203` merged; PR #40 closed.
 
 ## Current focus
 
-1. **Search by folder name** — separate **Folder names** Options toggle (independent of File names; both default on). Also fix remaining Windows CI (`SIGKILL` in `checks.py`).
+1. Next 1.8.0 topics (Unlimited OCR #38, media preview #39, etc.) — not this branch.
 
-## Touched this session
+## Done this session
 
-- Added `SearchOptions.search_folders` + GUI `optFolders` / TUI `#so-folders` / CLI `--folders`/`--no-folders`.
-- Walker: `include_directories=search_folders`.
-- Fixed Windows `signal.SIGKILL` AttributeError in quality gate interrupt path.
-- Local gate `core,gui,tui` PASSED.
+- Folder names as independent Options toggle; Windows CI SIGKILL/`killpg` fixes; CI green; PR #40 squash-merged into `feature/1.8.0`; local `feature/1.8.0` tracking updated.
 
 ## Next steps
 
-1. Push; confirm PR #40 CI green (esp. `test-windows`).
-2. Daniel: reopen Options — should see File names + Folder names both ticked.
-3. TSM `com.apple.tsm.uiserver` CFMessagePort warnings on macOS GUI launch are harmless IME noise — ignore.
+1. Work remaining 1.8.0 drafts from their topic branches off updated `feature/1.8.0`.
+2. Optional: check out `feature/1.8.0` locally if continuing train work here.
