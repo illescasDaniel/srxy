@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-10-01 — Video preview poster via ffmpeg + silence Qt FFmpeg LGPL info log
+
+- **Context:** Media preview panel showed a black `VideoOutput` until play; play/pause/mute were text labels; Qt logged `qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version … LGPL …` on every GUI launch that loads multimedia.
+- **Decision:** (1) Extend `resolve_media_preview` to a 3-tuple `(kind, media_url, poster_url)`; for video, best-effort extract a first-frame PNG `data:` URI via `ffmpeg` (install-prefix binary or PATH, 10s timeout) into `previewPosterUrl`, shown as an `Image` overlay until `MediaPlayer` is Playing. If ffmpeg is missing, QML briefly play+pause (muted) to paint a frame into `VideoOutput`. (2) Play/pause/mute are icon-only `ToolButton`s (`qml/images/{play,pause,volume,volume-mute}.svg`) with ToolTips. (3) Add `qt.multimedia.ffmpeg=false` to `silence_noisy_qt_logging` alongside the existing mime rule (preserve any user-set rule for that category).
+- **Rationale:** Poster extraction reuses the same optional ffmpeg already vendored for transcription without adding Qt/video decode deps to the Qt-free `media_preview` module; the QML prime path covers hosts without ffmpeg. The FFmpeg LGPL line is informational backend noise, not an app error — same class as the clipboard mime spam we already suppress.
+
 ## 2026-09-07 — Cherry-pick `fake_uninstall` stub kwargs fix onto new `feature/1.8.0` topic branches too
 
 - **Context:** CI for this branch (recent-searches) failed the exact same way as the DnD branch's second CI run: `InstallerController` always passes `remove_cache`/`remove_settings`/`remove_models` to `uninstall_prefix()`, but two `tests/gui/test_installer.py` tests' `fake_uninstall` monkeypatch stubs only accepted `path`/`status`/`confirm_unsafe`. The extra kwargs raised `TypeError` *inside the worker `QThread`* before the stub body ever ran, so `started.set()` was never reached and the test's own `started.wait(5.0)` timed out — surfacing as generic-looking timing flakiness on macOS, Windows, and the Linux `quality` job alike (not sandbox-specific, not actually flaky).

@@ -1020,6 +1020,7 @@ def test_given_image_file_when_previewing_then_kind_is_image_with_media_url(qapp
 	controller.flush_preview_for_tests()
 	assert str(controller.previewKind) == "image"
 	assert str(controller.previewMediaUrl).startswith("data:image/png;base64,")
+	assert str(controller.previewPosterUrl) == ""
 	assert str(controller.previewText) == ""
 	controller.shutdown(thread_wait_ms=1000)
 
@@ -1035,6 +1036,7 @@ def test_given_audio_file_when_previewing_then_kind_is_audio_with_file_url(qapp:
 	controller.flush_preview_for_tests()
 	assert str(controller.previewKind) == "audio"
 	assert str(controller.previewMediaUrl).startswith("file://")
+	assert str(controller.previewPosterUrl) == ""
 	controller.shutdown(thread_wait_ms=1000)
 
 
@@ -1049,6 +1051,8 @@ def test_given_video_file_when_previewing_then_kind_is_video_with_file_url(qapp:
 	controller.flush_preview_for_tests()
 	assert str(controller.previewKind) == "video"
 	assert str(controller.previewMediaUrl).startswith("file://")
+	poster = str(controller.previewPosterUrl)
+	assert poster == "" or poster.startswith("data:image/png;base64,")
 	controller.shutdown(thread_wait_ms=1000)
 
 
@@ -1062,6 +1066,7 @@ def test_given_text_file_when_previewing_then_kind_is_text_with_no_media_url(qap
 	controller.flush_preview_for_tests()
 	assert str(controller.previewKind) == "text"
 	assert str(controller.previewMediaUrl) == ""
+	assert str(controller.previewPosterUrl) == ""
 	assert "alpha beta" in str(controller.previewText)
 	controller.shutdown(thread_wait_ms=1000)
 
@@ -1465,7 +1470,7 @@ def test_given_deleted_preview_document_when_applying_then_still_emits_and_clear
 	# when
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		controller._preview_generation,  # pyright: ignore[reportPrivateUsage]
-		("alpha\n", path, "", False, "", "TXT", ".txt", "", ""),
+		("alpha\n", path, "", False, "", "TXT", ".txt", "", "", ""),
 	)
 
 	# then — must leave loading and not raise
@@ -1496,7 +1501,7 @@ def test_given_stale_preview_generation_when_worker_finishes_then_result_is_igno
 	controller._preview_generation = 5  # pyright: ignore[reportPrivateUsage]
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		4,
-		("stale text", path, "", False, "", "TXT", ".txt", "", ""),
+		("stale text", path, "", False, "", "TXT", ".txt", "", "", ""),
 	)
 
 	# then

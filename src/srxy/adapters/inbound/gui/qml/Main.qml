@@ -1474,6 +1474,7 @@ ApplicationWindow {
 									Layout.fillHeight: true
 									readonly property string kind: previewBodyStack.previewKind
 									readonly property string mediaSource: controller && controller.previewMediaUrl ? controller.previewMediaUrl : ""
+									readonly property string posterSource: controller && controller.previewPosterUrl ? controller.previewPosterUrl : ""
 
 									Image {
 										id: previewImage
@@ -1500,6 +1501,8 @@ ApplicationWindow {
 										anchors.fill: parent
 										anchors.margins: 8
 										spacing: 8
+										property bool primingPoster: false
+										property bool primingRestoreMuted: false
 
 										MediaPlayer {
 											id: previewMediaPlayer
@@ -1510,15 +1513,66 @@ ApplicationWindow {
 												id: previewAudioOutput
 												objectName: "previewAudioOutput"
 											}
-											onSourceChanged: if (source == "") stop()
+											onSourceChanged: {
+												previewAvColumn.primingPoster = false
+												posterPrimeTimer.stop()
+												if (source == "")
+													stop()
+											}
+											onMediaStatusChanged: {
+												// Without a Python poster, briefly play+pause so VideoOutput
+												// paints a first frame instead of staying black.
+												if (previewMediaBody.kind !== "video")
+													return
+												if (previewMediaBody.posterSource !== "")
+													return
+												if (previewAvColumn.primingPoster)
+													return
+												if (mediaStatus !== MediaPlayer.LoadedMedia
+													&& mediaStatus !== MediaPlayer.BufferedMedia)
+													return
+												if (playbackState !== MediaPlayer.StoppedState)
+													return
+												previewAvColumn.primingPoster = true
+												previewAvColumn.primingRestoreMuted = previewAudioOutput.muted
+												previewAudioOutput.muted = true
+												play()
+												posterPrimeTimer.restart()
+											}
 										}
 
-										VideoOutput {
-											id: previewVideoOutput
-											objectName: "previewVideoOutput"
+										Timer {
+											id: posterPrimeTimer
+											interval: 80
+											onTriggered: {
+												if (previewMediaPlayer.playbackState === MediaPlayer.PlayingState)
+													previewMediaPlayer.pause()
+												previewAudioOutput.muted = previewAvColumn.primingRestoreMuted
+												previewAvColumn.primingPoster = false
+											}
+										}
+
+										Item {
 											visible: previewMediaBody.kind === "video"
 											Layout.fillWidth: true
 											Layout.fillHeight: true
+
+											VideoOutput {
+												id: previewVideoOutput
+												objectName: "previewVideoOutput"
+												anchors.fill: parent
+											}
+											Image {
+												id: previewVideoPoster
+												objectName: "previewVideoPoster"
+												anchors.fill: parent
+												fillMode: Image.PreserveAspectFit
+												asynchronous: true
+												cache: false
+												visible: previewMediaBody.posterSource !== ""
+													&& previewMediaPlayer.playbackState !== MediaPlayer.PlayingState
+												source: previewMediaBody.kind === "video" ? previewMediaBody.posterSource : ""
+											}
 										}
 
 										Label {
@@ -1537,10 +1591,22 @@ ApplicationWindow {
 
 											ToolButton {
 												objectName: "previewMediaPlayButton"
-												text: previewMediaPlayer.playbackState === MediaPlayer.PlayingState
+												icon.source: previewMediaPlayer.playbackState === MediaPlayer.PlayingState
+													? "images/pause.svg"
+													: "images/play.svg"
+												icon.width: 16
+												icon.height: 16
+												ToolTip.visible: hovered
+												ToolTip.text: previewMediaPlayer.playbackState === MediaPlayer.PlayingState
 													? root.t("gui.preview.media_pause")
 													: root.t("gui.preview.media_play")
+												Accessible.name: ToolTip.text
 												onClicked: {
+													if (previewAvColumn.primingPoster) {
+														posterPrimeTimer.stop()
+														previewAudioOutput.muted = previewAvColumn.primingRestoreMuted
+														previewAvColumn.primingPoster = false
+													}
 													if (previewMediaPlayer.playbackState === MediaPlayer.PlayingState)
 														previewMediaPlayer.pause()
 													else
@@ -1563,9 +1629,16 @@ ApplicationWindow {
 											}
 											ToolButton {
 												objectName: "previewMediaMuteButton"
-												text: previewAudioOutput.muted
+												icon.source: previewAudioOutput.muted
+													? "images/volume-mute.svg"
+													: "images/volume.svg"
+												icon.width: 16
+												icon.height: 16
+												ToolTip.visible: hovered
+												ToolTip.text: previewAudioOutput.muted
 													? root.t("gui.preview.media_unmute")
 													: root.t("gui.preview.media_mute")
+												Accessible.name: ToolTip.text
 												onClicked: previewAudioOutput.muted = !previewAudioOutput.muted
 											}
 										}

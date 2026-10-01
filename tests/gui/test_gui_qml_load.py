@@ -188,9 +188,15 @@ def test_given_media_results_when_selecting_then_preview_stack_switches_and_play
 	stack = window.findChild(QObject, "previewBodyStack")
 	preview_image = window.findChild(QObject, "previewImage")
 	media_player = window.findChild(QObject, "previewMediaPlayer")
+	video_poster = window.findChild(QObject, "previewVideoPoster")
+	play_button = window.findChild(QObject, "previewMediaPlayButton")
+	mute_button = window.findChild(QObject, "previewMediaMuteButton")
 	assert stack is not None
 	assert preview_image is not None
 	assert media_player is not None
+	assert video_poster is not None
+	assert play_button is not None
+	assert mute_button is not None
 
 	results = [
 		FileSearchResult(path=image_path, score=0.9, breakdown={"name": 0.9}, lines=[]),
@@ -216,6 +222,8 @@ def test_given_media_results_when_selecting_then_preview_stack_switches_and_play
 	assert str(controller.previewKind) == "audio"
 	assert QQmlProperty(stack, "currentIndex").read() == 1
 	assert QQmlProperty(media_player, "source").read().toString().startswith("file://")
+	assert "play.svg" in QQmlProperty(play_button, "icon.source").read().toString()
+	assert "volume.svg" in QQmlProperty(mute_button, "icon.source").read().toString()
 
 	# when / then — video
 	controller.selectResult(2)
@@ -224,6 +232,11 @@ def test_given_media_results_when_selecting_then_preview_stack_switches_and_play
 	assert str(controller.previewKind) == "video"
 	assert QQmlProperty(stack, "currentIndex").read() == 1
 	assert QQmlProperty(media_player, "source").read().toString().startswith("file://")
+	poster = str(controller.previewPosterUrl)
+	if poster:
+		assert QQmlProperty(video_poster, "source").read().toString().startswith("data:image/png;base64,")
+		assert QQmlProperty(video_poster, "visible").read() is True
+	assert "play.svg" in QQmlProperty(play_button, "icon.source").read().toString()
 
 	# when / then — back to text
 	controller.selectResult(3)

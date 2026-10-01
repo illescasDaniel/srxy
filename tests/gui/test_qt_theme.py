@@ -721,7 +721,7 @@ def test_given_linux_when_native_alerts_then_disabled(monkeypatch: pytest.Monkey
 	assert qt_theme.native_macos_alerts_enabled() is False
 
 
-def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_rule(
+def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_and_ffmpeg_rules(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -731,10 +731,12 @@ def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_rule(
 	qt_theme.silence_noisy_qt_logging()
 
 	# then
-	assert "qt.qpa.mime=false" in os.environ["QT_LOGGING_RULES"]
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.qpa.mime=false" in rules
+	assert "qt.multimedia.ffmpeg=false" in rules
 
 
-def test_given_existing_mime_rule_when_silencing_qt_then_preserves_env(
+def test_given_existing_mime_rule_when_silencing_qt_then_preserves_mime_adds_ffmpeg(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -744,10 +746,12 @@ def test_given_existing_mime_rule_when_silencing_qt_then_preserves_env(
 	qt_theme.silence_noisy_qt_logging()
 
 	# then
-	assert os.environ["QT_LOGGING_RULES"] == "qt.qpa.mime=true"
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.qpa.mime=true" in rules
+	assert "qt.multimedia.ffmpeg=false" in rules
 
 
-def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_rule(
+def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_and_ffmpeg_rules(
 	monkeypatch: pytest.MonkeyPatch,
 ):
 	# given
@@ -757,4 +761,20 @@ def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_rule(
 	qt_theme.silence_noisy_qt_logging()
 
 	# then
-	assert os.environ["QT_LOGGING_RULES"] == "*.debug=false;qt.qpa.mime=false"
+	assert os.environ["QT_LOGGING_RULES"] == ("*.debug=false;qt.qpa.mime=false;qt.multimedia.ffmpeg=false")
+
+
+def test_given_existing_ffmpeg_rule_when_silencing_qt_then_preserves_ffmpeg_adds_mime(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "qt.multimedia.ffmpeg=true")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.multimedia.ffmpeg=true" in rules
+	assert "qt.qpa.mime=false" in rules
+	assert "qt.multimedia.ffmpeg=false" not in rules

@@ -394,17 +394,31 @@ def silence_noisy_qt_logging():
 	``qt.qpa.mime: Retrying to obtain clipboard.`` is emitted when another
 	process briefly holds the clipboard (IDE, terminal, browser) while a ComboBox
 	or similar control queries it — a Qt bug (QTBUG-130316 / QTBUG-97930), not an
-	srxy fault. Silence that category unless the user already configured
-	``QT_LOGGING_RULES`` for ``qt.qpa.mime``.
+	srxy fault.
+
+	``qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version … LGPL …`` is
+	an informational license notice emitted once when Qt's FFmpeg multimedia
+	backend loads — also not an srxy fault.
+
+	Silence both categories unless the user already configured
+	``QT_LOGGING_RULES`` for them.
 	"""
-	rule = "qt.qpa.mime=false"
+	desired = (
+		("qt.qpa.mime", "qt.qpa.mime=false"),
+		("qt.multimedia.ffmpeg", "qt.multimedia.ffmpeg=false"),
+	)
 	existing = os.environ.get("QT_LOGGING_RULES", "").strip()
-	if "qt.qpa.mime" not in existing:
-		os.environ["QT_LOGGING_RULES"] = f"{existing};{rule}" if existing else rule
+	parts = [part for part in existing.split(";") if part] if existing else []
+	for key, rule in desired:
+		if key not in existing:
+			parts.append(rule)
+	combined = ";".join(parts)
+	if combined:
+		os.environ["QT_LOGGING_RULES"] = combined
 	try:
 		from PySide6.QtCore import QLoggingCategory
 
-		QLoggingCategory.setFilterRules(rule)
+		QLoggingCategory.setFilterRules(combined)
 	except (ImportError, AttributeError, RuntimeError):
 		# Qt not importable / older build without the API — env rule still helps.
 		pass

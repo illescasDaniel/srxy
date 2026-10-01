@@ -385,6 +385,7 @@ class SearchController(QObject):
 		self._preview_logical_suffix = ""
 		self._preview_kind = "text"
 		self._preview_media_url = ""
+		self._preview_poster_url = ""
 		self._preview_plain_text = ""
 		self._preview_path: Path | None = None
 		self._preview_message = ""
@@ -937,6 +938,11 @@ class SearchController(QObject):
 		return self._preview_media_url
 
 	previewMediaUrl = Property(str, _get_preview_media_url, notify=previewChanged)
+
+	def _get_preview_poster_url(self) -> str:
+		return self._preview_poster_url
+
+	previewPosterUrl = Property(str, _get_preview_poster_url, notify=previewChanged)
 
 	def _get_preview_file_path(self) -> str:
 		if self._preview_path is None:
@@ -1875,6 +1881,7 @@ class SearchController(QObject):
 			self._preview_logical_suffix = ""
 			self._preview_kind = "text"
 			self._preview_media_url = ""
+			self._preview_poster_url = ""
 			self._preview_plain_text = ""
 			self._preview_path = None
 			self._preview_message = ""
@@ -1903,6 +1910,7 @@ class SearchController(QObject):
 				self._preview_logical_suffix,
 				preview_kind,
 				self._preview_media_url,
+				self._preview_poster_url,
 			) = _resolve_preview_payload(result)
 			self._preview_kind = preview_kind or "text"
 			self._apply_preview_document()
@@ -1915,6 +1923,7 @@ class SearchController(QObject):
 		self._preview_logical_suffix = ""
 		self._preview_kind = "text"
 		self._preview_media_url = ""
+		self._preview_poster_url = ""
 		self._preview_truncated = False
 		self._preview_truncated_footer = ""
 		self._apply_preview_document()
@@ -1937,8 +1946,19 @@ class SearchController(QObject):
 	def _on_preview_ready(self, generation: int, payload: object):
 		if generation != self._preview_generation:
 			return
-		plain, path, message, truncated, footer, content_type, logical_suffix, kind, media_url = cast(
-			tuple[str, Path | None, str, bool, str, str, str, str, str],
+		(
+			plain,
+			path,
+			message,
+			truncated,
+			footer,
+			content_type,
+			logical_suffix,
+			kind,
+			media_url,
+			poster_url,
+		) = cast(
+			tuple[str, Path | None, str, bool, str, str, str, str, str, str],
 			payload,
 		)
 		self._preview_plain_text = plain
@@ -1950,6 +1970,7 @@ class SearchController(QObject):
 		self._preview_logical_suffix = logical_suffix
 		self._preview_kind = kind or "text"
 		self._preview_media_url = media_url
+		self._preview_poster_url = poster_url
 		self._apply_preview_document()
 
 	@Slot()
@@ -2996,15 +3017,15 @@ class SearchController(QObject):
 
 def _resolve_preview_payload(
 	result: FileSearchResult,
-) -> tuple[str, Path | None, str, bool, str, str, str, str, str]:
-	"""Resolve preview into (plain, path, message, truncated, footer, content_type, logical_suffix, kind, media_url)."""
+) -> tuple[str, Path | None, str, bool, str, str, str, str, str, str]:
+	"""Resolve preview into (plain, path, message, truncated, footer, content_type, logical_suffix, kind, media_url, poster_url)."""
 	from srxy.adapters.outbound.content.content_kind import format_detected_type_label, resolve_content_route
 	from srxy.i18n import tr
 
 	path = result.path
 	truncated_footer = tr("preview.truncated")
 	joined_lines = "\n".join(line.text for line in result.lines[:50])
-	empty_type = ("", "", "", "")
+	empty_type = ("", "", "", "", "")
 	try:
 		if not path.is_file():
 			if result.lines:
@@ -3016,11 +3037,11 @@ def _resolve_preview_payload(
 		if route.as_media:
 			from srxy.adapters.inbound.gui.media_preview import resolve_media_preview
 
-			kind, media_url = resolve_media_preview(path, logical_suffix)
+			kind, media_url, poster_url = resolve_media_preview(path, logical_suffix)
 			if kind and media_url:
-				return "", path, "", False, "", content_type, logical_suffix, kind, media_url
+				return "", path, "", False, "", content_type, logical_suffix, kind, media_url, poster_url
 			if result.lines:
-				return joined_lines, path, "", False, truncated_footer, content_type, logical_suffix, "", ""
+				return joined_lines, path, "", False, truncated_footer, content_type, logical_suffix, "", "", ""
 			return (
 				"",
 				path,
@@ -3031,10 +3052,11 @@ def _resolve_preview_payload(
 				logical_suffix,
 				"",
 				"",
+				"",
 			)
 		if not route.body_text and not route.as_document:
 			if result.lines:
-				return joined_lines, path, "", False, truncated_footer, content_type, logical_suffix, "", ""
+				return joined_lines, path, "", False, truncated_footer, content_type, logical_suffix, "", "", ""
 			return (
 				"",
 				path,
@@ -3045,6 +3067,7 @@ def _resolve_preview_payload(
 				logical_suffix,
 				"",
 				"",
+				"",
 			)
 		with path.open("rb") as handle:
 			raw = handle.read(PREVIEW_MAX_BYTES + 1)
@@ -3052,7 +3075,18 @@ def _resolve_preview_payload(
 		data = raw[:PREVIEW_MAX_BYTES]
 		if b"\x00" in data[:4096] and not route.body_text:
 			if result.lines:
-				return joined_lines, path, "", file_truncated, truncated_footer, content_type, logical_suffix, "", ""
+				return (
+					joined_lines,
+					path,
+					"",
+					file_truncated,
+					truncated_footer,
+					content_type,
+					logical_suffix,
+					"",
+					"",
+					"",
+				)
 			return (
 				"",
 				path,
@@ -3061,6 +3095,7 @@ def _resolve_preview_payload(
 				truncated_footer,
 				content_type,
 				logical_suffix,
+				"",
 				"",
 				"",
 			)
@@ -3072,6 +3107,7 @@ def _resolve_preview_payload(
 			truncated_footer,
 			content_type,
 			logical_suffix,
+			"",
 			"",
 			"",
 		)

@@ -64,8 +64,8 @@ The **Preview** pane (right side of Search Results) renders differently dependin
 |--------------|---------|
 | Text / code / markdown / JSON | Syntax-highlighted plain text, line-number gutter, in-file Find (Ctrl+F, F3 / Shift+F3) |
 | **Image** (`.jpg`, `.png`, `.webp`, `.gif`, `.bmp`, `.heic`/`.heif`, camera RAW, `.svg`, …) | Scaled-to-fit image. Non-SVG formats are decoded once via Pillow (same path as OCR/semantic image search — handles HEIC and RAW without relying on Qt's native image plugins) and capped to 2048px on the long edge; SVG renders natively via Qt Svg. |
-| **Audio** (`.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, …) | `QtMultimedia` player: play/pause, seek slider, elapsed/duration, mute |
-| **Video** (`.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`, …) | Same player controls plus an embedded video surface (`VideoOutput`) |
+| **Audio** (`.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, …) | `QtMultimedia` player: play/pause/mute icon buttons, seek slider, elapsed/duration |
+| **Video** (`.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`, …) | Same player controls plus an embedded video surface (`VideoOutput`). When `ffmpeg` is available, a first-frame poster thumbnail is shown until playback starts |
 
 Detected type mismatches still show in the header (e.g. `OGG · named .txt`) regardless of preview mode. Binary files Magika cannot classify as a known media/document kind still fall back to the previous "(Binary file — showing matches only)" placeholder, with matched lines (if any) surfaced in the Matches pane above.
 
