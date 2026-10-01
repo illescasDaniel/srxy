@@ -66,16 +66,18 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 
 ## Drag-and-drop path field
 
-The **Where to search** row is a `DropArea` (`objectName: pathDropArea`) accepting `text/uri-list`:
+The **Where to search** strip (`objectName: pathDropTarget`) accepts OS file-manager folder drops (`text/uri-list`):
 
-- Dragging a folder over it shows a dashed accent border, a translucent fill, and a "Drop folder here" label; the **Browse** button dims while a drag is in progress.
+- **macOS Finder:** a window-level `PathDropWindowFilter` (see [`path_drop.py`](../src/srxy/adapters/inbound/gui/path_drop.py)) accepts the drag so Finder shows the green ``+`` cursor, drives `controller.pathDropHover` for the dashed highlight, and calls `handleDroppedPathUrls` on drop. QML `DropArea` alone often never receives Finder events on Aqua.
+- **Linux / Windows:** the same filter runs; a QML `DropArea` (`pathDropArea`, `z: 1` above the Browse/path row) remains as a fallback. Highlight binds to `containsDrag || pathDropHover`.
+- The GroupBox content is sized from the path row’s `implicitHeight` (not mutual `anchors.fill` siblings), so the section keeps its gap before **What to search** / **How to search**.
 - Dropping resolves the first local `file://` URI via `resolve_dropped_folder_path()` in [`controller.py`](../src/srxy/adapters/inbound/gui/controller.py) and assigns it to `controller.path`, going through the same normalization (`_normalize_browsed_path`, percent-decoding) and validation (`pathIssue`) as the Browse dialog and manual typing.
 - **Directories** update the path and clear any warning; **files** update the path but surface the existing "Not a directory" warning (same affordance as typing a file path).
 - **Multiple dropped items**: only the first local URI is used; the rest are ignored (a multi-selection drag is not a multi-root search).
 - **Non-local URIs** (`http://`, `ftp://`, UNC/network-share hosts) are ignored outright — the path field is left unchanged.
 - Dropping never starts a search; it only updates `path`/`pathIssue`, same as editing `pathField` by hand.
 
-Covered by unit tests for the URI→path helper (`resolve_dropped_folder_path`, `handleDroppedPathUrls`) in [`tests/gui/test_gui_controller.py`](../tests/gui/test_gui_controller.py) and a full-window flow test in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py) that drives `Main.qml`'s bindings end-to-end (offscreen QML cannot synthesize real OS drag events, so tests call the same `handleDroppedPathUrls` entry point the `DropArea.onDropped` handler calls).
+Covered by unit tests for the URI→path helper (`resolve_dropped_folder_path`, `handleDroppedPathUrls`) in [`tests/gui/test_gui_controller.py`](../tests/gui/test_gui_controller.py) and flow tests in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py) (layout height / z-order, synthesised window `QDragEnterEvent`/`QDropEvent` through the filter).
 
 ## Snapshots
 

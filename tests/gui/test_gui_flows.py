@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 from tests.gui.helpers import ensure_qapp, load_main
 from tests.helpers import OCR_FIXTURES_DIR
 
@@ -109,6 +110,85 @@ def test_given_folder_dropped_on_path_field_when_handled_then_path_updates_witho
 	assert Path(harness.prop("pathField", "text")) == dropped_dir
 	assert harness.prop("pathIssueButton", "visible") is False
 	assert controller.searching is False
+
+	harness.shutdown()
+
+
+def test_given_path_drop_area_when_loaded_then_stacked_above_path_row(qapp, tmp_path: Path):
+	# given — OS file-manager drops are stolen by TextField when DropArea is under it
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	drop_area = harness.find("pathDropArea")
+	path_row = harness.find("pathRow")
+	target = harness.find("pathDropTarget")
+	assert drop_area is not None, "missing objectName=pathDropArea"
+	assert path_row is not None, "missing objectName=pathRow"
+	assert target is not None, "missing objectName=pathDropTarget"
+
+	# then — DropArea must win QML drag hit-testing; target must have real height
+	# (collapsed GroupBox content was why macOS Finder showed no + cursor).
+	assert float(drop_area.z()) > float(path_row.z())
+	assert float(target.height()) >= float(path_row.implicitHeight()) > 0
+	assert drop_area.acceptedMouseButtons() == Qt.MouseButton.NoButton
+
+	harness.shutdown()
+
+
+def test_given_os_drag_over_path_target_when_filtered_then_hover_and_drop_update_path(
+	qapp,
+	tmp_path: Path,
+):
+	# given — synthesise window-level drag events (Finder path on macOS)
+	from PySide6.QtCore import QMimeData, QPointF, QUrl
+	from PySide6.QtGui import QDragEnterEvent, QDropEvent
+	from PySide6.QtQuick import QQuickItem, QQuickWindow
+
+	dropped_dir = tmp_path / "from-finder"
+	dropped_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	target = harness.find("pathDropTarget")
+	assert isinstance(target, QQuickItem)
+	window = harness.window
+	assert isinstance(window, QQuickWindow)
+	assert float(target.width()) > 0 and float(target.height()) > 0
+
+	centre = target.mapToScene(QPointF(target.width() / 2.0, target.height() / 2.0)).toPoint()
+	mime = QMimeData()
+	mime.setUrls([QUrl.fromLocalFile(str(dropped_dir))])
+
+	enter = QDragEnterEvent(
+		centre,
+		Qt.DropAction.CopyAction,
+		mime,
+		Qt.MouseButton.LeftButton,
+		Qt.KeyboardModifier.NoModifier,
+	)
+	assert qapp.sendEvent(window, enter) is True
+	qapp.processEvents()
+	assert controller.pathDropHover is True
+	assert harness.prop("pathDropHighlight", "visible") is True
+
+	drop = QDropEvent(
+		QPointF(centre),
+		Qt.DropAction.CopyAction,
+		mime,
+		Qt.MouseButton.LeftButton,
+		Qt.KeyboardModifier.NoModifier,
+	)
+	assert qapp.sendEvent(window, drop) is True
+	qapp.processEvents()
+
+	assert Path(controller.path) == dropped_dir
+	assert controller.pathDropHover is False
 
 	harness.shutdown()
 

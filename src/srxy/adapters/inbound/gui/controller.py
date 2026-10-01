@@ -315,6 +315,7 @@ class SearchController(QObject):
 	queryPreviewChanged = Signal()
 	pathChanged = Signal()
 	pathIssueChanged = Signal()
+	pathDropHoverChanged = Signal()
 	canSearchChanged = Signal()
 	previewChanged = Signal()
 	findChanged = Signal()
@@ -358,6 +359,7 @@ class SearchController(QObject):
 		if self._simple_query:
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
 		self._path = resolve_gui_search_path(getattr(args, "path", None))
+		self._path_drop_hover = False
 		self._status = ""
 		self._activity_spinner = ""
 		self._progress = 0.0
@@ -728,6 +730,19 @@ class SearchController(QObject):
 
 	path = Property(str, _get_path, _set_path, notify=pathChanged)
 
+	def _get_path_drop_hover(self) -> bool:
+		return self._path_drop_hover
+
+	def set_path_drop_hover(self, active: bool):
+		"""Drive Where-to-search drop chrome while an OS drag hovers the strip."""
+		flag = bool(active)
+		if self._path_drop_hover == flag:
+			return
+		self._path_drop_hover = flag
+		self.pathDropHoverChanged.emit()
+
+	pathDropHover = Property(bool, _get_path_drop_hover, notify=pathDropHoverChanged)
+
 	@Slot(list)
 	def handleDroppedPathUrls(self, urls: list):
 		"""Handle a drag-and-drop of one or more ``file://`` URIs onto the path field.
@@ -738,6 +753,7 @@ class SearchController(QObject):
 		resolved = resolve_dropped_folder_path([str(url) for url in urls])
 		if resolved is not None:
 			self._set_path(resolved)
+		self.set_path_drop_hover(False)
 
 	def _compute_path_issue(self) -> str:
 		from srxy.i18n import tr
