@@ -169,6 +169,74 @@ def test_given_names_only_options_when_searching_then_filename_hit_appears(qapp,
 	harness.shutdown()
 
 
+def test_given_names_only_options_when_searching_then_folder_hit_appears(qapp, tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", True)
+	harness.set_checked("optFolders", True)
+	harness.set_checked("optContents", False)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then — the folder itself is a selectable result, not just files inside it
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert any(Path(path) == invoices for path in result_paths)
+
+	folder_row = next(row for row, path in enumerate(result_paths) if Path(path) == invoices)
+	controller.selectResult(folder_row)
+	assert controller.selectedResult == folder_row
+	assert Path(controller.previewFilePath) == invoices
+
+	harness.shutdown()
+
+
+def test_given_content_only_options_when_searching_then_folder_hit_excluded(qapp, tmp_path: Path):
+	# given — folders have no body text, so content-only search must never return them.
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", False)
+	harness.set_checked("optFolders", False)
+	harness.set_checked("optContents", True)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert not any(Path(path) == invoices for path in result_paths)
+	assert any(path.endswith("notes.txt") for path in result_paths)
+
+	harness.shutdown()
+
+
 def test_given_invalid_threshold_when_filters_ok_clicked_then_ok_disabled_and_error_visible(
 	qapp,
 	tmp_path: Path,
@@ -235,3 +303,47 @@ def test_given_ocr_folder_when_searching_then_progress_count_appears(qapp):
 
 	harness.wait_search_finished(timeout_ms=120_000)
 	harness.shutdown()
+
+
+def test_given_options_open_when_clicking_info_then_help_dialog_on_top_with_accent_ok(qapp):
+	"""Help from Options must use SrxyDialog+AccentButton with a ScrollView body."""
+	from PySide6.QtCore import QObject
+	from tests.gui.helpers import capture_qt_messages
+
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	with capture_qt_messages() as cap:
+		# Offscreen Item popups (Native/Window paths abort Qt after other GUI tests).
+		harness = load_main(controller, qapp, use_native_alerts=False)
+		for _ in range(20):
+			qapp.processEvents()
+
+		harness.open_dialog_via("optionsButton", "optionsDialog")
+		info = harness.find("infoButton_search_names")
+		tip_objs = [ch for ch in info.findChildren(QObject) if "ToolTipAttached" in ch.metaObject().className()]
+		assert tip_objs, "InfoButton missing ToolTip attached object"
+		assert tip_objs[0].property("text")
+
+		harness.click("infoButton_search_names")
+		harness.wait_until(
+			lambda: bool(harness.prop("helpDialog", "opened")) or bool(harness.prop("helpDialog", "visible")),
+			timeout_ms=5_000,
+			message="helpDialog did not open from info button",
+		)
+		assert harness.find("helpOkButton") is not None
+		assert harness.find("helpScroll") is not None
+		# Short help should not force the old tall fixed sheet (~420).
+		help_h = float(harness.prop("helpDialog", "height"))
+		assert help_h <= 300, f"helpDialog too tall: {help_h}"
+		assert help_h >= 140, f"helpDialog collapsed: {help_h}"
+		# Options stays open underneath; help must still be interactive (opened).
+		assert bool(harness.prop("optionsDialog", "opened")) or bool(harness.prop("optionsDialog", "visible"))
+		cap.assert_no_fatal(context="options → info → helpDialog")
+
+		harness.click("helpOkButton")
+		harness.wait_until(
+			lambda: not (bool(harness.prop("helpDialog", "opened")) or bool(harness.prop("helpDialog", "visible"))),
+			timeout_ms=5_000,
+			message="helpDialog stayed open after OK",
+		)
+		harness.shutdown()

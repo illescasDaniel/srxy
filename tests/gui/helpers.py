@@ -3,11 +3,12 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from dataclasses import dataclass
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
+from dataclasses import dataclass, field
 from typing import Any
 
-from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, Qt, QUrl
+from PySide6.QtCore import QCoreApplication, QEvent, QObject, QPointF, Qt, QtMsgType, QUrl, qInstallMessageHandler
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine, QQmlProperty
 from PySide6.QtQuick import QQuickItem, QQuickWindow
@@ -16,6 +17,61 @@ from PySide6.QtTest import QTest
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
+
+
+# Qt/QML messages that mean the UI is broken for users — fail the test.
+_QML_FAILURE_MARKERS = (
+	"Cannot assign",
+	"Binding loop detected",
+	"ReferenceError",
+	"TypeError",
+	"is not a type",
+	"is not a function",
+	"Unable to assign",
+	"Invalid property assignment",
+)
+
+
+def _is_fatal_qt_message(message: str) -> bool:
+	if any(marker in message for marker in _QML_FAILURE_MARKERS):
+		return True
+	# QML runtime errors look like ``file:///…/Main.qml:371: Error: …``
+	return ".qml:" in message and " Error:" in message
+
+
+@dataclass
+class QtMessageCapture:
+	"""Collect Qt messages and assert none are fatal QML errors."""
+
+	messages: list[str] = field(default_factory=list)
+
+	def note(self, message: str):
+		self.messages.append(message)
+
+	def fatal(self) -> list[str]:
+		return [m for m in self.messages if _is_fatal_qt_message(m)]
+
+	def assert_no_fatal(self, *, context: str = ""):
+		bad = self.fatal()
+		if not bad:
+			return
+		detail = f" ({context})" if context else ""
+		joined = "\n".join(bad)
+		raise AssertionError(f"fatal Qt/QML messages{detail}:\n{joined}")
+
+
+@contextmanager
+def capture_qt_messages() -> Iterator[QtMessageCapture]:
+	cap = QtMessageCapture()
+
+	def _handler(_mode: QtMsgType, _context: object, message: str):
+		cap.note(message)
+
+	previous = qInstallMessageHandler(_handler)
+	try:
+		yield cap
+	finally:
+		qInstallMessageHandler(previous)
 
 
 @dataclass
@@ -125,7 +181,12 @@ def ensure_qapp() -> QCoreApplication:
 	return app
 
 
-def load_main(controller: SearchController, qapp: QCoreApplication | None = None) -> GuiHarness:
+def load_main(
+	controller: SearchController,
+	qapp: QCoreApplication | None = None,
+	*,
+	use_native_alerts: bool = False,
+) -> GuiHarness:
 	"""Load Main.qml with controller + theme context properties (visible for layout/clicks)."""
 	app = qapp if qapp is not None else ensure_qapp()
 	engine = QQmlApplicationEngine()
@@ -133,6 +194,8 @@ def load_main(controller: SearchController, qapp: QCoreApplication | None = None
 	theme = apply_qt_quick_theme(app)
 	engine.rootContext().setContextProperty("controller", controller)
 	engine.rootContext().setContextProperty("srxyTheme", theme)
+	# Offscreen tests keep Item popups unless a test opts into Native/Window sheets.
+	engine.rootContext().setContextProperty("srxyUseNativeAlerts", use_native_alerts)
 	engine.load(QUrl.fromLocalFile(str(qml_dir() / "Main.qml")))
 	roots = engine.rootObjects()
 	assert roots, "failed to load Main.qml"

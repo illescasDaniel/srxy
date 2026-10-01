@@ -32,6 +32,7 @@ class _FakeWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]:
@@ -45,6 +46,7 @@ class _FakeWalker:
 			match_skipped_names,
 			include_archives,
 			include_subdirectories,
+			include_directories,
 			skipped_files,
 		)
 		is_probe = threading.current_thread().name == "srxy-file-count-probe"
@@ -66,6 +68,7 @@ class _FakeWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> list[Path]:
@@ -78,6 +81,7 @@ class _FakeWalker:
 				match_skipped_names=match_skipped_names,
 				include_archives=include_archives,
 				include_subdirectories=include_subdirectories,
+				include_directories=include_directories,
 				cancel_check=cancel_check,
 				skipped_files=skipped_files,
 			)

@@ -218,9 +218,19 @@ def iter_files(
 	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
+	include_directories: bool = False,
 	cancel_check: Callable[[], bool] | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 ) -> Iterator[Path]:
+	"""Walk ``root`` yielding searchable file paths (and archive members).
+
+	When ``include_directories`` is set, every subdirectory that survives the
+	hidden/noise/``match_skipped_names`` filtering is also yielded (so folder
+	names can participate in name search alongside file names). Directories
+	are yielded even when ``include_subdirectories`` is False — the walker
+	still sees the immediate children of ``root`` in that case, it just does
+	not recurse past them. The search root itself is never yielded.
+	"""
 	try:
 		root_is_file = root.is_file()
 		root_is_dir = root.is_dir()
@@ -255,17 +265,20 @@ def iter_files(
 	for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
 		if cancel_check is not None and cancel_check():
 			raise SearchCancelled()
-		if not include_subdirectories:
-			dirnames[:] = []
-		else:
-			dirnames[:] = _filter_dirnames(
-				dirnames,
-				at_filesystem_root=at_filesystem_root and Path(dirpath).resolve() == Path("/"),
-				skip_hidden_folders=skip_hidden_folders,
-				skip_noise_folders=skip_noise_folders,
-				match_skipped_names=match_skipped_names,
-			)
+		filtered_dirnames = _filter_dirnames(
+			dirnames,
+			at_filesystem_root=at_filesystem_root and Path(dirpath).resolve() == Path("/"),
+			skip_hidden_folders=skip_hidden_folders,
+			skip_noise_folders=skip_noise_folders,
+			match_skipped_names=match_skipped_names,
+		)
 		current = Path(dirpath)
+		if include_directories:
+			for dirname in filtered_dirnames:
+				yield current / dirname
+				if cancel_check is not None and cancel_check():
+					raise SearchCancelled()
+		dirnames[:] = filtered_dirnames if include_subdirectories else []
 		for filename in filenames:
 			if _should_skip_filename(
 				filename,
@@ -293,6 +306,7 @@ def collect_files(
 	match_skipped_names: bool = False,
 	include_archives: bool = False,
 	include_subdirectories: bool = True,
+	include_directories: bool = False,
 	cancel_check: Callable[[], bool] | None = None,
 	skipped_files: list[SkippedFile] | None = None,
 ) -> list[Path]:
@@ -305,6 +319,7 @@ def collect_files(
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
 		)
@@ -324,6 +339,7 @@ class DefaultFileWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> Iterator[Path]:
@@ -335,6 +351,7 @@ class DefaultFileWalker:
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
 		)
@@ -349,6 +366,7 @@ class DefaultFileWalker:
 		match_skipped_names: bool = False,
 		include_archives: bool = False,
 		include_subdirectories: bool = True,
+		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
 	) -> list[Path]:
@@ -360,6 +378,7 @@ class DefaultFileWalker:
 			match_skipped_names=match_skipped_names,
 			include_archives=include_archives,
 			include_subdirectories=include_subdirectories,
+			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
 		)

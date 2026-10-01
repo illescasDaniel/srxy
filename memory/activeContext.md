@@ -1,29 +1,21 @@
 # Active Context
 
-_Last updated: 2026-09-07_
+_Last updated: 2026-10-01_
 
 ## Branch
 
-- Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
+- Topic branch `cursor/gui-dnd-path-field-27be` (PR #41 → `feature/1.8.0`).
+- Just merged latest `origin/feature/1.8.0` (includes PR #40 folder-name search + PR #51 Search button top-fixed).
 
 ## Current focus
 
-1. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-2. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
-3. **Search by folder name** — GUI + TUI + CLI; topic branch off `feature/1.8.0`; tests required; Team Lead marks ready-for-review when OK.
-4. **GUI drag-and-drop folder onto path field** (Trello [voZsdHYf](https://trello.com/c/voZsdHYf)) — implemented on branch `cursor/gui-dnd-path-field-27be`, PR → `feature/1.8.0`; awaiting review/QA.
-
-## Planned (also 1.8.0)
-
-- **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng).
+1. **GUI drag-and-drop folder onto path field** (Trello [voZsdHYf](https://trello.com/c/voZsdHYf)) — resolve merge fallout, run/fix quality gate, then ready for review/QA.
 
 ## Next steps
 
-1. Folder-name search — Srxy Developer implements (GUI/TUI/CLI + tests); PR into `feature/1.8.0`.
-2. Unlimited OCR — Daniel GPU QA; keep draft until then.
-3. Media preview — Daniel smoke; then undraft/merge into `feature/1.8.0`.
-4. GUI drag-and-drop path field — Team Lead review; QA drag-drop on Linux/macOS/Windows before merge.
-5. NSIS Windows installer (later in 1.8.0).
+1. Finish merge commit; run `checks-quiet` and fix any failures from the `feature/1.8.0` sync.
+2. Team Lead review; QA drag-drop on Linux/macOS/Windows before merge into `feature/1.8.0`.
+3. Remaining 1.8.0 drafts (Unlimited OCR #38, media preview #39) stay on their topic branches.
 
 ## Memory protocol (2026-09-01)
 

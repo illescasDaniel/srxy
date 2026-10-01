@@ -133,7 +133,7 @@ def test_given_enabled_options_when_formatting_summary_then_lists_labels():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · How: Docs & tags · Scan: Archives"
+	assert summary == "Where: Names, Folders, Content · How: Docs & tags · Scan: Archives"
 
 
 def test_given_top_level_only_when_formatting_summary_then_lists_scan_label():
@@ -144,7 +144,7 @@ def test_given_top_level_only_when_formatting_summary_then_lists_scan_label():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · How: Docs & tags · Scan: This folder only"
+	assert summary == "Where: Names, Folders, Content · How: Docs & tags · Scan: This folder only"
 
 
 def test_given_powerups_when_formatting_summary_then_shows_how_segment():
@@ -160,13 +160,14 @@ def test_given_powerups_when_formatting_summary_then_shows_how_segment():
 	summary = format_search_options_summary(options)
 
 	# then
-	assert summary == "Where: Names, Content · How: Docs & tags, Image text, Speech"
+	assert summary == "Where: Names, Folders, Content · How: Docs & tags, Image text, Speech"
 
 
 def test_given_ocr_only_how_when_formatting_summary_then_omits_docs_tags():
 	# given
 	options = SearchOptions(
 		search_names=False,
+		search_folders=False,
 		search_contents=True,
 		search_docs_tags=False,
 		ocr=True,
@@ -184,6 +185,7 @@ def test_given_contents_off_with_preferred_how_ticks_when_formatting_summary_the
 	# given
 	options = SearchOptions(
 		search_names=True,
+		search_folders=False,
 		search_contents=False,
 		search_docs_tags=True,
 		ocr=True,
@@ -198,7 +200,9 @@ def test_given_contents_off_with_preferred_how_ticks_when_formatting_summary_the
 	assert summary == "Where: Names"
 	assert options.ocr is True
 	assert options.search_docs_tags is True
-	assert not has_search_source(SearchOptions(search_names=False, search_contents=False, ocr=True))
+	assert not has_search_source(
+		SearchOptions(search_names=False, search_folders=False, search_contents=False, ocr=True)
+	)
 
 
 def test_given_contents_off_when_applying_options_to_args_then_preserves_preferred_how_ticks():
