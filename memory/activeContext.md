@@ -4,16 +4,17 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/media-preview-panel` @ fixing Ubuntu CI: avutil ctypes OSError in silence test (not pinTop).
+- `feature/1.8.0` @ `4c3e118` — PR #39 media preview panel squash-merged.
 
 ## Current focus
 
-1. **Ship PR #39** — Ubuntu `quality` fails on `test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level` (OPENSSL_3.0.0 / RAND_bytes); skip when not ctypes-loadable.
-2. Unlimited OCR — not touched.
+1. **v1.8.0 train** — media preview landed; Unlimited OCR (draft PR #38) still open.
+2. Next topic / QA as Daniel directs.
 
 ## Next steps
 
-1. Push avutil test fix; on CI green squash-merge; pull `feature/1.8.0`.
+1. Daniel GPU QA / undraft Unlimited OCR (#38) when ready.
+2. Visual smoke optional: chevron + media poster/icons on a real display.
 
 ## Memory protocol (2026-09-01)
 
