@@ -4,16 +4,20 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- Topic branch `cursor/gui-dnd-path-field-27be` (PR #41 → `feature/1.8.0`).
+- `feature/1.8.0` @ `905876b` — includes squash-merges of PR #40 (folder-name search), PR #51 (Search button top-fixed), and PR #41 (path drag-and-drop).
+- Topic branch `cursor/gui-dnd-path-field-27be` merged; PR #41 closed.
 
 ## Current focus
 
-1. **GUI drag-and-drop path field** — window `PathDropWindowFilter` + GroupBox height fix for macOS Finder. Awaiting user re-test.
+1. Next 1.8.0 topics (Unlimited OCR #38, media preview #39, etc.) — not this branch.
+
+## Done this session
+
+- Synced DnD topic with `feature/1.8.0`, fixed macOS Finder drops (`PathDropWindowFilter` + GroupBox height), CI green; undrafted and squash-merged PR #41 into `feature/1.8.0` @ `905876b`.
 
 ## Next steps
 
-1. Daniel: restart GUI; drag a folder from Finder onto **Where to search** — expect green ``+``, highlight, path update, and normal gap before What/How.
-2. Team Lead review; QA on Linux/Windows too before merge.
+1. Work remaining 1.8.0 drafts from their topic branches off updated `feature/1.8.0`.
 
 ## Memory protocol (2026-09-01)
 
