@@ -507,10 +507,10 @@ def test_given_missing_path_when_running_cli_then_returns_exit_code_two(
 def test_given_hidden_directory_when_running_cli_with_include_hidden_then_searches_hidden_entries(
 	tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ):
-	# given
-	hidden_dir = tmp_path / ".git"
+	# given — ".secret" avoids agent sandboxes that block writes to ".git/config"
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	(tmp_path / "visible.txt").write_text("token", encoding="utf-8")
 
 	# when
@@ -519,7 +519,7 @@ def test_given_hidden_directory_when_running_cli_with_include_hidden_then_search
 	# then
 	captured = capsys.readouterr()
 	assert exit_code == 0
-	assert ".git/config:line:1:" in captured.out
+	assert ".secret/notes.txt:line:1:" in captured.out
 	assert "visible.txt:line:1:" in captured.out
 
 

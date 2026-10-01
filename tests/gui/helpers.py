@@ -16,6 +16,7 @@ from PySide6.QtTest import QTest
 
 from srxy.adapters.inbound.gui.app import qml_dir
 from srxy.adapters.inbound.gui.controller import SearchController
+from srxy.adapters.inbound.gui.path_drop import install_path_drop_filter
 from srxy.adapters.inbound.gui.qt_theme import apply_qt_quick_theme, shared_qml_import_path
 
 
@@ -203,5 +204,7 @@ def load_main(
 	assert isinstance(window, QObject)
 	# Production run_gui reveals Main after splash; tests need it visible for hit-testing.
 	window.setProperty("visible", True)
+	app.processEvents()
+	install_path_drop_filter(controller, window)
 	app.processEvents()
 	return GuiHarness(controller=controller, engine=engine, window=window, qapp=app)

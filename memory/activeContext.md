@@ -4,20 +4,16 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- `feature/1.8.0` @ `2e8433b` — includes squash-merges of PR #40 (folder-name search) and PR #51 (Search button top-fixed).
-- Topic branch `cursor/gui-search-button-top-fixed-0e77` merged; PR #51 closed.
+- Topic branch `cursor/gui-dnd-path-field-27be` (PR #41 → `feature/1.8.0`).
 
 ## Current focus
 
-1. Next 1.8.0 topics (Unlimited OCR #38, media preview #39, etc.) — not this branch.
-
-## Done this session
-
-- Synced topic branch with `feature/1.8.0`, local gate green, pushed, CI green; undrafted and squash-merged PR #51 into `feature/1.8.0` @ `2e8433b`.
+1. **GUI drag-and-drop path field** — window `PathDropWindowFilter` + GroupBox height fix for macOS Finder. Awaiting user re-test.
 
 ## Next steps
 
-1. Work remaining 1.8.0 drafts from their topic branches off updated `feature/1.8.0`.
+1. Daniel: restart GUI; drag a folder from Finder onto **Where to search** — expect green ``+``, highlight, path update, and normal gap before What/How.
+2. Team Lead review; QA on Linux/Windows too before merge.
 
 ## Memory protocol (2026-09-01)
 

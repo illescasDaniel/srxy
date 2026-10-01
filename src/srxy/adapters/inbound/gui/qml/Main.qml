@@ -2,6 +2,7 @@ import QtQuick
 import QtQuick.Controls
 import QtQuick.Layouts
 import QtQuick.Dialogs
+import QtQuick.Shapes
 import SrxyControls
 
 ApplicationWindow {
@@ -502,31 +503,109 @@ ApplicationWindow {
 				GroupBox {
 					title: root.t("gui.section.where")
 					Layout.fillWidth: true
-					RowLayout {
-						anchors.fill: parent
-						SecondaryButton {
-							objectName: "browseButton"
-							text: root.t("gui.browse")
-							onClicked: folderDialog.open()
+
+					// Size from the row's natural height. Sibling items that all
+					// use anchors.fill (RowLayout + DropArea) collapse the
+					// GroupBox contentItem on macOS Aqua — no gap before What/
+					// How, and a zero-height drop target so Finder never shows +.
+					Item {
+						id: pathDropTarget
+						objectName: "pathDropTarget"
+						width: parent.width
+						implicitHeight: pathRow.implicitHeight
+						height: implicitHeight
+
+						readonly property bool dropActive: pathDropArea.containsDrag
+							|| (controller && controller.pathDropHover)
+
+						RowLayout {
+							id: pathRow
+							objectName: "pathRow"
+							width: parent.width
+							SecondaryButton {
+								objectName: "browseButton"
+								text: root.t("gui.browse")
+								opacity: pathDropTarget.dropActive ? 0.5 : 1.0
+								onClicked: folderDialog.open()
+							}
+							TextField {
+								id: pathField
+								objectName: "pathField"
+								Layout.fillWidth: true
+								placeholderText: root.t("gui.path_placeholder")
+								text: controller ? controller.path : ""
+								onTextChanged: if (controller) controller.path = text
+								Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
+							}
+							ToolButton {
+								objectName: "pathIssueButton"
+								text: "⚠"
+								flat: true
+								visible: controller && controller.pathIssue.length > 0
+								implicitWidth: 28
+								implicitHeight: 28
+								ToolTip.visible: hovered
+								ToolTip.text: controller ? controller.pathIssue : ""
+							}
 						}
-						TextField {
-							id: pathField
-							objectName: "pathField"
-							Layout.fillWidth: true
-							placeholderText: root.t("gui.path_placeholder")
-							text: controller ? controller.path : ""
-							onTextChanged: if (controller) controller.path = text
-							Keys.onReturnPressed: if (controller && controller.canSearch) controller.startSearch()
-						}
-						ToolButton {
-							objectName: "pathIssueButton"
-							text: "⚠"
-							flat: true
-							visible: controller && controller.pathIssue.length > 0
-							implicitWidth: 28
-							implicitHeight: 28
-							ToolTip.visible: hovered
-							ToolTip.text: controller ? controller.pathIssue : ""
+
+						// QML DropArea (Linux/Windows). macOS Finder acceptance
+						// is handled by PathDropWindowFilter on the QQuickWindow;
+						// both share pathDropTarget for hit-testing / chrome.
+						DropArea {
+							id: pathDropArea
+							objectName: "pathDropArea"
+							anchors.fill: parent
+							z: 1
+							keys: ["text/uri-list"]
+							onEntered: (drag) => {
+								drag.accepted = drag.hasUrls
+							}
+							onDropped: (drop) => {
+								if (!drop.hasUrls || !controller)
+									return
+								var urls = []
+								for (var i = 0; i < drop.urls.length; i++)
+									urls.push(drop.urls[i].toString())
+								controller.handleDroppedPathUrls(urls)
+							}
+
+							Rectangle {
+								id: pathDropFill
+								objectName: "pathDropHighlight"
+								anchors.fill: parent
+								visible: pathDropTarget.dropActive
+								color: palette.highlight
+								opacity: 0.10
+								radius: 4
+							}
+
+							Shape {
+								id: pathDropOutline
+								anchors.fill: parent
+								visible: pathDropTarget.dropActive
+								ShapePath {
+									strokeColor: palette.highlight
+									strokeWidth: 2
+									fillColor: "transparent"
+									strokeStyle: ShapePath.DashLine
+									dashPattern: [4, 3]
+									startX: 1
+									startY: 1
+									PathLine { x: pathDropOutline.width - 1; y: 1 }
+									PathLine { x: pathDropOutline.width - 1; y: pathDropOutline.height - 1 }
+									PathLine { x: 1; y: pathDropOutline.height - 1 }
+									PathLine { x: 1; y: 1 }
+								}
+							}
+
+							Label {
+								anchors.centerIn: parent
+								visible: pathDropTarget.dropActive
+								text: root.t("gui.drop_folder_here")
+								color: palette.highlight
+								font.bold: true
+							}
 						}
 					}
 				}

@@ -430,10 +430,11 @@ def test_given_nested_file_when_subdirectories_enabled_then_searches_recursively
 
 
 def test_given_hidden_directory_when_searching_then_skips_hidden_entries(tmp_path: Path):
-	# given
-	hidden_dir = tmp_path / ".git"
+	# given — use ".secret" (not ".git/config") so agent sandboxes that block
+	# writes to git config paths can still create the fixture.
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	(tmp_path / "visible.txt").write_text("token", encoding="utf-8")
 	query = "token"
 
@@ -447,9 +448,9 @@ def test_given_hidden_directory_when_searching_then_skips_hidden_entries(tmp_pat
 
 def test_given_hidden_directory_when_skip_hidden_folders_disabled_then_includes_hidden_entries(tmp_path: Path):
 	# given
-	hidden_dir = tmp_path / ".git"
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	(tmp_path / "visible.txt").write_text("token", encoding="utf-8")
 	query = "token"
 
@@ -459,7 +460,7 @@ def test_given_hidden_directory_when_skip_hidden_folders_disabled_then_includes_
 	# then
 	assert len(results) == 2
 	path_names = {result.path.name for result in results}
-	assert path_names == {"config", "visible.txt"}
+	assert path_names == {"notes.txt", "visible.txt"}
 
 
 def test_given_noise_directory_when_searching_then_skips_noise_entries(tmp_path: Path):
@@ -499,9 +500,9 @@ def test_given_hidden_and_noise_directories_when_both_skip_flags_disabled_then_i
 	tmp_path: Path,
 ):
 	# given
-	hidden_dir = tmp_path / ".git"
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	noise_dir = tmp_path / "__pycache__"
 	noise_dir.mkdir()
 	(noise_dir / "cache.txt").write_text("token cache", encoding="utf-8")
@@ -514,7 +515,7 @@ def test_given_hidden_and_noise_directories_when_both_skip_flags_disabled_then_i
 	# then
 	assert len(results) == 3
 	path_names = {result.path.name for result in results}
-	assert path_names == {"cache.txt", "config", "visible.txt"}
+	assert path_names == {"cache.txt", "notes.txt", "visible.txt"}
 
 
 def test_given_noise_file_when_searching_then_skips_junk_entries(tmp_path: Path):

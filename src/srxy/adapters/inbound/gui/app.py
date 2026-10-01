@@ -7,7 +7,7 @@ import os
 import sys
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QUrl
+from PySide6.QtCore import QEvent, QObject, QUrl
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtQml import QQmlApplicationEngine
 from PySide6.QtQuick import QQuickWindow
@@ -117,6 +117,7 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 
 	from srxy.adapters.inbound.gui.controller import SearchController
 	from srxy.adapters.inbound.gui.desktop import QtDesktopAdapter
+	from srxy.adapters.inbound.gui.path_drop import install_path_drop_filter
 	from srxy.bootstrap import build_app_services
 	from srxy.i18n import get_language
 	from srxy.i18n.qt import install_qt_translator
@@ -145,6 +146,9 @@ def run_gui(args: argparse.Namespace, *, auto_start: bool = False) -> int:
 		_close_splash(engine)
 		return 2
 	_reveal_main(engine)
+	for main in _root_by_name(engine, "mainWindow"):
+		if isinstance(main, QObject):
+			install_path_drop_filter(controller, main)
 	_flush_gui(app)
 	mark("qml_loaded")
 
