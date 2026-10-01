@@ -4,18 +4,18 @@ _Last updated: 2026-10-01_
 
 ## Branch
 
-- Release train **`feature/1.8.0`** (includes #40 folder-name, #51 Search top-fixed, #41 path DnD).
-- This branch: `cursor/gui-recent-searches-cf28` — GUI recent searches + restore last path/query session. Synced with latest `origin/feature/1.8.0` (2026-10-01).
+- Release train **`feature/1.8.0`**.
+- This branch: `cursor/gui-recent-searches-cf28` — synced with `origin/feature/1.8.0`, local gate green, pushed `60f3c37`. PR #42 undrafted; waiting on CI then squash-merge into `feature/1.8.0`.
 
 ## Current focus
 
-1. **GUI recent searches + restore last session** (this branch) — merge into `feature/1.8.0` after checks + CI green.
-2. Remaining 1.8.0 drafts: Unlimited OCR #38, media preview #39.
+1. **Wait for CI on PR #42** → merge when green → update local `feature/1.8.0`.
 
 ## Next steps
 
-1. Local quality gate → push → CI green → merge PR into `feature/1.8.0`.
-2. Update local `feature/1.8.0` after merge.
+1. On CI green: squash-merge PR #42.
+2. `git checkout feature/1.8.0 && git pull` (or merge origin) to refresh local train.
+3. Remaining drafts: Unlimited OCR #38, media preview #39.
 
 ## Memory protocol (2026-09-01)
 

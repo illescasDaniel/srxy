@@ -6,6 +6,7 @@ import json
 import os
 import shutil
 import subprocess
+import sys
 import tomllib
 from pathlib import Path
 
@@ -177,6 +178,10 @@ def test_given_installer_icons_when_checking_online_sizes_then_present_through_2
 
 def test_given_go_toolchain_when_running_online_bootstrap_tests_then_pass():
 	# given
+	if sys.platform == "win32":
+		# Linux AppImage online-bootstrap; running ``go test`` under xdist on
+		# Windows CI has crashed the worker (Not properly terminated).
+		pytest.skip("Linux AppImage online-bootstrap go tests are not run on Windows")
 	go_bin = shutil.which("go")
 	if go_bin is None:
 		pytest.skip("go not installed")
