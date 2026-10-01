@@ -1,38 +1,33 @@
 # Active Context
 
-_Last updated: 2026-09-12_
+_Last updated: 2026-10-01_
 
 ## Branch
 
-- `develop` — post-v1.7.0 (shipped `main` @ `2c64f08`, 2026-09-11).
-- Release train **`feature/1.8.0`** (forked from `develop`). Topic branches for 1.8.0 work fork from here (not from `develop`).
+- `cursor/search-by-folder-name-b203` (PR #40 → `feature/1.8.0`)
+- Release train **`feature/1.8.0`** tip synced in (incl. develop merge / PR #52).
 
 ## Current focus
 
-1. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
-2. **Media preview panel** — draft PR #39 → `feature/1.8.0`; Team Lead LGTM; Daniel visual/playback smoke before undraft.
-3. **Search by folder name** — implemented on `cursor/search-by-folder-name-b203` (topic branch off `feature/1.8.0`); PR opened → `feature/1.8.0`; unit + CLI + TUI + GUI tests added, docs + i18n updated. Team Lead marks ready-for-review when OK. Do not touch `feature/unlimited-ocr-dca2` (#38) or `feature/media-preview-panel` (#39).
+1. **Search by folder name** — finish CI green on PR #40 after base sync.
+2. Unlimited OCR / media preview — untouched (#38 / #39).
 
-## Planned (also 1.8.0)
+## Active blockers
 
-- **NSIS instead of Inno** — replace `srxy-offline.iss` outer shell with NSIS (zlib/libpng).
+- Local `gh` auth is broken (invalid keyring token); CI logs need GitHub web/MCP or re-auth.
+
+## Touched this session
+
+- Merged `origin/feature/1.8.0` into this branch.
+- Windows CI suspects after Sep 12 failure (`test-windows` only; unit/cli step):
+  - Fixed PowerShell packaging syntax test (`[ref]$null` → real `$errs` var; prefer `pwsh`).
+  - Skip bash-only `test_gate_lock_file` on Windows.
+  - TUI folder assertions use `Path.name` (not `endswith("/…")`).
+  - Bumped `urllib3` 2.7.0 → 2.8.0 (pip-audit CVEs).
 
 ## Next steps
 
-1. Folder-name search — PR review; see `memory/decisions.md` (2026-09-06) for the true-folder-as-result design; regenerated the 4 TUI snapshots that show the changed "File names" hint copy.
-2. Unlimited OCR — Daniel GPU QA; keep draft until then.
-3. Media preview — Daniel smoke; then undraft/merge into `feature/1.8.0`.
-4. NSIS Windows installer (later in 1.8.0).
-
-## Memory protocol (2026-09-01)
-
-- `agent-memory.mdc`: never record worktree deletion/cleanup in tracked memory.
-
-## Sync note (2026-09-12)
-
-- Synced `develop` (@ `0fcda8b`, includes signed/notarized v1.7.0 macOS installer work + `docs/images/gui-linux.png` regeneration) into `feature/1.8.0` via PR #52 (merged, merge commit `7d8e9d4`). v1.7.0 macOS installer distribution work is complete/shipped; no outstanding action here.
-- Refreshed the 6 open PRs targeting `feature/1.8.0` onto the new tip:
-  - #40 (search-by-folder-name) — merged base cleanly, pushed. Now `MERGEABLE`.
-  - #38 (Unlimited OCR), #39 (media preview), #41 (DnD path field), #51 (search button top-fixed) — conflict only in `memory/*.md` (each branch's own scratch notes vs. the new `feature/1.8.0` tip). Left unresolved for the PR owner/agent to reconcile — not force-resolved on their branches.
-  - #42 (recent searches) — conflict in `memory/activeContext.md` **and** `src/srxy/adapters/inbound/gui/qml/Main.qml` (real code conflict, not trivial). Left unresolved.
-  - Did not find open PRs from `feature/macos-sdk26-offline-pyside` or `feature/gui-search-button-top-fixed` branches by those exact names; #51 (`cursor/gui-search-button-top-fixed-0e77`) appears to be the corresponding PR.
+1. Push + confirm PR #40 CI (especially `test-windows`) green.
+2. Folder-name search — PR review / ready-for-review when CI sticks.
+3. Unlimited OCR — Daniel GPU QA; keep draft.
+4. Media preview — Daniel smoke; then undraft/merge.

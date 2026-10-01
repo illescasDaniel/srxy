@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import shutil
 import subprocess
 from pathlib import Path
@@ -9,17 +10,22 @@ from pathlib import Path
 import pytest
 
 
-pytestmark = pytest.mark.unit
+pytestmark = [
+	pytest.mark.unit,
+	pytest.mark.skipif(os.name == "nt", reason="bash gate lock helpers are Unix-only"),
+]
 
 _REPO = Path(__file__).resolve().parents[2]
 _LIB = _REPO / "scripts" / "quality" / "internal" / "lib.sh"
 
 
 def _bash_lib_snippet(body: str) -> subprocess.CompletedProcess[str]:
+	# as_posix() keeps the source path Git-Bash-safe if these ever run under MSYS.
+	lib = _LIB.resolve().as_posix()
 	script = f'''
 set -euo pipefail
 # shellcheck source=scripts/quality/internal/lib.sh
-source "{_LIB}"
+source "{lib}"
 {body}
 '''
 	bash = shutil.which("bash") or "bash"

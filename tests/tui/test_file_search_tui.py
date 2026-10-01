@@ -97,8 +97,8 @@ def test_given_matching_folder_name_when_tui_names_search_completes_then_lists_f
 					table = app.query_one("#results-table", DataTable)
 				assert table.row_count >= 1
 				assert app.exit_code == 0
-				paths = [str(table.get_row_at(row)[1]) for row in range(table.row_count)]
-				assert any(path.endswith("Invoices") for path in paths)
+				paths = [Path(table.get_row_at(row)[1]) for row in range(table.row_count)]
+				assert any(path.name == "Invoices" for path in paths)
 
 	# when / then
 	asyncio.run(run())
@@ -124,9 +124,9 @@ def test_given_matching_folder_name_when_tui_content_only_search_then_folder_exc
 					table = app.query_one("#results-table", DataTable)
 				assert table.row_count >= 1
 				assert app.exit_code == 0
-				paths = [str(table.get_row_at(row)[1]) for row in range(table.row_count)]
-				assert not any(path.endswith("/invoices") for path in paths)
-				assert any(path.endswith("notes.txt") for path in paths)
+				paths = [Path(table.get_row_at(row)[1]) for row in range(table.row_count)]
+				assert not any(path.name == "invoices" and path.is_dir() for path in paths)
+				assert any(path.name == "notes.txt" for path in paths)
 
 	# when / then
 	asyncio.run(run())
