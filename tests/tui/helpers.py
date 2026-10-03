@@ -14,6 +14,10 @@ SNAPSHOTS_DIR = Path(__file__).parent / "snapshots"
 UPDATE_TUI_SNAPSHOTS = os.environ.get("UPDATE_TUI_SNAPSHOTS") == "1"
 
 _BORDER_GLYPHS = frozenset("▄▀─━▐▌")
+# Block Elements (U+2580–U+259F) excluding button underline bars. Scrollbar
+# thumbs flicker across █/▅/▂; drop decoration-only tokens. Keep ▔/▁ used by
+# Textual AccentButton chrome in snapshots.
+_BLOCK_DECORATION = frozenset(chr(code) for code in range(0x2580, 0x25A0)) - frozenset("▔▁")
 
 
 def extract_svg_visible_text(svg: str) -> list[str]:
@@ -24,6 +28,8 @@ def extract_svg_visible_text(svg: str) -> list[str]:
 		if not text:
 			continue
 		if all(char in _BORDER_GLYPHS or char.isspace() for char in text):
+			continue
+		if all(char in _BLOCK_DECORATION or char.isspace() for char in text):
 			continue
 		texts.append(text)
 	return texts

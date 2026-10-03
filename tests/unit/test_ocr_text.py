@@ -98,14 +98,27 @@ def test_given_tesseract_on_path_when_selecting_engine_then_uses_tesseract(monke
 	reset_ocr_engine()
 
 
-def test_given_no_tesseract_when_reading_unavailable_message_then_returns_install_hint():
-	# when
-	message = ocr_unavailable_message()
+def test_given_tesseract_backend_when_reading_unavailable_message_then_returns_tesseract_hint():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False):
+		# when
+		message = ocr_unavailable_message()
 
 	# then
 	assert "Tesseract OCR" in message
 	assert "PATH" in message
 	assert "SRXY_TESSERACT_PATH" in message
+
+
+def test_given_unlimited_backend_when_reading_unavailable_message_then_returns_unlimited_hint():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True):
+		# when
+		message = ocr_unavailable_message()
+
+	# then
+	assert "Unlimited OCR" in message
+	assert "unlimited-ocr" in message
 
 
 def test_given_mocked_image_ocr_when_iterating_lines_then_yields_text(tmp_path: Path):
@@ -467,7 +480,57 @@ def test_given_torch_and_transformers_importable_when_checking_unlimited_deps_th
 
 	# when / then
 	assert unlimited_ocr_deps_installed() is True
+
+
+def test_given_deps_and_enough_free_vram_when_checking_unlimited_available_then_returns_true(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text.unlimited_ocr_deps_installed",
+		lambda: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text._cuda_free_vram_bytes",
+		lambda: 8 * 1024**3,
+	)
+
+	# when / then
 	assert is_unlimited_ocr_available() is True
+
+
+def test_given_deps_but_low_free_vram_when_checking_unlimited_available_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — 8 GiB laptop with desktop session (~5 GiB free) cannot load ~4.3 GiB weights
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text.unlimited_ocr_deps_installed",
+		lambda: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text._cuda_free_vram_bytes",
+		lambda: 5 * 1024**3,
+	)
+
+	# when / then
+	assert is_unlimited_ocr_available() is False
+
+
+def test_given_deps_but_no_cuda_when_checking_unlimited_available_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — upstream infer() assumes CUDA; CPU/MPS are not a viable fallback
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text.unlimited_ocr_deps_installed",
+		lambda: True,
+	)
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text._cuda_free_vram_bytes",
+		lambda: None,
+	)
+
+	# when / then
+	assert is_unlimited_ocr_available() is False
 
 
 def test_given_only_torch_when_checking_unlimited_deps_then_returns_false(monkeypatch: pytest.MonkeyPatch):
@@ -591,7 +654,12 @@ def test_given_mocked_model_when_unlimited_engine_recognizes_then_calls_infer_an
 
 	# then
 	assert text == "Invoice Total: $42.00"
-	fake_model.infer.assert_called_once_with(fake_tokenizer, Image.new("RGB", (8, 8)))
+	fake_model.infer.assert_called_once()
+	args, kwargs = fake_model.infer.call_args
+	assert args[0] is fake_tokenizer
+	assert kwargs["prompt"] == "<image>\nFree OCR. "
+	assert kwargs["image_file"].endswith("image.png")
+	assert kwargs["save_results"] is False
 
 
 def test_given_model_without_infer_and_no_tesseract_when_unlimited_engine_recognizes_then_raises():

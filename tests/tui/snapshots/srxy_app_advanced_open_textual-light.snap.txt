@@ -12,115 +12,67 @@ Path
 Search
 │
 hello
-█
-█
 │
 Add t
-█
-█
 └
-█
 Search options
-█
 Search options
-█
-█
 can: Archives
-█
-█
 Filters
 All
-█
 Where to search
-█
 ipt≥25%
-█
 X
 File names
-█
 ┌
-█
 Match the path and filename
-█
 ┐
 │
 Match
 Path
 Mat
-█
-█
 │
 │
-█
 X
 Folder names
-█
 Text
 │
 │
-█
 Match folder names as results
-█
 │
 │
-█
-█
 │
 │
-█
 X
 File contents
-█
 │
 │
-█
 Search inside files (docs, images, audio, …)
-█
 │
 │
-█
-█
 │
 │
 Run a search to
-█
 How to match
-█
 │
 │
-█
 Fuzzy, phonetic, and substring matching (always on)
-█
 │
 │
-█
-█
 │
 │
-█
-█
 │
 │
-█
-█
 │
 │
-█
-█
 │
 │
-█
 Cancel
 Apply
-█
 │
 │
-█
-█
 │
 └
-█
-█
 ┘
 0%
 Ready

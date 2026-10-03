@@ -1,24 +1,6 @@
 download-progress-modal
 host
-█
-█
-█
-█
-█
 Downloading Semantic text model…
-█
-█
-█
-█
 ╺
 42%
-█
-█
-█
-█
 Downloading model files
-█
-█
-█
-█
-█

@@ -25,10 +25,31 @@ pytestmark = pytest.mark.unit
 def test_given_known_key_when_help_text_then_includes_guidance():
 	# given / when / then
 	assert "filenames" in help_text("search_names").lower() or "file" in help_text("search_names").lower()
-	assert "tesseract" in help_text("ocr").lower()
-	assert "github.com/tesseract-ocr" in help_text("ocr")
 	assert "srxy[semantic]" in help_text("semantic")
 	assert "ffmpeg.org" in help_text("transcribe")
+
+
+def test_given_tesseract_backend_when_help_text_ocr_then_mentions_tesseract():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False):
+		# when
+		text = help_text("ocr")
+
+	# then
+	assert "tesseract" in text.lower()
+	assert "github.com/tesseract-ocr" in text
+
+
+def test_given_unlimited_backend_when_help_text_ocr_then_mentions_unlimited():
+	# given
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True):
+		# when
+		text = help_text("ocr")
+
+	# then
+	assert "unlimited ocr" in text.lower()
+	assert "baidu/Unlimited-OCR" in text
+	assert "huggingface.co/baidu/Unlimited-OCR" in text
 
 
 def test_given_unknown_key_when_help_text_then_fallback_message():
@@ -53,6 +74,22 @@ def test_given_no_gpu_when_unavailable_reason_then_mentions_gpu():
 
 def test_given_missing_tesseract_when_unavailable_reason_then_mentions_tesseract():
 	caps = Capabilities(
+		semantic_deps=False,
+		has_gpu=True,
+		ocr=False,
+		ffmpeg=True,
+		transcribe_deps=True,
+		semantic_enabled=False,
+		semantic_image_enabled=False,
+		transcribe_enabled=True,
+		ocr_enabled=False,
+	)
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False):
+		assert "tesseract" in unavailable_reason("ocr", caps).lower()
+
+
+def test_given_missing_unlimited_when_unavailable_reason_then_mentions_unlimited():
+	caps = Capabilities(
 		semantic_deps=True,
 		has_gpu=True,
 		ocr=False,
@@ -63,7 +100,8 @@ def test_given_missing_tesseract_when_unavailable_reason_then_mentions_tesseract
 		transcribe_enabled=True,
 		ocr_enabled=False,
 	)
-	assert "tesseract" in unavailable_reason("ocr", caps).lower()
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True):
+		assert "unlimited ocr" in unavailable_reason("ocr", caps).lower()
 
 
 def test_given_probe_when_called_then_returns_capabilities():

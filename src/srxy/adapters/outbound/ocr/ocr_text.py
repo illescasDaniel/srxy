@@ -60,7 +60,8 @@ def _ocr_unavailable_message() -> str:
 	from srxy.application.install_method import ocr_enable_hint
 	from srxy.i18n import tr
 
-	return tr("unavailable.ocr", hint=ocr_enable_hint())
+	key = "unavailable.ocr.unlimited" if preferred_ocr_backend() == "unlimited" else "unavailable.ocr.tesseract"
+	return tr(key, hint=ocr_enable_hint())
 
 
 class OcrRecognizeTimeout(Exception):
@@ -209,19 +210,59 @@ def _module_importable(name: str) -> bool:
 		return False
 
 
+# baidu/Unlimited-OCR bf16 weights alone are ~4.3 GiB; keep headroom for activations
+# and a typical desktop compositor so we do not select a backend that OOMs on load.
+MIN_UNLIMITED_OCR_FREE_VRAM_BYTES = 6 * 1024**3
+
+
 def unlimited_ocr_deps_installed() -> bool:
 	"""True when the ``[semantic]`` extras (torch + transformers) are importable.
 
 	Mirrors ``transcribe_deps_installed`` / ``sentence_transformers_installed`` —
-	a cheap ``find_spec`` probe, no heavy import. This is the sole gate baidu's
-	Unlimited OCR needs per the product spec ("if semantic extras installed,
-	use Unlimited OCR; else Tesseract") — no separate env flag.
+	a cheap ``find_spec`` probe, no heavy import. Necessary but not sufficient for
+	Unlimited OCR (also needs enough free CUDA VRAM — see
+	:func:`is_unlimited_ocr_available`).
 	"""
 	return _module_importable("torch") and _module_importable("transformers")
 
 
+def _cuda_free_vram_bytes() -> int | None:
+	"""Return free CUDA bytes, or ``None`` when CUDA is unavailable / unreadable."""
+	if not _module_importable("torch"):
+		return None
+	try:
+		import torch
+
+		if not torch.cuda.is_available():
+			return None
+		free, _total = torch.cuda.mem_get_info()
+		return int(free)
+	except Exception:
+		return None
+
+
 def is_unlimited_ocr_available() -> bool:
-	return unlimited_ocr_deps_installed()
+	"""True when Unlimited OCR deps are present *and* CUDA has enough free VRAM.
+
+	The upstream ``infer()`` path assumes CUDA tensors; CPU/MPS are not viable.
+	On 8 GiB laptop GPUs with a normal desktop session (~5 GiB free), the ~4.3 GiB
+	bf16 weights already OOM on ``.cuda()``, so we keep Tesseract instead of
+	selecting a backend that only falls back after a failed load.
+	"""
+	if not unlimited_ocr_deps_installed():
+		return False
+	free = _cuda_free_vram_bytes()
+	return free is not None and free >= MIN_UNLIMITED_OCR_FREE_VRAM_BYTES
+
+
+def preferred_ocr_backend() -> str:
+	"""Return ``\"unlimited\"`` or ``\"tesseract\"`` for user-facing OCR copy.
+
+	Matches :func:`get_ocr_engine` selection: Unlimited OCR only when deps are
+	importable and free CUDA VRAM clears :data:`MIN_UNLIMITED_OCR_FREE_VRAM_BYTES`,
+	else Tesseract.
+	"""
+	return "unlimited" if is_unlimited_ocr_available() else "tesseract"
 
 
 def _build_unlimited_ocr_model() -> tuple[object, object]:
@@ -324,6 +365,21 @@ class UnlimitedOcrEngine(OcrEngine):
 			infer = getattr(model, "infer", None)
 			if infer is None:
 				raise RuntimeError("Unlimited OCR model does not expose an infer() method")
+			# Model card API: prompt + image_file path (not a bare PIL positional).
+			import tempfile
+
+			with tempfile.TemporaryDirectory(prefix="srxy-unlimited-ocr-") as tmp:
+				image_path = Path(tmp) / "image.png"
+				rgb = image.convert("RGB") if image.mode != "RGB" else image
+				rgb.save(image_path)
+				result = infer(
+					tokenizer,
+					prompt="<image>\nFree OCR. ",
+					image_file=str(image_path),
+					output_path=str(Path(tmp) / "out"),
+					save_results=False,
+				)
+			return str(result).strip()
 		except Exception as exc:
 			if not tesseract_available():
 				raise
@@ -333,8 +389,6 @@ class UnlimitedOcrEngine(OcrEngine):
 			)
 			self._fallback = TesseractEngine()
 			return self._fallback.recognize(image)
-		result = infer(tokenizer, image)
-		return str(result).strip()
 
 
 def ocr_env_enabled() -> bool:

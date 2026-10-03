@@ -15,7 +15,7 @@ _OPTION_KEYS: dict[str, tuple[str, str]] = {
 	"so-content": ("gui.options.file_contents", "tui.hint.file_contents"),
 	"so-docs-tags": ("tui.options.docs_tags", "tui.hint.docs_tags"),
 	"so-semantic": ("gui.options.semantic", "tui.hint.semantic"),
-	"so-ocr": ("gui.options.ocr", "tui.hint.ocr"),
+	"so-ocr": ("gui.options.ocr", "tui.hint.ocr.tesseract"),
 	"so-transcribe": ("gui.options.transcribe", "tui.hint.transcribe"),
 	"so-semantic-image": ("gui.options.semantic_image", "tui.hint.semantic_image"),
 	"so-enable-all": ("tui.options.enable_all", "tui.hint.enable_all"),
@@ -45,6 +45,10 @@ def option_label(checkbox_id: str) -> str:
 
 def option_hint(checkbox_id: str) -> str | None:
 	_label_key, hint_key = _OPTION_KEYS[checkbox_id]
+	if checkbox_id == "so-ocr":
+		from srxy.adapters.outbound.ocr.ocr_text import preferred_ocr_backend
+
+		hint_key = "tui.hint.ocr.unlimited" if preferred_ocr_backend() == "unlimited" else "tui.hint.ocr.tesseract"
 	return tr(hint_key)
 
 

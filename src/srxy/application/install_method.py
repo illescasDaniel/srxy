@@ -73,12 +73,16 @@ def semantic_enable_hint(method: InstallMethod | None = None) -> str:
 
 
 def ocr_enable_hint(method: InstallMethod | None = None) -> str:
+	from srxy.adapters.outbound.ocr.ocr_text import preferred_ocr_backend
 	from srxy.i18n import tr
+
+	if preferred_ocr_backend() == "unlimited":
+		return tr("hint.ocr.unlimited")
 
 	resolved = method if method is not None else detect_install_method()
 	if resolved is InstallMethod.DESKTOP_PREFIX:
-		return tr("hint.ocr.desktop")
-	return tr("hint.ocr.default")
+		return tr("hint.ocr.tesseract.desktop")
+	return tr("hint.ocr.tesseract.default")
 
 
 def ffmpeg_enable_hint(method: InstallMethod | None = None) -> str:

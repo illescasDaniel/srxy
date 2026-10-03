@@ -2,6 +2,18 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-10-03 — Unlimited OCR only when CUDA has ≥6 GiB free VRAM
+
+- **Context:** On an RTX 4070 Laptop 8 GiB with a normal desktop session (~4.7–5 GiB free), `baidu/Unlimited-OCR` bf16 weights (~4.3 GiB) OOM on `.cuda()` before any infer tuning can help. Upstream `infer()` also assumes CUDA tensors, so CPU is not a viable tune-down. Selecting Unlimited then falling back to Tesseract after a failed load made `preferred_ocr_backend()` / GUI copy claim Unlimited while OCR was actually Tesseract.
+- **Decision:** (1) `is_unlimited_ocr_available()` requires `unlimited_ocr_deps_installed()` **and** `torch.cuda.mem_get_info()` free ≥ `MIN_UNLIMITED_OCR_FREE_VRAM_BYTES` (6 GiB); no CUDA → Tesseract. (2) `UnlimitedOcrEngine.recognize` calls the model-card API (`prompt` + `image_file` path via a temp PNG), with load/infer failures still falling back to Tesseract. No dependency pin/extra churn for Unlimited on this pass — if it cannot run in the free VRAM we have, we do not use it.
+- **Rationale:** Prefer an honest Tesseract backend over a backend that only works after closing the user's apps or OOMing. 6 GiB free leaves headroom for activations after the ~4.3 GiB weights.
+
+## 2026-10-03 — OCR UX copy follows preferred backend (Unlimited vs Tesseract)
+
+- **Context:** GUI `(i)` / TUI hints / CLI `--ocr` help / unavailable messages still named Tesseract even when `[semantic]` selects Unlimited OCR.
+- **Decision:** Add `preferred_ocr_backend()` (`"unlimited"` iff `is_unlimited_ocr_available()`, else `"tesseract"`). Split i18n keys (`gui.help.ocr.*`, `tui.hint.ocr.*`, `cli.help.ocr.*`, `unavailable.ocr.*`, `hint.ocr.*`) and select at call sites (`help_text`, `option_hint`, `_ocr_cli_flag_help`, `ocr_enable_hint`, `_ocr_unavailable_message`). Installer/privacy Tesseract vendor copy stays Tesseract-specific.
+- **Rationale:** Matches `get_ocr_engine()` selection without a new env flag; non-semantic installs keep Tesseract install instructions.
+
 ## 2026-10-03 — Free CUDA VRAM on model reset; unload between integration tests
 
 - **Context:** Heavy gate OOMed on an 8 GiB desktop GPU (~2 GiB held by kwin/browser/Electron) after the test process itself retained ~4 GiB across semantic text + CLIP + whisper singletons. `reset_*_model` only nulled Python globals, so PyTorch's caching allocator kept blocks reserved and later tests failed allocating ~20 MiB.

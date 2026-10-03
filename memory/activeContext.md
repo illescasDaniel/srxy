@@ -4,17 +4,19 @@ _Last updated: 2026-10-03_
 
 ## Branch
 
-- Topic **`feature/unlimited-ocr-dca2`** (draft PR #38 → `feature/1.8.0`). Merged latest `origin/feature/1.8.0` @ `1deb4ef` (merge commit `24b66d0`).
+- Topic **`feature/unlimited-ocr-dca2`** (draft PR #38 → `feature/1.8.0`).
 
 ## Current focus
 
-1. **Unlimited OCR** — stay draft until Daniel GPU QA.
-2. Post-merge fixes committed: `pypdf` ≥6.19.0, OCR unit-test mocks for `[semantic]` installs, CUDA VRAM release on model reset + integration autouse unload.
+1. **Unlimited OCR — VRAM reality check (done this session):** On this RTX 4070 Laptop 8 GiB desktop session (~4.7–5 GiB free), Unlimited OCR **cannot load** (~4.3 GiB bf16 weights OOM). CPU path broken upstream. Gate: `is_unlimited_ocr_available()` now needs ≥6 GiB free CUDA VRAM; otherwise Tesseract. So `uv run task gui` here uses **Tesseract**, not Unlimited.
+2. **Speed note:** Cold Tesseract OCR search `egypt` on `/home/daniel/Pictures/Screenshots/` (12 PNGs) ≈ **11.0s**, 3 hits. No Unlimited timing (won't load). Comment in `README.md` (HTML comment under Development).
+3. **Infer call fixed** to model-card API (`prompt` + temp `image_file`). No `[semantic]` dep churn this pass.
 
 ## Next steps
 
-1. Daniel GPU QA for Unlimited OCR; keep draft until then.
-2. Optional UX: GUI/TUI OCR help copy still describes Tesseract only — update when product wants Unlimited mentioned in the info panel.
+1. Commit VRAM gate + README note + OCR copy when Daniel asks.
+2. High-VRAM GPU QA still needed before undrafting PR #38 (machine with ≥6 GiB free CUDA); also needs Unlimited runtime deps + transformers-5 compat if pursued later.
+3. Do **not** kill user desktop apps to free VRAM for benches.
 
 ## Memory protocol (2026-09-01)
 
