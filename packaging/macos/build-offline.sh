@@ -155,6 +155,10 @@ cfg.write_text("\n".join(lines) + "\n", encoding="utf-8")
 PY
 fi
 
+# Keep this pinned to the same PySide6 build as install.py's runtime pin
+# (packaging/macos/build-offline.sh + srxy.adapters.inbound.installer.install)
+# so the offline wrapper's Quick Controls chrome matches what the SDK-26
+# restamped Srxy.app draws after install (Tahoe Liquid Glass parity).
 uv pip install --python "$VENV_PY" "PySide6==6.11.1"
 uv pip install --python "$VENV_PY" --no-deps "$ROOT"
 
@@ -187,6 +191,36 @@ case "$RESOLVED_PY" in
 esac
 echo "Bundled venv python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
 
+# AppKit gates Tahoe Liquid Glass on the *exec'd* interpreter's LC_BUILD_VERSION
+# (not Info.plist). uv-managed CPython ships sdk 15.x; restamp the in-bundle
+# copy only (never the host ~/.local/share/uv/python tree).
+echo "Restamping bundled Python linked SDK to 26 (Liquid Glass)…"
+uv run python - "$RESOLVED_PY" <<'PY'
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+from srxy.adapters.inbound.installer.install import (
+	_adhoc_codesign_macos,
+	_is_macho_executable,
+	_restamp_macos_linked_sdk,
+)
+
+py = Path(sys.argv[1]).resolve()
+if not _is_macho_executable(py):
+	raise SystemExit(f"error: bundled python is not Mach-O: {py}")
+if not _restamp_macos_linked_sdk(py):
+	raise SystemExit(f"error: failed to restamp bundled python: {py}")
+_adhoc_codesign_macos(py)
+show = subprocess.check_output(["/usr/bin/vtool", "-show-build", str(py)], text=True)  # noqa: S603
+if not re.search(r"sdk\s+26(\.|$|\s)", show):
+	raise SystemExit(f"error: expected sdk 26 after restamp:\n{show}")
+print(f"Bundled python SDK OK (sdk 26): {py}")
+PY
+
 "$ROOT/packaging/macos/prune-pyside.sh" "$RES_DIR/venv"
 
 echo "Building wheel for offline installer payload..."
@@ -205,16 +239,29 @@ cp "$WHEEL" "$APPDIR/usr/share/srxy/"
 cp "$WHEEL" "$APPDIR/usr/share/srxy/srxy.whl"
 cp "$ROOT/packaging/installer_meta.toml" "$APPDIR/usr/share/srxy/installer_meta.toml"
 
-cat >"$MACOS_DIR/srxy-installer-offline" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-THIS="$0"
-CONTENTS="$(cd "$(dirname "$THIS")/.." && pwd)"
-export APPDIR="$CONTENTS"
-export PYTHONNOUSERSITE=1
-exec "$CONTENTS/Resources/venv/bin/python" -m srxy.adapters.inbound.installer "$@"
-EOF
-chmod +x "$MACOS_DIR/srxy-installer-offline"
+# LaunchServices rejects shell scripts as CFBundleExecutable
+# (kLSNoExecutableErr / Finder "(null)"). Compile a relocatable Mach-O stub.
+LAUNCHER_SRC="$ROOT/src/srxy/resources/macos/SrxyInstallerLauncher.c"
+LAUNCHER_BIN="$MACOS_DIR/srxy-installer-offline"
+if [[ ! -f "$LAUNCHER_SRC" ]]; then
+	echo "error: missing offline installer launcher source: $LAUNCHER_SRC" >&2
+	exit 1
+fi
+if ! command -v clang >/dev/null 2>&1; then
+	echo "error: clang is required to build the offline installer Mach-O launcher" >&2
+	exit 1
+fi
+echo "Compiling Mach-O CFBundleExecutable…"
+clang -O2 -Wall -Wextra -mmacosx-version-min=12.0 -o "$LAUNCHER_BIN" "$LAUNCHER_SRC"
+chmod +x "$LAUNCHER_BIN"
+# Ad-hoc sign so local opens aren't blocked; release signing re-signs later.
+if command -v codesign >/dev/null 2>&1; then
+	codesign --force --sign - --timestamp=none "$LAUNCHER_BIN" 2>/dev/null || true
+fi
+if ! file "$LAUNCHER_BIN" | grep -q "Mach-O"; then
+	echo "error: CFBundleExecutable must be Mach-O, got: $(file "$LAUNCHER_BIN")" >&2
+	exit 1
+fi
 
 cp "$ICON_SRC" "$RES_DIR/srxy-installer.png"
 if ! build_icns "$ICON_SRC" "$RES_DIR/$ICON_ICNS_NAME"; then
@@ -234,6 +281,12 @@ cat >"$CONTENTS/Info.plist" <<EOF
 	<key>CFBundleIconFile</key><string>srxy-installer.icns</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>LSMinimumSystemVersion</key><string>12.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+	<key>LSEnvironment</key>
+	<dict>
+		<key>QT_QUICK_CONTROLS_STYLE</key><string>macOS</string>
+	</dict>
 </dict>
 </plist>
 EOF

@@ -56,8 +56,27 @@ if [[ ! -x "$VENV_PY" ]]; then
 	echo "error: bundled python not found: $VENV_PY" >&2
 	exit 1
 fi
+# LaunchServices rejects shell CFBundleExecutable (Finder "(null)" / kLSNoExecutableErr).
+if head -c 2 "$BIN" | grep -q '#!'; then
+	echo "error: CFBundleExecutable must be Mach-O, not a shell script: $BIN" >&2
+	exit 1
+fi
+if ! file "$BIN" | grep -q "Mach-O"; then
+	echo "error: CFBundleExecutable must be Mach-O: $(file "$BIN")" >&2
+	exit 1
+fi
 
 "$BIN" --version >/dev/null
+
+# Liquid Glass: process image after exec must advertise sdk >= 26.
+RESOLVED_SMOKE_PY="$(python3 -c 'import os, sys; print(os.path.realpath(sys.argv[1]))' "$VENV_PY")"
+SHOW_BUILD="$(/usr/bin/vtool -show-build "$RESOLVED_SMOKE_PY" 2>/dev/null || true)"
+if ! grep -Eq 'sdk[[:space:]]+26(\.|$|[[:space:]])' <<<"$SHOW_BUILD"; then
+	echo "error: bundled python must be restamped to sdk 26 for Liquid Glass:" >&2
+	echo "$SHOW_BUILD" >&2
+	exit 1
+fi
+echo "Bundled python SDK OK (sdk 26): $RESOLVED_SMOKE_PY"
 
 echo "Smoke-testing pruned Qt Quick Controls (offscreen)…"
 export QT_QPA_PLATFORM="${QT_QPA_PLATFORM:-offscreen}"
