@@ -72,6 +72,10 @@ def test_given_build_script_when_reading_then_pins_pyside_and_prunes():
 	# Offline wrapper's own Python must be SDK-26 restamped (Liquid Glass).
 	assert "_restamp_macos_linked_sdk" in text
 	assert "QT_QUICK_CONTROLS_STYLE" in text
+	# Shell CFBundleExecutable → Finder "(null)"; must compile Mach-O launcher.
+	assert "SrxyInstallerLauncher.c" in text
+	assert "clang" in text
+	assert "Mach-O" in text
 
 
 def test_given_build_dmg_when_reading_then_prefers_diskutil_image():
@@ -115,6 +119,8 @@ def test_given_smoke_script_when_reading_then_asserts_macos_quick_style():
 	assert 'style != "macOS"' in text or "expected Quick style macOS" in text
 	assert "vtool" in text
 	assert "sdk" in text and "26" in text
+	assert "Mach-O" in text
+	assert "#!" in text  # rejected shebang check
 
 
 def test_given_macos_ci_workflow_when_checking_then_has_offline_job():

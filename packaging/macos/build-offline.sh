@@ -239,16 +239,29 @@ cp "$WHEEL" "$APPDIR/usr/share/srxy/"
 cp "$WHEEL" "$APPDIR/usr/share/srxy/srxy.whl"
 cp "$ROOT/packaging/installer_meta.toml" "$APPDIR/usr/share/srxy/installer_meta.toml"
 
-cat >"$MACOS_DIR/srxy-installer-offline" <<'EOF'
-#!/usr/bin/env bash
-set -euo pipefail
-THIS="$0"
-CONTENTS="$(cd "$(dirname "$THIS")/.." && pwd)"
-export APPDIR="$CONTENTS"
-export PYTHONNOUSERSITE=1
-exec "$CONTENTS/Resources/venv/bin/python" -m srxy.adapters.inbound.installer "$@"
-EOF
-chmod +x "$MACOS_DIR/srxy-installer-offline"
+# LaunchServices rejects shell scripts as CFBundleExecutable
+# (kLSNoExecutableErr / Finder "(null)"). Compile a relocatable Mach-O stub.
+LAUNCHER_SRC="$ROOT/src/srxy/resources/macos/SrxyInstallerLauncher.c"
+LAUNCHER_BIN="$MACOS_DIR/srxy-installer-offline"
+if [[ ! -f "$LAUNCHER_SRC" ]]; then
+	echo "error: missing offline installer launcher source: $LAUNCHER_SRC" >&2
+	exit 1
+fi
+if ! command -v clang >/dev/null 2>&1; then
+	echo "error: clang is required to build the offline installer Mach-O launcher" >&2
+	exit 1
+fi
+echo "Compiling Mach-O CFBundleExecutable…"
+clang -O2 -Wall -Wextra -mmacosx-version-min=12.0 -o "$LAUNCHER_BIN" "$LAUNCHER_SRC"
+chmod +x "$LAUNCHER_BIN"
+# Ad-hoc sign so local opens aren't blocked; release signing re-signs later.
+if command -v codesign >/dev/null 2>&1; then
+	codesign --force --sign - --timestamp=none "$LAUNCHER_BIN" 2>/dev/null || true
+fi
+if ! file "$LAUNCHER_BIN" | grep -q "Mach-O"; then
+	echo "error: CFBundleExecutable must be Mach-O, got: $(file "$LAUNCHER_BIN")" >&2
+	exit 1
+fi
 
 cp "$ICON_SRC" "$RES_DIR/srxy-installer.png"
 if ! build_icns "$ICON_SRC" "$RES_DIR/$ICON_ICNS_NAME"; then

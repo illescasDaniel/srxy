@@ -56,6 +56,15 @@ if [[ ! -x "$VENV_PY" ]]; then
 	echo "error: bundled python not found: $VENV_PY" >&2
 	exit 1
 fi
+# LaunchServices rejects shell CFBundleExecutable (Finder "(null)" / kLSNoExecutableErr).
+if head -c 2 "$BIN" | grep -q '#!'; then
+	echo "error: CFBundleExecutable must be Mach-O, not a shell script: $BIN" >&2
+	exit 1
+fi
+if ! file "$BIN" | grep -q "Mach-O"; then
+	echo "error: CFBundleExecutable must be Mach-O: $(file "$BIN")" >&2
+	exit 1
+fi
 
 "$BIN" --version >/dev/null
 

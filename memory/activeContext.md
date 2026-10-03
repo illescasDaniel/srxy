@@ -8,13 +8,13 @@ _Last updated: 2026-10-03_
 
 ## Current focus
 
-1. **Offline installer wrapper Liquid Glass** — done locally: `build-offline.sh` restamps in-bundle Python to SDK 26; smoke asserts it; rebuild + `smoke-offline.sh` green. `build-dmg.sh` uses `diskutil image` (APFS headroom 1.5×+64 MiB); no hdiutil deprecation warnings.
-2. **`uv run` GUI** — still legacy Aqua with uv-managed CPython (`sdk 15.5`). Not restamping shared host uv Python; use Homebrew/`Python.app` (sdk 26) if Liquid Glass is needed for day-to-day `uv run`.
+1. **Offline installer Finder “(null)”** — fixed: shell `CFBundleExecutable` → Mach-O `SrxyInstallerLauncher.c`. Rebuild + smoke + `open` launched the wizard (`python -m srxy.adapters.inbound.installer`).
+2. Prior: SDK-26 restamp of in-bundle Python + `diskutil image` DMG path.
 
 ## Next steps
 
-1. Commit; push / refresh draft PR if desired.
-2. Visual open of the rebuilt offline installer `.app` to confirm Liquid Glass chrome.
+1. Commit; user visually confirms Liquid Glass on the opened installer.
+2. Push / refresh draft PR if desired.
 
 ## Memory protocol (2026-09-01)
 

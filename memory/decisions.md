@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-10-03 — Offline installer CFBundleExecutable is Mach-O (not a shell script)
+
+- **Context:** After SDK-26 restamp, double-clicking the offline installer still failed with Finder “does not have permission to open “(null).”” — the same `kLSNoExecutableErr` / Dock “(null)” failure `Srxy.app` hit when its executable was a shell script.
+- **Decision:** Add relocatable `SrxyInstallerLauncher.c` (resolves `Contents` via `_NSGetExecutablePath`, sets `APPDIR` / `PYTHONNOUSERSITE`, `execv`s `Resources/venv/bin/python -m srxy.adapters.inbound.installer`). `build-offline.sh` compiles it with `clang` + ad-hoc `codesign` as `Contents/MacOS/srxy-installer-offline`. Smoke rejects a `#!` shebang / requires Mach-O.
+- **Rationale:** Modern macOS LaunchServices will not treat a shell script as `CFBundleExecutable`. Paths stay relative so the `.app` remains relocatable (unlike the prefix-baked `SrxyAppLauncher.c`).
+
 ## 2026-10-03 — Offline installer wrapper restamps its own Python to SDK 26; DMG via diskutil image
 
 - **Context:** The *installed* `Srxy.app` already gets Liquid Glass via `install.py`'s `vtool` restamp of embedded `SrxyPython`. The offline *installer wizard* `.app` still looked like legacy Aqua: its CFBundleExecutable shell-execs uv-managed CPython copied into `Contents/Resources/python` with `LC_BUILD_VERSION sdk 15.5`. Separately, `build-dmg.sh`'s `hdiutil attach` / `hdiutil convert` print deprecation warnings on macOS 26+ (`diskutil image …` is the replacement). `uv run task gui` also uses uv-managed CPython (`sdk 15.5`); Homebrew Python is `sdk 26.x`.
