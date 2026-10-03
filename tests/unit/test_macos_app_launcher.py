@@ -26,6 +26,18 @@ def test_given_package_when_resolving_app_launcher_c_then_source_exists():
 	assert 'setenv("PYTHONHOME"' in text
 
 
+def test_given_package_when_resolving_installer_launcher_c_then_source_exists():
+	from srxy.resources.macos import installer_launcher_c_path
+
+	path = installer_launcher_c_path()
+	assert path.is_file()
+	text = path.read_text(encoding="utf-8")
+	assert "_NSGetExecutablePath" in text
+	assert "APPDIR" in text
+	assert "srxy.adapters.inbound.installer" in text
+	assert "Resources/venv/bin/python" in text
+
+
 def test_given_repair_script_when_rewriting_launcher_then_uses_env_path_not_unquoted_path():
 	"""Regression: ``Path($(printf '%q' …))`` produced ``Path(/Users/…)`` SyntaxError."""
 	script = Path(__file__).resolve().parents[2] / "scripts" / "macos" / "repair-prefix-gui.sh"

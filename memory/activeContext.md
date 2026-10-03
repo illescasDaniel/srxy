@@ -4,7 +4,7 @@ _Last updated: 2026-10-03_
 
 ## Branch
 
-- Topic **`feature/unlimited-ocr-dca2`** (draft PR #38 → `feature/1.8.0`).
+- Topic **`feature/unlimited-ocr-dca2`** (draft PR #38 → `feature/1.8.0`). Merged latest `origin/feature/1.8.0` @ `94b3d38` (includes PR #53 macOS offline SDK 26).
 
 ## Current focus
 
@@ -14,9 +14,9 @@ _Last updated: 2026-10-03_
 
 ## Next steps
 
-1. Commit VRAM gate + README note + OCR copy when Daniel asks.
-2. High-VRAM GPU QA still needed before undrafting PR #38 (machine with ≥6 GiB free CUDA); also needs Unlimited runtime deps + transformers-5 compat if pursued later.
-3. Do **not** kill user desktop apps to free VRAM for benches.
+1. High-VRAM GPU QA still needed before undrafting PR #38 (machine with ≥6 GiB free CUDA); also needs Unlimited runtime deps + transformers-5 compat if pursued later.
+2. Do **not** kill user desktop apps to free VRAM for benches.
+3. Keep draft PR #38 open (do not merge yet).
 
 ## Memory protocol (2026-09-01)
 
