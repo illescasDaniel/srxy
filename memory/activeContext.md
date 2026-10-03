@@ -4,17 +4,16 @@ _Last updated: 2026-10-03_
 
 ## Branch
 
-- Working branch: `cursor/macos-sdk26-offline-pyside-8bf8` → PR into `feature/1.8.0` (draft; do not merge).
+- `feature/1.8.0` @ `879dbab` — PR #53 macOS offline installer SDK 26 / Mach-O launcher squash-merged.
 
 ## Current focus
 
-1. **Offline installer Finder “(null)”** — fixed: shell `CFBundleExecutable` → Mach-O `SrxyInstallerLauncher.c`. Rebuild + smoke + `open` launched the wizard (`python -m srxy.adapters.inbound.installer`).
-2. Prior: SDK-26 restamp of in-bundle Python + `diskutil image` DMG path.
+1. **v1.8.0 train** — offline installer Liquid Glass + Finder open fix landed; Unlimited OCR (draft PR #38) still open.
+2. Next topic / QA as Daniel directs.
 
 ## Next steps
 
-1. Commit; user visually confirms Liquid Glass on the opened installer.
-2. Push / refresh draft PR if desired.
+1. Daniel GPU QA / undraft Unlimited OCR (#38) when ready.
 
 ## Memory protocol (2026-09-01)
 
