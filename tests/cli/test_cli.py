@@ -840,7 +840,10 @@ def test_given_ocr_flag_without_tesseract_when_running_cli_then_exits_two_with_m
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.delenv("SRXY_OCR", raising=False)
 
-	with patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False):
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False),
+	):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -859,7 +862,10 @@ def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_me
 	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
 	monkeypatch.setenv("SRXY_OCR", "1")
 
-	with patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False):
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False),
+	):
 		# when
 		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
 
@@ -867,6 +873,28 @@ def test_given_ocr_env_without_tesseract_when_running_cli_then_exits_two_with_me
 	captured = capsys.readouterr()
 	assert exit_code == 2
 	assert "Tesseract OCR is not available" in captured.err
+	assert captured.out == ""
+
+
+def test_given_ocr_flag_without_unlimited_when_running_cli_then_exits_two_with_message(
+	tmp_path: Path, capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	(tmp_path / "notes.txt").write_text("invoice total", encoding="utf-8")
+	monkeypatch.delenv("SRXY_OCR", raising=False)
+
+	with (
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_ocr_available", return_value=False),
+		patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True),
+	):
+		# when
+		exit_code = main(["invoice", str(tmp_path), "--ocr", "--content-only", "--no-progress"])
+
+	# then
+	captured = capsys.readouterr()
+	assert exit_code == 2
+	assert "Unlimited OCR is not available" in captured.err
+	assert "unlimited-ocr" in captured.err
 	assert captured.out == ""
 
 

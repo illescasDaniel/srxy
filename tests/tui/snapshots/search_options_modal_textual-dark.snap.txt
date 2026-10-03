@@ -1,65 +1,17 @@
 search-options-modal
 host
-█
-█
-█
-█
-█
 Search options
-█
-█
-█
-█
-█
-█
 Where to search
-█
-█
 X
 File names
-█
-█
 Match the path and filename
-█
-█
-█
-█
 X
 Folder names
-█
-█
 Match folder names as results
-█
-█
-█
-█
 X
 File contents
-█
-█
 Search inside files (docs, images, audio, …)
-█
-█
-█
-█
 How to match
-█
-█
 Fuzzy, phonetic, and substring matching (always on)
-█
-█
-█
-█
-█
-█
-█
-█
-█
-█
 Cancel
 Apply
-█
-█
-█
-█
-█

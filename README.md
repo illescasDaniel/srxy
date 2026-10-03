@@ -113,6 +113,13 @@ API reference: [docs/python-api.md](docs/python-api.md) · [docs/api-reference.m
 
 ## Development
 
+<!-- OCR backend note (2026-10-03, RTX 4070 Laptop 8GB, ~/Pictures/Screenshots, query "egypt"):
+  With a normal desktop session (~3GB VRAM already used → ~4.7–5GB free), baidu/Unlimited-OCR
+  cannot load (~4.3GB bf16 weights alone OOM on .cuda()). CPU path is also unusable (upstream
+  infer() assumes CUDA tensors). srxy therefore keeps Tesseract when free CUDA VRAM is below
+  6 GiB. Cold-cache Tesseract OCR search of that 12-PNG folder for "egypt": ~11.0s (3 hits).
+  No Unlimited-vs-Tesseract speed ratio was recorded on this machine. -->
+
 Requires [uv](https://docs.astral.sh/uv/). First-time checkout setup uses the platform-aware sync script (stdlib-only — no project venv required):
 
 ```bash

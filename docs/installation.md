@@ -288,7 +288,7 @@ uv tool install srxy
 # or: pipx install srxy
 ```
 
-Filename fuzzy/phonetic search, document text extraction, OCR (with **tesseract** on `PATH`), and the TUI still work. OCR does not require `[semantic]` — only the Python wrapper (`pytesseract`) ships with core; install the **tesseract** binary separately.
+Filename fuzzy/phonetic search, document text extraction, OCR (with **tesseract** on `PATH`), and the TUI still work. OCR does not require `[semantic]` — only the Python wrapper (`pytesseract`) ships with core; install the **tesseract** binary separately. If `[semantic]` is installed instead, OCR automatically switches to **Unlimited OCR** (`baidu/Unlimited-OCR`) — see [Power-ups → OCR](power-ups.md#ocr).
 
 ## Verify
 

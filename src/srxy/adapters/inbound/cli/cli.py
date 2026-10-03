@@ -337,6 +337,14 @@ class StreamingResultWriter:
 			self._output_handle.close()
 
 
+def _ocr_cli_flag_help() -> str:
+	from srxy.adapters.outbound.ocr.ocr_text import preferred_ocr_backend
+	from srxy.i18n import tr
+
+	key = "cli.help.ocr.unlimited" if preferred_ocr_backend() == "unlimited" else "cli.help.ocr.tesseract"
+	return tr(key)
+
+
 def build_parser() -> argparse.ArgumentParser:
 	parser = argparse.ArgumentParser(
 		prog="srxy",
@@ -415,9 +423,7 @@ def build_parser() -> argparse.ArgumentParser:
 		action="store_true",
 		help="Enable text semantic, image semantic (CLIP), OCR, and transcription together",
 	)
-	parser.add_argument(
-		"--ocr", action="store_true", help="Enable OCR for images and embedded document images (SRXY_OCR=1)"
-	)
+	parser.add_argument("--ocr", action="store_true", help=_ocr_cli_flag_help())
 	parser.add_argument(
 		"--max-ocr-file-size",
 		type=int,

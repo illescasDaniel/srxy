@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 
@@ -36,7 +37,10 @@ _OPTION_IDS = (
 def test_given_option_ids_when_resolving_labels_then_returns_plain_language():
 	set_language("en")
 	assert option_label("so-ocr") == tr("gui.options.ocr")
-	assert option_hint("so-ocr") == tr("tui.hint.ocr")
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=False):
+		assert option_hint("so-ocr") == tr("tui.hint.ocr.tesseract")
+	with patch("srxy.adapters.outbound.ocr.ocr_text.is_unlimited_ocr_available", return_value=True):
+		assert option_hint("so-ocr") == tr("tui.hint.ocr.unlimited")
 	assert option_label("so-semantic") == tr("gui.options.semantic")
 
 

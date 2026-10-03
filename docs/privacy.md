@@ -34,6 +34,7 @@ Only when you enable the related options (and after acknowledging this notice). 
 | Visual description | [clip-ViT-B-32](https://huggingface.co/sentence-transformers/clip-ViT-B-32) |
 | Spoken words (default) | [Systran/faster-whisper-base](https://huggingface.co/Systran/faster-whisper-base) |
 | Spoken words (Apple MPS path) | [openai/whisper-base](https://huggingface.co/openai/whisper-base) |
+| Text in images, when `[semantic]` is installed | [baidu/Unlimited-OCR](https://huggingface.co/baidu/Unlimited-OCR) |
 
 Each model card has its own license and usage terms.
 

@@ -5,6 +5,8 @@ import io
 import os
 import re
 import shutil
+import sys
+import threading
 from abc import ABC, abstractmethod
 from collections.abc import Callable, Iterator
 from pathlib import Path
@@ -30,7 +32,10 @@ SPARSE_TEXT_THRESHOLD = 20
 MIN_LEXICAL_TOKEN_LENGTH = 4
 MIN_LEXICAL_ZIPF = 3.0
 LEXICAL_WORDLIST = "small"
-OCR_ENGINE_VARIANT = "tesseract-v10"
+TESSERACT_ENGINE_VARIANT = "tesseract-v10"
+UNLIMITED_OCR_ENGINE_VARIANT = "unlimited-ocr-v1"
+# Kept for backwards compatibility with callers importing the old constant name.
+OCR_ENGINE_VARIANT = TESSERACT_ENGINE_VARIANT
 _REGION_MIN_DIMENSION = 400
 _REGION_GRID_DIVISIONS = 3
 _REGION_MIN_CELL = 32
@@ -43,6 +48,8 @@ _ocr_langs_cache: str | None = None
 OCR_IMAGE_SUFFIXES = DECODABLE_IMAGE_SUFFIXES
 
 _ocr_engine: OcrEngine | None = None
+_unlimited_ocr_model_lock = threading.Lock()
+_unlimited_ocr_model_state: tuple[object, object] | None = None
 _lexical_langs_cache: tuple[str, ...] | None = None
 _WORD_PATTERN = re.compile(r"[\w']+", flags=re.UNICODE)
 _OSD_ORIENTATION_RE = re.compile(r"Orientation in degrees:\s*(\d+)", re.IGNORECASE)
@@ -53,7 +60,8 @@ def _ocr_unavailable_message() -> str:
 	from srxy.application.install_method import ocr_enable_hint
 	from srxy.i18n import tr
 
-	return tr("unavailable.ocr", hint=ocr_enable_hint())
+	key = "unavailable.ocr.unlimited" if preferred_ocr_backend() == "unlimited" else "unavailable.ocr.tesseract"
+	return tr(key, hint=ocr_enable_hint())
 
 
 class OcrRecognizeTimeout(Exception):
@@ -192,6 +200,197 @@ class TesseractEngine(OcrEngine):
 		return best_text
 
 
+def _module_importable(name: str) -> bool:
+	# Tests inject a MagicMock via sys.modules; find_spec raises ValueError without __spec__.
+	if sys.modules.get(name) is not None:
+		return True
+	try:
+		return importlib.util.find_spec(name) is not None
+	except (ImportError, ValueError, ModuleNotFoundError):
+		return False
+
+
+# baidu/Unlimited-OCR bf16 weights alone are ~4.3 GiB; keep headroom for activations
+# and a typical desktop compositor so we do not select a backend that OOMs on load.
+MIN_UNLIMITED_OCR_FREE_VRAM_BYTES = 6 * 1024**3
+
+
+def unlimited_ocr_deps_installed() -> bool:
+	"""True when the ``[semantic]`` extras (torch + transformers) are importable.
+
+	Mirrors ``transcribe_deps_installed`` / ``sentence_transformers_installed`` —
+	a cheap ``find_spec`` probe, no heavy import. Necessary but not sufficient for
+	Unlimited OCR (also needs enough free CUDA VRAM — see
+	:func:`is_unlimited_ocr_available`).
+	"""
+	return _module_importable("torch") and _module_importable("transformers")
+
+
+def _cuda_free_vram_bytes() -> int | None:
+	"""Return free CUDA bytes, or ``None`` when CUDA is unavailable / unreadable."""
+	if not _module_importable("torch"):
+		return None
+	try:
+		import torch
+
+		if not torch.cuda.is_available():
+			return None
+		free, _total = torch.cuda.mem_get_info()
+		return int(free)
+	except Exception:
+		return None
+
+
+def is_unlimited_ocr_available() -> bool:
+	"""True when Unlimited OCR deps are present *and* CUDA has enough free VRAM.
+
+	The upstream ``infer()`` path assumes CUDA tensors; CPU/MPS are not viable.
+	On 8 GiB laptop GPUs with a normal desktop session (~5 GiB free), the ~4.3 GiB
+	bf16 weights already OOM on ``.cuda()``, so we keep Tesseract instead of
+	selecting a backend that only falls back after a failed load.
+	"""
+	if not unlimited_ocr_deps_installed():
+		return False
+	free = _cuda_free_vram_bytes()
+	return free is not None and free >= MIN_UNLIMITED_OCR_FREE_VRAM_BYTES
+
+
+def preferred_ocr_backend() -> str:
+	"""Return ``\"unlimited\"`` or ``\"tesseract\"`` for user-facing OCR copy.
+
+	Matches :func:`get_ocr_engine` selection: Unlimited OCR only when deps are
+	importable and free CUDA VRAM clears :data:`MIN_UNLIMITED_OCR_FREE_VRAM_BYTES`,
+	else Tesseract.
+	"""
+	return "unlimited" if is_unlimited_ocr_available() else "tesseract"
+
+
+def _build_unlimited_ocr_model() -> tuple[object, object]:
+	import torch
+	from transformers import AutoModel, AutoTokenizer  # type: ignore[import-not-found]
+
+	from srxy.adapters.outbound.models.device import resolve_torch_device, warn_if_cpu_device
+	from srxy.adapters.outbound.models.model_store import (
+		UNLIMITED_OCR_MODEL_ID,
+		ensure_unlimited_ocr_model,
+		is_model_installed,
+		unlimited_ocr_model_dir,
+		unlimited_ocr_model_missing_message,
+	)
+
+	if not ensure_unlimited_ocr_model(interactive=sys.stdin.isatty()):
+		raise RuntimeError(unlimited_ocr_model_missing_message())
+
+	model_dir = unlimited_ocr_model_dir()
+	device = resolve_torch_device()
+	warn_if_cpu_device(device, context="Unlimited OCR")
+	os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+	os.environ.setdefault("TQDM_DISABLE", "1")
+	os.environ.setdefault("TRANSFORMERS_VERBOSITY", "error")
+
+	installed_locally = model_dir.is_dir() and is_model_installed(model_dir)
+	source = str(model_dir) if installed_locally else UNLIMITED_OCR_MODEL_ID
+	# The model card's transformers example always calls .cuda() + bfloat16; keep that
+	# on CUDA but fall back to a widely-supported dtype off-GPU (CI/no-GPU/no-CUDA).
+	dtype = torch.bfloat16 if device == "cuda" else torch.float32
+	# local_files_only scopes "don't hit the network" to just these two calls. Do NOT
+	# use HF_HUB_OFFLINE / TRANSFORMERS_OFFLINE env vars instead — those stick for the
+	# rest of the process and would silently break later *online* HF downloads (CLIP,
+	# semantic-text, transcribe) once this model is cached locally.
+	tokenizer = AutoTokenizer.from_pretrained(source, trust_remote_code=True, local_files_only=installed_locally)
+	model = AutoModel.from_pretrained(
+		source,
+		trust_remote_code=True,
+		torch_dtype=dtype,
+		local_files_only=installed_locally,
+	)
+	model = model.to(device).eval()
+	return model, tokenizer
+
+
+def _load_unlimited_ocr_model() -> tuple[object, object]:
+	global _unlimited_ocr_model_state
+	if _unlimited_ocr_model_state is not None:
+		return _unlimited_ocr_model_state
+	with _unlimited_ocr_model_lock:
+		if _unlimited_ocr_model_state is None:
+			_unlimited_ocr_model_state = _build_unlimited_ocr_model()
+		return _unlimited_ocr_model_state
+
+
+def reset_unlimited_ocr_model(*, release_cuda: bool = True):
+	"""Reset the cached Unlimited OCR model and optionally return its VRAM to CUDA.
+
+	Intended for tests (and any caller that must unload the singleton).
+	Pass ``release_cuda=False`` when batching several resets, then call
+	:func:`srxy.adapters.outbound.models.device.release_cuda_memory` once.
+	"""
+	from srxy.adapters.outbound.models.device import drop_torch_cache_object, release_cuda_memory
+
+	global _unlimited_ocr_model_state
+	state = _unlimited_ocr_model_state
+	_unlimited_ocr_model_state = None
+	drop_torch_cache_object(state)
+	if release_cuda:
+		release_cuda_memory()
+
+
+class UnlimitedOcrEngine(OcrEngine):
+	"""baidu/Unlimited-OCR backend, used when ``[semantic]`` extras are installed.
+
+	Loaded lazily via HF ``transformers`` (``AutoModel``/``AutoTokenizer`` with
+	``trust_remote_code=True``, per the model card) and downloaded on first use
+	through :mod:`srxy.adapters.outbound.models.model_store`, mirroring the CLIP /
+	semantic-text / transcribe loaders in this codebase.
+
+	Having torch + transformers importable only means Unlimited OCR *can* be
+	attempted, not that it will succeed (the model may not be downloaded yet,
+	the user may decline an interactive download prompt, or `trust_remote_code`
+	model code may fail to load on this machine). If that happens, fall back to
+	Tesseract — when available — instead of breaking OCR outright; only raise
+	when neither backend can serve.
+	"""
+
+	def __init__(self):
+		self._fallback: OcrEngine | None = None
+
+	def is_using_fallback(self) -> bool:
+		return self._fallback is not None
+
+	def recognize(self, image: Image.Image) -> str:
+		if self._fallback is not None:
+			return self._fallback.recognize(image)
+		try:
+			model, tokenizer = _load_unlimited_ocr_model()
+			infer = getattr(model, "infer", None)
+			if infer is None:
+				raise RuntimeError("Unlimited OCR model does not expose an infer() method")
+			# Model card API: prompt + image_file path (not a bare PIL positional).
+			import tempfile
+
+			with tempfile.TemporaryDirectory(prefix="srxy-unlimited-ocr-") as tmp:
+				image_path = Path(tmp) / "image.png"
+				rgb = image.convert("RGB") if image.mode != "RGB" else image
+				rgb.save(image_path)
+				result = infer(
+					tokenizer,
+					prompt="<image>\nFree OCR. ",
+					image_file=str(image_path),
+					output_path=str(Path(tmp) / "out"),
+					save_results=False,
+				)
+			return str(result).strip()
+		except Exception as exc:
+			if not tesseract_available():
+				raise
+			print(
+				f"warning: Unlimited OCR unavailable ({exc}); falling back to Tesseract OCR.",
+				file=sys.stderr,
+			)
+			self._fallback = TesseractEngine()
+			return self._fallback.recognize(image)
+
+
 def ocr_env_enabled() -> bool:
 	value = os.environ.get("SRXY_OCR", "").strip().lower()
 	return value in _TRUTHY_ENV_VALUES
@@ -211,7 +410,7 @@ def tesseract_available() -> bool:
 
 
 def is_ocr_available() -> bool:
-	return tesseract_available()
+	return is_unlimited_ocr_available() or tesseract_available()
 
 
 def ocr_requested(ocr: bool | None) -> bool:
@@ -247,22 +446,43 @@ def ocr_unavailable_message() -> str:
 
 
 def ensure_ocr_available():
-	if not tesseract_available():
+	if not is_ocr_available():
 		raise RuntimeError(_ocr_unavailable_message())
+
+
+def current_ocr_engine_variant() -> str:
+	"""Cache-key variant for whichever OCR backend is actually serving right now.
+
+	Prefers the live singleton engine's fallback state (set the first time
+	``UnlimitedOcrEngine.recognize`` falls back to Tesseract) over the static
+	deps probe, so a cache write after a runtime fallback is keyed correctly —
+	otherwise a later successful Unlimited OCR load could return stale
+	Tesseract text cached under the Unlimited variant. Note: the very first
+	call in a process still keys off the deps probe (the singleton engine
+	does not exist yet when ``_cached_ocr_text`` reads the variant before its
+	first ``recognize()`` call).
+	"""
+	if isinstance(_ocr_engine, UnlimitedOcrEngine):
+		return TESSERACT_ENGINE_VARIANT if _ocr_engine.is_using_fallback() else UNLIMITED_OCR_ENGINE_VARIANT
+	return UNLIMITED_OCR_ENGINE_VARIANT if is_unlimited_ocr_available() else TESSERACT_ENGINE_VARIANT
 
 
 def get_ocr_engine() -> OcrEngine:
 	global _ocr_engine
 	if _ocr_engine is None:
 		ensure_ocr_available()
-		_ocr_engine = TesseractEngine()
+		if is_unlimited_ocr_available():
+			_ocr_engine = UnlimitedOcrEngine()
+		else:
+			_ocr_engine = TesseractEngine()
 	return _ocr_engine
 
 
-def reset_ocr_engine():
+def reset_ocr_engine(*, release_cuda: bool = True):
 	global _ocr_engine
 	_ocr_engine = None
 	reset_ocr_languages_cache()
+	reset_unlimited_ocr_model(release_cuda=release_cuda)
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:
@@ -438,12 +658,13 @@ def _cached_ocr_text(kind: str, content_hash: str, recognize: Callable[[], str])
 	if kind not in {CACHE_KIND_OCR_IMAGE, CACHE_KIND_OCR_PDF_BLOB}:
 		raise ValueError(f"unsupported OCR cache kind: {kind}")
 
-	cached = cache_get(kind, content_hash, OCR_ENGINE_VARIANT)
+	variant = current_ocr_engine_variant()
+	cached = cache_get(kind, content_hash, variant)
 	if cached is not None:
 		return cached.decode("utf-8")
 
 	text = recognize().strip()
-	cache_put(kind, content_hash, OCR_ENGINE_VARIANT, text.encode("utf-8"))
+	cache_put(kind, content_hash, variant, text.encode("utf-8"))
 	return text
 
 

@@ -12,16 +12,22 @@ import pytest
 from srxy.adapters.outbound.models.model_store import (
 	SEMANTIC_IMAGE_MODEL_ID,
 	SEMANTIC_TEXT_MODEL_ID,
+	UNLIMITED_OCR_MODEL_ID,
 	clear_semantic_text_model,
+	clear_unlimited_ocr_model,
 	download_semantic_text_model,
+	download_unlimited_ocr_model,
 	ensure_semantic_image_model,
 	ensure_semantic_text_model,
 	ensure_transcribe_model,
+	ensure_unlimited_ocr_model,
 	is_model_installed,
 	main,
 	semantic_text_model_dir,
 	transcribe_faster_whisper_model_dir,
 	transcribe_faster_whisper_repo_id,
+	unlimited_ocr_model_dir,
+	unlimited_ocr_model_missing_message,
 )
 
 
@@ -387,7 +393,130 @@ def test_given_progress_flag_when_running_download_then_passes_on_progress(monke
 	# when
 	code = store.main(["all", "--progress"])
 
-	# then
+	# then — "all" stays the original semantic/transcribe bundle; Unlimited OCR
+	# downloads lazily on first OCR use once [semantic] is detected, and has its
+	# own explicit CLI target (tested below).
 	assert code == 0
 	assert len(seen) == 3
 	assert all(callback is not None for callback in seen)
+
+
+def test_given_auto_download_when_ensuring_unlimited_ocr_model_then_downloads_without_prompt(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(tmp_path / "unlimited-ocr-model"))
+
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
+		target_dir.mkdir(parents=True, exist_ok=True)
+		(target_dir / "config.json").write_text("{}", encoding="utf-8")
+		assert model_id == UNLIMITED_OCR_MODEL_ID
+
+	with patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download) as download:
+		# when
+		ready = ensure_unlimited_ocr_model(interactive=False, auto_download=True)
+
+	# then
+	assert ready is True
+	download.assert_called_once()
+	assert is_model_installed(unlimited_ocr_model_dir())
+
+
+def test_given_missing_unlimited_ocr_model_when_user_declines_then_ensure_returns_false(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(tmp_path / "unlimited-ocr-model"))
+	stdin = io.StringIO("n\n")
+	stdout = io.StringIO()
+
+	with patch("srxy.adapters.outbound.models.model_store.download_model") as download:
+		# when
+		ready = ensure_unlimited_ocr_model(interactive=True, stdin=stdin, stdout=stdout)
+
+	# then
+	assert ready is False
+	download.assert_not_called()
+
+
+def test_given_download_helper_when_called_for_unlimited_ocr_then_sets_model_path_env(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(tmp_path / "unlimited-ocr-model"))
+
+	def fake_download(model_id: str, target_dir: Path, **_kwargs: object):
+		target_dir.mkdir(parents=True, exist_ok=True)
+		(target_dir / "config.json").write_text("{}", encoding="utf-8")
+
+	with patch("srxy.adapters.outbound.models.model_store.download_model", side_effect=fake_download):
+		# when
+		download_unlimited_ocr_model()
+
+	# then
+	assert os.environ["SRXY_UNLIMITED_OCR_MODEL_PATH"] == str(unlimited_ocr_model_dir())
+
+
+def test_given_cached_model_when_clearing_unlimited_ocr_then_removes_directory(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	model_dir = tmp_path / "unlimited-ocr-model"
+	model_dir.mkdir()
+	(model_dir / "config.json").write_text("{}", encoding="utf-8")
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(model_dir))
+
+	# when
+	clear_unlimited_ocr_model()
+
+	# then
+	assert not model_dir.exists()
+
+
+def test_given_download_cli_when_target_is_unlimited_ocr_then_downloads_model(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(tmp_path / "unlimited-ocr-model"))
+
+	with patch("srxy.adapters.outbound.models.model_store.download_unlimited_ocr_model") as download:
+		# when
+		exit_code = main(["unlimited-ocr"])
+
+	# then
+	assert exit_code == 0
+	download.assert_called_once()
+
+
+def test_given_clear_cli_when_target_is_unlimited_ocr_then_removes_model(
+	tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	model_dir = tmp_path / "unlimited-ocr-model"
+	model_dir.mkdir()
+	(model_dir / "config.json").write_text("{}", encoding="utf-8")
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(model_dir))
+
+	# when
+	exit_code = main(["clear", "unlimited-ocr"])
+
+	# then
+	assert exit_code == 0
+	assert not model_dir.exists()
+
+
+def test_given_missing_model_when_reading_missing_message_then_mentions_path(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("SRXY_UNLIMITED_OCR_MODEL_PATH", str(tmp_path / "unlimited-ocr-model"))
+
+	# when
+	message = unlimited_ocr_model_missing_message()
+
+	# then
+	assert str(unlimited_ocr_model_dir()) in message

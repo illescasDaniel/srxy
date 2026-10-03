@@ -130,11 +130,24 @@ def ensure_transcribe_available():
 		raise RuntimeError(_ffmpeg_unavailable_message())
 
 
-def reset_transcribe_models():
+def reset_transcribe_models(*, release_cuda: bool = True):
+	"""Drop cached whisper backends and optionally return their VRAM to CUDA.
+
+	Pass ``release_cuda=False`` when batching several resets, then call
+	:func:`srxy.adapters.outbound.models.device.release_cuda_memory` once.
+	"""
+	from srxy.adapters.outbound.models.device import drop_torch_cache_object, release_cuda_memory
+
 	global _faster_whisper_model, _transformers_pipeline, _ctranslate2_cuda_libs_loaded
+	faster = _faster_whisper_model
+	pipeline = _transformers_pipeline
 	_faster_whisper_model = None
 	_transformers_pipeline = None
 	_ctranslate2_cuda_libs_loaded = False
+	drop_torch_cache_object(faster)
+	drop_torch_cache_object(pipeline)
+	if release_cuda:
+		release_cuda_memory()
 
 
 def _cublas_library_dir() -> Path | None:
@@ -504,7 +517,12 @@ def _transcribe_wav_segments(
 			error=exc,
 		)
 		global _faster_whisper_model
+		from srxy.adapters.outbound.models.device import drop_torch_cache_object, release_cuda_memory
+
+		failed = _faster_whisper_model
 		_faster_whisper_model = None
+		drop_torch_cache_object(failed)
+		release_cuda_memory()
 		return "transformers", _iter_transformers_segment_lines(
 			wav_path,
 			device,

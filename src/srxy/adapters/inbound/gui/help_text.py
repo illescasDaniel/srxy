@@ -16,7 +16,7 @@ _HELP_KEYS = {
 	"search_contents": "gui.help.search_contents",
 	"search_docs_tags": "gui.help.search_docs_tags",
 	"semantic": "gui.help.semantic",
-	"ocr": "gui.help.ocr",
+	"ocr": "gui.help.ocr.tesseract",  # overridden in help_text() by preferred backend
 	"transcribe": "gui.help.transcribe",
 	"semantic_image": "gui.help.semantic_image",
 	"include_hidden": "gui.help.include_hidden",
@@ -43,7 +43,10 @@ def help_text(key: str) -> str:
 	if key == "semantic":
 		return tr(catalog_key, semantic_hint=semantic_enable_hint())
 	if key == "ocr":
-		return tr(catalog_key, ocr_hint=ocr_enable_hint())
+		from srxy.adapters.outbound.ocr.ocr_text import preferred_ocr_backend
+
+		ocr_key = "gui.help.ocr.unlimited" if preferred_ocr_backend() == "unlimited" else "gui.help.ocr.tesseract"
+		return tr(ocr_key, ocr_hint=ocr_enable_hint())
 	if key in {"transcribe", "semantic_image"}:
 		return tr(
 			catalog_key,
