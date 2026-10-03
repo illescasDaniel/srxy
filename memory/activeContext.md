@@ -5,17 +5,16 @@ _Last updated: 2026-10-03_
 ## Branch
 
 - Working branch: `cursor/macos-sdk26-offline-pyside-8bf8` → PR into `feature/1.8.0` (draft; do not merge).
-- Merged latest `origin/feature/1.8.0` (`1deb4ef`: media preview #39, recent searches #42, path DnD #41, Search button top-fixed #51, folder-name search #40, develop sync).
 
 ## Current focus
 
-1. **macOS offline installer SDK 26 restamp** — merge + gate done. Conflicts resolved (kept offline PySide pin comment, SrxyPython test assert, newer pypdf); took `feature/1.8.0` qt_theme/app silence + native-alert helpers and fuller `test_macos_app_launcher.py`.
-2. **Unlimited OCR** — draft PR #38 → `feature/1.8.0`; Daniel GPU QA before undraft.
+1. **Offline installer wrapper Liquid Glass** — done locally: `build-offline.sh` restamps in-bundle Python to SDK 26; smoke asserts it; rebuild + `smoke-offline.sh` green. `build-dmg.sh` uses `diskutil image` (APFS headroom 1.5×+64 MiB); no hdiutil deprecation warnings.
+2. **`uv run` GUI** — still legacy Aqua with uv-managed CPython (`sdk 15.5`). Not restamping shared host uv Python; use Homebrew/`Python.app` (sdk 26) if Liquid Glass is needed for day-to-day `uv run`.
 
 ## Next steps
 
-1. Push branch / refresh draft PR if desired.
-2. Daniel GPU QA / undraft Unlimited OCR (#38) when ready.
+1. Commit; push / refresh draft PR if desired.
+2. Visual open of the rebuilt offline installer `.app` to confirm Liquid Glass chrome.
 
 ## Memory protocol (2026-09-01)
 

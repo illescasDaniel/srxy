@@ -191,6 +191,36 @@ case "$RESOLVED_PY" in
 esac
 echo "Bundled venv python OK: $VENV_PY -> $RAW_LINK (resolves to $RESOLVED_PY)"
 
+# AppKit gates Tahoe Liquid Glass on the *exec'd* interpreter's LC_BUILD_VERSION
+# (not Info.plist). uv-managed CPython ships sdk 15.x; restamp the in-bundle
+# copy only (never the host ~/.local/share/uv/python tree).
+echo "Restamping bundled Python linked SDK to 26 (Liquid Glass)…"
+uv run python - "$RESOLVED_PY" <<'PY'
+from __future__ import annotations
+
+import re
+import subprocess
+import sys
+from pathlib import Path
+
+from srxy.adapters.inbound.installer.install import (
+	_adhoc_codesign_macos,
+	_is_macho_executable,
+	_restamp_macos_linked_sdk,
+)
+
+py = Path(sys.argv[1]).resolve()
+if not _is_macho_executable(py):
+	raise SystemExit(f"error: bundled python is not Mach-O: {py}")
+if not _restamp_macos_linked_sdk(py):
+	raise SystemExit(f"error: failed to restamp bundled python: {py}")
+_adhoc_codesign_macos(py)
+show = subprocess.check_output(["/usr/bin/vtool", "-show-build", str(py)], text=True)  # noqa: S603
+if not re.search(r"sdk\s+26(\.|$|\s)", show):
+	raise SystemExit(f"error: expected sdk 26 after restamp:\n{show}")
+print(f"Bundled python SDK OK (sdk 26): {py}")
+PY
+
 "$ROOT/packaging/macos/prune-pyside.sh" "$RES_DIR/venv"
 
 echo "Building wheel for offline installer payload..."
@@ -238,6 +268,12 @@ cat >"$CONTENTS/Info.plist" <<EOF
 	<key>CFBundleIconFile</key><string>srxy-installer.icns</string>
 	<key>CFBundlePackageType</key><string>APPL</string>
 	<key>LSMinimumSystemVersion</key><string>12.0</string>
+	<key>NSHighResolutionCapable</key><true/>
+	<key>NSSupportsAutomaticGraphicsSwitching</key><true/>
+	<key>LSEnvironment</key>
+	<dict>
+		<key>QT_QUICK_CONTROLS_STYLE</key><string>macOS</string>
+	</dict>
 </dict>
 </plist>
 EOF

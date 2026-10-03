@@ -21,21 +21,38 @@ if [[ "$(uname -s)" != "Darwin" ]]; then
 	exit 1
 fi
 
+# Prefer diskutil image (hdiutil attach/convert warn as deprecated on macOS 26+).
+# Fall back to hdiutil on older hosts that lack `diskutil image`.
+USE_DISKUTIL_IMAGE=0
+if diskutil help image >/dev/null 2>&1; then
+	USE_DISKUTIL_IMAGE=1
+fi
+
 STAGE="$(mktemp -d "${TMPDIR:-/tmp}/srxy-dmg-stage.XXXXXX")"
 RW_DMG="$(mktemp "${TMPDIR:-/tmp}/srxy-dmg-rw.XXXXXX.dmg")"
+rm -f "$RW_DMG" # mktemp creates an empty file; image create needs a free path
 # Finder styling requires a real /Volumes/<name> mount (custom mountpoints break background).
 MOUNT_ROOT="/Volumes/${VOL_NAME}"
+
+detach_volume() {
+	if [[ -d "$MOUNT_ROOT" ]]; then
+		if [[ "$USE_DISKUTIL_IMAGE" -eq 1 ]]; then
+			diskutil eject "$MOUNT_ROOT" >/dev/null 2>&1 || true
+		else
+			hdiutil detach "$MOUNT_ROOT" -quiet -force 2>/dev/null || true
+		fi
+	fi
+}
+
 cleanup() {
-	hdiutil detach "$MOUNT_ROOT" -quiet -force 2>/dev/null || true
+	detach_volume
 	rm -rf "$STAGE"
 	rm -f "$RW_DMG"
 }
 trap cleanup EXIT
 
 # Detach any leftover volume with this name from a prior failed run.
-if [[ -d "$MOUNT_ROOT" ]]; then
-	hdiutil detach "$MOUNT_ROOT" -quiet -force 2>/dev/null || true
-fi
+detach_volume
 
 APP_NAME="$(basename "$APP_BUNDLE")"
 cp -R "$APP_BUNDLE" "$STAGE/$APP_NAME"
@@ -123,11 +140,19 @@ encode_png(Path(sys.argv[1]), WIDTH, HEIGHT, bytes(pixels))
 print(f"Wrote background {sys.argv[1]}")
 PY
 
-# Size RW image with headroom for Finder metadata.
-SIZE_MB="$(du -sm "$STAGE" | awk '{print int($1) + 20}')"
-hdiutil create -quiet -ov -fs HFS+ -size "${SIZE_MB}m" -volname "$VOL_NAME" "$RW_DMG"
-# Mount under /Volumes so Finder "tell disk …" can style the window.
-hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen >/dev/null
+# Size RW image with headroom for Finder metadata / FS overhead.
+STAGE_MB="$(du -sm "$STAGE" | awk '{print int($1)}')"
+if [[ "$USE_DISKUTIL_IMAGE" -eq 1 ]]; then
+	# APFS containers spend far more than HFS+ on metadata; du+20 overflows.
+	SIZE_MB=$((STAGE_MB + STAGE_MB / 2 + 64))
+	# Blank RAW + APFS (HFS+ is no longer offered by diskutil image create blank).
+	diskutil image create blank --format RAW --size "${SIZE_MB}m" --volumeName "$VOL_NAME" --fs APFS "$RW_DMG" >/dev/null
+	diskutil image attach "$RW_DMG" >/dev/null
+else
+	SIZE_MB=$((STAGE_MB + 20))
+	hdiutil create -quiet -ov -fs HFS+ -size "${SIZE_MB}m" -volname "$VOL_NAME" "$RW_DMG"
+	hdiutil attach "$RW_DMG" -readwrite -noverify -noautoopen >/dev/null
+fi
 # Wait briefly for the volume to appear.
 for _ in $(seq 1 50); do
 	[[ -d "$MOUNT_ROOT" ]] && break
@@ -137,7 +162,10 @@ if [[ ! -d "$MOUNT_ROOT" ]]; then
 	echo "error: volume did not mount at $MOUNT_ROOT" >&2
 	exit 1
 fi
-cp -R "$STAGE/$APP_NAME" "$MOUNT_ROOT/"
+cp -R "$STAGE/$APP_NAME" "$MOUNT_ROOT/" || {
+	echo "error: copying app into DMG volume failed (image too small? SIZE_MB=${SIZE_MB}, stage=${STAGE_MB} MiB)" >&2
+	exit 1
+}
 mkdir -p "$MOUNT_ROOT/.background"
 cp "$STAGE/.background/background.png" "$MOUNT_ROOT/.background/background.png"
 
@@ -174,7 +202,7 @@ EOF
 # Ensure .DS_Store is flushed before convert.
 sync
 sleep 1
-# Eject via Finder first so view options stick, then hdiutil as fallback.
+# Eject via Finder first so view options stick, then diskutil/hdiutil as fallback.
 osascript <<EOF || true
 tell application "Finder"
 	if exists disk "$VOL_NAME" then
@@ -186,9 +214,15 @@ for _ in $(seq 1 50); do
 	[[ ! -d "$MOUNT_ROOT" ]] && break
 	sleep 0.1
 done
-if [[ -d "$MOUNT_ROOT" ]]; then
-	hdiutil detach "$MOUNT_ROOT" -quiet -force || true
-fi
+detach_volume
 rm -f "$OUT_DMG"
-hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT_DMG" >/dev/null
+if [[ "$USE_DISKUTIL_IMAGE" -eq 1 ]]; then
+	# Progress goes to stderr; keep failures visible.
+	if ! convert_out="$(diskutil image create from --format UDZO "$RW_DMG" "$OUT_DMG" 2>&1)"; then
+		echo "$convert_out" >&2
+		exit 1
+	fi
+else
+	hdiutil convert "$RW_DMG" -format UDZO -imagekey zlib-level=9 -o "$OUT_DMG" >/dev/null
+fi
 echo "Built $OUT_DMG"

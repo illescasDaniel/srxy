@@ -69,6 +69,26 @@ def test_given_build_script_when_reading_then_pins_pyside_and_prunes():
 	assert "--no-deps" in text
 	assert "smoke-offline.sh" in text or "smoke" in text.lower()
 	assert "write_icns_from_png" in text  # macOS 26+ iconutil -c is broken
+	# Offline wrapper's own Python must be SDK-26 restamped (Liquid Glass).
+	assert "_restamp_macos_linked_sdk" in text
+	assert "QT_QUICK_CONTROLS_STYLE" in text
+
+
+def test_given_build_dmg_when_reading_then_prefers_diskutil_image():
+	# given — hdiutil attach/convert warn as deprecated on macOS 26+
+	text = (_MACOS / "build-dmg.sh").read_text(encoding="utf-8")
+
+	# when / then
+	assert "diskutil image create blank" in text
+	assert "diskutil image attach" in text
+	assert "diskutil image create from" in text
+	assert "diskutil eject" in text
+	# APFS needs more headroom than the old HFS+ du+20 formula.
+	assert "STAGE_MB / 2" in text or "STAGE_MB/2" in text
+	# Keep hdiutil as fallback for older build hosts.
+	assert "hdiutil create" in text
+	assert "hdiutil attach" in text
+	assert "hdiutil convert" in text
 
 
 def test_given_prune_script_when_reading_then_keeps_macos_quick_style():
@@ -93,6 +113,8 @@ def test_given_smoke_script_when_reading_then_asserts_macos_quick_style():
 	assert "prefer_macos_quick_controls_style" in text
 	assert "apply_qt_quick_theme" in text
 	assert 'style != "macOS"' in text or "expected Quick style macOS" in text
+	assert "vtool" in text
+	assert "sdk" in text and "26" in text
 
 
 def test_given_macos_ci_workflow_when_checking_then_has_offline_job():
