@@ -14,11 +14,11 @@ Named sections top to bottom:
 
 | Section | Purpose |
 |---------|---------|
-| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory |
+| **Where to search** | Browse + path field; live validation with a warning icon when the path is missing or not a directory; a folder can also be dragged from the OS file manager and dropped anywhere on this row (dashed highlight + "Drop folder here" while dragging) |
 | **What to search** | Query field with mode selector on the right (Simple / Multi-term / Advanced); preview shown for Multi-term and Advanced only |
 | **How to search** | Options and Filters buttons (stacked) open popup dialogs; Options uses the same sections as the TUI (Where / How / Which files); each control has an **(i)** info button. Each dialog ends with an opt-in **Persist … after srxy exits** checkbox and a **Reset** button (factory defaults in the draft; OK still required). When Persist is on, values are written to `settings.json` on quit and restored on the next GUI launch. |
 | **Search** | Wider Search button (enabled only when path + query are usable); warning icon when the query is invalid; system highlight tint when settings are stale |
-| **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits |
+| **Search Results** | Column tables (Results \| Matches + Preview) with zebra rows; inactive until the first search; Matches pane hidden for name-only hits (a matching folder shows up as its own row alongside file hits — see [cli.md](cli.md#scope)) |
 | **Search progress** | Progress bar (indeterminate until the file total is known, then 0–100%), percentage, `current/total` file count, animated status spinner during OCR/transcribe/semantic work, Cancel; inactive until the first search |
 
 Power-ups that need optional deps or a GPU (CUDA/MPS) are grayed out when unavailable; **(i)** stays clickable and explains how to fix (install `srxy[semantic]`, Tesseract, ffmpeg, GPU PyTorch). Missing **AI model caches** do not gray out — Search prompts to download with confirm + progress dialogs (same idea as the TUI).
@@ -56,6 +56,21 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 | **Benchmark without splash** | Same env, optionally with `SRXY_STARTUP_TIMING=1` and `SRXY_STARTUP_EXIT=1` (quit after `qml_loaded`; see [development.md](development.md)). |
 | **Remove the feature** | Delete or stop loading `src/srxy/adapters/inbound/gui/qml/Splash.qml` and `splash.py`; in `app.py`, drop the `splash_enabled` / `SplashBridge` path and keep a single `engine.load(Main.qml)` with `visible: true` (or reveal Main immediately). Drop splash assertions in `tests/gui/test_gui_qml_load.py` and `tests/unit/test_gui_splash.py`. |
 
+## Content preview
+
+The **Preview** pane (right side of Search Results) renders differently depending on the selected file's detected content type (Magika + extension heuristics — the same `resolve_content_route()` routing search uses):
+
+| Content kind | Preview |
+|--------------|---------|
+| Text / code / markdown / JSON | Syntax-highlighted plain text, line-number gutter, in-file Find (Ctrl+F, F3 / Shift+F3) |
+| **Image** (`.jpg`, `.png`, `.webp`, `.gif`, `.bmp`, `.heic`/`.heif`, camera RAW, `.svg`, …) | Scaled-to-fit image. Non-SVG formats are decoded once via Pillow (same path as OCR/semantic image search — handles HEIC and RAW without relying on Qt's native image plugins) and capped to 2048px on the long edge; SVG renders natively via Qt Svg. |
+| **Audio** (`.mp3`, `.flac`, `.ogg`, `.wav`, `.m4a`, `.aac`, …) | `QtMultimedia` player: play/pause/mute icon buttons, seek slider, elapsed/duration |
+| **Video** (`.mp4`, `.mov`, `.webm`, `.mkv`, `.avi`, …) | Same player controls plus an embedded video surface (`VideoOutput`). When `ffmpeg` is available, a first-frame poster thumbnail is shown until playback starts |
+
+Detected type mismatches still show in the header (e.g. `OGG · named .txt`) regardless of preview mode. Binary files Magika cannot classify as a known media/document kind still fall back to the previous "(Binary file — showing matches only)" placeholder, with matched lines (if any) surfaced in the Matches pane above.
+
+Only the **main app** (`srxy`) ships the full PySide6 wheel with `QtMultimedia` — the separate `srxy-installer` wizard's PySide6 payload is pruned to a Quick/Controls/Dialogs-only subset (see `packaging/*/prune-pyside*.sh`) and does not need this module.
+
 ## Query modes
 
 | Mode | Use for |
@@ -63,6 +78,21 @@ It shows the app name, version, author (from package metadata / `branding.AUTHOR
 | **Simple** | One literal search term (`|` / `&` / `()` are not operators; path separators are ignored) |
 | **Multi-term** | Literal term rows joined with AND/OR (same as the TUI builder) |
 | **Advanced** | Raw `|` / `&` / `()` boolean syntax |
+
+## Drag-and-drop path field
+
+The **Where to search** strip (`objectName: pathDropTarget`) accepts OS file-manager folder drops (`text/uri-list`):
+
+- **macOS Finder:** a window-level `PathDropWindowFilter` (see [`path_drop.py`](../src/srxy/adapters/inbound/gui/path_drop.py)) accepts the drag so Finder shows the green ``+`` cursor, drives `controller.pathDropHover` for the dashed highlight, and calls `handleDroppedPathUrls` on drop. QML `DropArea` alone often never receives Finder events on Aqua.
+- **Linux / Windows:** the same filter runs; a QML `DropArea` (`pathDropArea`, `z: 1` above the Browse/path row) remains as a fallback. Highlight binds to `containsDrag || pathDropHover`.
+- The GroupBox content is sized from the path row’s `implicitHeight` (not mutual `anchors.fill` siblings), so the section keeps its gap before **What to search** / **How to search**.
+- Dropping resolves the first local `file://` URI via `resolve_dropped_folder_path()` in [`controller.py`](../src/srxy/adapters/inbound/gui/controller.py) and assigns it to `controller.path`, going through the same normalization (`_normalize_browsed_path`, percent-decoding) and validation (`pathIssue`) as the Browse dialog and manual typing.
+- **Directories** update the path and clear any warning; **files** update the path but surface the existing "Not a directory" warning (same affordance as typing a file path).
+- **Multiple dropped items**: only the first local URI is used; the rest are ignored (a multi-selection drag is not a multi-root search).
+- **Non-local URIs** (`http://`, `ftp://`, UNC/network-share hosts) are ignored outright — the path field is left unchanged.
+- Dropping never starts a search; it only updates `path`/`pathIssue`, same as editing `pathField` by hand.
+
+Covered by unit tests for the URI→path helper (`resolve_dropped_folder_path`, `handleDroppedPathUrls`) in [`tests/gui/test_gui_controller.py`](../tests/gui/test_gui_controller.py) and flow tests in [`tests/gui/test_gui_flows.py`](../tests/gui/test_gui_flows.py) (layout height / z-order, synthesised window `QDragEnterEvent`/`QDropEvent` through the filter).
 
 ## Snapshots
 

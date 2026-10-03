@@ -180,11 +180,8 @@ def main():
 		print(f"wrote srxy-installer-{size}.png ({size}x{size})")
 	print(f"wrote {ICON_DIR / 'srxy-installer.png'} ({MASTER}x{MASTER})")
 
-	# Windows .ico companions (Start Menu / Inno SetupIconFile / taskbar).
+	# Windows .ico companions (Start Menu / taskbar / installer stub).
 	# Pillow default PNG-in-ICO keeps these small (~17 KB vs ~350 KB BMP).
-	# If Inno EndUpdateResource (110) returns for SetupIconFile, check file
-	# locking first (see packaging/windows/build-offline.ps1); only then
-	# consider a BMP-only setup icon as a fallback.
 	def write_ico(stem: str):
 		sizes = (16, 32, 48, 64, 128, 256)
 		images = [

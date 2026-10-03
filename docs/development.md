@@ -3,21 +3,16 @@
 Requires [uv](https://docs.astral.sh/uv/).
 
 ```bash
-uv run task sync-dev                 # GPU-aware extras (see Sync below)
-uv run task checks-fix
-uv run task checks                    # day-to-day (auto-scope)
-./scripts/quality/checks.sh --full     # before release (Unix)
-./scripts/quality/checks.sh --full+cpu
+uv run task sync-dev                      # GPU-aware extras (see Sync below)
+uv run task checks                        # day-to-day (auto-scope; verbose)
+uv run task checks -- --fix               # autofix then verify
+uv run task checks -- --quiet --fix       # agent-verbosity autofix
+uv run task checks -- --quiet --gui       # core+gui when working on the GUI
+uv run task checks -- --full              # before release
+uv run task checks -- --full+cpu          # + forced-CPU transcribe matrix
 ```
 
-On **Windows**, use the PowerShell gate instead of `checks.sh` (bash/`flock` often fail under Git Bash or WSL mounts):
-
-```powershell
-uv run task sync-dev
-powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1 -Fix
-powershell -ExecutionPolicy Bypass -File .\scripts\quality\checks-win.ps1
-# or: uv run task checks-win-fix / uv run task checks-win
-```
+[`scripts/quality/checks.py`](../scripts/quality/checks.py) picks `checks.sh` (Unix) or `checks-win.ps1` (Windows). Pass gate flags after `--` so `uv run` does not consume them. Direct script calls remain valid: `./scripts/quality/checks.sh --quiet --fix` or `.\scripts\quality\checks-win.ps1 --quiet --fix`.
 
 ## Sync
 
@@ -77,7 +72,7 @@ Package builds read the app version from [`pyproject.toml`](../pyproject.toml) (
 | Installer capability stamp | same files → `installer_version` — bump only when the desktop installer itself gains new capabilities (then rebuild AppImages / DMGs / Windows offline) |
 | Unit tests pinned to the current min | `tests/unit/test_updates_path_i18n.py` (`min_srxy_version` floor) and mocked PyPI versions in `tests/unit/test_installer_online.py` |
 
-Windows/macOS packaging scripts take the version from `pyproject.toml` at build time (Inno `MyAppVersion`, DMG names, etc.) — no separate hardcoded app version there. Prefer a **minor** bump (e.g. `1.6.x` → `1.7.0`) when the release includes user-visible UI or feature work, not only patch-level fixes.
+Windows/macOS packaging scripts take the version from `pyproject.toml` at build time (installer zip / DMG names, etc.) — no separate hardcoded app version there. Prefer a **minor** bump (e.g. `1.6.x` → `1.7.0`) when the release includes user-visible UI or feature work, not only patch-level fixes.
 
 When bumping AppImage installer compatibility alone (without a full app release), still edit both `installer_meta.toml` copies and rebuild. End-user guide: [installers.md](installers.md). Packaging details: [`packaging/linux-appimage/README.md`](../packaging/linux-appimage/README.md).
 
@@ -105,7 +100,7 @@ Pytest is split into path-based **buckets** (not a single marker expression):
 | `tui` | `tests/tui` | `-n 0`, `-p no:pytest-qt` |
 | `heavy` | `tests/integration` | `-n 0`, models/GPU, `-p no:pytest-qt` |
 
-Default scope is **auto** (from `git diff` / `git status`): `core` always; GUI/TUI/heavy only when matching paths changed. Ambiguous paths or no git → all buckets. Override with `--scope=…` / `--gui` / `--tui` / `--cli` / `--all` (Windows: `-Scope`, `-Gui`, `-Tui`, `-Cli`, `-All`).
+Default scope is **auto** (from `git diff` / `git status`): `core` always; GUI/TUI/heavy only when matching paths changed. Ambiguous paths or no git → all buckets. Override with `--scope=…` / `--gui` / `--tui` / `--cli` / `--all` (same flags on Windows via the dispatcher; the `.ps1` also accepts `-Scope`, `-Gui`, etc.).
 
 | Command | Behaviour |
 |---------|-----------|

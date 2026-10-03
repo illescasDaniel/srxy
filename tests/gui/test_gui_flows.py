@@ -7,6 +7,7 @@ import re
 from pathlib import Path
 
 import pytest
+from PySide6.QtCore import Qt
 from tests.gui.helpers import ensure_qapp, load_main
 from tests.helpers import OCR_FIXTURES_DIR
 
@@ -86,6 +87,137 @@ def test_given_path_query_options_filters_when_searching_then_results_and_progre
 	harness.shutdown()
 
 
+def test_given_folder_dropped_on_path_field_when_handled_then_path_updates_without_search(
+	qapp,
+	tmp_path: Path,
+):
+	# given
+	dropped_dir = tmp_path / "dropped"
+	dropped_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+	drop_area = harness.find("pathDropArea")
+	assert drop_area is not None, "missing objectName=pathDropArea"
+
+	# when — simulate the DropArea's onDropped handler receiving a dragged folder URI
+	controller.handleDroppedPathUrls([dropped_dir.as_uri()])
+	qapp.processEvents()
+
+	# then
+	assert Path(harness.prop("pathField", "text")) == dropped_dir
+	assert harness.prop("pathIssueButton", "visible") is False
+	assert controller.searching is False
+
+	harness.shutdown()
+
+
+def test_given_path_drop_area_when_loaded_then_stacked_above_path_row(qapp, tmp_path: Path):
+	# given — OS file-manager drops are stolen by TextField when DropArea is under it
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	drop_area = harness.find("pathDropArea")
+	path_row = harness.find("pathRow")
+	target = harness.find("pathDropTarget")
+	assert drop_area is not None, "missing objectName=pathDropArea"
+	assert path_row is not None, "missing objectName=pathRow"
+	assert target is not None, "missing objectName=pathDropTarget"
+
+	# then — DropArea must win QML drag hit-testing; target must have real height
+	# (collapsed GroupBox content was why macOS Finder showed no + cursor).
+	assert float(drop_area.z()) > float(path_row.z())
+	assert float(target.height()) >= float(path_row.implicitHeight()) > 0
+	assert drop_area.acceptedMouseButtons() == Qt.MouseButton.NoButton
+
+	harness.shutdown()
+
+
+def test_given_os_drag_over_path_target_when_filtered_then_hover_and_drop_update_path(
+	qapp,
+	tmp_path: Path,
+):
+	# given — synthesise window-level drag events (Finder path on macOS)
+	from PySide6.QtCore import QMimeData, QPointF, QUrl
+	from PySide6.QtGui import QDragEnterEvent, QDropEvent
+	from PySide6.QtQuick import QQuickItem, QQuickWindow
+
+	dropped_dir = tmp_path / "from-finder"
+	dropped_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	target = harness.find("pathDropTarget")
+	assert isinstance(target, QQuickItem)
+	window = harness.window
+	assert isinstance(window, QQuickWindow)
+	assert float(target.width()) > 0 and float(target.height()) > 0
+
+	centre = target.mapToScene(QPointF(target.width() / 2.0, target.height() / 2.0)).toPoint()
+	mime = QMimeData()
+	mime.setUrls([QUrl.fromLocalFile(str(dropped_dir))])
+
+	enter = QDragEnterEvent(
+		centre,
+		Qt.DropAction.CopyAction,
+		mime,
+		Qt.MouseButton.LeftButton,
+		Qt.KeyboardModifier.NoModifier,
+	)
+	assert qapp.sendEvent(window, enter) is True
+	qapp.processEvents()
+	assert controller.pathDropHover is True
+	assert harness.prop("pathDropHighlight", "visible") is True
+
+	drop = QDropEvent(
+		QPointF(centre),
+		Qt.DropAction.CopyAction,
+		mime,
+		Qt.MouseButton.LeftButton,
+		Qt.KeyboardModifier.NoModifier,
+	)
+	assert qapp.sendEvent(window, drop) is True
+	qapp.processEvents()
+
+	assert Path(controller.path) == dropped_dir
+	assert controller.pathDropHover is False
+
+	harness.shutdown()
+
+
+def test_given_file_dropped_on_path_field_when_handled_then_path_warning_shown(
+	qapp,
+	tmp_path: Path,
+):
+	# given
+	dropped_file = tmp_path / "note.txt"
+	dropped_file.write_text("hello\n", encoding="utf-8")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	controller.handleDroppedPathUrls([dropped_file.as_uri()])
+	qapp.processEvents()
+
+	# then
+	assert Path(harness.prop("pathField", "text")) == dropped_file
+	assert harness.prop("pathIssueButton", "visible") is True
+	assert "directory" in controller.pathIssue.lower()
+
+	harness.shutdown()
+
+
 def test_given_names_only_options_when_searching_then_filename_hit_appears(qapp, tmp_path: Path):
 	# given
 	(tmp_path / "README.md").write_text("docs without matching body text\n", encoding="utf-8")
@@ -113,6 +245,74 @@ def test_given_names_only_options_when_searching_then_filename_hit_appears(qapp,
 	options = json.loads(controller.optionsJson())
 	assert options.get("search_names") is True
 	assert options.get("search_contents") is False
+
+	harness.shutdown()
+
+
+def test_given_names_only_options_when_searching_then_folder_hit_appears(qapp, tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", True)
+	harness.set_checked("optFolders", True)
+	harness.set_checked("optContents", False)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then — the folder itself is a selectable result, not just files inside it
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert any(Path(path) == invoices for path in result_paths)
+
+	folder_row = next(row for row, path in enumerate(result_paths) if Path(path) == invoices)
+	controller.selectResult(folder_row)
+	assert controller.selectedResult == folder_row
+	assert Path(controller.previewFilePath) == invoices
+
+	harness.shutdown()
+
+
+def test_given_content_only_options_when_searching_then_folder_hit_excluded(qapp, tmp_path: Path):
+	# given — folders have no body text, so content-only search must never return them.
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures\n", encoding="utf-8")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	for _ in range(20):
+		qapp.processEvents()
+
+	# when
+	harness.set_text("pathField", str(tmp_path))
+	harness.set_text("simpleQueryField", "invoices")
+	harness.open_dialog_via("optionsButton", "optionsDialog")
+	harness.set_checked("optNames", False)
+	harness.set_checked("optFolders", False)
+	harness.set_checked("optContents", True)
+	harness.set_checked("optPersist", False)
+	harness.apply_dialog_ok("optionsOkButton", "optionsDialog")
+	harness.click("searchButton")
+	harness.wait_search_finished()
+
+	# then
+	assert controller.exit_code() == 0
+	result_paths = _result_paths(controller)
+	assert not any(Path(path) == invoices for path in result_paths)
+	assert any(path.endswith("notes.txt") for path in result_paths)
 
 	harness.shutdown()
 
@@ -183,3 +383,47 @@ def test_given_ocr_folder_when_searching_then_progress_count_appears(qapp):
 
 	harness.wait_search_finished(timeout_ms=120_000)
 	harness.shutdown()
+
+
+def test_given_options_open_when_clicking_info_then_help_dialog_on_top_with_accent_ok(qapp):
+	"""Help from Options must use SrxyDialog+AccentButton with a ScrollView body."""
+	from PySide6.QtCore import QObject
+	from tests.gui.helpers import capture_qt_messages
+
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	with capture_qt_messages() as cap:
+		# Offscreen Item popups (Native/Window paths abort Qt after other GUI tests).
+		harness = load_main(controller, qapp, use_native_alerts=False)
+		for _ in range(20):
+			qapp.processEvents()
+
+		harness.open_dialog_via("optionsButton", "optionsDialog")
+		info = harness.find("infoButton_search_names")
+		tip_objs = [ch for ch in info.findChildren(QObject) if "ToolTipAttached" in ch.metaObject().className()]
+		assert tip_objs, "InfoButton missing ToolTip attached object"
+		assert tip_objs[0].property("text")
+
+		harness.click("infoButton_search_names")
+		harness.wait_until(
+			lambda: bool(harness.prop("helpDialog", "opened")) or bool(harness.prop("helpDialog", "visible")),
+			timeout_ms=5_000,
+			message="helpDialog did not open from info button",
+		)
+		assert harness.find("helpOkButton") is not None
+		assert harness.find("helpScroll") is not None
+		# Short help should not force the old tall fixed sheet (~420).
+		help_h = float(harness.prop("helpDialog", "height"))
+		assert help_h <= 300, f"helpDialog too tall: {help_h}"
+		assert help_h >= 140, f"helpDialog collapsed: {help_h}"
+		# Options stays open underneath; help must still be interactive (opened).
+		assert bool(harness.prop("optionsDialog", "opened")) or bool(harness.prop("optionsDialog", "visible"))
+		cap.assert_no_fatal(context="options → info → helpDialog")
+
+		harness.click("helpOkButton")
+		harness.wait_until(
+			lambda: not (bool(harness.prop("helpDialog", "opened")) or bool(harness.prop("helpDialog", "visible"))),
+			timeout_ms=5_000,
+			message="helpDialog stayed open after OK",
+		)
+		harness.shutdown()

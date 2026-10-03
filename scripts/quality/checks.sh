@@ -17,15 +17,22 @@ source "${internal_dir}/gate.sh"
 # shellcheck source=internal/lib.sh
 source "${internal_dir}/lib.sh"
 
+lib_gate_setup_interrupt_traps
+
 # Exclusive lock so overlapping agent/manual gates cannot spawn multiple -n N pytest trees.
 # Keep the lock outside .venv — that tree is often cursorignored / RO in agent sandboxes.
 GATE_LOCK_FILE="${LIB_REPO_ROOT}/.srxy-quality-gate.lock"
-exec 200>"${GATE_LOCK_FILE}"
+exec 200>>"${GATE_LOCK_FILE}"
 if ! flock -n 200; then
-	echo "error: another quality gate is already running (lock: ${GATE_LOCK_FILE})." >&2
-	echo "Stop leftover checks.sh / pytest processes for this repo, then retry." >&2
+	lib_gate_print_lock_holder "${GATE_LOCK_FILE}"
 	exit 1
 fi
+export LIB_GATE_LOCK_FILE="${GATE_LOCK_FILE}"
+export LIB_GATE_LOCK_MAIN_PID="$$"
+export LIB_GATE_LOCK_SCRIPT="checks.sh"
+LIB_GATE_LOCK_STARTED="$(date -u +%Y-%m-%dT%H:%M:%SZ)"
+export LIB_GATE_LOCK_STARTED
+lib_gate_write_lock_file running
 
 FIX=false
 FULL=false
@@ -311,12 +318,15 @@ gate_run_step_logged() {
 	local name="$1"
 	local fn="$2"
 	local log_dir="$3"
+	local pid
 
 	(
 		export GATE_STATUS_FILE="${log_dir}/${name}.status"
 		rm -f "${GATE_STATUS_FILE}" "${GATE_STATUS_FILE}.details"
 		"${fn}" >"${log_dir}/${name}.log" 2>&1
 	) &
+	pid=$!
+	lib_gate_track_pid "${pid}"
 }
 
 gate_finish_step() {
@@ -355,6 +365,13 @@ if [[ "${FIX}" == true ]]; then
 	fi
 else
 	parallel_dir="$(mktemp -d "${TMPDIR:-/tmp}/srxy-gate.XXXXXX")"
+	cleanup_parallel_dir() {
+		if [[ -n "${parallel_dir:-}" && -d "${parallel_dir}" ]]; then
+			rm -rf "${parallel_dir}"
+		fi
+	}
+	lib_gate_add_cleanup cleanup_parallel_dir
+
 	if [[ -z "${LIB_PYTEST_WORKERS:-}" ]]; then
 		LIB_PYTEST_WORKERS="$(_lib_pytest_worker_count)"
 		export LIB_PYTEST_WORKERS
@@ -362,15 +379,17 @@ else
 
 	echo "Parallel verify (light steps overlapping pytest buckets; workers=${LIB_PYTEST_WORKERS})"
 
-	# Start pytest buckets early (longest-job-first) so they overlap light steps.
+	set -m
+	# Overlap pytest with light steps; tee streams bucket progress to the terminal.
 	pytest_pid=""
 	if [[ "${HAS_PYTEST}" == true ]]; then
 		(
 			export GATE_STATUS_FILE="${parallel_dir}/pytest.status"
 			rm -f "${GATE_STATUS_FILE}" "${GATE_STATUS_FILE}.details"
-			gate_step_pytest >"${parallel_dir}/pytest.log" 2>&1
+			gate_step_pytest 2>&1 | tee "${parallel_dir}/pytest.log"
 		) &
 		pytest_pid=$!
+		lib_gate_track_pid "${pytest_pid}"
 	fi
 
 	gate_run_step_logged "ruff" gate_step_ruff "${parallel_dir}"
@@ -378,6 +397,7 @@ else
 	gate_run_step_logged "ty" gate_step_ty "${parallel_dir}"
 	gate_run_step_logged "pip-audit" gate_step_pip_audit "${parallel_dir}"
 	gate_run_step_logged "build" gate_step_build "${parallel_dir}"
+	set +m
 	wait
 
 	gate_finish_step "ruff" "${parallel_dir}"

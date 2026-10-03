@@ -25,6 +25,7 @@ from tests.helpers import (
 from srxy import FileQ, magic_file_search
 from srxy.adapters.outbound.metadata.windows_metadata import windows_tags_supported, windows_tags_writable
 from srxy.adapters.outbound.metadata.xattr_metadata import finder_tag_xattr_writable, set_xattr, xattr_supported
+from srxy.application.matching.composite import CompositeMatcher
 from srxy.application.search_formatting import match_labels
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityUpdate
@@ -62,6 +63,257 @@ def test_given_uppercase_readme_filename_when_searching_names_then_finds_file(tm
 	assert len(results) == 1
 	assert results[0].path.name == "README.md"
 	assert results[0].breakdown.get("name", 0.0) >= 0.35
+
+
+def test_given_folder_name_matching_query_when_searching_names_then_returns_folder_result(tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated body", encoding="utf-8")
+	(tmp_path / "Photos").mkdir()
+
+	# when
+	results = magic_file_search(tmp_path, "invoices", search_contents=False, threshold=0.5)
+
+	# then
+	paths = {result.path for result in results}
+	assert invoices in paths
+	folder_result = next(result for result in results if result.path == invoices)
+	assert folder_result.score >= 0.5
+	assert folder_result.breakdown.get("name", 0.0) >= 0.5
+	assert "content" not in folder_result.breakdown
+	assert folder_result.is_dir is True
+
+
+def test_given_folder_and_file_result_when_searching_names_then_is_dir_captured_per_hit(tmp_path: Path):
+	# given — is_dir is captured on FileSearchResult when the hit is produced, not
+	# re-derived later, so it must be correct for both a folder and a file hit
+	# returned from the same search.
+	budget_dir = tmp_path / "budget-reports"
+	budget_dir.mkdir()
+	(budget_dir / "budget-summary.md").write_text("figures", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "budget", search_contents=False, threshold=0.3)
+
+	# then
+	folder_result = next(result for result in results if result.path.name == "budget-reports")
+	file_result = next(result for result in results if result.path.name == "budget-summary.md")
+	assert folder_result.is_dir is True
+	assert file_result.is_dir is False
+
+
+def test_given_folder_and_file_both_matching_query_when_searching_names_then_returns_both(tmp_path: Path):
+	# given
+	budget_dir = tmp_path / "budget-reports"
+	budget_dir.mkdir()
+	(budget_dir / "budget-summary.md").write_text("figures", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "budget", search_contents=False, threshold=0.3)
+
+	# then
+	names = {result.path.name for result in results}
+	assert "budget-reports" in names
+	assert "budget-summary.md" in names
+
+
+def test_given_matching_folder_when_search_names_disabled_then_folder_excluded(tmp_path: Path):
+	# given
+	invoices = tmp_path / "invoices"
+	invoices.mkdir()
+	(invoices / "notes.txt").write_text("quarterly invoices figures", encoding="utf-8")
+
+	# when — content-only search never returns a folder (folders have no content)
+	results = magic_file_search(tmp_path, "invoices", search_names=False, search_folders=False, threshold=0.3)
+
+	# then
+	assert all(result.path != invoices for result in results)
+	assert any(result.path == invoices / "notes.txt" for result in results)
+
+
+def test_given_matching_folder_when_search_folders_disabled_then_folder_excluded(tmp_path: Path):
+	# given — file-name search stays on; folder-name search is independent
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(invoices / "jan.txt").write_text("unrelated", encoding="utf-8")
+	(tmp_path / "invoices-report.txt").write_text("unrelated", encoding="utf-8")
+
+	# when
+	results = magic_file_search(tmp_path, "invoices", search_folders=False, search_contents=False, threshold=0.5)
+
+	# then
+	paths = {result.path for result in results}
+	assert invoices not in paths
+	assert (tmp_path / "invoices-report.txt") in paths
+
+
+def test_given_matching_folder_when_only_folders_enabled_then_returns_folder(tmp_path: Path):
+	# given
+	invoices = tmp_path / "Invoices"
+	invoices.mkdir()
+	(tmp_path / "invoices-report.txt").write_text("unrelated", encoding="utf-8")
+
+	# when
+	results = magic_file_search(
+		tmp_path, "invoices", search_names=False, search_folders=True, search_contents=False, threshold=0.5
+	)
+
+	# then
+	paths = {result.path for result in results}
+	assert invoices in paths
+	assert (tmp_path / "invoices-report.txt") not in paths
+
+
+def test_given_search_root_when_searching_names_then_root_itself_is_not_a_result(tmp_path: Path):
+	# given — the search root directory's own name should never surface as a result
+	root = tmp_path / "myqueryroot"
+	root.mkdir()
+	(root / "other.txt").write_text("unrelated", encoding="utf-8")
+
+	# when
+	results = magic_file_search(root, "myqueryroot", search_contents=False, threshold=0.3)
+
+	# then
+	assert all(result.path != root for result in results)
+
+
+def test_given_nested_folder_when_subdirectories_enabled_then_matches_deep_folder_name(tmp_path: Path):
+	# given
+	nested = tmp_path / "top" / "middle" / "targetfolder"
+	nested.mkdir(parents=True)
+
+	# when
+	results = magic_file_search(tmp_path, "targetfolder", search_contents=False, threshold=0.5)
+
+	# then
+	assert any(result.path == nested for result in results)
+
+
+def test_given_nested_folder_when_subdirectories_disabled_then_deep_folder_not_matched(tmp_path: Path):
+	# given
+	nested = tmp_path / "top" / "targetfolder"
+	nested.mkdir(parents=True)
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"targetfolder",
+		search_contents=False,
+		include_subdirectories=False,
+		threshold=0.5,
+	)
+
+	# then
+	assert all(result.path != nested for result in results)
+
+
+def test_given_top_level_folder_when_subdirectories_disabled_then_still_matched_as_directory_result(
+	tmp_path: Path,
+):
+	"""Symmetric to the deep-folder-excluded case above: root's immediate children
+	stay searchable by name even with include_subdirectories=False (the walker does
+	not recurse past them, but it does not hide them either) — same guarantee the
+	walker-level tests in test_file_walker_directories.py already assert directly,
+	exercised here through the full search-level API + real matcher/threshold."""
+	# given — a matching folder directly under root, and a matching folder that is
+	# one level deeper (must stay excluded with subdirectories disabled).
+	top_level = tmp_path / "targetfolder"
+	top_level.mkdir()
+	deep = tmp_path / "top" / "targetfolder"
+	deep.mkdir(parents=True)
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"targetfolder",
+		search_contents=False,
+		include_subdirectories=False,
+		threshold=0.5,
+	)
+
+	# then
+	assert any(result.path == top_level for result in results)
+	top_level_result = next(result for result in results if result.path == top_level)
+	assert top_level_result.is_dir is True
+	assert all(result.path != deep for result in results)
+
+
+def test_given_hidden_folder_when_searching_names_then_skipped_by_default(tmp_path: Path):
+	# given
+	hidden = tmp_path / ".gitrepo"
+	hidden.mkdir()
+
+	# when
+	results = magic_file_search(tmp_path, "gitrepo", search_contents=False, threshold=0.3)
+
+	# then
+	assert all(result.path != hidden for result in results)
+
+
+def test_given_hidden_folder_when_skip_hidden_folders_disabled_then_matched(tmp_path: Path):
+	# given
+	hidden = tmp_path / ".gitrepo"
+	hidden.mkdir()
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"gitrepo",
+		search_contents=False,
+		skip_hidden_folders=False,
+		threshold=0.3,
+	)
+
+	# then
+	assert any(result.path == hidden for result in results)
+
+
+def test_given_noise_folder_when_searching_names_then_skipped_by_default(tmp_path: Path):
+	# given
+	noise = tmp_path / "node_modules"
+	noise.mkdir()
+
+	# when
+	results = magic_file_search(tmp_path, "node modules", search_contents=False, threshold=0.3)
+
+	# then
+	assert all(result.path != noise for result in results)
+
+
+def test_given_noise_folder_when_skip_noise_folders_disabled_then_matched(tmp_path: Path):
+	# given
+	noise = tmp_path / "node_modules"
+	noise.mkdir()
+
+	# when
+	results = magic_file_search(
+		tmp_path,
+		"node modules",
+		search_contents=False,
+		skip_noise_folders=False,
+		threshold=0.3,
+	)
+
+	# then
+	assert any(result.path == noise for result in results)
+
+
+def test_given_fuzzy_folder_name_when_searching_names_then_ranks_like_a_fuzzy_filename_match(tmp_path: Path):
+	# given — a typo'd top-level folder name should score exactly like the same typo'd
+	# text would score as a filename (folder-name matching reuses the same matcher +
+	# scoring path, not a separate/weaker code path).
+	misspelled_folder = tmp_path / "invoicess"
+	misspelled_folder.mkdir()
+
+	# when
+	results = magic_file_search(tmp_path, "invoices", search_contents=False, threshold=0.0)
+
+	# then
+	folder_result = next(result for result in results if result.path == misspelled_folder)
+	expected_score = CompositeMatcher().score("invoices", "invoicess")
+	assert folder_result.score == pytest.approx(expected_score)
+	assert folder_result.breakdown["name"] == pytest.approx(expected_score)
 
 
 def test_given_directory_with_matching_content_when_searching_contents_then_returns_file(tmp_path: Path):
@@ -178,10 +430,11 @@ def test_given_nested_file_when_subdirectories_enabled_then_searches_recursively
 
 
 def test_given_hidden_directory_when_searching_then_skips_hidden_entries(tmp_path: Path):
-	# given
-	hidden_dir = tmp_path / ".git"
+	# given — use ".secret" (not ".git/config") so agent sandboxes that block
+	# writes to git config paths can still create the fixture.
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	(tmp_path / "visible.txt").write_text("token", encoding="utf-8")
 	query = "token"
 
@@ -195,9 +448,9 @@ def test_given_hidden_directory_when_searching_then_skips_hidden_entries(tmp_pat
 
 def test_given_hidden_directory_when_skip_hidden_folders_disabled_then_includes_hidden_entries(tmp_path: Path):
 	# given
-	hidden_dir = tmp_path / ".git"
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	(tmp_path / "visible.txt").write_text("token", encoding="utf-8")
 	query = "token"
 
@@ -207,7 +460,7 @@ def test_given_hidden_directory_when_skip_hidden_folders_disabled_then_includes_
 	# then
 	assert len(results) == 2
 	path_names = {result.path.name for result in results}
-	assert path_names == {"config", "visible.txt"}
+	assert path_names == {"notes.txt", "visible.txt"}
 
 
 def test_given_noise_directory_when_searching_then_skips_noise_entries(tmp_path: Path):
@@ -247,9 +500,9 @@ def test_given_hidden_and_noise_directories_when_both_skip_flags_disabled_then_i
 	tmp_path: Path,
 ):
 	# given
-	hidden_dir = tmp_path / ".git"
+	hidden_dir = tmp_path / ".secret"
 	hidden_dir.mkdir()
-	(hidden_dir / "config").write_text("secret token", encoding="utf-8")
+	(hidden_dir / "notes.txt").write_text("secret token", encoding="utf-8")
 	noise_dir = tmp_path / "__pycache__"
 	noise_dir.mkdir()
 	(noise_dir / "cache.txt").write_text("token cache", encoding="utf-8")
@@ -262,7 +515,7 @@ def test_given_hidden_and_noise_directories_when_both_skip_flags_disabled_then_i
 	# then
 	assert len(results) == 3
 	path_names = {result.path.name for result in results}
-	assert path_names == {"cache.txt", "config", "visible.txt"}
+	assert path_names == {"cache.txt", "notes.txt", "visible.txt"}
 
 
 def test_given_noise_file_when_searching_then_skips_junk_entries(tmp_path: Path):
@@ -452,8 +705,8 @@ def test_given_no_search_modes_when_searching_then_raises_value_error(tmp_path: 
 	(tmp_path / "item.txt").write_text("hello", encoding="utf-8")
 
 	# when
-	with pytest.raises(ValueError, match="File names and/or File contents"):
-		magic_file_search(tmp_path, "hello", search_names=False, search_contents=False)
+	with pytest.raises(ValueError, match="File names, Folder names, and/or File contents"):
+		magic_file_search(tmp_path, "hello", search_names=False, search_folders=False, search_contents=False)
 
 	# then
 	assert True

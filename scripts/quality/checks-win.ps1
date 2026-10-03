@@ -803,6 +803,41 @@ function Stop-ProcessTree {
 	catch { }
 }
 
+$script:GateChildProcesses = [System.Collections.Generic.List[System.Diagnostics.Process]]::new()
+$script:GateInterruptCleanupEnabled = $false
+$script:GateInterrupted = $false
+
+function Register-GateChildProcess {
+	param([System.Diagnostics.Process] $Process)
+	if ($null -ne $Process) {
+		$script:GateChildProcesses.Add($Process) | Out-Null
+		Write-GateLockFile -Status 'running'
+	}
+}
+
+function Stop-AllGateChildProcesses {
+	foreach ($proc in @($script:GateChildProcesses)) {
+		Stop-ProcessTree -Process $proc
+	}
+	$script:GateChildProcesses.Clear()
+}
+
+function Enable-GateInterruptCleanup {
+	if ($script:GateInterruptCleanupEnabled) { return }
+	$script:GateInterruptCleanupEnabled = $true
+	[Console]::TreatControlCAsInput = $false
+	$handler = [ConsoleCancelEventHandler] {
+		param($sender, [ConsoleCancelEventArgs] $e)
+		$e.Cancel = $true
+		$script:GateInterrupted = $true
+		Write-Host 'note: quality gate interrupted — stopping child processes...' -ForegroundColor Yellow
+		Stop-AllGateChildProcesses
+		Release-GateLock
+		[Environment]::Exit(130)
+	}
+	[Console]::CancelKeyPress += $handler
+}
+
 function Wait-GateProcess {
 	param(
 		[System.Diagnostics.Process] $Process,
@@ -856,7 +891,9 @@ function Start-GateChildProcess {
 		RedirectStandardOutput = $LogPath
 		RedirectStandardError  = $ErrPath
 	}
-	return Start-Process @startParams
+	$proc = Start-Process @startParams
+	Register-GateChildProcess -Process $proc
+	return $proc
 }
 
 function Merge-GateLogs {
@@ -880,6 +917,70 @@ function Show-GateLogIfNeeded {
 	}
 }
 
+function Get-GateLockPidList {
+	$ids = [System.Collections.Generic.List[int]]::new()
+	[void]$ids.Add($PID)
+	foreach ($proc in @($script:GateChildProcesses)) {
+		if ($null -eq $proc) { continue }
+		if (-not $ids.Contains($proc.Id)) {
+			[void]$ids.Add($proc.Id)
+		}
+	}
+	return ,@($ids)
+}
+
+function Write-GateLockFile {
+	param([string] $Status = 'running')
+	if ($null -eq $script:LockStream) { return }
+	$allPids = Get-GateLockPidList
+	$started = if ($script:GateLockStarted) { $script:GateLockStarted } else { 'unknown' }
+	$updated = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+	$lines = @(
+		"pid=$PID"
+		("pids=" + ($allPids -join ','))
+		"started=$started"
+		'script=checks-win.ps1'
+		"status=$Status"
+		"updated=$updated"
+	)
+	$text = ($lines -join "`n") + "`n"
+	$bytes = [System.Text.Encoding]::UTF8.GetBytes($text)
+	$script:LockStream.SetLength(0)
+	$script:LockStream.Write($bytes, 0, $bytes.Length)
+	$script:LockStream.Flush()
+}
+
+function Show-GateLockHolder {
+	param([string] $Path)
+	Write-Host "error: another quality gate is already running (lock: $Path)." -ForegroundColor Red
+	if (Test-Path -LiteralPath $Path) {
+		try {
+			$raw = Get-Content -LiteralPath $Path -ErrorAction Stop
+			if ($raw) {
+				Write-Host 'Lock holder metadata:'
+				$raw | ForEach-Object { Write-Host "  $_" }
+				$pidsLine = $raw | Where-Object { $_ -match '^pids=' } | Select-Object -First 1
+				if ($pidsLine -match '^pids=(.+)$') {
+					Write-Host 'Process check:'
+					foreach ($idText in ($Matches[1] -split ',')) {
+						$procId = 0
+						if (-not [int]::TryParse($idText.Trim(), [ref]$procId)) { continue }
+						$alive = Get-Process -Id $procId -ErrorAction SilentlyContinue
+						if ($alive) {
+							Write-Host "  pid ${procId}: running"
+						}
+						else {
+							Write-Host "  pid ${procId}: not running (stale?)"
+						}
+					}
+				}
+			}
+		}
+		catch { }
+	}
+	Write-Host 'Stop leftover checks-win.ps1 / checks.sh / pytest processes for this repo, then retry.' -ForegroundColor Red
+}
+
 function Acquire-GateLock {
 	try {
 		$script:LockStream = [System.IO.File]::Open(
@@ -888,16 +989,22 @@ function Acquire-GateLock {
 			[System.IO.FileAccess]::ReadWrite,
 			[System.IO.FileShare]::None
 		)
+		$script:GateLockStarted = (Get-Date).ToUniversalTime().ToString('yyyy-MM-ddTHH:mm:ssZ')
+		Write-GateLockFile -Status 'running'
 	}
 	catch {
-		Write-Host "error: another quality gate is already running (lock: $LockPath)." -ForegroundColor Red
-		Write-Host 'Stop leftover checks-win.ps1 / checks.sh / pytest processes for this repo, then retry.' -ForegroundColor Red
+		Show-GateLockHolder -Path $LockPath
 		exit 1
 	}
 }
 
 function Release-GateLock {
 	if ($null -ne $script:LockStream) {
+		try {
+			$status = if ($script:GateInterrupted) { 'interrupted' } else { 'exited' }
+			Write-GateLockFile -Status $status
+		}
+		catch { }
 		$script:LockStream.Close()
 		$script:LockStream.Dispose()
 		$script:LockStream = $null
@@ -1238,6 +1345,9 @@ function Invoke-PytestBucketsInline {
 		}
 	}
 	finally {
+		foreach ($proc in $procs.Values) {
+			Stop-ProcessTree -Process $proc
+		}
 		Remove-Item -LiteralPath $tmp -Recurse -Force -ErrorAction SilentlyContinue
 	}
 	$script:LastPytestExit = $overall
@@ -1394,6 +1504,7 @@ if ([string]::IsNullOrWhiteSpace($env:LIB_PYTEST_WORKERS)) {
 }
 
 Acquire-GateLock
+Enable-GateInterruptCleanup
 try {
 	Set-Location -LiteralPath $RepoRoot
 
@@ -1547,6 +1658,7 @@ try {
 			}
 		}
 		finally {
+			Stop-AllGateChildProcesses
 			Remove-Item -LiteralPath $parallelDir -Recurse -Force -ErrorAction SilentlyContinue
 		}
 	}
@@ -1556,5 +1668,6 @@ try {
 	exit 0
 }
 finally {
+	Stop-AllGateChildProcesses
 	Release-GateLock
 }

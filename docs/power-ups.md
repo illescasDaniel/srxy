@@ -18,7 +18,7 @@ Default: images via EXIF; PDFs via `pypdf` embedded text; Office docs via struct
 
 Unlimited OCR model cached under `~/.cache/srxy/unlimited-ocr-model` (local path override: `SRXY_UNLIMITED_OCR_MODEL_PATH`); downloads on first OCR call once `[semantic]` is detected (or prefetch it — see [Model prefetch](#model-prefetch)). Device order follows the same CUDA → MPS → CPU rule as the other semantic models (`SRXY_SEMANTIC_DEVICE`). Compare both backends with `uv run task bench-ocr` (see [`scripts/bench_ocr_unlimited_vs_tesseract.py`](../scripts/bench_ocr_unlimited_vs_tesseract.py)).
 
-Cache: encrypted `~/.cache/srxy/cache.db` on Linux/macOS, or `%LOCALAPPDATA%\srxy\cache.db` on Windows (`SRXY_CACHE_DIR`). Key file: `.cache_key` beside `cache.db` (mode `600` on Unix). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage/Inno installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
+Cache: encrypted `~/.cache/srxy/cache.db` on Linux/macOS, or `%LOCALAPPDATA%\srxy\cache.db` on Windows (`SRXY_CACHE_DIR`). Key file: `.cache_key` beside `cache.db` (mode `600` on Unix). Override key with `SRXY_CACHE_KEY` (Fernet). `SRXY_CACHE_DISABLE=1` to off. `SRXY_CACHE_DEBUG=1` for stderr logs. Desktop prefix installs (`SRXY_HOME`, e.g. from the AppImage/Windows installer) store cache under `$SRXY_HOME/cache` and models under `$SRXY_HOME/models` instead.
 
 Default OCR file cap: **50 MiB** (`--max-ocr-file-size` / `SRXY_OCR_MAX_FILE_SIZE`).
 

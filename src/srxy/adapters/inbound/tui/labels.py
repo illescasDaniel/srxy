@@ -11,6 +11,7 @@ from srxy.i18n import tr
 
 _OPTION_KEYS: dict[str, tuple[str, str]] = {
 	"so-names": ("gui.options.file_names", "tui.hint.file_names"),
+	"so-folders": ("gui.options.folder_names", "tui.hint.folder_names"),
 	"so-content": ("gui.options.file_contents", "tui.hint.file_contents"),
 	"so-docs-tags": ("tui.options.docs_tags", "tui.hint.docs_tags"),
 	"so-semantic": ("gui.options.semantic", "tui.hint.semantic"),

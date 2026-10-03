@@ -108,10 +108,109 @@ def test_given_windows_url_when_controller_sets_path_then_no_leading_slash(
 
 	controller.path = "file:///C:/Users/kaumi/Downloads"
 	assert not controller.path.startswith("/")
-	assert controller.path == "C:/Users/kaumi/Downloads"
 
-	controller.path = "/C:/Users/kaumi/Downloads"
-	assert controller.path == "C:/Users/kaumi/Downloads"
+
+@pytest.mark.parametrize(
+	"urls,expected",
+	[
+		# Simple Unix directory URI
+		(["file:///home/user/docs"], "/home/user/docs"),
+		# Windows drive-letter URI
+		(["file:///C:/Users/kaumi/Downloads"], "C:/Users/kaumi/Downloads"),
+		# Percent-encoded spaces are decoded
+		(["file:///home/user/My%20Folder"], "/home/user/My Folder"),
+		# Multi-URI drop: only the first local URI is used
+		(["file:///home/user/first", "file:///home/user/second"], "/home/user/first"),
+		# Non-local URI ignored, falls through to next local one
+		(["https://example.com/not-local", "file:///home/user/docs"], "/home/user/docs"),
+		# Explicit localhost authority is still local
+		(["file://localhost/home/user/docs"], "/home/user/docs"),
+	],
+)
+def test_given_dropped_urls_when_resolving_then_returns_first_local_path(urls: list[str], expected: str):
+	from srxy.adapters.inbound.gui.controller import (
+		resolve_dropped_folder_path,  # pyright: ignore[reportPrivateUsage]
+	)
+
+	assert resolve_dropped_folder_path(urls) == expected
+
+
+@pytest.mark.parametrize(
+	"urls",
+	[
+		[],
+		[""],
+		["https://example.com/somewhere"],
+		["ftp://example.com/somewhere"],
+		# Network share / UNC-style host — not local
+		["file://server/share/docs"],
+	],
+)
+def test_given_no_local_uri_when_resolving_then_returns_none(urls: list[str]):
+	from srxy.adapters.inbound.gui.controller import (
+		resolve_dropped_folder_path,  # pyright: ignore[reportPrivateUsage]
+	)
+
+	assert resolve_dropped_folder_path(urls) is None
+
+
+def test_given_directory_drop_when_handled_then_path_updates_and_clears_issue(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.path = ""
+	assert controller.pathIssue
+
+	controller.handleDroppedPathUrls([tmp_path.as_uri()])
+
+	assert Path(controller.path) == tmp_path
+	assert controller.pathIssue == ""
+
+
+def test_given_file_drop_when_handled_then_path_warns_not_directory(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	dropped_file = tmp_path / "note.txt"
+	dropped_file.write_text("hello\n", encoding="utf-8")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.handleDroppedPathUrls([dropped_file.as_uri()])
+
+	assert Path(controller.path) == dropped_file
+	assert controller.pathIssue != ""
+
+
+def test_given_multi_uri_drop_when_handled_then_only_first_directory_used(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	first_dir = tmp_path / "first"
+	second_dir = tmp_path / "second"
+	first_dir.mkdir()
+	second_dir.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	controller.handleDroppedPathUrls([first_dir.as_uri(), second_dir.as_uri()])
+
+	assert Path(controller.path) == first_dir
+
+
+def test_given_non_local_drop_when_handled_then_path_unchanged(
+	qapp: QCoreApplication,
+	tmp_path: Path,
+):
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	original = controller.path
+
+	controller.handleDroppedPathUrls(["https://example.com/not-a-folder"])
+
+	assert controller.path == original
 
 
 def test_given_search_finished_when_handling_event_then_updates_results_model(qapp: QCoreApplication, tmp_path: Path):
@@ -910,6 +1009,68 @@ def test_given_misnamed_media_when_previewing_then_content_type_shows_mismatch(q
 	controller.shutdown(thread_wait_ms=1000)
 
 
+def test_given_image_file_when_previewing_then_kind_is_image_with_media_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "minimal.jpg"
+	path = tmp_path / "photo.jpg"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["photo", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "image"
+	assert str(controller.previewMediaUrl).startswith("data:image/png;base64,")
+	assert str(controller.previewPosterUrl) == ""
+	assert str(controller.previewText) == ""
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_audio_file_when_previewing_then_kind_is_audio_with_file_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "content_kind" / "beep.ogg"
+	path = tmp_path / "beep.ogg"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["beep", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "audio"
+	assert str(controller.previewMediaUrl).startswith("file://")
+	assert str(controller.previewPosterUrl) == ""
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_video_file_when_previewing_then_kind_is_video_with_file_url(qapp: QCoreApplication, tmp_path: Path):
+	fixture = Path(__file__).resolve().parents[1] / "fixtures" / "content_kind" / "clip.mp4"
+	path = tmp_path / "clip.mp4"
+	path.write_bytes(fixture.read_bytes())
+	args = build_parser().parse_args(["clip", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "video"
+	assert str(controller.previewMediaUrl).startswith("file://")
+	poster = str(controller.previewPosterUrl)
+	assert poster == "" or poster.startswith("data:image/png;base64,")
+	controller.shutdown(thread_wait_ms=1000)
+
+
+def test_given_text_file_when_previewing_then_kind_is_text_with_no_media_url(qapp: QCoreApplication, tmp_path: Path):
+	path = tmp_path / "note.txt"
+	path.write_text("alpha beta\n", encoding="utf-8")
+	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	result = FileSearchResult(path=path, score=0.9, breakdown={"content": 0.9}, lines=[])
+	controller.handle_search_event_for_tests(SearchFinishedEvent(results=[result], skipped_files=[]))
+	controller.flush_preview_for_tests()
+	assert str(controller.previewKind) == "text"
+	assert str(controller.previewMediaUrl) == ""
+	assert str(controller.previewPosterUrl) == ""
+	assert "alpha beta" in str(controller.previewText)
+	controller.shutdown(thread_wait_ms=1000)
+
+
 def test_given_selected_path_when_search_finishes_then_selection_is_preserved(qapp: QCoreApplication, tmp_path: Path):
 	# given
 	first = tmp_path / "a.txt"
@@ -1309,7 +1470,7 @@ def test_given_deleted_preview_document_when_applying_then_still_emits_and_clear
 	# when
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		controller._preview_generation,  # pyright: ignore[reportPrivateUsage]
-		("alpha\n", path, "", False, "", "TXT", ".txt"),
+		("alpha\n", path, "", False, "", "TXT", ".txt", "", "", ""),
 	)
 
 	# then — must leave loading and not raise
@@ -1340,7 +1501,7 @@ def test_given_stale_preview_generation_when_worker_finishes_then_result_is_igno
 	controller._preview_generation = 5  # pyright: ignore[reportPrivateUsage]
 	controller._on_preview_ready(  # pyright: ignore[reportPrivateUsage]
 		4,
-		("stale text", path, "", False, "", "TXT", ".txt"),
+		("stale text", path, "", False, "", "TXT", ".txt", "", "", ""),
 	)
 
 	# then

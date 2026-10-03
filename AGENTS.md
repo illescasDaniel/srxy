@@ -4,16 +4,13 @@
 
 After writing or changing code, run the quality gate until it passes cleanly.
 
-**Unix / macOS / WSL (preferred where bash works):**
+**All platforms** (OS-aware via [`scripts/quality/checks.py`](scripts/quality/checks.py)):
 
-1. **Autofix** — run `./scripts/quality/checks.sh --quiet --fix` and address any remaining issues it reports.
-2. **Verify** — run `./scripts/quality/checks.sh --quiet` (no `--fix`) and confirm a clean pass.
+1. **Autofix** — `uv run task checks -- --quiet --fix` and address any remaining issues it reports.
+2. **Verify** — `uv run task checks -- --quiet` (no `--fix`) and confirm a clean pass.
 3. **Repeat** — if either step fails, fix the reported problems (rerun `--fix` for Ruff/shell issues; fix ty, pip-audit, and pytest failures in code) and go back to step 1 until both commands succeed.
 
-**Windows (native PowerShell — use when bash/`flock`/CRLF breaks `checks.sh`):**
-
-1. **Autofix** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Fix -Quiet` (or `uv run task checks-win-fix-quiet`)
-2. **Verify** — `powershell -ExecutionPolicy Bypass -File ./scripts/quality/checks-win.ps1 -Quiet` (or `uv run task checks-win-quiet`)
+Pass flags after `--` so `uv run` does not consume them (notably `--quiet`). Direct script calls still work: `./scripts/quality/checks.sh --quiet --fix` (Unix) or `.\scripts\quality\checks-win.ps1 --quiet --fix` (Windows).
 
 `checks-win.ps1` mirrors the bash gate (same steps, buckets, lock file). Light verify steps and pytest buckets run **concurrently** on both platforms. ShellCheck/shfmt are skipped with a warning when those tools are not on PATH. Both gates apply a wall-clock watchdog to pytest (exit 124 on timeout); bash also has a stall (no-output) watchdog.
 
@@ -52,11 +49,11 @@ Day-to-day default is **auto-scope** from `git diff` / `git status`:
 | `heavy` | `tests/integration` | `-n 0`, models/GPU, `-p no:pytest-qt` |
 
 - `core` always runs. Touching `inbound/gui/` / `shared/qml/` / `installer/` → `gui`; `inbound/tui/` → `tui`; semantic/transcribe/ocr/models/fixtures → `heavy`. Ambiguous paths (`pyproject.toml`, `tests/conftest.py`, `scripts/quality/`, …) or no git → all buckets.
-- Override with `--scope=core,gui` / `--gui` / `--tui` / `--cli` / `--all` (Windows: `-Scope`, `-Gui`, `-Tui`, `-Cli`, `-All`). `--full` implies `--all` and adds `integration_full` / `transcribe_device_matrix` plus coverage.
+- Override with `--scope=core,gui` / `--gui` / `--tui` / `--cli` / `--all` (same flags on Windows via the dispatcher). `--full` implies `--all` and adds `integration_full` / `transcribe_device_matrix` plus coverage.
 - Per-bucket testmon (`.testmondata-core` etc.) + `--ff` on day-to-day only (not CI / not `--full`).
 - `pip-audit` / wheel build skip via `.gate-cache/` when inputs are unchanged (force with `--no-cache`).
-- Prefer scoped tasks when you know the surface: `checks-gui-quiet`, `checks-tui-quiet`, `checks-core-quiet`, `checks-win-gui-quiet`, …
-- Use `--all` / `checks-all-quiet` before a commit that touches shared code, and `--full` / `checks-full-quiet` before release.
+- Prefer scoped runs when you know the surface: `uv run task checks -- --quiet --gui`, `--quiet --tui`, `--quiet --scope=core`, etc.
+- Use `--all` before a commit that touches shared code, and `--full` before release (always with `--quiet` for agents).
 
 CI (`CI=true`) selects `core+gui+tui` (no heavy). File-search fixtures live at `tests/fixtures/file_search/`; semantic corpus JSON at `tests/fixtures/corpus/`. Override the search tree with `SRXY_FILE_SEARCH_FIXTURES` if needed.
 
@@ -64,9 +61,9 @@ The gate takes an exclusive flock on `.srxy-quality-gate.lock` (repo root). A se
 
 `--fix` autofixes Ruff and shell scripts only; ty and test failures must be fixed manually. `--fix`, `--full`, and `--full+cpu` are ignored when `GITHUB_ACTIONS=true`. On Windows, `checks-win.ps1 -Full` still runs the heavy suite even if a leftover local `CI=true` is set.
 
-`--quiet` (Unix) / `-Quiet` (Windows) is the agent-verbosity mode: passing light-step logs are suppressed and pytest collapses to sparse `[gate] N/total` progress lines, showing failures in full (`-ra --tb=short`). Omit the flag for the full human-facing output. **AI agents must always use the quiet variants** (`--quiet` / `-Quiet`, or the `*-quiet` Taskipy tasks). The non-quiet `checks` / `checks-fix` / `checks-win` / `checks-win-fix` tasks and plain `checks.sh` / `checks-win.ps1` are for humans.
+`--quiet` is the agent-verbosity mode: passing light-step logs are suppressed and pytest collapses to sparse `[gate] N/total` progress lines, showing failures in full (`-ra --tb=short`). Omit the flag for the full human-facing output. **AI agents must always pass `--quiet`** (`uv run task checks -- --quiet …`). Plain `uv run task checks` (no flags) and direct `checks.sh` / `checks-win.ps1` without `--quiet` are for humans.
 
-Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity); agents should run the quiet equivalents `checks-full-quiet` / `checks-full-cpu-quiet`. Full details: [docs/development.md](docs/development.md).
+Before a release, run `./scripts/quality/checks.sh --full` (and `--full+cpu` when validating CUDA/CPU transcribe parity); agents should run `uv run task checks -- --quiet --full` / `--quiet --full+cpu`. Full details: [docs/development.md](docs/development.md).
 
 ### Running the gate (agent pitfalls)
 

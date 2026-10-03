@@ -59,7 +59,7 @@ srxy "registry" ./src         # pre-filled; auto-starts
 
 | macOS | Linux | Windows |
 |:-----:|:-----:|:-------:|
-| <img src="docs/images/gui-macos.png" alt="srxy GUI on macOS" width="280" /> | <img src="docs/images/gui-linux.png" alt="srxy GUI on Linux" width="280" /> | <img src="docs/images/gui-windows.png" alt="srxy GUI on Windows" width="280" /> |
+| <img src="docs/images/gui-macos.png" alt="srxy GUI v1.6.5 on macOS" width="280" /> | <img src="docs/images/gui-linux.png" alt="srxy GUI v1.7.0 on Linux" width="280" /> | <img src="docs/images/gui-windows.png" alt="srxy GUI v1.6.5 on Windows" width="280" /> |
 
 Walkthrough: [docs/gui.md](docs/gui.md). Architecture: [docs/architecture.md](docs/architecture.md).
 
@@ -128,11 +128,11 @@ Once `.venv` exists, thin Taskipy aliases also work:
 ```bash
 uv run task sync-dev
 uv run task sync-uploader
-uv run task checks-fix
-uv run task checks              # day-to-day (auto-scope)
-uv run task checks-gui          # core+gui when working on the GUI
-uv run task checks-full         # before release
-uv run task checks-full-cpu     # + forced-CPU transcribe matrix
+uv run task checks                        # day-to-day (auto-scope)
+uv run task checks -- --fix               # autofix then verify
+uv run task checks -- --quiet --gui       # core+gui (agent-verbosity)
+uv run task checks -- --full              # before release
+uv run task checks -- --full+cpu          # + forced-CPU transcribe matrix
 ```
 
 CI runs `core+gui+tui` buckets (no heavy/real-model suite). Details: [docs/development.md](docs/development.md).

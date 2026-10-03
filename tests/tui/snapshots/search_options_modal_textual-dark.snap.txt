@@ -20,7 +20,15 @@ File names
 █
 █
 Match the path and filename
-▃▃
+█
+█
+█
+█
+X
+Folder names
+█
+█
+Match folder names as results
 █
 █
 █
@@ -38,15 +46,6 @@ How to match
 █
 █
 Fuzzy, phonetic, and substring matching (always on)
-█
-█
-█
-█
-X
-Docs, tags & metadata (recommended ON)
-█
-█
-Text inside documents, tags, and metadata
 █
 █
 █
