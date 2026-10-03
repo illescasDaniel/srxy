@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import sys
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -12,6 +13,16 @@ from srxy.adapters.inbound.gui import qt_theme
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.gui]
+
+
+@pytest.fixture(scope="module")
+def qapp() -> QCoreApplication:
+	os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
+	app = QCoreApplication.instance()
+	if app is None:
+		app = QGuiApplication([])
+	assert isinstance(app, QCoreApplication)
+	return app
 
 
 @pytest.fixture
@@ -536,3 +547,300 @@ def test_given_darwin_when_preferring_native_dialogs_then_does_not_set_env(
 
 	# then
 	assert "QT_QPA_PLATFORMTHEME" not in os.environ
+
+
+def test_given_darwin_when_preferring_macos_style_then_sets_env(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_STYLE", raising=False)
+
+	# when
+	with patch("PySide6.QtQuickControls2.QQuickStyle") as style:
+		qt_theme.prefer_macos_quick_controls_style()
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_STYLE"] == "macOS"
+	style.setStyle.assert_called_once_with("macOS")
+
+
+def test_given_linux_when_preferring_macos_style_then_noop(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	monkeypatch.delenv("QT_QUICK_CONTROLS_STYLE", raising=False)
+
+	# when
+	qt_theme.prefer_macos_quick_controls_style()
+
+	# then
+	assert "QT_QUICK_CONTROLS_STYLE" not in os.environ
+
+
+def test_given_user_style_env_when_preferring_macos_style_then_preserves(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	monkeypatch.setenv("QT_QUICK_CONTROLS_STYLE", "Fusion")
+
+	# when
+	with patch("PySide6.QtQuickControls2.QQuickStyle") as style:
+		qt_theme.prefer_macos_quick_controls_style()
+
+	# then
+	assert os.environ["QT_QUICK_CONTROLS_STYLE"] == "Fusion"
+	style.setStyle.assert_called_once_with("macOS")
+
+
+def test_given_macos_style_load_failure_when_applying_theme_then_warns(
+	monkeypatch: pytest.MonkeyPatch,
+	capsys: pytest.CaptureFixture[str],
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	app = MagicMock(spec=QGuiApplication)
+
+	# when
+	with (
+		patch.object(qt_theme, "_set_quick_style", return_value=False),
+		patch.object(qt_theme, "follow_system_color_scheme"),
+		patch.object(qt_theme, "resolve_button_accent", return_value=QColor("#308cc6")),
+		patch("PySide6.QtQuickControls2.QQuickStyle") as style,
+	):
+		style.name.return_value = "Basic"
+		qt_theme.apply_qt_quick_theme(app)
+
+	# then
+	err = capsys.readouterr().err
+	assert "macOS" in err
+	assert "Basic" in err
+
+
+def test_given_tty_when_installing_terminal_quit_signals_then_wires_notifier(
+	monkeypatch: pytest.MonkeyPatch,
+	qapp: QCoreApplication,
+):
+	# given — pretend stdin is a TTY on a Unix platform.
+	if sys.platform == "win32":
+		pytest.skip("terminal quit signals are Unix-only")
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	fake_stdin = MagicMock()
+	fake_stdin.isatty.return_value = True
+	monkeypatch.setattr(qt_theme.sys, "stdin", fake_stdin)
+	# Drop any prior install from other tests.
+	if hasattr(qapp, "_srxy_terminal_quit_signals"):
+		delattr(qapp, "_srxy_terminal_quit_signals")
+
+	# when
+	ok = qt_theme.install_terminal_quit_signals(qapp)
+
+	# then
+	assert ok is True
+	assert hasattr(qapp, "_srxy_terminal_quit_signals")
+	kept = qapp._srxy_terminal_quit_signals  # type: ignore[attr-defined]
+	assert len(kept) == 4
+	rsock, wsock, notifier, pump = kept
+	assert rsock is not None and wsock is not None and notifier is not None
+	assert pump is not None
+
+
+def test_given_non_tty_when_installing_terminal_quit_signals_then_still_wires(
+	monkeypatch: pytest.MonkeyPatch,
+	qapp: QCoreApplication,
+):
+	# given — non-TTY must still install (uv/task trees + SIGTERM); Finder simply
+	# never delivers Ctrl+C.
+	if sys.platform == "win32":
+		pytest.skip("terminal quit signals are Unix-only")
+	fake_stdin = MagicMock()
+	fake_stdin.isatty.return_value = False
+	monkeypatch.setattr(qt_theme.sys, "stdin", fake_stdin)
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	if hasattr(qapp, "_srxy_terminal_quit_signals"):
+		delattr(qapp, "_srxy_terminal_quit_signals")
+
+	# when
+	ok = qt_theme.install_terminal_quit_signals(qapp)
+
+	# then
+	assert ok is True
+	assert hasattr(qapp, "_srxy_terminal_quit_signals")
+
+
+def test_given_sigint_ignored_when_installing_terminal_quit_then_restores_handler(
+	monkeypatch: pytest.MonkeyPatch,
+	qapp: QCoreApplication,
+):
+	# given
+	if sys.platform == "win32":
+		pytest.skip("terminal quit signals are Unix-only")
+	import signal
+
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	signal.signal(signal.SIGINT, signal.SIG_IGN)
+	if hasattr(qapp, "_srxy_terminal_quit_signals"):
+		delattr(qapp, "_srxy_terminal_quit_signals")
+
+	# when
+	ok = qt_theme.install_terminal_quit_signals(qapp)
+
+	# then
+	assert ok is True
+	assert signal.getsignal(signal.SIGINT) is not signal.SIG_IGN
+
+
+def test_given_darwin_offscreen_when_native_alerts_then_disabled(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	monkeypatch.setenv("QT_QPA_PLATFORM", "offscreen")
+
+	# when / then
+	assert qt_theme.native_macos_alerts_enabled() is False
+
+
+def test_given_darwin_interactive_when_native_alerts_then_enabled(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "darwin")
+	monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+
+	# when / then
+	assert qt_theme.native_macos_alerts_enabled() is True
+
+
+def test_given_linux_when_native_alerts_then_disabled(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setattr(qt_theme.sys, "platform", "linux")
+	monkeypatch.delenv("QT_QPA_PLATFORM", raising=False)
+
+	# when / then
+	assert qt_theme.native_macos_alerts_enabled() is False
+
+
+def test_given_no_logging_rules_when_silencing_qt_then_sets_mime_and_ffmpeg_rules(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.delenv("QT_LOGGING_RULES", raising=False)
+	calls: list[str] = []
+
+	class _FakeLoggingCategory:
+		@staticmethod
+		def setFilterRules(rules: str):
+			calls.append(rules)
+
+	monkeypatch.setattr(
+		"PySide6.QtCore.QLoggingCategory",
+		_FakeLoggingCategory,
+		raising=False,
+	)
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then — env uses ';'; the API must use newlines ('; makes one malformed rule)
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert rules == "qt.qpa.mime=false;qt.multimedia.ffmpeg=false"
+	assert calls == ["qt.qpa.mime=false\nqt.multimedia.ffmpeg=false"]
+
+
+def test_given_existing_mime_rule_when_silencing_qt_then_preserves_mime_adds_ffmpeg(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "qt.qpa.mime=true")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.qpa.mime=true" in rules
+	assert "qt.multimedia.ffmpeg=false" in rules
+
+
+def test_given_other_logging_rules_when_silencing_qt_then_appends_mime_and_ffmpeg_rules(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "*.debug=false")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	assert os.environ["QT_LOGGING_RULES"] == ("*.debug=false;qt.qpa.mime=false;qt.multimedia.ffmpeg=false")
+
+
+def test_given_existing_ffmpeg_rule_when_silencing_qt_then_preserves_ffmpeg_adds_mime(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setenv("QT_LOGGING_RULES", "qt.multimedia.ffmpeg=true")
+
+	# when
+	qt_theme.silence_noisy_qt_logging()
+
+	# then
+	rules = os.environ["QT_LOGGING_RULES"]
+	assert "qt.multimedia.ffmpeg=true" in rules
+	assert "qt.qpa.mime=false" in rules
+	assert "qt.multimedia.ffmpeg=false" not in rules
+
+
+def test_given_pyside_avutil_when_silencing_ffmpeg_av_log_then_sets_error_level():
+	# given — use the real bundled lib when present *and* ctypes-loadable.
+	# Ubuntu CI often ships libavutil.so that fails CDLL with unresolved
+	# OPENSSL_3.0.0 symbols (Qt loads it via its own RPATH; bare ctypes does not).
+	paths = qt_theme._pyside_avutil_library_paths()  # pyright: ignore[reportPrivateUsage]
+	if not paths:
+		pytest.skip("PySide6 libavutil not present")
+
+	import ctypes
+
+	loadable: ctypes.CDLL | None = None
+	for path in paths:
+		try:
+			loadable = ctypes.CDLL(str(path))
+			break
+		except OSError:
+			continue
+	if loadable is None:
+		assert qt_theme.silence_ffmpeg_av_log() is False
+		pytest.skip("PySide6 libavutil present but not ctypes-loadable")
+
+	# when
+	ok = qt_theme.silence_ffmpeg_av_log()
+
+	# then
+	assert ok is True
+	loadable.av_log_get_level.restype = ctypes.c_int
+	assert loadable.av_log_get_level() == qt_theme._AV_LOG_ERROR  # pyright: ignore[reportPrivateUsage]
+
+
+def test_given_avutil_cdll_oserror_when_silencing_ffmpeg_av_log_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given — path listed but loading fails (mirrors Ubuntu CI OPENSSL unresolved)
+	monkeypatch.setattr(
+		qt_theme,
+		"_pyside_avutil_library_paths",
+		lambda: [Path("/nonexistent/libavutil.so")],
+	)
+
+	# when / then
+	assert qt_theme.silence_ffmpeg_av_log() is False
+
+
+def test_given_no_avutil_when_silencing_ffmpeg_av_log_then_returns_false(
+	monkeypatch: pytest.MonkeyPatch,
+):
+	# given
+	monkeypatch.setattr(qt_theme, "_pyside_avutil_library_paths", lambda: [])
+
+	# when / then
+	assert qt_theme.silence_ffmpeg_av_log() is False

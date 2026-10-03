@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import platform
 import re
 import shutil
@@ -97,3 +98,41 @@ def test_given_macho_bundle_when_open_then_not_missing_executable(tmp_path: Path
 	# Relocated SrxyPython needs PYTHONHOME baked into the Mach-O launcher.
 	strings_out = subprocess.check_output(["/usr/bin/strings", str(exe)], text=True)  # noqa: S603
 	assert fake_home.as_posix() in strings_out
+	# Shell stub is copied (not restamped) — still present as SrxyPython.
+	assert (app / "Contents" / "MacOS" / "SrxyPython").is_file()
+	assert os.access(exe, os.X_OK)
+	# LaunchServices often refuses unsigned apps under /var/folders on Tahoe
+	# (kLSNoExecutableErr) even when the Mach-O is valid — assert direct exec instead.
+	direct = subprocess.run(  # noqa: S603
+		[str(exe), "--help"],
+		check=False,
+		capture_output=True,
+		text=True,
+	)
+	assert direct.returncode == 0, (direct.stdout or "") + (direct.stderr or "")
+
+
+@pytest.mark.skipif(platform.system().lower() != "darwin", reason="embed restamp only on macOS")
+def test_given_real_venv_python_when_write_launcher_then_embedded_sdk_is_26(tmp_path: Path):
+	"""Installed SrxyPython must be a restamped copy so AppKit enables Liquid Glass."""
+	from srxy.adapters.inbound.installer.install import _is_macho_executable, write_launcher
+
+	real_py = Path(sys.executable).resolve()
+	if not _is_macho_executable(real_py):
+		pytest.skip(f"sys.executable is not Mach-O: {real_py}")
+
+	prefix = tmp_path / "Applications" / "srxy"
+	bin_dir = prefix / ".venv" / "bin"
+	bin_dir.mkdir(parents=True)
+	(bin_dir / "srxy").write_text("#!/bin/sh\n", encoding="utf-8")
+	# Point venv python at the real interpreter (symlink) so embed copies a Mach-O.
+	(bin_dir / "python").symlink_to(real_py)
+	site = prefix / ".venv" / "lib" / f"python{sys.version_info.major}.{sys.version_info.minor}" / "site-packages"
+	site.mkdir(parents=True)
+
+	write_launcher(prefix)
+	embedded = prefix / "Srxy.app" / "Contents" / "MacOS" / "SrxyPython"
+	assert embedded.is_file()
+	assert embedded.stat().st_ino != real_py.stat().st_ino
+	show = subprocess.check_output(["/usr/bin/vtool", "-show-build", str(embedded)], text=True)  # noqa: S603
+	assert re.search(r"sdk\s+26(\.|$|\s)", show), show

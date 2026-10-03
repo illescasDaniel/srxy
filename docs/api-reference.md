@@ -62,10 +62,10 @@ Fields:
 
 Dataclass (`srxy.domain.models.FileSearchResult`)
 
-FileSearchResult(path: 'Path', score: 'float', breakdown: 'dict[str, float]' = <factory>, lines: 'list[LineMatch]' = <factory>, term_surfaces: 'dict[str, dict[str, float]]' = <factory>)
+FileSearchResult(path: 'Path', score: 'float', breakdown: 'dict[str, float]' = <factory>, lines: 'list[LineMatch]' = <factory>, term_surfaces: 'dict[str, dict[str, float]]' = <factory>, is_dir: 'bool' = False)
 
 ```python
-FileSearchResult(path: Path, score: float, breakdown: dict[str, float] = ..., lines: list[LineMatch] = ..., term_surfaces: dict[str, dict[str, float]] = ...)
+FileSearchResult(path: Path, score: float, breakdown: dict[str, float] = ..., lines: list[LineMatch] = ..., term_surfaces: dict[str, dict[str, float]] = ..., is_dir: bool = False)
 ```
 
 Fields:
@@ -75,6 +75,7 @@ Fields:
 - `breakdown`: `dict[str, float]`
 - `lines`: `list[LineMatch]`
 - `term_surfaces`: `dict[str, dict[str, float]]`
+- `is_dir`: `bool`
 
 ## `LineMatch`
 
@@ -162,7 +163,7 @@ Fields:
 ## `magic_file_search`
 
 ```python
-magic_file_search(path: Path | str, query: str | FileQ, *, search_names: bool = True, search_contents: bool = True, search_docs_tags: bool = True, threshold: float = 0.35, max_file_size: int | None = None, max_matches: int = 50, skip_hidden_folders: bool = True, skip_noise_folders: bool = True, skip_noise_files: bool = True, match_skipped_names: bool = False, include_archives: bool = False, include_subdirectories: bool = True, skipped_files: list[SkippedFile] | None = None, ocr: bool | None = None, transcribe: bool | None = None, semantic_image: bool | None = None, semantic_image_threshold: float = 0.18, transcribe_threshold: float = 0.25, limit: int | None = None, on_progress: Callable[[int, int], None] | None = None, on_activity: ActivityCallback | None = None, on_result: Callable[[FileSearchResult], None] | None = None, max_line_matches: int | None = None, max_workers: int | None = None, cancel_check: Callable[[], bool] | None = None, allow_process_pool: bool = False) -> list[FileSearchResult]
+magic_file_search(path: Path | str, query: str | FileQ, *, search_names: bool = True, search_folders: bool = True, search_contents: bool = True, search_docs_tags: bool = True, threshold: float = 0.35, max_file_size: int | None = None, max_matches: int = 50, skip_hidden_folders: bool = True, skip_noise_folders: bool = True, skip_noise_files: bool = True, match_skipped_names: bool = False, include_archives: bool = False, include_subdirectories: bool = True, skipped_files: list[SkippedFile] | None = None, ocr: bool | None = None, transcribe: bool | None = None, semantic_image: bool | None = None, semantic_image_threshold: float = 0.18, transcribe_threshold: float = 0.25, limit: int | None = None, on_progress: Callable[[int, int], None] | None = None, on_activity: ActivityCallback | None = None, on_result: Callable[[FileSearchResult], None] | None = None, max_line_matches: int | None = None, max_workers: int | None = None, cancel_check: Callable[[], bool] | None = None, allow_process_pool: bool = False) -> list[FileSearchResult]
 ```
 
 Public library facade — builds a default ``FileSearchUseCase``.

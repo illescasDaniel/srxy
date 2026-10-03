@@ -295,6 +295,189 @@ def prefer_macos_quick_controls_style():
 	QQuickStyle.setStyle("macOS")
 
 
+def native_macos_alerts_enabled() -> bool:
+	"""Whether to use native ``MessageDialog`` (NSAlert) for simple macOS alerts.
+
+	Disabled under ``QT_QPA_PLATFORM=offscreen`` so GUI tests keep the QML
+	``Dialog`` path (findable ``objectName``, no NSAlert in CI).
+	"""
+	if sys.platform != "darwin":
+		return False
+	return os.environ.get("QT_QPA_PLATFORM", "").strip().lower() != "offscreen"
+
+
+def install_terminal_quit_signals(app: QCoreApplication) -> bool:
+	"""Bridge SIGINT/SIGTERM into Qt so Ctrl+C quits ``app.exec()`` cleanly.
+
+	While the Qt event loop owns the process, Python never raises
+	``KeyboardInterrupt`` between bytecode instructions. We therefore:
+
+	1. Restore SIGINT if a parent left it ignored (``SIG_IGN`` — common for
+		backgrounded jobs and some launcher trees).
+	2. Install handlers that write a wake byte and request ``quit()``.
+	3. Use ``signal.set_wakeup_fd`` so the C-level signal path wakes the fd
+		even when the interpreter is blocked inside Qt's Cocoa loop.
+	4. Watch that fd with ``QSocketNotifier`` and call ``quit()`` on the GUI
+		thread; keep a short ``QTimer`` so Python periodically regains control
+		as a belt-and-suspenders for platforms where the notifier alone is slow.
+
+	Installed for every Unix GUI/installer process (Finder ``.app`` launches
+	simply never deliver Ctrl+C; SIGTERM still quits cleanly).
+	"""
+	if sys.platform == "win32":
+		return False
+
+	import signal
+	import socket
+
+	from PySide6.QtCore import QSocketNotifier, QTimer
+
+	# Parents (or background job control) may leave SIGINT ignored; children
+	# inherit that and Ctrl+C then never reaches our handler.
+	if signal.getsignal(signal.SIGINT) is signal.SIG_IGN:
+		signal.signal(signal.SIGINT, signal.SIG_DFL)
+
+	rsock, wsock = socket.socketpair()
+	rsock.setblocking(False)
+	wsock.setblocking(False)
+
+	def _wake(_signum: int | None = None, _frame: object | None = None):
+		try:
+			wsock.send(b"\0")
+		except OSError:
+			pass
+
+	def _quit_from_signal(_signum: int, _frame: object):
+		_wake()
+		# quit() is documented thread-safe; still prefer the notifier path.
+		QCoreApplication.quit()
+
+	signal.signal(signal.SIGINT, _quit_from_signal)
+	signal.signal(signal.SIGTERM, _quit_from_signal)
+	try:
+		# C-level write on signal — works even while blocked in app.exec().
+		signal.set_wakeup_fd(wsock.fileno())
+	except (ValueError, OSError):
+		# Non-main thread or unsupported — handler + timer still help.
+		pass
+
+	notifier = QSocketNotifier(rsock.fileno(), QSocketNotifier.Type.Read, app)
+
+	def _on_activated(*_args: object):
+		try:
+			while True:
+				chunk = rsock.recv(256)
+				if not chunk:
+					break
+		except BlockingIOError:
+			pass
+		except OSError:
+			pass
+		QCoreApplication.quit()
+
+	notifier.activated.connect(_on_activated)
+
+	# Let Python run often enough that signal handlers can fire on stacks where
+	# set_wakeup_fd / CFSocket integration is flaky (classic PyQt cookbook).
+	pump = QTimer(app)
+	pump.setInterval(200)
+	pump.timeout.connect(lambda: None)
+	pump.start()
+
+	app._srxy_terminal_quit_signals = (rsock, wsock, notifier, pump)  # type: ignore[attr-defined]
+	return True
+
+
+# FFmpeg av_log levels (libavutil). INFO (32) dumps demuxer ``Input #0`` spam;
+# ERROR (16) keeps real failures visible without the stream dump.
+_AV_LOG_ERROR = 16
+
+
+def _pyside_avutil_library_paths() -> list[Path]:
+	"""Candidate paths for PySide6's bundled libavutil (Qt Multimedia FFmpeg)."""
+	try:
+		import PySide6
+	except ImportError:
+		return []
+	root = Path(PySide6.__file__).resolve().parent
+	patterns = (
+		"Qt/lib/libavutil.*.dylib",  # macOS (prefer shorter match via sort)
+		"Qt/lib/libavutil.so*",  # Linux
+		"Qt/bin/avutil-*.dll",  # Windows
+		"Qt/bin/avutil*.dll",
+	)
+	found: list[Path] = []
+	for pattern in patterns:
+		found.extend(p for p in root.glob(pattern) if p.is_file())
+	# Prefer the unversioned-minor symlink/name (libavutil.59.dylib) over the
+	# fully versioned dylib so we load the same handle Qt Multimedia uses.
+	return sorted(found, key=lambda p: (len(p.name), p.name))
+
+
+def silence_ffmpeg_av_log(*, level: int = _AV_LOG_ERROR) -> bool:
+	"""Lower FFmpeg ``av_log`` so Qt Multimedia stops dumping demuxer info to stderr.
+
+	Qt's ``qt.multimedia.ffmpeg`` logging category does **not** cover the raw
+	``Input #0, mov,mp4…`` stream dumps — those come from libavutil's default
+	stderr callback. Set the level on PySide6's bundled ``libavutil`` (same
+	copy the multimedia plugin links). Returns True when the level was set.
+	"""
+	import ctypes
+
+	for path in _pyside_avutil_library_paths():
+		try:
+			lib = ctypes.CDLL(str(path))
+			lib.av_log_set_level.argtypes = [ctypes.c_int]
+			lib.av_log_set_level.restype = None
+			lib.av_log_set_level(level)
+			return True
+		except OSError:
+			continue
+	return False
+
+
+def silence_noisy_qt_logging():
+	"""Suppress known-harmless Qt log spam that floods the console.
+
+	``qt.qpa.mime: Retrying to obtain clipboard.`` is emitted when another
+	process briefly holds the clipboard (IDE, terminal, browser) while a ComboBox
+	or similar control queries it — a Qt bug (QTBUG-130316 / QTBUG-97930), not an
+	srxy fault.
+
+	``qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version … LGPL …``
+	is an informational notice from Qt's FFmpeg backend. Raw demuxer dumps
+	(``Input #0, …``) bypass Qt categories and need ``silence_ffmpeg_av_log``.
+
+	Silence the categories unless the user already configured
+	``QT_LOGGING_RULES`` for them, then lower FFmpeg ``av_log``.
+
+	``QLoggingCategory.setFilterRules`` must receive newline-separated rules;
+	a single ``;``-joined string is treated as one malformed rule (Qt then
+	ignores it and the spam remains). The env var still uses ``;``.
+	"""
+	desired = (
+		("qt.qpa.mime", "qt.qpa.mime=false"),
+		("qt.multimedia.ffmpeg", "qt.multimedia.ffmpeg=false"),
+	)
+	existing = os.environ.get("QT_LOGGING_RULES", "").strip()
+	# Normalize both ; and newline separators so we can rebuild cleanly.
+	parts = [part.strip() for part in existing.replace("\n", ";").split(";") if part.strip()]
+	for key, rule in desired:
+		if key not in existing:
+			parts.append(rule)
+	if parts:
+		os.environ["QT_LOGGING_RULES"] = ";".join(parts)
+		try:
+			from PySide6.QtCore import QLoggingCategory
+
+			# Newlines — not semicolons — for the API (see docstring).
+			QLoggingCategory.setFilterRules("\n".join(parts))
+		except (ImportError, AttributeError, RuntimeError):
+			# Qt not importable / older build without the API — env rule still helps.
+			pass
+	silence_ffmpeg_av_log()
+
+
 def _rgb01_to_hex(r: float, g: float, b: float) -> str | None:
 	"""Convert sRGB [0,1] components to ``#rrggbb``, or ``None`` if unset/out of range."""
 	if not all(0.0 <= c <= 1.0 for c in (r, g, b)):
@@ -543,7 +726,18 @@ def apply_qt_quick_theme(app: QCoreApplication) -> SrxyTheme:
 		button_accent = resolve_button_accent(app)
 		_patch_fusion_selection_palette(app)
 	elif sys.platform == "darwin":
-		_set_quick_style("macOS")
+		if not _set_quick_style("macOS"):
+			active = "?"
+			try:
+				from PySide6.QtQuickControls2 import QQuickStyle
+
+				active = QQuickStyle.name() or active
+			except ImportError:
+				pass
+			print(
+				f"warning: Qt Quick Controls style 'macOS' failed to load (active: {active!r})",
+				file=sys.stderr,
+			)
 		follow_system_color_scheme(app)
 		button_accent = resolve_button_accent(app)
 	else:
@@ -569,10 +763,14 @@ __all__ = [
 	"apply_qt_quick_theme",
 	"contrast_text_on",
 	"follow_system_color_scheme",
+	"install_terminal_quit_signals",
+	"native_macos_alerts_enabled",
 	"prefer_macos_quick_controls_style",
 	"prefer_native_file_dialogs",
 	"prefer_stable_wayland_rendering",
 	"resolve_button_accent",
 	"shared_qml_import_path",
+	"silence_ffmpeg_av_log",
+	"silence_noisy_qt_logging",
 	"vulkan_runtime_available",
 ]
