@@ -1,10 +1,67 @@
 from __future__ import annotations
 
+import contextlib
+import gc
 import os
 import sys
 
 
 _CPU_WARNING_CONTEXTS: set[str] = set()
+
+
+def drop_torch_cache_object(obj: object | None):
+	"""Best-effort move a cached model off GPU before dropping the last reference.
+
+	Handles ``nn.Module`` / SentenceTransformer (``.to``), HF pipelines (``.model``),
+	and nested wrappers. Safe no-op for non-torch objects and when CUDA is absent.
+	"""
+	if obj is None:
+		return
+	seen: set[int] = set()
+
+	def _drop(value: object | None):
+		if value is None:
+			return
+		identity = id(value)
+		if identity in seen:
+			return
+		seen.add(identity)
+		inner = getattr(value, "model", None)
+		if inner is not None and inner is not value:
+			_drop(inner)
+		to_fn = getattr(value, "to", None)
+		if callable(to_fn):
+			with contextlib.suppress(Exception):
+				to_fn("cpu")
+
+	if isinstance(obj, tuple):
+		for item in obj:
+			_drop(item)
+	else:
+		_drop(obj)
+
+
+def release_cuda_memory():
+	"""Return freed CUDA blocks to the driver after model singletons are cleared.
+
+	``reset_*_model`` helpers only drop Python refs; without ``empty_cache`` the
+	caching allocator keeps VRAM reserved and the heavy integration suite OOMs
+	once semantic + CLIP + whisper have each been loaded in one process.
+	"""
+	gc.collect()
+	if not _torch_available():
+		return
+	import torch
+
+	if not torch.cuda.is_available():
+		return
+	with contextlib.suppress(Exception):
+		torch.cuda.synchronize()
+	torch.cuda.empty_cache()
+	ipc_collect = getattr(torch.cuda, "ipc_collect", None)
+	if callable(ipc_collect):
+		with contextlib.suppress(Exception):
+			ipc_collect()
 
 
 def _torch_available() -> bool:

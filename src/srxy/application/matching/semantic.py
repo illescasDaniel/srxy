@@ -98,11 +98,22 @@ def warmup_semantic_model():
 	_get_model()
 
 
-def reset_semantic_model():
-	"""Reset the cached semantic model. Intended for tests."""
+def reset_semantic_model(*, release_cuda: bool = True):
+	"""Reset the cached semantic model and optionally return its VRAM to CUDA.
+
+	Intended for tests (and any caller that must unload the singleton).
+	Pass ``release_cuda=False`` when batching several resets, then call
+	:func:`srxy.adapters.outbound.models.device.release_cuda_memory` once.
+	"""
+	from srxy.adapters.outbound.models.device import drop_torch_cache_object, release_cuda_memory
+
 	global _semantic_model
+	model = _semantic_model
 	_semantic_model = None
 	_run_embedding_cache.clear()
+	drop_torch_cache_object(model)
+	if release_cuda:
+		release_cuda_memory()
 
 
 def _cosine_similarity(left: object, right: object) -> float:

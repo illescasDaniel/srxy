@@ -277,10 +277,21 @@ def _load_unlimited_ocr_model() -> tuple[object, object]:
 		return _unlimited_ocr_model_state
 
 
-def reset_unlimited_ocr_model():
-	"""Reset the cached Unlimited OCR model. Intended for tests."""
+def reset_unlimited_ocr_model(*, release_cuda: bool = True):
+	"""Reset the cached Unlimited OCR model and optionally return its VRAM to CUDA.
+
+	Intended for tests (and any caller that must unload the singleton).
+	Pass ``release_cuda=False`` when batching several resets, then call
+	:func:`srxy.adapters.outbound.models.device.release_cuda_memory` once.
+	"""
+	from srxy.adapters.outbound.models.device import drop_torch_cache_object, release_cuda_memory
+
 	global _unlimited_ocr_model_state
+	state = _unlimited_ocr_model_state
 	_unlimited_ocr_model_state = None
+	drop_torch_cache_object(state)
+	if release_cuda:
+		release_cuda_memory()
 
 
 class UnlimitedOcrEngine(OcrEngine):
@@ -413,11 +424,11 @@ def get_ocr_engine() -> OcrEngine:
 	return _ocr_engine
 
 
-def reset_ocr_engine():
+def reset_ocr_engine(*, release_cuda: bool = True):
 	global _ocr_engine
 	_ocr_engine = None
 	reset_ocr_languages_cache()
-	reset_unlimited_ocr_model()
+	reset_unlimited_ocr_model(release_cuda=release_cuda)
 
 
 def preprocess_image(image: Image.Image) -> Image.Image:

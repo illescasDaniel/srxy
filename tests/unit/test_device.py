@@ -5,6 +5,8 @@ from unittest.mock import MagicMock, patch
 import pytest
 
 from srxy.adapters.outbound.models.device import (
+	drop_torch_cache_object,
+	release_cuda_memory,
 	resolve_semantic_image_device,
 	resolve_torch_device,
 	resolve_transcribe_device,
@@ -109,3 +111,61 @@ def test_given_mps_device_when_selecting_backend_then_uses_transformers():
 def test_given_cuda_device_when_selecting_compute_type_then_uses_float16():
 	# when / then
 	assert transcribe_compute_type("cuda") == "float16"
+
+
+def test_given_module_with_to_when_dropping_torch_cache_object_then_moves_to_cpu():
+	# given
+	module = MagicMock()
+	module.model = None
+
+	# when
+	drop_torch_cache_object(module)
+
+	# then
+	module.to.assert_called_once_with("cpu")
+
+
+def test_given_pipeline_wrapper_when_dropping_torch_cache_object_then_moves_inner_model():
+	# given
+	inner = MagicMock()
+	pipeline = MagicMock()
+	pipeline.model = inner
+	# Avoid treating the MagicMock itself as endlessly nested via .model defaults
+	type(inner).model = property(lambda self: None)
+
+	# when
+	drop_torch_cache_object(pipeline)
+
+	# then
+	inner.to.assert_called_once_with("cpu")
+
+
+def test_given_no_torch_when_releasing_cuda_memory_then_is_noop(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.device._torch_available",
+		lambda: False,
+	)
+
+	# when / then — must not raise
+	release_cuda_memory()
+
+
+def test_given_cuda_available_when_releasing_cuda_memory_then_empties_cache(monkeypatch: pytest.MonkeyPatch):
+	# given
+	fake_torch = MagicMock()
+	fake_torch.cuda.is_available.return_value = True
+	fake_torch.cuda.ipc_collect = MagicMock()
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.models.device._torch_available",
+		lambda: True,
+	)
+
+	with patch.dict("sys.modules", {"torch": fake_torch}):
+		# when
+		release_cuda_memory()
+
+	# then
+	fake_torch.cuda.synchronize.assert_called_once()
+	fake_torch.cuda.empty_cache.assert_called_once()
+	fake_torch.cuda.ipc_collect.assert_called_once()

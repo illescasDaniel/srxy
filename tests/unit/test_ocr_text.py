@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import importlib.util
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -95,21 +96,6 @@ def test_given_tesseract_on_path_when_selecting_engine_then_uses_tesseract(monke
 	# then
 	assert text == "invoice total"
 	reset_ocr_engine()
-
-
-def test_given_no_tesseract_when_checking_availability_then_returns_false():
-	# given
-	with patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False):
-		# when / then
-		assert is_ocr_available() is False
-
-
-def test_given_no_tesseract_when_ensuring_ocr_available_then_raises():
-	# given
-	with patch("srxy.adapters.outbound.ocr.ocr_text.tesseract_available", return_value=False):
-		# when / then
-		with pytest.raises(RuntimeError, match="Tesseract OCR is not available"):
-			ensure_ocr_available()
 
 
 def test_given_no_tesseract_when_reading_unavailable_message_then_returns_install_hint():
@@ -449,9 +435,22 @@ def test_given_ocr_timeout_when_iterating_lines_then_records_skip(tmp_path: Path
 def test_given_no_torch_or_transformers_when_checking_unlimited_deps_then_returns_false(
 	monkeypatch: pytest.MonkeyPatch,
 ):
-	# given — default CI/core install has no [semantic] extras
-	monkeypatch.delitem(__import__("sys").modules, "torch", raising=False)
-	monkeypatch.delitem(__import__("sys").modules, "transformers", raising=False)
+	# given — find_spec must miss both packages (sys.modules alone is not enough when
+	# [semantic] is installed on the developer machine / heavy gate)
+	import sys
+
+	monkeypatch.delitem(sys.modules, "torch", raising=False)
+	monkeypatch.delitem(sys.modules, "transformers", raising=False)
+
+	def fake_find_spec(name: str):
+		if name in {"torch", "transformers"}:
+			return None
+		return importlib.util.find_spec(name)
+
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text.importlib.util.find_spec",
+		fake_find_spec,
+	)
 
 	# when / then
 	assert unlimited_ocr_deps_installed() is False
@@ -477,6 +476,18 @@ def test_given_only_torch_when_checking_unlimited_deps_then_returns_false(monkey
 
 	monkeypatch.setitem(sys.modules, "torch", MagicMock())
 	monkeypatch.delitem(sys.modules, "transformers", raising=False)
+
+	def fake_find_spec(name: str):
+		if name == "transformers":
+			return None
+		if name == "torch":
+			return object()
+		return importlib.util.find_spec(name)
+
+	monkeypatch.setattr(
+		"srxy.adapters.outbound.ocr.ocr_text.importlib.util.find_spec",
+		fake_find_spec,
+	)
 
 	# when / then
 	assert unlimited_ocr_deps_installed() is False

@@ -105,6 +105,29 @@ def semantic_model_ready(semantic_search_enabled: None):  # pyright: ignore[repo
 	warmup_semantic_model()
 
 
+@pytest.fixture(autouse=True)
+def release_cached_ml_models_after_test():
+	"""Unload GPU model singletons between tests so VRAM does not accumulate.
+
+	Session warmup keeps the first test under the timeout budget; afterwards we
+	drop semantic / CLIP / whisper / Unlimited OCR caches so a contended 8 GiB
+	desktop GPU (or stacking all three backends in one process) does not OOM
+	later heavy tests. Reloads are lazy on next use.
+	"""
+	yield
+	from srxy.adapters.outbound.models.device import release_cuda_memory
+	from srxy.adapters.outbound.ocr.ocr_text import reset_ocr_engine
+	from srxy.adapters.outbound.semantic.semantic_image import reset_semantic_image_model
+	from srxy.adapters.outbound.transcribe.transcribe_text import reset_transcribe_models
+	from srxy.application.matching.semantic import reset_semantic_model
+
+	reset_semantic_model(release_cuda=False)
+	reset_semantic_image_model(release_cuda=False)
+	reset_transcribe_models(release_cuda=False)
+	reset_ocr_engine(release_cuda=False)
+	release_cuda_memory()
+
+
 @pytest.fixture(scope="module")
 def search_corpus() -> list[dict[str, str]]:
 	return load_search_corpus()

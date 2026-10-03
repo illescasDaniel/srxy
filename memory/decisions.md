@@ -2,6 +2,12 @@
 
 _Log of significant technical, structural, or dependency choices. Newest first._
 
+## 2026-10-03 — Free CUDA VRAM on model reset; unload between integration tests
+
+- **Context:** Heavy gate OOMed on an 8 GiB desktop GPU (~2 GiB held by kwin/browser/Electron) after the test process itself retained ~4 GiB across semantic text + CLIP + whisper singletons. `reset_*_model` only nulled Python globals, so PyTorch's caching allocator kept blocks reserved and later tests failed allocating ~20 MiB.
+- **Decision:** (1) Add `drop_torch_cache_object` / `release_cuda_memory` in `device.py` (`.to("cpu")` best-effort, then `gc.collect` + `torch.cuda.empty_cache`). (2) Wire every model reset (`semantic`, `semantic_image`, `transcribe`, `unlimited_ocr`) and the CUDA→transformers whisper fallback through those helpers. (3) Integration `autouse` fixture unloads all four caches after each test so VRAM does not accumulate across the suite (session warmup still covers the first-test timeout).
+- **Rationale:** Production singletons stay warm within a search; tests must give VRAM back between cases. Emptying the allocator without dropping refs does not free resident models; resetting without `empty_cache` leaves reserved slabs. Reloads are lazy and acceptable for heavy.
+
 ## 2026-10-01 — Video preview poster via ffmpeg + silence Qt FFmpeg LGPL info log
 
 - **Context:** Media preview panel showed a black `VideoOutput` until play; play/pause/mute were text labels; Qt logged `qt.multimedia.ffmpeg: Using Qt multimedia with FFmpeg version … LGPL …` on every GUI launch that loads multimedia.
