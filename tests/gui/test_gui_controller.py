@@ -1758,7 +1758,7 @@ def test_given_persisted_options_when_controller_starts_then_restores(
 	save_persisted_search_prefs(
 		persist_options=True,
 		persist_filters=False,
-		options=SearchOptions(include_hidden=True, include_archives=True),
+		options=SearchOptions(search_folders=False),
 	)
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 
@@ -1768,8 +1768,9 @@ def test_given_persisted_options_when_controller_starts_then_restores(
 
 	# then
 	assert payload["persist_options"] is True
-	assert payload["include_hidden"] is True
-	assert payload["include_archives"] is True
+	assert payload["search_folders"] is False
+	# scan switches are not persisted with the options (only with Remember filters)
+	assert payload["include_hidden"] is False
 	controller.shutdown(thread_wait_ms=100)
 
 
@@ -1785,7 +1786,7 @@ def test_given_persist_flag_when_shutdown_then_writes_settings(
 		json.dumps(
 			{
 				**json.loads(controller.defaultOptionsJson()),
-				"include_noise": True,
+				"search_folders": False,
 				"persist_options": True,
 			}
 		)
@@ -1801,7 +1802,7 @@ def test_given_persist_flag_when_shutdown_then_writes_settings(
 	prefs = load_persisted_search_prefs()
 	assert prefs.persist_options is True
 	assert prefs.options is not None
-	assert prefs.options.include_noise is True
+	assert prefs.options.search_folders is False
 
 
 def test_given_unpersist_when_shutdown_then_clears_payload(
@@ -1840,14 +1841,14 @@ def test_given_default_options_json_when_reset_then_factory_defaults(qapp: QCore
 	args = build_parser().parse_args(["alpha", str(tmp_path), "--cli"])
 	controller = SearchController(args)
 	controller.applyOptionsJson(
-		json.dumps({**json.loads(controller.defaultOptionsJson()), "include_hidden": True, "persist_options": True})
+		json.dumps({**json.loads(controller.defaultOptionsJson()), "search_folders": False, "persist_options": True})
 	)
 
 	# when
 	defaults = json.loads(controller.defaultOptionsJson())
 
 	# then — defaults are factory values; session persist flag untouched until push
-	assert defaults["include_hidden"] is False
+	assert defaults["search_folders"] is True
 	assert defaults["search_names"] is True
 	assert "persist_options" not in defaults
 	assert json.loads(controller.optionsJson())["persist_options"] is True

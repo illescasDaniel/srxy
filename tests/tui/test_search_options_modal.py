@@ -89,40 +89,36 @@ def test_given_content_how_ticked_when_toggling_file_contents_off_then_on_then_t
 	asyncio.run(run())
 
 
-def test_given_file_names_off_when_toggled_then_disables_skipped_file_names():
+def test_given_search_options_modal_when_opened_then_has_no_scan_switches_and_apply_keeps_them():
 	# given
 	app = _SearchOptionsModalHostApp()
-	initial = SearchOptions(
-		search_names=True,
-		search_contents=True,
-		match_skipped_names=True,
-	)
+	initial = SearchOptions(search_names=True, include_archives=True, include_hidden=True, include_subdirectories=False)
+	results: list[SearchOptions | None] = []
 
 	async def run():
 		async with app.run_test(size=(80, 40)) as pilot:
-			app.push_screen(SearchOptionsModal(initial), wait_for_dismiss=False)
-			await pilot.pause()
-			modal = app.screen
-			assert isinstance(modal, SearchOptionsModal)
-			names = modal.query_one("#so-names", Checkbox)
-			skipped = modal.query_one("#so-match-skipped-names", Checkbox)
-			assert skipped.value is True
-			assert skipped.disabled is False
-
-			# when
-			names.value = False
+			app.push_screen(SearchOptionsModal(initial), wait_for_dismiss=False, callback=results.append)
 			await pilot.pause()
 
 			# then
-			assert skipped.disabled is True
-			assert skipped.value is True
+			for checkbox_id in (
+				"so-subdirs",
+				"so-archives",
+				"so-hidden",
+				"so-noise",
+				"so-noise-files",
+				"so-match-skipped-names",
+			):
+				assert not app.screen.query(f"#{checkbox_id}")
 
 			# when
-			names.value = True
+			await pilot.click("#search-options-apply")
 			await pilot.pause()
 
 			# then
-			assert skipped.disabled is False
-			assert skipped.value is True
+			assert results[0] is not None
+			assert results[0].include_archives is True
+			assert results[0].include_hidden is True
+			assert results[0].include_subdirectories is False
 
 	asyncio.run(run())

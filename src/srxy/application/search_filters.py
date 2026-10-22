@@ -24,6 +24,8 @@ from srxy.application.size_limits import (
 	size_limits_from_args,
 	validate_size_limits,
 )
+from srxy.domain.exceptions import IgnorePatternError
+from srxy.domain.ignore_rules import IgnoreSpec, count_effective_patterns, parse_ignore_lines
 
 
 _DEFAULT_THRESHOLD = 0.35
@@ -38,6 +40,8 @@ class SearchFilters:
 	threshold: str
 	semantic_image_threshold: str
 	transcribe_threshold: str
+	ignore_patterns: str = ""  # raw textarea text, lines joined by "\n"
+	respect_gitignore: bool = False
 
 
 def _percent_text(value: float) -> str:
@@ -69,6 +73,8 @@ def search_filters_from_args(args: argparse.Namespace) -> SearchFilters:
 		threshold=_percent_text(args.threshold),
 		semantic_image_threshold=_percent_text(args.semantic_image_threshold),
 		transcribe_threshold=_percent_text(args.transcribe_threshold),
+		ignore_patterns="\n".join(getattr(args, "ignore", None) or []),
+		respect_gitignore=bool(getattr(args, "respect_gitignore", False)),
 	)
 
 
@@ -81,6 +87,8 @@ def apply_search_filters_to_args(args: argparse.Namespace, filters: SearchFilter
 	args.semantic_image_threshold = semantic_image_threshold
 	args.transcribe_threshold = transcribe_threshold
 	apply_size_limits_to_args(args, filters.size_limits)
+	args.ignore = ignore_lines(filters)
+	args.respect_gitignore = filters.respect_gitignore
 
 
 def format_search_filters_summary(filters: SearchFilters) -> str:
@@ -94,7 +102,7 @@ def format_search_filters_summary(filters: SearchFilters) -> str:
 	per_file = filters.max_matches.strip() or "50"
 	text_mib = filters.size_limits.text_mib.strip() or "100"
 	match_threshold = filters.threshold.strip() or _percent_text(_DEFAULT_THRESHOLD)
-	return tr(
+	body = tr(
 		"filters.summary.body",
 		files=files_label,
 		per_file=per_file,
@@ -103,6 +111,16 @@ def format_search_filters_summary(filters: SearchFilters) -> str:
 		image=filters.semantic_image_threshold.strip() or _percent_text(DEFAULT_SEMANTIC_IMAGE_THRESHOLD),
 		transcript=filters.transcribe_threshold.strip() or _percent_text(DEFAULT_TRANSCRIBE_THRESHOLD),
 	)
+	pattern_count = count_effective_patterns(ignore_lines(filters))
+	if pattern_count:
+		key = "filters.summary.ignoring_one" if pattern_count == 1 else "filters.summary.ignoring"
+		ignoring = tr(key, n=pattern_count)
+		if filters.respect_gitignore:
+			ignoring = f"{ignoring} {tr('filters.summary.gitignore')}"
+		return f"{body} · {ignoring}"
+	if filters.respect_gitignore:
+		return f"{body} · {tr('filters.summary.gitignore_only')}"
+	return body
 
 
 def _parse_optional_positive_int(raw: str, *, field_name: str) -> int | None:
@@ -161,3 +179,39 @@ def validate_search_filters(filters: SearchFilters):
 	parse_search_filter_limits(filters)
 	parse_search_filter_thresholds(filters)
 	validate_size_limits(filters.size_limits)
+	try:
+		parse_ignore_lines(ignore_lines(filters), strict=True)
+	except IgnorePatternError as error:
+		raise ValueError(format_ignore_error(error)) from error
+
+
+def ignore_lines(filters: SearchFilters) -> list[str]:
+	return filters.ignore_patterns.splitlines()
+
+
+def ignore_spec_from_args(args: argparse.Namespace) -> IgnoreSpec | None:
+	patterns = tuple(getattr(args, "ignore", None) or ())
+	respect_gitignore = bool(getattr(args, "respect_gitignore", False))
+	if not patterns and not respect_gitignore:
+		return None
+	return IgnoreSpec(patterns=patterns, respect_gitignore=respect_gitignore)
+
+
+def format_ignore_error(error: IgnorePatternError) -> str:
+	from srxy.i18n import tr
+
+	return tr(
+		"filters.ignore.error_line",
+		line=error.line_number,
+		pattern=error.pattern,
+		reason=tr(f"ignore.reason.{error.reason.value}"),
+	)
+
+
+def validate_ignore_text(text: str) -> str:
+	"""Return "" if OK, else the localised message."""
+	try:
+		parse_ignore_lines(text.splitlines(), strict=True)
+	except IgnorePatternError as error:
+		return format_ignore_error(error)
+	return ""

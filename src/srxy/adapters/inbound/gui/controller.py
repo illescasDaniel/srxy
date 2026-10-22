@@ -9,6 +9,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
 from pathlib import Path
 from typing import cast
+from urllib.parse import unquote
 
 from PySide6.QtCore import Q_ARG, Property, QMetaObject, QObject, Qt, QThread, QTimer, Signal, Slot
 from PySide6.QtGui import QTextDocument
@@ -61,7 +62,13 @@ from srxy.application.search_session import (
 	SearchProgressEvent,
 	SearchResultEvent,
 )
-from srxy.application.settings import RecentSearchEntry
+from srxy.application.settings import (
+	SCAN_SWITCH_KEYS,
+	RecentSearchEntry,
+	ScanSwitches,
+	apply_scan_switches,
+	scan_switches_from_options,
+)
 from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
@@ -420,6 +427,8 @@ class SearchController(QObject):
 		self._filters = search_filters_from_args(self._args)
 		self._persist_options = False
 		self._persist_filters = False
+		self._results_root: Path | None = None
+		self._last_added_ignore: str | None = None
 		self._load_persisted_search_prefs()
 		self._recent_searches: list[RecentSearchEntry] = []
 		self._load_recent_searches()
@@ -515,6 +524,8 @@ class SearchController(QObject):
 		self._persist_filters = prefs.persist_filters
 		if prefs.options is not None:
 			self._options = prefs.options
+		if prefs.scan is not None:
+			self._options = apply_scan_switches(self._options, prefs.scan)
 		if prefs.filters is not None:
 			self._filters = prefs.filters
 
@@ -629,7 +640,9 @@ class SearchController(QObject):
 		ok = save_persisted_search_prefs(
 			persist_options=self._persist_options,
 			persist_filters=self._persist_filters,
-			options=self._options if self._persist_options else None,
+			# Always pass options: settings.py stores the blob only with persist_options and
+			# the scan switches only with persist_filters.
+			options=self._options,
 			filters=self._filters if self._persist_filters else None,
 		)
 		if not ok:
@@ -1338,6 +1351,7 @@ class SearchController(QObject):
 
 			self.errorOccurred.emit(tr("error.enter_search_query"))
 			return
+		self._results_root = Path(args.path)
 
 		# Hard deps only — models are handled via download dialogs.
 		error = deps_only_preflight(args)
@@ -2315,7 +2329,8 @@ class SearchController(QObject):
 	def applyOptionsJson(self, payload: str) -> str:  # noqa: N802
 		data = json.loads(payload)
 		persist = bool(data.pop("persist_options", self._persist_options))
-		options = SearchOptions(**data)
+		# The "Which files to scan" switches live in the Filters dialog; keep the current ones.
+		options = apply_scan_switches(SearchOptions(**data), scan_switches_from_options(self._options))
 		if not has_search_source(options):
 			return search_source_required_message()
 		self._options = options
@@ -2331,34 +2346,39 @@ class SearchController(QObject):
 	@Slot(str, result=str)
 	def validateFiltersJson(self, payload: str) -> str:  # noqa: N802
 		"""Return validation error for a filters JSON draft, or empty if valid."""
-		error, _draft, _persist = self._parse_filters_payload(payload)
+		error, _draft, _persist, _scan = self._parse_filters_payload(payload)
 		return error
 
 	@Slot(str, result=str)
 	def applyFiltersJson(self, payload: str) -> str:  # noqa: N802
-		error, draft, persist = self._parse_filters_payload(payload)
-		if error or draft is None:
+		error, draft, persist, scan = self._parse_filters_payload(payload)
+		if error or draft is None or scan is None:
 			return error or "Invalid filters"
 		self._filters = draft
 		self._persist_filters = persist
+		self._options = apply_scan_switches(self._options, scan)
+		apply_search_options_to_args(self._args, self._options)
+		self.optionsSummaryChanged.emit()
 		apply_search_filters_to_args(self._args, self._filters)
 		self.filtersSummaryChanged.emit()
 		self._refresh_stale()
 		self._write_persisted_search_prefs()
 		return ""
 
-	def _parse_filters_payload(self, payload: str) -> tuple[str, SearchFilters | None, bool]:
+	def _parse_filters_payload(self, payload: str) -> tuple[str, SearchFilters | None, bool, ScanSwitches | None]:
 		from srxy.application.size_limits import SizeLimits
 
 		try:
 			data = json.loads(payload)
 			persist = bool(data.pop("persist_filters", self._persist_filters))
+			current = asdict(scan_switches_from_options(self._options))
+			scan = ScanSwitches(**{key: bool(data.pop(key, current[key])) for key in SCAN_SWITCH_KEYS})
 			size = data.pop("size_limits")
 			draft = SearchFilters(size_limits=SizeLimits(**size), **data)
 			validate_search_filters(draft)
 		except (ValueError, json.JSONDecodeError, TypeError, KeyError) as error:
-			return str(error), None, self._persist_filters
-		return "", draft, persist
+			return str(error), None, self._persist_filters, None
+		return "", draft, persist, scan
 
 	@Slot(result=str)
 	def optionsJson(self) -> str:  # noqa: N802
@@ -2369,6 +2389,7 @@ class SearchController(QObject):
 	@Slot(result=str)
 	def filtersJson(self) -> str:  # noqa: N802
 		payload = asdict(self._filters)
+		payload.update(asdict(scan_switches_from_options(self._options)))
 		payload["persist_filters"] = self._persist_filters
 		return json.dumps(payload)
 
@@ -2378,7 +2399,99 @@ class SearchController(QObject):
 
 	@Slot(result=str)
 	def defaultFiltersJson(self) -> str:  # noqa: N802
-		return json.dumps(asdict(default_search_filters()))
+		return json.dumps({**asdict(default_search_filters()), **asdict(ScanSwitches())})
+
+	@Slot(str, result=str)
+	def validateIgnorePatterns(self, text: str) -> str:  # noqa: N802
+		"""Return an inline error naming the bad line, or empty if the ignore text is valid."""
+		from srxy.application.search_filters import validate_ignore_text
+
+		return validate_ignore_text(text)
+
+	@Slot(str, bool, str, result=str)
+	def ignorePatternForPick(self, url: str, is_dir: bool, current_text: str) -> str:  # noqa: N802
+		"""Append the picked file/folder (as an anchored pattern) to ``current_text``; JSON ``{text}`` or ``{error}``."""
+		from srxy.application.ignore_edit import PathOutsideRootError, add_ignore_line, pattern_for_path
+		from srxy.i18n import tr
+
+		picked = Path(_normalize_browsed_path(unquote(url)))
+		root = Path(resolve_gui_search_path(self._path))
+		try:
+			pattern = pattern_for_path(picked, root, is_dir=is_dir)
+		except PathOutsideRootError:
+			return json.dumps({"error": tr("filters.ignore.pick_outside_root")})
+		text, _added = add_ignore_line(current_text, pattern)
+		return json.dumps({"text": text})
+
+	@Slot(int, result=str)
+	def resultIgnoreChoicesJson(self, row: int) -> str:  # noqa: N802
+		"""JSON ``[{kind, pattern, label}]`` of ignore shortcuts for a result row."""
+		from srxy.adapters.outbound.archive.archive_search import split_archive_member_path
+		from srxy.application.ignore_edit import PathOutsideRootError, row_ignore_choices
+		from srxy.i18n import tr
+
+		result = self._results_model.result_at(row)
+		if result is None or self._results_root is None:
+			return "[]"
+		archive_path, member = split_archive_member_path(result.path)
+		try:
+			choices = row_ignore_choices(
+				result.path,
+				self._results_root,
+				is_dir=result.is_dir,
+				archive_path=archive_path if member is not None else None,
+			)
+		except PathOutsideRootError:
+			return "[]"
+		labels = {
+			"file": lambda name: tr("gui.menu.ignore_file", name=name),
+			"folder": lambda name: tr("gui.menu.ignore_folder", name=f"{name}/"),
+			"ext": lambda name: tr("gui.menu.ignore_ext", name=f"*{name}"),
+			"this_folder": lambda _name: tr("gui.menu.ignore_this_folder"),
+			"archive": lambda name: tr("gui.menu.ignore_archive", name=name),
+		}
+		return json.dumps(
+			[
+				{"kind": choice.kind, "pattern": choice.pattern, "label": labels[choice.kind](choice.display)}
+				for choice in choices
+			]
+		)
+
+	@Slot(str, result=str)
+	def addIgnoreRule(self, pattern: str) -> str:  # noqa: N802
+		"""Append ``pattern`` to the committed ignore list; JSON ``{added, toast}``."""
+		from srxy.application.ignore_edit import add_ignore_line
+		from srxy.application.search_filters import validate_ignore_text
+		from srxy.i18n import tr
+
+		toast = tr("gui.toast.ignoring", pattern=pattern)
+		text, added = add_ignore_line(self._filters.ignore_patterns, pattern)
+		if added and validate_ignore_text(text):
+			added = False
+			toast = tr("gui.toast.ignore_rejected")
+		self._last_added_ignore = pattern if added else None
+		if added:
+			self._commit_ignore_text(text)
+		return json.dumps({"added": added, "toast": toast})
+
+	@Slot()
+	def undoLastIgnoreRule(self):  # noqa: N802
+		from srxy.application.ignore_edit import remove_ignore_line
+
+		pattern = self._last_added_ignore
+		self._last_added_ignore = None
+		if pattern is None:
+			return
+		text = remove_ignore_line(self._filters.ignore_patterns, pattern)
+		if text != self._filters.ignore_patterns:
+			self._commit_ignore_text(text)
+
+	def _commit_ignore_text(self, text: str):
+		self._filters = replace(self._filters, ignore_patterns=text)
+		apply_search_filters_to_args(self._args, self._filters)
+		self.filtersSummaryChanged.emit()
+		self._refresh_stale()
+		self._write_persisted_search_prefs()
 
 	@Slot(str, result=str)
 	def i18nTr(self, key: str) -> str:  # noqa: N802

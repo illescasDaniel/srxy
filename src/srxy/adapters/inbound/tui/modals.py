@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+from dataclasses import asdict, dataclass
+
 from textual import on
 from textual.app import ComposeResult
 from textual.containers import Grid, Vertical, VerticalScroll
 from textual.screen import ModalScreen
-from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Select, Static
+from textual.widgets import Button, Checkbox, Input, Label, ProgressBar, Select, Static, TextArea
 
 from srxy.adapters.inbound.tui.labels import (
 	binary_skip_hint,
@@ -28,12 +30,13 @@ from srxy.application.labels import (
 	filter_section_limits,
 	filter_section_sensitivity,
 )
-from srxy.application.search_filters import SearchFilters, validate_search_filters
+from srxy.application.search_filters import SearchFilters, validate_ignore_text, validate_search_filters
 from srxy.application.search_options import (
 	SearchOptions,
 	has_search_source,
 	search_source_required_message,
 )
+from srxy.application.settings import ScanSwitches, scan_switches_from_options
 from srxy.application.size_limits import SizeLimits
 from srxy.i18n import tr
 
@@ -194,7 +197,14 @@ class HelpModal(ModalScreen[None]):
 			refresh()
 
 
-class SearchFiltersModal(ModalScreen[SearchFilters | None]):
+@dataclass(frozen=True, slots=True)
+class FiltersModalResult:
+	filters: SearchFilters
+	persist: bool
+	scan: ScanSwitches = ScanSwitches()
+
+
+class SearchFiltersModal(ModalScreen[FiltersModalResult | None]):
 	DEFAULT_CSS = """
 	SearchFiltersModal {
 		align: center middle;
@@ -246,6 +256,71 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		background: $background;
 	}
 
+	.search-filters-subsection {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		text-style: bold;
+		margin-top: 1;
+		padding-left: 1;
+	}
+
+	.search-filters-hint {
+		width: 100%;
+		height: auto;
+		color: $text-muted;
+		padding: 0 1;
+		margin-bottom: 1;
+		padding-left: 2;
+	}
+
+	.search-filters-noisy-option {
+		padding-left: 1;
+	}
+
+	.search-filters-noisy-hint {
+		padding-left: 3;
+	}
+
+	#search-filters-scroll Checkbox {
+		width: 100%;
+		height: auto;
+		min-height: 1;
+		background: $surface;
+		color: $foreground;
+		border: none;
+		padding: 0 1;
+		content-align: left middle;
+	}
+
+	#search-filters-scroll Checkbox:focus {
+		background: $accent;
+		color: $button-foreground;
+	}
+
+	#search-filters-scroll Checkbox.-on {
+		background: $primary;
+		color: $button-foreground;
+		border: none;
+	}
+
+	#search-filters-scroll Checkbox:disabled {
+		color: $text-muted;
+		opacity: 0.6;
+	}
+
+	#sf-ignore {
+		width: 100%;
+		height: 6;
+		margin-bottom: 1;
+	}
+
+	#sf-ignore-error {
+		width: 100%;
+		height: auto;
+		color: $error;
+	}
+
 	#search-filters-error {
 		width: 100%;
 		height: auto;
@@ -276,14 +351,56 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 	}
 	"""
 
-	def __init__(self, initial: SearchFilters):
+	_SCAN_CHECKBOXES = (
+		("sf-subdirs", "so-subdirs", "include_subdirectories"),
+		("sf-archives", "so-archives", "include_archives"),
+		("sf-hidden", "so-hidden", "include_hidden"),
+		("sf-noise", "so-noise", "include_noise"),
+		("sf-noise-files", "so-noise-files", "include_noise_files"),
+		("sf-match-skipped-names", "so-match-skipped-names", "match_skipped_names"),
+	)
+
+	def __init__(
+		self,
+		initial: SearchFilters,
+		persist: bool = False,
+		scan: ScanSwitches | None = None,
+		*,
+		search_names: bool = True,
+	):
 		super().__init__()
 		self._initial = initial
+		self._persist = persist
+		self._scan = scan if scan is not None else ScanSwitches()
+		self._search_names = search_names
+
+	def _compose_scan_option(
+		self, checkbox_id: str, label_id: str, field: str, *, noisy: bool = False
+	) -> ComposeResult:
+		classes = "search-filters-noisy-option" if noisy else ""
+		yield Checkbox(option_label(label_id), id=checkbox_id, value=getattr(self._scan, field), classes=classes)
+		hint = option_hint(label_id)
+		if hint:
+			hint_classes = "search-filters-hint"
+			if noisy:
+				hint_classes = f"{hint_classes} search-filters-noisy-hint"
+			yield Static(hint, classes=hint_classes)
 
 	def compose(self) -> ComposeResult:
 		with Vertical(id="search-filters-dialog"):
 			yield Static(tr("tui.search_filters"), id="search-filters-title")
 			with VerticalScroll(id="search-filters-scroll"):
+				yield Static(search_options_section_scan(), classes="search-filters-section")
+				yield Label(tr("tui.filters.ignore_label"), classes="search-filters-label")
+				yield TextArea(id="sf-ignore", placeholder=tr("filters.ignore.placeholder"))
+				yield Label("", id="sf-ignore-error")
+				yield Checkbox(tr("filters.ignore.respect_gitignore"), id="sf-respect-gitignore")
+				for checkbox_id, label_id, field in self._SCAN_CHECKBOXES[:2]:
+					yield from self._compose_scan_option(checkbox_id, label_id, field)
+				yield Static(search_options_subsection_noisy(), classes="search-filters-subsection")
+				for checkbox_id, label_id, field in self._SCAN_CHECKBOXES[2:]:
+					yield from self._compose_scan_option(checkbox_id, label_id, field, noisy=True)
+				yield Static(binary_skip_hint(), classes="search-filters-hint")
 				yield Static(filter_section_limits(), classes="search-filters-section")
 				yield Label(filter_label_max_results(), classes="search-filters-label")
 				yield Input(
@@ -307,6 +424,7 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 				yield Input(id="sf-semantic-image-threshold", classes="search-filters-input", compact=True)
 				yield Label(filter_label_speech_min(), classes="search-filters-label")
 				yield Input(id="sf-transcribe-threshold", classes="search-filters-input", compact=True)
+				yield Checkbox(tr("tui.filters.persist"), id="sf-persist")
 			yield Label("", id="search-filters-error")
 			with Grid(id="search-filters-buttons"):
 				yield Button("Cancel", id="search-filters-cancel")
@@ -321,6 +439,24 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 		self.query_one("#sf-threshold", Input).value = self._initial.threshold
 		self.query_one("#sf-semantic-image-threshold", Input).value = self._initial.semantic_image_threshold
 		self.query_one("#sf-transcribe-threshold", Input).value = self._initial.transcribe_threshold
+		self.query_one("#sf-ignore", TextArea).text = self._initial.ignore_patterns
+		self.query_one("#sf-respect-gitignore", Checkbox).value = self._initial.respect_gitignore
+		self.query_one("#sf-persist", Checkbox).value = self._persist
+		self.query_one("#sf-match-skipped-names", Checkbox).disabled = not self._search_names
+
+	def _current_scan(self) -> ScanSwitches:
+		return ScanSwitches(
+			**{
+				field: self.query_one(f"#{checkbox_id}", Checkbox).value
+				for checkbox_id, _l, field in self._SCAN_CHECKBOXES
+			}
+		)
+
+	@on(TextArea.Changed, "#sf-ignore")
+	def _on_ignore_changed(self, event: TextArea.Changed):
+		message = validate_ignore_text(event.text_area.text)
+		self.query_one("#sf-ignore-error", Label).update(message)
+		self.query_one("#search-filters-apply", Button).disabled = bool(message)
 
 	def _current_filters(self) -> SearchFilters:
 		return SearchFilters(
@@ -334,6 +470,8 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 			threshold=self.query_one("#sf-threshold", Input).value,
 			semantic_image_threshold=self.query_one("#sf-semantic-image-threshold", Input).value,
 			transcribe_threshold=self.query_one("#sf-transcribe-threshold", Input).value,
+			ignore_patterns=self.query_one("#sf-ignore", TextArea).text,
+			respect_gitignore=self.query_one("#sf-respect-gitignore", Checkbox).value,
 		)
 
 	def on_button_pressed(self, event: Button.Pressed):
@@ -350,7 +488,7 @@ class SearchFiltersModal(ModalScreen[SearchFilters | None]):
 			error.update(str(exc))
 			return
 		error.update("")
-		self.dismiss(filters)
+		self.dismiss(FiltersModalResult(filters, self.query_one("#sf-persist", Checkbox).value, self._current_scan()))
 
 
 class SearchOptionsModal(ModalScreen[SearchOptions | None]):
@@ -390,15 +528,6 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		margin-top: 1;
 	}
 
-	.search-options-subsection {
-		width: 100%;
-		height: auto;
-		color: $text-muted;
-		text-style: bold;
-		margin-top: 1;
-		padding-left: 1;
-	}
-
 	.search-options-hint {
 		width: 100%;
 		height: auto;
@@ -411,14 +540,6 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		margin-top: 0;
 		margin-bottom: 1;
 		padding-left: 2;
-	}
-
-	.search-options-noisy-option {
-		padding-left: 1;
-	}
-
-	.search-options-noisy-hint {
-		padding-left: 3;
 	}
 
 	#search-options-scroll Checkbox {
@@ -485,28 +606,11 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 		self._initial = initial
 		self._syncing_checkboxes = False
 
-	def _compose_option(
-		self,
-		checkbox_id: str,
-		*,
-		value: bool,
-		noisy: bool = False,
-	) -> ComposeResult:
-		if noisy:
-			yield Checkbox(
-				option_label(checkbox_id),
-				id=checkbox_id,
-				value=value,
-				classes="search-options-noisy-option",
-			)
-		else:
-			yield Checkbox(option_label(checkbox_id), id=checkbox_id, value=value)
+	def _compose_option(self, checkbox_id: str, *, value: bool) -> ComposeResult:
+		yield Checkbox(option_label(checkbox_id), id=checkbox_id, value=value)
 		hint = option_hint(checkbox_id)
 		if hint:
-			hint_classes = "search-options-hint search-options-option-hint"
-			if noisy:
-				hint_classes = f"{hint_classes} search-options-noisy-hint"
-			yield Static(hint, classes=hint_classes)
+			yield Static(hint, classes="search-options-hint search-options-option-hint")
 
 	def compose(self) -> ComposeResult:
 		all_powerups = (
@@ -527,23 +631,6 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 				yield from self._compose_option("so-transcribe", value=self._initial.transcribe)
 				yield from self._compose_option("so-semantic-image", value=self._initial.semantic_image)
 				yield from self._compose_option("so-enable-all", value=all_powerups)
-				yield Static(search_options_section_scan(), classes="search-options-section")
-				yield from self._compose_option("so-subdirs", value=self._initial.include_subdirectories)
-				yield from self._compose_option("so-archives", value=self._initial.include_archives)
-				yield Static(search_options_subsection_noisy(), classes="search-options-subsection")
-				yield from self._compose_option("so-hidden", value=self._initial.include_hidden, noisy=True)
-				yield from self._compose_option("so-noise", value=self._initial.include_noise, noisy=True)
-				yield from self._compose_option(
-					"so-noise-files",
-					value=self._initial.include_noise_files,
-					noisy=True,
-				)
-				yield from self._compose_option(
-					"so-match-skipped-names",
-					value=self._initial.match_skipped_names,
-					noisy=True,
-				)
-				yield Static(binary_skip_hint(), classes="search-options-hint")
 			yield Label("", id="search-options-error")
 			with Grid(id="search-options-buttons"):
 				yield Button("Cancel", id="search-options-cancel")
@@ -551,13 +638,9 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 
 	def on_mount(self):
 		self._sync_content_dependent_controls()
-		self._sync_names_dependent_controls()
 
 	def _content_enabled(self) -> bool:
 		return self.query_one("#so-content", Checkbox).value
-
-	def _names_enabled(self) -> bool:
-		return self.query_one("#so-names", Checkbox).value
 
 	def _powerup_values(self) -> tuple[bool, bool, bool, bool]:
 		return (
@@ -602,9 +685,9 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			checkbox.disabled = not content_enabled
 		self._sync_enable_all_from_powerups()
 
-	def _sync_names_dependent_controls(self):
-		checkbox = self.query_one("#so-match-skipped-names", Checkbox)
-		checkbox.disabled = not self._names_enabled()
+	def _scan_kwargs(self) -> dict[str, bool]:
+		# The scan switches are edited in the Filters modal; pass them through untouched.
+		return dict(asdict(scan_switches_from_options(self._initial)))
 
 	def _current_options(self) -> SearchOptions:
 		semantic, ocr, transcribe, semantic_image = self._powerup_values()
@@ -617,21 +700,12 @@ class SearchOptionsModal(ModalScreen[SearchOptions | None]):
 			semantic_image=semantic_image,
 			ocr=ocr,
 			transcribe=transcribe,
-			include_hidden=self.query_one("#so-hidden", Checkbox).value,
-			include_noise=self.query_one("#so-noise", Checkbox).value,
-			include_noise_files=self.query_one("#so-noise-files", Checkbox).value,
-			match_skipped_names=self.query_one("#so-match-skipped-names", Checkbox).value,
-			include_archives=self.query_one("#so-archives", Checkbox).value,
-			include_subdirectories=self.query_one("#so-subdirs", Checkbox).value,
+			**self._scan_kwargs(),
 		)
 
 	@on(Checkbox.Changed, "#so-content")
 	def _on_content_changed(self):
 		self._sync_content_dependent_controls()
-
-	@on(Checkbox.Changed, "#so-names")
-	def _on_names_changed(self):
-		self._sync_names_dependent_controls()
 
 	@on(Checkbox.Changed, "#so-enable-all")
 	def _on_enable_all_changed(self, event: Checkbox.Changed):

@@ -1,0 +1,123 @@
+search-filters-modal-ignore
+host
+█
+█
+█
+█
+█
+Search filters
+█
+█
+█
+█
+█
+█
+Which files to scan
+█
+█
+█
+█
+Ignore (one pattern per line)
+█
+█
+▊
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▎
+█
+█
+▊
+node_modules/
+▎
+█
+█
+▊
+*.log
+▎
+█
+█
+▊
+/build/
+▎
+█
+█
+▊
+▎
+█
+█
+▊
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▎
+█
+█
+█
+█
+█
+█
+X
+Respect .gitignore files
+█
+█
+X
+Include subdirectories
+█
+█
+Also search folders nested under the path
+█
+█
+█
+█
+X
+Inside zip/tar files
+█
+█
+Search within compressed archives
+█
+█
+█
+█
+Noisy files
+█
+█
+X
+Hidden files & folders
+█
+█
+Include dotfiles and hidden directories
+█
+█
+█
+█
+X
+Cache & vendor folders
+█
+█
+Include __pycache__, node_modules, etc.
+█
+█
+█
+█
+X
+Junk & lock files
+█
+█
+Include uv.lock, package-lock.json, *.min.js,
+█
+█
+Office temps, …
+█
+█
+█
+█
+█
+█
+█
+█
+█
+█
+Cancel
+Apply
+█
+█
+█
+█
+█

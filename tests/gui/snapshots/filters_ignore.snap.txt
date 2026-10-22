@@ -1,0 +1,19 @@
+filtersDialog.ignoreSection:
+  title: Ignore files & folders
+  placeholder: 'e.g. node_modules/ or *.log'
+  buttons: Add file…, Add folder…
+  checkbox: Also respect .gitignore files
+  hint: One pattern per line. Gitignore-style: * ** / anchor, trailing / = folders only, ! re-includes, # comment.
+  helpKey: ignore -> One pattern per line, similar to .gitign
+  invalidLineError: Line 2: unclosed “[” in pattern. Fix it to continue.
+  appliedError: Line 2: unclosed “[” in pattern. Fix it to continue.
+  summaryAfterAdd: All files · 50/file · text 100 MiB · match≥35% · image≥18% · transcript≥25% · ignoring 1 pattern
+resultContextMenu.ignore:
+  toast: Ignoring “/app/debug.log” in future searches.
+  toastButtons: Undo, Edit list
+  row0 (debug.log):
+    - file: Ignore this file -> /app/debug.log
+    - folder: Ignore folder “app/” -> /app/
+    - ext: Ignore all “*.log” files -> *.log
+  row1 (x.txt):
+    - archive: Ignore archive “b.zip” -> /data/b.zip

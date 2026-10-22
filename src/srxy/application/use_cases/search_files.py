@@ -32,6 +32,7 @@ from srxy.domain.file_query import (
 	score_file_query,
 	score_file_query_on_text,
 )
+from srxy.domain.ignore_rules import IgnoreSpec
 from srxy.domain.models import FileSearchResult, LineMatch, SkippedFile
 from srxy.domain.progress import (
 	ActivityCallback,
@@ -772,6 +773,7 @@ def _execute_file_search(
 	max_workers: int | None = None,
 	cancel_check: Callable[[], bool] | None = None,
 	allow_process_pool: bool = False,
+	ignore: IgnoreSpec | None = None,
 ) -> list[FileSearchResult]:
 	if max_line_matches is not None:
 		warnings.warn(
@@ -1020,6 +1022,8 @@ def _execute_file_search(
 		if cancel_check is not None and cancel_check():
 			raise SearchCancelled()
 
+	# Legacy fake walkers lack the ``ignore`` parameter: only pass it when it can matter.
+	walker_extra: dict[str, IgnoreSpec] = {"ignore": ignore} if ignore is not None and ignore.active else {}
 	probe_total = 0
 	probe_lock = threading.Lock()
 	probe_done = threading.Event()
@@ -1050,6 +1054,7 @@ def _execute_file_search(
 				include_directories=search_folders,
 				cancel_check=cancel_check,
 				skipped_files=None,
+				**walker_extra,
 			):
 				count += 1
 		except SearchCancelled:
@@ -1143,6 +1148,7 @@ def _execute_file_search(
 			include_directories=search_folders,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
+			**walker_extra,
 		):
 			if _is_under_denied(file_path):
 				continue
@@ -1283,6 +1289,7 @@ class FileSearchUseCase:
 		max_workers: int | None = None,
 		cancel_check: Callable[[], bool] | None = None,
 		allow_process_pool: bool = False,
+		ignore: IgnoreSpec | None = None,
 	) -> list[FileSearchResult]:
 		previous = _snapshot_content_ports()
 		if self._text_extractor is not None:
@@ -1323,6 +1330,7 @@ class FileSearchUseCase:
 				max_workers=max_workers,
 				cancel_check=cancel_check,
 				allow_process_pool=allow_process_pool,
+				ignore=ignore,
 			)
 		finally:
 			_restore_content_ports(previous)
@@ -1359,6 +1367,7 @@ def magic_file_search(
 	max_workers: int | None = None,
 	cancel_check: Callable[[], bool] | None = None,
 	allow_process_pool: bool = False,
+	ignore: IgnoreSpec | None = None,
 ) -> list[FileSearchResult]:
 	"""Public library facade — builds a default ``FileSearchUseCase``."""
 	return FileSearchUseCase(text_extractor=_get_text_extractor()).search(
@@ -1391,4 +1400,5 @@ def magic_file_search(
 		max_workers=max_workers,
 		cancel_check=cancel_check,
 		allow_process_pool=allow_process_pool,
+		ignore=ignore,
 	)

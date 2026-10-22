@@ -7,6 +7,7 @@ import os
 from collections.abc import Callable
 
 from srxy.application.search_control import SearchCancelled
+from srxy.application.search_filters import ignore_spec_from_args
 from srxy.domain.file_query import FileQ, coerce_file_query, file_q_from_dict
 from srxy.domain.models import FileSearchResult, SkippedFile
 from srxy.domain.progress import ActivityCallback
@@ -127,6 +128,7 @@ def execute_search(
 			on_result=on_result,
 			cancel_check=cancel_check,
 			allow_process_pool=allow_process_pool,
+			ignore=ignore_spec_from_args(args),
 		)
 	except SearchCancelled as error:
 		if error.skipped_files:

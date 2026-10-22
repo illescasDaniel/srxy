@@ -6,6 +6,7 @@ from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Protocol
 
+from srxy.domain.ignore_rules import IgnoreSpec
 from srxy.domain.models import SkippedFile
 from srxy.domain.progress import ActivityCallback
 from srxy.domain.text_unit import TextUnit
@@ -25,6 +26,7 @@ class FileWalkerPort(Protocol):
 		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
+		ignore: IgnoreSpec | None = None,
 	) -> Iterator[Path]: ...
 
 	def collect_files(
@@ -40,6 +42,7 @@ class FileWalkerPort(Protocol):
 		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
+		ignore: IgnoreSpec | None = None,
 	) -> list[Path]: ...
 
 	def is_searchable(self, path: Path) -> bool: ...

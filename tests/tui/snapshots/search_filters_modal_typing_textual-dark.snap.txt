@@ -10,9 +10,27 @@ Search filters
 █
 █
 █
+Also match names of files skipped by Hidden /
+█
+█
+Cache & vendor / Junk
+█
+█
+█
+█
+Binary-looking files (null byte in first 8 KiB)
+█
+█
+skip body text; names can still match. Ignored
+█
+█
+paths always win over the “Noisy files” switches.
+█
+█
 █
 █
 Limits
+▂▂
 █
 █
 █
@@ -21,22 +39,6 @@ Max results (empty = no limit)
 █
 █
 25
-█
-█
-█
-█
-Hits shown per file
-█
-█
-50
-█
-█
-█
-█
-Document size limit (MiB, 0 = unlimited)
-█
-█
-100
 █
 █
 █

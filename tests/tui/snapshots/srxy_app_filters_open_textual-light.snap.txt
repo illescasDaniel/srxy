@@ -32,7 +32,7 @@ All fi
 █
 cript≥25%
 █
-Limits
+Which files to scan
 █
 ┌
 █
@@ -43,27 +43,48 @@ Match
 Path
 Match
 █
-Max results (empty = no limit)
+Ignore (one pattern per line)
 █
 │
 │
 █
-all
+▊
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▎
 █
 Text
 │
 │
 █
+▊
+e.g. node_modules/ or *.log
+▎
 █
 │
 │
 █
-Hits shown per file
+▊
+▎
 █
 │
 │
 █
-50
+▊
+▎
+▆▆
+█
+│
+│
+█
+▊
+▎
+█
+│
+│
+█
+▊
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▎
 █
 │
 │
@@ -72,51 +93,39 @@ Hits shown per file
 │
 │
 █
-Document size limit (MiB, 0 = unlimited)
 █
 │
 │
 █
-100
+X
+Respect .gitignore files
 █
 │
 │
 █
+X
+Include subdirectories
 █
 │
 │
 █
-Image text size limit (MiB)
-█
-│
-│
-█
-50
-█
-│
-│
-█
+Also search folders nested under the path
 █
 │
 │
 Run a search to s
 █
-Audio/video size limit (MiB)
 █
 │
 │
 █
-500
-▂▂
+X
+Inside zip/tar files
 █
 │
 │
 █
-█
-│
-│
-█
-Sensitivity
+Search within compressed archives
 █
 │
 │
@@ -125,12 +134,18 @@ Sensitivity
 │
 │
 █
-Minimum match %
+Noisy files
 █
 │
 │
 █
-35
+X
+Hidden files & folders
+█
+│
+│
+█
+Include dotfiles and hidden directories
 █
 │
 │

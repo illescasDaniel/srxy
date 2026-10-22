@@ -17,6 +17,7 @@ ApplicationWindow {
 	objectName: "mainWindow"
 
 	property bool syncingOptions: false
+	property bool committedSearchNames: true
 	property bool syncingFilters: false
 	property bool filtersDraftValid: true
 	readonly property bool lightTheme: palette.window.hslLightness > 0.5
@@ -263,6 +264,7 @@ ApplicationWindow {
 		syncingOptions = true
 		const draft = JSON.parse(controller.optionsJson())
 		optNames.checked = !!draft.search_names
+		committedSearchNames = !!draft.search_names
 		optFolders.checked = draft.search_folders !== false
 		optContents.checked = !!draft.search_contents
 		optDocsTags.checked = draft.search_docs_tags !== false
@@ -270,12 +272,6 @@ ApplicationWindow {
 		optOcr.checked = !!draft.ocr
 		optTranscribe.checked = !!draft.transcribe
 		optSemanticImage.checked = !!draft.semantic_image
-		optHidden.checked = !!draft.include_hidden
-		optNoise.checked = !!draft.include_noise
-		optNoiseFiles.checked = !!draft.include_noise_files
-		optMatchSkippedNames.checked = !!draft.match_skipped_names
-		optArchives.checked = !!draft.include_archives
-		optSubdirs.checked = draft.include_subdirectories !== false
 		optPersist.checked = !!draft.persist_options
 		syncContentDependentOptions()
 		syncingOptions = false
@@ -294,12 +290,6 @@ ApplicationWindow {
 		optOcr.checked = !!draft.ocr
 		optTranscribe.checked = !!draft.transcribe
 		optSemanticImage.checked = !!draft.semantic_image
-		optHidden.checked = !!draft.include_hidden
-		optNoise.checked = !!draft.include_noise
-		optNoiseFiles.checked = !!draft.include_noise_files
-		optMatchSkippedNames.checked = !!draft.match_skipped_names
-		optArchives.checked = !!draft.include_archives
-		optSubdirs.checked = draft.include_subdirectories !== false
 		syncContentDependentOptions()
 		syncingOptions = false
 	}
@@ -308,13 +298,12 @@ ApplicationWindow {
 		const contentOn = optContents.checked
 		optDocsTags.enabled = contentOn
 		// OCR / transcribe / semantic_image enabled bindings also watch capabilitiesJson.
-		optMatchSkippedNames.enabled = optNames.checked
 	}
 
 	function pushOptionsToController() {
 		if (!controller || syncingOptions)
 			return ""
-		return controller.applyOptionsJson(JSON.stringify({
+		const err = controller.applyOptionsJson(JSON.stringify({
 			search_names: optNames.checked,
 			search_folders: optFolders.checked,
 			search_contents: optContents.checked,
@@ -323,14 +312,11 @@ ApplicationWindow {
 			ocr: optOcr.checked && controller.isFeatureEnabled("ocr"),
 			transcribe: optTranscribe.checked && controller.isFeatureEnabled("transcribe"),
 			semantic_image: optSemanticImage.checked && controller.isFeatureEnabled("semantic_image"),
-			include_hidden: optHidden.checked,
-			include_noise: optNoise.checked,
-			include_noise_files: optNoiseFiles.checked,
-			match_skipped_names: optMatchSkippedNames.checked,
-			include_archives: optArchives.checked,
-			include_subdirectories: optSubdirs.checked,
 			persist_options: optPersist.checked
 		}))
+		if (!err)
+			committedSearchNames = optNames.checked
+		return err
 	}
 
 	function loadFiltersFromController() {
@@ -346,7 +332,16 @@ ApplicationWindow {
 		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
 		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		fltIgnore.text = draft.ignore_patterns ?? ""
+		fltRespectGitignore.checked = !!draft.respect_gitignore
+		fltHidden.checked = !!draft.include_hidden
+		fltNoise.checked = !!draft.include_noise
+		fltNoiseFiles.checked = !!draft.include_noise_files
+		fltMatchSkipped.checked = !!draft.match_skipped_names
+		fltArchives.checked = !!draft.include_archives
+		fltSubdirs.checked = draft.include_subdirectories !== false
 		fltPersist.checked = !!draft.persist_filters
+		fltPickMessage.text = ""
 		syncingFilters = false
 		validateFiltersDraft()
 	}
@@ -364,6 +359,15 @@ ApplicationWindow {
 		fltDocSize.text = draft.size_limits ? draft.size_limits.text_mib : "100"
 		fltOcrSize.text = draft.size_limits ? draft.size_limits.ocr_mib : "50"
 		fltMediaSize.text = draft.size_limits ? draft.size_limits.transcribe_mib : "500"
+		fltIgnore.text = draft.ignore_patterns ?? ""
+		fltRespectGitignore.checked = !!draft.respect_gitignore
+		fltHidden.checked = !!draft.include_hidden
+		fltNoise.checked = !!draft.include_noise
+		fltNoiseFiles.checked = !!draft.include_noise_files
+		fltMatchSkipped.checked = !!draft.match_skipped_names
+		fltArchives.checked = !!draft.include_archives
+		fltSubdirs.checked = draft.include_subdirectories !== false
+		fltPickMessage.text = ""
 		syncingFilters = false
 		validateFiltersDraft()
 	}
@@ -380,6 +384,14 @@ ApplicationWindow {
 				ocr_mib: fltOcrSize.text,
 				transcribe_mib: fltMediaSize.text
 			},
+			ignore_patterns: fltIgnore.text,
+			respect_gitignore: fltRespectGitignore.checked,
+			include_hidden: fltHidden.checked,
+			include_noise: fltNoise.checked,
+			include_noise_files: fltNoiseFiles.checked,
+			match_skipped_names: fltMatchSkipped.checked,
+			include_archives: fltArchives.checked,
+			include_subdirectories: fltSubdirs.checked,
 			persist_filters: fltPersist.checked
 		})
 	}
@@ -388,15 +400,56 @@ ApplicationWindow {
 		if (!controller || syncingFilters || !filtersError)
 			return
 		const err = controller.validateFiltersJson(filtersDraftPayload())
+		// The ignore error is shown inline under the box, not twice.
+		const ignoreErr = controller.validateIgnorePatterns(fltIgnore.text)
+		fltIgnoreError.text = ignoreErr
+		fltIgnoreError.visible = ignoreErr.length > 0
 		if (err) {
 			filtersError.text = err
-			filtersError.visible = true
+			filtersError.visible = err !== ignoreErr
 			filtersDraftValid = false
 		} else {
 			filtersError.text = ""
 			filtersError.visible = false
 			filtersDraftValid = true
 		}
+	}
+
+	function applyIgnorePick(url, isDir) {
+		if (!controller)
+			return
+		const reply = JSON.parse(controller.ignorePatternForPick(url, isDir, fltIgnore.text))
+		if (reply.error) {
+			fltPickMessage.text = reply.error
+			return
+		}
+		fltPickMessage.text = ""
+		fltIgnore.text = reply.text
+	}
+
+	function showIgnoreToast(message, canUndo) {
+		ignoreToast.message = message
+		ignoreToast.canUndo = canUndo
+		ignoreToast.visible = true
+		toastTimer.restart()
+	}
+
+	function addIgnoreFromRow(pattern) {
+		if (!controller)
+			return
+		const reply = JSON.parse(controller.addIgnoreRule(pattern))
+		showIgnoreToast(reply.toast, reply.added)
+	}
+
+	function editIgnoreList() {
+		ignoreToast.visible = false
+		toastTimer.stop()
+		filtersDialog.open()
+		Qt.callLater(function() {
+			const flick = fltScroll.contentItem
+			flick.contentY = Math.max(0, Math.min(fltIgnoreSection.y, flick.contentHeight - flick.height))
+			fltIgnore.forceActiveFocus()
+		})
 	}
 
 	function pushFiltersToController() {
@@ -534,6 +587,16 @@ ApplicationWindow {
 				controller.path = path
 			}
 		}
+	}
+
+	FileDialog {
+		id: fltPickFileDialog
+		onAccepted: root.applyIgnorePick(selectedFile.toString(), false)
+	}
+
+	FolderDialog {
+		id: fltPickFolderDialog
+		onAccepted: root.applyIgnorePick(selectedFolder.toString(), true)
 	}
 
 	ColumnLayout {
@@ -1132,6 +1195,8 @@ ApplicationWindow {
 											controller.selectResult(resultRow.index)
 											if (mouse.button === Qt.RightButton) {
 												resultsView.parent.contextResultRow = resultRow.index
+												resultContextMenu.ignoreChoices = JSON.parse(
+													controller.resultIgnoreChoicesJson(resultRow.index))
 												resultContextMenu.popup()
 											}
 										}
@@ -1141,6 +1206,8 @@ ApplicationWindow {
 							}
 							Menu {
 								id: resultContextMenu
+								objectName: "resultContextMenu"
+								property var ignoreChoices: []
 								MenuItem {
 									text: root.t("gui.menu.open_file")
 									onTriggered: controller.openResult(resultsView.parent.contextResultRow)
@@ -1156,6 +1223,16 @@ ApplicationWindow {
 								MenuItem {
 									text: root.t("gui.menu.copy_all_matches")
 									onTriggered: controller.copyAllMatches(resultsView.parent.contextResultRow)
+								}
+								MenuSeparator { visible: resultContextMenu.ignoreChoices.length > 0 }
+								Repeater {
+									model: resultContextMenu.ignoreChoices
+									delegate: MenuItem {
+										required property var modelData
+										objectName: "resultIgnore_" + modelData.kind
+										text: modelData.label
+										onTriggered: root.addIgnoreFromRow(modelData.pattern)
+									}
 								}
 							}
 							Label {
@@ -1863,6 +1940,7 @@ ApplicationWindow {
 		width: 520
 		implicitWidth: 520
 		height: Math.min(620, parent.height - 40)
+		onRejected: loadOptionsFromController()
 		onAboutToShow: {
 			optionsError.text = ""
 			optionsError.visible = false
@@ -2008,53 +2086,6 @@ ApplicationWindow {
 				InfoButton { helpKey: "semantic_image"; enabled: true }
 			}
 
-				Label {
-					text: root.t("gui.options.which_files")
-					font.bold: true
-					Layout.topMargin: 8
-				}
-			RowLayout {
-				StyledCheckBox { id: optSubdirs; text: root.t("gui.options.subdirs"); checked: true }
-				InfoButton { helpKey: "include_subdirectories" }
-			}
-			RowLayout {
-				StyledCheckBox { id: optArchives; text: root.t("gui.options.archives") }
-				InfoButton { helpKey: "include_archives" }
-			}
-				Label {
-					text: root.t("gui.options.noisy")
-					font.bold: true
-					Layout.leftMargin: 12
-					Layout.topMargin: 4
-					opacity: 0.75
-				}
-			RowLayout {
-				Layout.leftMargin: 12
-				StyledCheckBox { id: optHidden; text: root.t("gui.options.hidden") }
-				InfoButton { helpKey: "include_hidden" }
-			}
-			RowLayout {
-				Layout.leftMargin: 12
-				StyledCheckBox { id: optNoise; text: root.t("gui.options.noise") }
-				InfoButton { helpKey: "include_noise" }
-			}
-			RowLayout {
-				Layout.leftMargin: 12
-				StyledCheckBox { id: optNoiseFiles; text: root.t("gui.options.noise_files") }
-				InfoButton { helpKey: "include_noise_files" }
-			}
-			RowLayout {
-				Layout.leftMargin: 12
-				StyledCheckBox { id: optMatchSkippedNames; text: root.t("gui.options.match_skipped") }
-				InfoButton { helpKey: "match_skipped_names" }
-			}
-				Label {
-					text: root.t("gui.options.binary_hint")
-					wrapMode: Text.WordWrap
-					opacity: 0.7
-					Layout.fillWidth: true
-					Layout.topMargin: 4
-				}
 				StyledCheckBox {
 					id: optPersist
 					objectName: "optPersist"
@@ -2081,7 +2112,7 @@ ApplicationWindow {
 		width: Qt.platform.os === "osx" ? 560 : 480
 		implicitWidth: Qt.platform.os === "osx" ? 560 : 480
 		// Bounded height so ScrollView can scroll; keep a compact default sheet.
-		height: Math.min(420, Math.max(340, (parent ? parent.height : 420) - 120))
+		height: Math.min(720, Math.max(340, (parent ? parent.height : 720) - 60))
 		onAboutToShow: {
 			filtersError.text = ""
 			filtersError.visible = false
@@ -2089,6 +2120,12 @@ ApplicationWindow {
 		}
 		footer: SrxyDialogFooter {
 			defaultButton: filtersOkButton
+			SecondaryButton {
+				id: fltReset
+				objectName: "fltReset"
+				text: root.t("gui.filters.reset")
+				onClicked: resetFiltersDraft()
+			}
 			SecondaryButton {
 				text: root.t("common.cancel")
 				onClicked: filtersDialog.reject()
@@ -2115,6 +2152,8 @@ ApplicationWindow {
 		}
 
 		ScrollView {
+			id: fltScroll
+			objectName: "fltScroll"
 			anchors.fill: parent
 			clip: true
 			ScrollBar.horizontal.policy: ScrollBar.AlwaysOff
@@ -2131,7 +2170,137 @@ ApplicationWindow {
 				Layout.fillWidth: true
 			}
 
+				Label {
+					text: root.t("gui.options.which_files")
+					font.bold: true
+				}
+			ColumnLayout {
+				id: fltIgnoreSection
+				objectName: "fltIgnoreSection"
+				Layout.fillWidth: true
+				spacing: 4
+				RowLayout {
+					Layout.fillWidth: true
+					Label {
+						text: root.t("filters.ignore.section")
+						font.bold: true
+						Layout.fillWidth: true
+					}
+					InfoButton { helpKey: "ignore" }
+				}
+				ScrollView {
+					Layout.fillWidth: true
+					Layout.preferredHeight: 72
+					clip: true
+					TextArea {
+						id: fltIgnore
+						objectName: "fltIgnore"
+						placeholderText: root.t("filters.ignore.placeholder")
+						wrapMode: TextEdit.NoWrap
+						selectByMouse: true
+						font.family: Qt.platform.os === "windows"
+							? "Consolas"
+							: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
+						property bool invalid: fltIgnoreError.visible
+						background: Rectangle {
+							color: "transparent"
+							radius: 4
+							border.width: 1
+							border.color: fltIgnore.invalid ? "#c62828" : root.palette.mid
+						}
+						onTextChanged: validateFiltersDraft()
+					}
+				}
+				Label {
+					id: fltIgnoreHint
+					objectName: "fltIgnoreHint"
+					text: root.t("filters.ignore.hint")
+					opacity: 0.75
+					font.pixelSize: 12
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					id: fltIgnoreError
+					objectName: "fltIgnoreError"
+					visible: false
+					color: "#c62828"
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Label {
+					id: fltPickMessage
+					objectName: "fltPickMessage"
+					visible: text.length > 0
+					color: "#c62828"
+					wrapMode: Text.WordWrap
+					Layout.fillWidth: true
+				}
+				Flow {
+					Layout.fillWidth: true
+					spacing: 8
+					SecondaryButton {
+						objectName: "fltAddFile"
+						text: root.t("filters.ignore.add_file")
+						onClicked: fltPickFileDialog.open()
+					}
+					SecondaryButton {
+						objectName: "fltAddFolder"
+						text: root.t("filters.ignore.add_folder")
+						onClicked: fltPickFolderDialog.open()
+					}
+				}
+				StyledCheckBox {
+					id: fltRespectGitignore
+					objectName: "fltRespectGitignore"
+					text: root.t("filters.ignore.also_respect_gitignore")
+				}
+			}
+			RowLayout {
+				StyledCheckBox { id: fltSubdirs; objectName: "fltSubdirs"; text: root.t("gui.options.subdirs"); checked: true }
+				InfoButton { helpKey: "include_subdirectories" }
+			}
+			RowLayout {
+				StyledCheckBox { id: fltArchives; objectName: "fltArchives"; text: root.t("gui.options.archives") }
+				InfoButton { helpKey: "include_archives" }
+			}
+				Label {
+					text: root.t("gui.options.noisy")
+					font.bold: true
+					Layout.leftMargin: 12
+					Layout.topMargin: 4
+					opacity: 0.75
+				}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: fltHidden; objectName: "fltHidden"; text: root.t("gui.options.hidden") }
+				InfoButton { helpKey: "include_hidden" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: fltNoise; objectName: "fltNoise"; text: root.t("gui.options.noise") }
+				InfoButton { helpKey: "include_noise" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: fltNoiseFiles; objectName: "fltNoiseFiles"; text: root.t("gui.options.noise_files") }
+				InfoButton { helpKey: "include_noise_files" }
+			}
+			RowLayout {
+				Layout.leftMargin: 12
+				StyledCheckBox { id: fltMatchSkipped; objectName: "fltMatchSkipped"; text: root.t("gui.options.match_skipped"); enabled: root.committedSearchNames }
+				InfoButton { helpKey: "match_skipped_names" }
+			}
+				Label {
+					text: root.t("gui.options.binary_hint")
+					wrapMode: Text.WordWrap
+					opacity: 0.7
+					Layout.fillWidth: true
+					Layout.topMargin: 4
+				}
+
 		GridLayout {
+			Layout.topMargin: 12
 			columns: 3
 			columnSpacing: Qt.platform.os === "osx" ? 12 : 8
 			rowSpacing: Qt.platform.os === "osx" ? 10 : 6
@@ -2222,12 +2391,6 @@ ApplicationWindow {
 				objectName: "fltPersist"
 				text: root.t("gui.filters.persist")
 				Layout.topMargin: 12
-			}
-			SecondaryButton {
-				id: fltReset
-				objectName: "fltReset"
-				text: root.t("gui.filters.reset")
-				onClicked: resetFiltersDraft()
 			}
 			} // ColumnLayout
 		} // ScrollView
@@ -2721,6 +2884,58 @@ ApplicationWindow {
 		}
 		function onCapabilitiesChanged() {
 			loadOptionsFromController()
+		}
+	}
+
+	Timer {
+		id: toastTimer
+		interval: 8000
+		onTriggered: ignoreToast.visible = false
+	}
+
+	Pane {
+		id: ignoreToast
+		objectName: "toast"
+		property string message: ""
+		property bool canUndo: false
+		visible: false
+		z: 900
+		parent: root.contentItem
+		anchors.horizontalCenter: parent.horizontalCenter
+		anchors.bottom: parent.bottom
+		anchors.bottomMargin: 24
+		width: Math.min(parent.width - 32, 560)
+		padding: 8
+		background: Rectangle {
+			color: palette.window
+			border.color: palette.mid
+			radius: 6
+		}
+		RowLayout {
+			anchors.fill: parent
+			spacing: 8
+			Label {
+				objectName: "toastMessage"
+				text: ignoreToast.message
+				Layout.fillWidth: true
+				elide: Text.ElideMiddle
+			}
+			SecondaryButton {
+				objectName: "toastUndo"
+				visible: ignoreToast.canUndo
+				text: root.t("gui.toast.undo")
+				onClicked: {
+					if (controller)
+						controller.undoLastIgnoreRule()
+					ignoreToast.visible = false
+					toastTimer.stop()
+				}
+			}
+			SecondaryButton {
+				objectName: "toastEditList"
+				text: root.t("gui.toast.edit_list")
+				onClicked: root.editIgnoreList()
+			}
 		}
 	}
 

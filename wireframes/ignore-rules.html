@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>srxy 1.8.0 — Ignore files &amp; folders (wireframe)</title>
+<style>
+	:root { --bg:#f4f5f7; --panel:#fff; --ink:#1d2330; --mute:#667085; --line:#d0d5dd; --accent:#2f6fed; --err:#c62828; --warn:#fff6e0; --term:#14171f; --termink:#d7dce5; }
+	@media (prefers-color-scheme: dark) { :root { --bg:#15181f; --panel:#20242e; --ink:#e6e9f0; --mute:#98a2b3; --line:#3a4150; --warn:#3a3217; } }
+	* { box-sizing:border-box; }
+	body { margin:0; padding:24px 16px 64px; background:var(--bg); color:var(--ink); font:14px/1.45 system-ui, sans-serif; }
+	main { max-width:1040px; margin:0 auto; }
+	h1 { font-size:22px; margin:0 0 4px; } h2 { font-size:16px; margin:36px 0 4px; } .sub { color:var(--mute); margin:0 0 12px; }
+	.row { display:flex; flex-wrap:wrap; gap:20px; align-items:flex-start; }
+	figure { margin:0; } figcaption { color:var(--mute); font-size:12px; margin:6px 2px 0; }
+	.dlg { width:500px; max-width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; box-shadow:0 8px 24px #0002; }
+	.dlg h3 { margin:0; padding:12px 16px; font-size:15px; border-bottom:1px solid var(--line); }
+	.dlg .body { padding:12px 16px; display:grid; gap:8px; }
+	.dlg .foot { padding:10px 16px; border-top:1px solid var(--line); display:flex; justify-content:flex-end; gap:8px; }
+	.grid { display:grid; grid-template-columns:150px 1fr 22px; gap:6px 8px; align-items:center; }
+	input[type=text], textarea { width:100%; padding:5px 8px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; }
+	textarea { font-family:ui-monospace, monospace; font-size:13px; min-height:112px; resize:none; }
+	textarea.bad { border-color:var(--err); }
+	.btn { padding:5px 12px; border:1px solid var(--line); border-radius:6px; background:transparent; color:inherit; font:inherit; }
+	.btn.acc { background:var(--accent); border-color:var(--accent); color:#fff; } .btn.dis { opacity:.45; }
+	.info { width:18px; height:18px; border-radius:50%; border:1px solid var(--line); color:var(--mute); font-size:11px; text-align:center; line-height:16px; }
+	.sec { font-weight:600; margin-top:8px; padding-top:10px; border-top:1px solid var(--line); display:flex; justify-content:space-between; }
+	.err { color:var(--err); font-size:12px; } .hint { color:var(--mute); font-size:12px; }
+	.btns { display:flex; gap:6px; flex-wrap:wrap; } label.cb { display:flex; gap:8px; align-items:center; }
+	.res { width:500px; max-width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:6px; position:relative; }
+	.res .item { padding:6px 10px; border-radius:6px; } .res .item.sel { background:#2f6fed22; }
+	.res .item small { color:var(--mute); display:block; }
+	.menu { position:absolute; left:150px; top:46px; width:290px; background:var(--panel); border:1px solid var(--line); border-radius:8px; box-shadow:0 6px 18px #0003; padding:4px; }
+	.menu div { padding:5px 10px; border-radius:4px; } .menu div:hover { background:#2f6fed22; } .menu hr { border:0; border-top:1px solid var(--line); margin:4px 0; }
+	.toast { margin-top:8px; background:var(--ink); color:var(--bg); padding:8px 12px; border-radius:8px; display:flex; justify-content:space-between; gap:12px; }
+	.toast a { color:#8ab4ff; text-decoration:underline; }
+	pre { background:var(--term); color:var(--termink); padding:12px 14px; border-radius:8px; overflow:auto; font:12.5px/1.5 ui-monospace, monospace; margin:0; }
+	pre .p { color:#7bd88f; } pre .d { color:#8b93a5; } pre .e { color:#ff7b72; }
+	.review { background:var(--warn); border:1px dashed #d4a017; border-radius:8px; padding:10px 14px; margin:12px 0; font-size:13px; }
+	.review b { text-transform:uppercase; font-size:11px; letter-spacing:.06em; }
+	@media (max-width:560px) { .grid { grid-template-columns:110px 1fr 22px; } }
+</style>
+</head>
+<body>
+<main>
+	<h1>Ignore files &amp; folders</h1>
+	<p class="sub">srxy 1.8.0 · GUI Filters dialog, result-row shortcut, TUI Filters modal, CLI. Copy is final-draft; EN strings shown.</p>
+
+	<div class="review"><b>Review only</b> — decisions captured from chat: patterns are gitignore-style globs <i>and</i> pickable paths (stored as anchored patterns); source is a per-search list (GUI / TUI / repeatable <code>--ignore</code>) plus an opt-in “respect .gitignore”; all three surfaces ship in 1.8.0.</div>
+
+	<h2>1 · GUI — Filters dialog: “Which files to scan” moves here, ignore list first</h2>
+	<p class="sub">The whole “Which files to scan” section (subfolders, archives, noisy files) moves from Search options into Filters, as the <b>first</b> section, with the new ignore list as its first item. Limits and Sensitivity follow below in the same scroll area.</p>
+	<div class="row">
+		<figure>
+			<div class="dlg">
+				<h3>Filters</h3>
+				<div class="body">
+					<div class="sec" style="border:0;margin:0;padding:0"><span>Which files to scan</span></div>
+					<div class="sec" style="border:0;margin:0;padding:0;font-weight:500"><span>Ignore files &amp; folders</span><span class="info">i</span></div>
+					<textarea>node_modules/
+*.log
+/build/
+docs/**/draft*
+!docs/keep.md</textarea>
+					<div class="hint">One pattern per line. Gitignore-style: <code>*</code> <code>**</code> <code>/</code> anchor, trailing <code>/</code> = folders only, <code>!</code> re-includes, <code>#</code> comment.</div>
+					<div class="btns"><span class="btn">Add file…</span><span class="btn">Add folder…</span></div>
+					<label class="cb"><input type="checkbox"> Also respect .gitignore files</label>
+					<label class="cb"><input type="checkbox" checked> Include subdirectories</label>
+					<label class="cb"><input type="checkbox"> Inside zip/tar files</label>
+					<div class="hint" style="font-weight:600">Noisy files</div>
+					<label class="cb"><input type="checkbox"> Hidden files &amp; folders</label>
+					<label class="cb"><input type="checkbox"> Cache &amp; vendor folders</label>
+					<label class="cb"><input type="checkbox"> Junk &amp; lock files</label>
+					<label class="cb"><input type="checkbox"> Skipped file names</label>
+					<div class="hint">Binary-looking files (null byte in first 8 KiB) skip body text; names can still match. Ignored paths always win over the “Noisy files” switches.</div>
+					<div class="sec"><span>Limits</span></div>
+					<div class="grid">
+						<span>Max results</span><input type="text" placeholder="Unlimited"><span class="info">i</span>
+						<span>Min match (%)</span><input type="text" value="35"><span class="info">i</span>
+						<span class="hint" style="grid-column:1/4">… Limits and Sensitivity fields unchanged, scroll to reach them …</span>
+					</div>
+					<label class="cb"><input type="checkbox" checked> Remember filters</label>
+				</div>
+				<div class="foot"><span class="btn" style="margin-right:auto">Reset to defaults</span><span class="btn">Cancel</span><span class="btn acc">OK</span></div>
+			</div>
+			<figcaption>Default / filled state; the dialog scrolls. Empty state: placeholder “e.g. node_modules/  or  *.log”. “Reset to defaults” (footer) clears the list, unticks .gitignore and restores the scan switches to their defaults.</figcaption>
+		</figure>
+
+		<figure>
+			<div class="dlg">
+				<h3>Filters</h3>
+				<div class="body">
+					<div class="sec" style="border:0;margin:0;padding:0"><span>Ignore files &amp; folders</span><span class="info">i</span></div>
+					<textarea class="bad">*.log
+[unclosed
+/build/</textarea>
+					<div class="err">Line 2: unclosed “[” in pattern. Fix it to continue.</div>
+					<div class="btns"><span class="btn">Add file…</span><span class="btn">Add folder…</span></div>
+				</div>
+				<div class="foot"><span class="btn">Cancel</span><span class="btn acc dis">OK</span></div>
+			</div>
+			<figcaption>Error state: invalid pattern marks the field red, names the line, and disables OK (same rule as numeric fields today). Nothing is saved.</figcaption>
+		</figure>
+	</div>
+
+	<div class="review"><b>Review only</b> — “Add file… / Add folder…” opens the native chooser; a pick inside the search root is appended as an anchored pattern (<code>/src/old/</code>), outside the root as an absolute path (<code>/home/me/x/</code>). Duplicates are not added twice.</div>
+
+	<div class="review"><b>Review only</b> — <b>Search options dialog after the move:</b> it keeps “Where to search” and “How to match” only; the “Which files to scan” section, its “Noisy files” subsection and the binary hint are removed from it (GUI and TUI). The six switches keep their current meaning and CLI flags; they are only edited in Filters now. <b>Persistence (approved):</b> the switches are stored under Filters and saved only when “Remember filters” is ticked; settings from 1.7 (switches inside the saved options) are migrated on load. the Filters “Reset to defaults” resets them, the Options “Reset” no longer touches them. OK in Filters applies filters and these switches together; Cancel discards both.</div>
+
+	<h2>2 · GUI — ignore from a result</h2>
+	<p class="sub">Right-click a result row → ignore without opening the dialog. Rules are added to the same list; the current results stay until the next search.</p>
+	<div class="row">
+		<figure>
+			<div class="res">
+				<div class="item">report-final.pdf<small>~/work/archive/2023/</small></div>
+				<div class="item sel">debug.log<small>~/work/app/build/logs/</small></div>
+				<div class="item">notes.md<small>~/work/app/</small></div>
+				<div class="menu">
+					<div>Open</div><div>Reveal in folder</div><hr>
+					<div>Ignore this file</div>
+					<div>Ignore folder “logs/”</div>
+					<div>Ignore all “*.log” files</div>
+				</div>
+			</div>
+			<figcaption>Context menu additions (below the existing items).</figcaption>
+		</figure>
+		<figure>
+			<div class="res" style="padding:12px">
+				<div class="toast"><span>Ignoring “*.log” in future searches.</span><span><a>Undo</a> · <a>Edit list</a></span></div>
+			</div>
+			<figcaption>Confirmation toast; “Edit list” opens the Filters dialog scrolled to this section.</figcaption>
+		</figure>
+	</div>
+
+	<h2>3 · TUI — Filters modal: “Which files to scan” first, scrollable</h2>
+	<div class="row"><figure>
+<pre> Filters                                           (scrolls)
+ ┌────────────────────────────────────────────────────────────┐
+ │ Which files to scan                                         │
+ │ Ignore (one pattern per line)                               │
+ │ ┌────────────────────────────────────────────────────────┐ │
+ │ │node_modules/                                           │ │
+ │ │*.log                                                   │ │
+ │ │/build/                                                 │ │
+ │ └────────────────────────────────────────────────────────┘ │
+ │ [ ] Respect .gitignore files                                │
+ │ [x] Include subdirectories                                  │
+ │ [ ] Inside zip/tar files                                    │
+ │ Noisy files                                                 │
+ │ [ ] Hidden files &amp; folders      [ ] Cache &amp; vendor folders  │
+ │ [ ] Junk &amp; lock files           [ ] Skipped file names      │
+ │ Limits                                                      │
+ │ Max results        [                ]                       │
+ │  … Limits and Sensitivity unchanged, reached by scrolling … │
+ │ [x] Remember filters                                        │
+ │                                [ Cancel ]  [  Apply  ]     │
+ └────────────────────────────────────────────────────────────┘
+ Filters  max 50 hits · min 35% · ignoring 3 patterns  (+.gitignore)</pre>
+	<figcaption>Summary bar (existing “filters-summary”) gains “ignoring N patterns”. Invalid pattern → red line under the box, OK disabled. Typed globs only (no file chooser in the terminal). The Search options modal loses its “Which files to scan” section here too.</figcaption></figure></div>
+
+	<h2>4 · CLI</h2>
+	<div class="row"><figure>
+<pre><span class="p">$</span> srxy invoice ~/work --ignore 'node_modules/' --ignore '*.log' --ignore '/build/'
+<span class="p">$</span> srxy invoice ~/work --ignore '*.log' --ignore '!keep.log' --respect-gitignore
+<span class="d"># invalid pattern → exit code 2, nothing searched</span>
+<span class="p">$</span> srxy invoice . --ignore '[oops'
+<span class="e">srxy: error: --ignore '[oops': unclosed “[” in pattern</span>
+<span class="d"># --json output shape is unchanged (top-level array of results)</span>
+<span class="p">$</span> srxy invoice . --ignore '*.log' --json   <span class="d">→ [ … ]</span></pre>
+	<figcaption><code>--ignore PATTERN</code> is repeatable; <code>--respect-gitignore</code> is the opt-in flag. Patterns are relative to the search path. Ignored files are skipped entirely (name and content), unlike <code>--match-skipped-names</code>, which only applies to the built-in hidden/noise skips.</figcaption></figure></div>
+
+	<div class="review"><b>Review only</b> — open questions for you: (a) should a bare ignored name like <code>build</code> (no slash) match files <i>and</i> folders, as gitignore does? (b) does “Ignore” beat “Include hidden/noise” when both match? Proposal: yes to both; ignore always wins.</div>
+</main>
+</body>
+</html>

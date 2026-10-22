@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import fnmatch
 import os
+import stat
+import sys
 from collections.abc import Callable, Iterator
 from pathlib import Path
 
@@ -17,6 +19,12 @@ from srxy.adapters.outbound.archive.archive_search import (
 )
 from srxy.adapters.outbound.content.path_access import append_permission_skip, is_access_denied
 from srxy.application.search_control import SearchCancelled
+from srxy.domain.ignore_rules import (
+	MAX_GITIGNORE_BYTES,
+	IgnoreMatcher,
+	IgnoreSpec,
+	parse_ignore_lines,
+)
 from srxy.domain.models import SkippedFile
 
 
@@ -209,6 +217,23 @@ def _filter_dirnames(
 	return filtered
 
 
+# case-insensitive filesystems (Windows, macOS) may list ".GitIgnore": always probe there; elsewhere trust the listing
+_MAY_HAVE_GITIGNORE = sys.platform in {"win32", "darwin", "cygwin"}
+
+
+def _read_gitignore(dirpath: str) -> list[str] | None:
+	"""Read ``dirpath/.gitignore`` (regular file only, size-capped); None when absent or unreadable."""
+	path = os.path.join(dirpath, ".gitignore")
+	try:
+		if not stat.S_ISREG(os.lstat(path).st_mode):
+			return None
+		with open(path, "rb") as handle:
+			data = handle.read(MAX_GITIGNORE_BYTES)
+	except OSError:
+		return None
+	return data.decode("utf-8", errors="replace").splitlines()
+
+
 def iter_files(
 	root: Path,
 	*,
@@ -221,6 +246,7 @@ def iter_files(
 	include_directories: bool = False,
 	cancel_check: Callable[[], bool] | None = None,
 	skipped_files: list[SkippedFile] | None = None,
+	ignore: IgnoreSpec | None = None,
 ) -> Iterator[Path]:
 	"""Walk ``root`` yielding searchable file paths (and archive members).
 
@@ -262,9 +288,23 @@ def iter_files(
 		at_filesystem_root = root.resolve() == Path("/")
 	except OSError:
 		at_filesystem_root = False
+	active_ignore = ignore if ignore is not None and ignore.active else None
+	root_matcher = IgnoreMatcher.from_spec(active_ignore) if active_ignore is not None else None
+	# dirpath -> (matcher in force for that directory, its root-relative parts)
+	matchers: dict[str, tuple[IgnoreMatcher, tuple[str, ...]]] = {}
+	if root_matcher is not None:
+		matchers[str(root)] = (root_matcher, ())
 	for dirpath, dirnames, filenames in os.walk(root, onerror=onerror):
 		if cancel_check is not None and cancel_check():
 			raise SearchCancelled()
+		if active_ignore is not None:
+			matcher, rel = matchers.pop(dirpath)
+			if active_ignore.respect_gitignore:
+				lines = _read_gitignore(dirpath) if _MAY_HAVE_GITIGNORE or ".gitignore" in filenames else None
+				if lines is not None:
+					matcher = matcher.with_gitignore(parse_ignore_lines(lines, strict=False, base=rel))
+			dirnames[:] = matcher.filter_names(rel, dirnames, True)
+			filenames = matcher.filter_names(rel, filenames, False)
 		filtered_dirnames = _filter_dirnames(
 			dirnames,
 			at_filesystem_root=at_filesystem_root and Path(dirpath).resolve() == Path("/"),
@@ -279,6 +319,9 @@ def iter_files(
 				if cancel_check is not None and cancel_check():
 					raise SearchCancelled()
 		dirnames[:] = filtered_dirnames if include_subdirectories else []
+		if active_ignore is not None:
+			for name in dirnames:
+				matchers[os.path.join(dirpath, name)] = (matcher, (*rel, name))
 		for filename in filenames:
 			if _should_skip_filename(
 				filename,
@@ -309,6 +352,7 @@ def collect_files(
 	include_directories: bool = False,
 	cancel_check: Callable[[], bool] | None = None,
 	skipped_files: list[SkippedFile] | None = None,
+	ignore: IgnoreSpec | None = None,
 ) -> list[Path]:
 	return list(
 		iter_files(
@@ -322,6 +366,7 @@ def collect_files(
 			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
+			ignore=ignore,
 		)
 	)
 
@@ -342,6 +387,7 @@ class DefaultFileWalker:
 		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
+		ignore: IgnoreSpec | None = None,
 	) -> Iterator[Path]:
 		yield from iter_files(
 			root,
@@ -354,6 +400,7 @@ class DefaultFileWalker:
 			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
+			ignore=ignore,
 		)
 
 	def collect_files(
@@ -369,6 +416,7 @@ class DefaultFileWalker:
 		include_directories: bool = False,
 		cancel_check: Callable[[], bool] | None = None,
 		skipped_files: list[SkippedFile] | None = None,
+		ignore: IgnoreSpec | None = None,
 	) -> list[Path]:
 		return collect_files(
 			root,
@@ -381,6 +429,7 @@ class DefaultFileWalker:
 			include_directories=include_directories,
 			cancel_check=cancel_check,
 			skipped_files=skipped_files,
+			ignore=ignore,
 		)
 
 	def is_searchable(self, path: Path) -> bool:

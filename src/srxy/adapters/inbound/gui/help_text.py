@@ -33,6 +33,7 @@ _HELP_KEYS = {
 	"text_mib": "gui.help.text_mib",
 	"ocr_mib": "gui.help.ocr_mib",
 	"transcribe_mib": "gui.help.transcribe_mib",
+	"ignore": "filters.ignore.info",
 }
 
 

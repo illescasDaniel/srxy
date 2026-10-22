@@ -550,6 +550,19 @@ def build_parser() -> argparse.ArgumentParser:
 		help="Search inside compressed archives (.zip, .tar, .tar.gz, .gz) (default: skip)",
 	)
 	parser.add_argument(
+		"--ignore",
+		action="append",
+		dest="ignore",
+		default=None,
+		metavar="PATTERN",
+		help="Skip paths matching a gitignore-style pattern (repeatable; e.g. --ignore '*.log' --ignore 'build/')",
+	)
+	parser.add_argument(
+		"--respect-gitignore",
+		action="store_true",
+		help="Also honour .gitignore files found while walking (default: off)",
+	)
+	parser.add_argument(
 		"--include-subdirectories",
 		action=argparse.BooleanOptionalAction,
 		default=True,
@@ -846,6 +859,29 @@ def _configure_stdio_utf8():
 				pass
 
 
+def _validate_ignore_args(parser: argparse.ArgumentParser, values: list[str] | None):
+	from srxy.domain.exceptions import IgnorePatternError, IgnoreReason
+	from srxy.domain.ignore_rules import MAX_USER_LINES, parse_ignore_lines
+	from srxy.i18n import tr
+
+	if not values:
+		return
+	if len(values) > MAX_USER_LINES:
+		reason_text = tr(f"ignore.reason.{IgnoreReason.TOO_MANY_LINES.value}")
+		parser.error(f"--ignore {values[MAX_USER_LINES]!r}: {reason_text}")
+	for value in values:
+		reason: IgnoreReason | None = None
+		if "\n" in value:
+			reason = IgnoreReason.MULTILINE
+		else:
+			try:
+				parse_ignore_lines([value], strict=True)
+			except IgnorePatternError as error:
+				reason = error.reason
+		if reason is not None:
+			parser.error(f"--ignore {value!r}: {tr(f'ignore.reason.{reason.value}')}")
+
+
 def main(argv: list[str] | None = None) -> int:
 	_configure_stdio_utf8()
 	parser = build_parser()
@@ -859,6 +895,7 @@ def main(argv: list[str] | None = None) -> int:
 		set_language_setting(str(args.language))
 	else:
 		set_language(resolve_language())
+	_validate_ignore_args(parser, args.ignore)
 	auto_start = args.query is not None and bool(args.query.strip())
 
 	if should_use_gui(args):

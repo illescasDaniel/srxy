@@ -23,12 +23,51 @@ QUERY_MODES = ("simple", "multi", "advanced")
 RECENT_SEARCHES_CAP = 20
 
 
+SCAN_SWITCH_KEYS = (
+	"include_subdirectories",
+	"include_archives",
+	"include_hidden",
+	"include_noise",
+	"include_noise_files",
+	"match_skipped_names",
+)
+
+
+@dataclass(frozen=True, slots=True)
+class ScanSwitches:
+	"""The "Which files to scan" switches (defaults equal ``SearchOptions`` defaults)."""
+
+	include_subdirectories: bool = True
+	include_archives: bool = False
+	include_hidden: bool = False
+	include_noise: bool = False
+	include_noise_files: bool = False
+	match_skipped_names: bool = False
+
+
+def scan_switches_from_options(options: SearchOptions) -> ScanSwitches:
+	return ScanSwitches(**{name: bool(getattr(options, name)) for name in SCAN_SWITCH_KEYS})
+
+
+def apply_scan_switches(options: SearchOptions, scan: ScanSwitches) -> SearchOptions:
+	return replace(options, **{name: getattr(scan, name) for name in SCAN_SWITCH_KEYS})
+
+
 @dataclass(frozen=True, slots=True)
 class PersistedSearchPrefs:
+	"""Loaded search prefs.
+
+	``options`` already has the six scan switches overlaid from ``scan`` (or at their
+	defaults when ``scan`` is None); callers may still ``apply_scan_switches(options,
+	prefs.scan)`` when ``prefs.scan`` is not None, e.g. onto other options when
+	``options`` is None because "Persist options" is off.
+	"""
+
 	persist_options: bool = False
 	persist_filters: bool = False
 	options: SearchOptions | None = None
 	filters: SearchFilters | None = None
+	scan: ScanSwitches | None = None
 
 
 def settings_path() -> Path:
@@ -135,11 +174,15 @@ def _filters_from_raw(raw: Any) -> SearchFilters | None:
 	if not isinstance(size_raw, dict):
 		return None
 	size_names = frozenset(f.name for f in fields(SizeLimits))
-	filter_names = frozenset(f.name for f in fields(SearchFilters)) - {"size_limits"}
+	filter_names = frozenset(f.name for f in fields(SearchFilters)) - {"size_limits", "respect_gitignore"}
+	respect_gitignore = raw.get("respect_gitignore", False)
+	if not isinstance(respect_gitignore, bool):
+		return None
 	try:
 		size = SizeLimits(**{name: str(size_raw.get(name, "")) for name in size_names})
 		draft = SearchFilters(
 			size_limits=size,
+			respect_gitignore=respect_gitignore,
 			**{name: str(raw.get(name, "")) for name in filter_names},
 		)
 		validate_search_filters(draft)
@@ -148,21 +191,58 @@ def _filters_from_raw(raw: Any) -> SearchFilters | None:
 	return draft
 
 
+def _scan_from_raw(raw: Any) -> ScanSwitches | None:
+	"""Parse a ``scan`` dict; any non-dict or non-bool value invalidates it."""
+	if not isinstance(raw, dict):
+		return None
+	kwargs: dict[str, bool] = {}
+	for name in SCAN_SWITCH_KEYS:
+		if name not in raw:
+			continue
+		if not isinstance(raw[name], bool):
+			return None
+		kwargs[name] = raw[name]
+	return ScanSwitches(**kwargs)
+
+
+def _legacy_scan_from_options_blob(raw: Any) -> ScanSwitches | None:
+	"""1.7 files kept the scan switches inside the persisted ``options`` blob."""
+	if not isinstance(raw, dict) or not any(name in raw for name in SCAN_SWITCH_KEYS):
+		return None
+	return ScanSwitches(**{name: bool(raw[name]) for name in SCAN_SWITCH_KEYS if name in raw})
+
+
+def _options_blob_without_scan(options: SearchOptions) -> dict[str, Any]:
+	return {k: v for k, v in asdict(options).items() if k not in SCAN_SWITCH_KEYS}
+
+
 def load_persisted_search_prefs() -> PersistedSearchPrefs:
 	data = load_settings()
 	persist_options = bool(data.get("persist_options"))
 	persist_filters = bool(data.get("persist_filters"))
-	options = _options_from_raw(data.get("options")) if persist_options else None
+	raw_options = data.get("options")
+	options = None
+	if persist_options and isinstance(raw_options, dict):
+		options = _options_from_raw({k: v for k, v in raw_options.items() if k not in SCAN_SWITCH_KEYS})
 	filters = _filters_from_raw(data.get("filters")) if persist_filters else None
 	if persist_options and options is None:
 		persist_options = False
 	if persist_filters and filters is None:
 		persist_filters = False
+	scan: ScanSwitches | None = None
+	if "scan" in data:
+		if persist_filters:
+			scan = _scan_from_raw(data["scan"])
+	elif persist_options:
+		scan = _legacy_scan_from_options_blob(raw_options)
+	if options is not None and scan is not None:
+		options = apply_scan_switches(options, scan)
 	return PersistedSearchPrefs(
 		persist_options=persist_options,
 		persist_filters=persist_filters,
 		options=options,
 		filters=filters,
+		scan=scan,
 	)
 
 
@@ -173,18 +253,47 @@ def save_persisted_search_prefs(
 	options: SearchOptions | None = None,
 	filters: SearchFilters | None = None,
 ) -> bool:
-	"""Merge search prefs into settings.json without clobbering language."""
+	"""Merge search prefs into settings.json without clobbering language.
+
+	The scan switches are stored under ``scan`` (only with ``persist_filters``) and never
+	inside the ``options`` blob.
+	"""
 	data = load_settings()
 	data["persist_options"] = bool(persist_options)
 	data["persist_filters"] = bool(persist_filters)
 	if persist_options and options is not None:
-		data["options"] = asdict(options)
+		data["options"] = _options_blob_without_scan(options)
 	else:
 		data.pop("options", None)
 	if persist_filters and filters is not None:
 		data["filters"] = asdict(filters)
 	else:
 		data.pop("filters", None)
+	if persist_filters and options is not None:
+		data["scan"] = asdict(scan_switches_from_options(options))
+	else:
+		data.pop("scan", None)
+	return save_settings(data)
+
+
+def save_persisted_filters(
+	*, persist_filters: bool, filters: SearchFilters | None, options: SearchOptions | None = None
+) -> bool:
+	"""Update persist_filters / filters / scan, leaving persist_options and options untouched.
+
+	``scan`` is written from ``options`` when given and ``persist_filters`` is on; it is
+	dropped when ``persist_filters`` is off, and left as is when ``options`` is omitted.
+	"""
+	data = load_settings()
+	data["persist_filters"] = bool(persist_filters)
+	if persist_filters and filters is not None:
+		data["filters"] = asdict(filters)
+	else:
+		data.pop("filters", None)
+	if not persist_filters:
+		data.pop("scan", None)
+	elif options is not None:
+		data["scan"] = asdict(scan_switches_from_options(options))
 	return save_settings(data)
 
 
@@ -272,17 +381,22 @@ __all__ = [
 	"QUERY_MODES",
 	"RECENT_SEARCHES_CAP",
 	"SUPPORTED_LANGUAGES",
+	"SCAN_SWITCH_KEYS",
 	"PersistedSearchPrefs",
 	"RecentSearchEntry",
+	"ScanSwitches",
+	"apply_scan_switches",
 	"clear_recent_searches",
 	"get_language_setting",
 	"load_persisted_search_prefs",
 	"load_recent_searches",
 	"load_settings",
 	"reset_settings",
+	"save_persisted_filters",
 	"save_persisted_search_prefs",
 	"save_recent_search",
 	"save_settings",
+	"scan_switches_from_options",
 	"set_language_setting",
 	"settings_file_present",
 	"settings_path",

@@ -1,0 +1,122 @@
+search-filters-modal-ignore-error
+host
+█
+█
+█
+█
+█
+Search filters
+█
+█
+█
+█
+█
+█
+Which files to scan
+█
+█
+█
+█
+Ignore (one pattern per line)
+█
+█
+▊
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▎
+█
+█
+▊
+[oops
+▎
+█
+█
+▊
+▎
+█
+█
+▊
+▎
+█
+█
+▊
+▎
+█
+█
+▊
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▎
+█
+█
+█
+█
+Line 1: unclosed “[” in pattern. Fix it to continue.
+█
+█
+X
+Respect .gitignore files
+█
+█
+X
+Include subdirectories
+█
+█
+Also search folders nested under the path
+█
+█
+█
+█
+X
+Inside zip/tar files
+█
+█
+Search within compressed archives
+█
+█
+█
+█
+Noisy files
+█
+█
+X
+Hidden files & folders
+█
+█
+Include dotfiles and hidden directories
+█
+█
+█
+█
+X
+Cache & vendor folders
+█
+█
+Include __pycache__, node_modules, etc.
+█
+█
+█
+█
+X
+Junk & lock files
+█
+█
+Include uv.lock, package-lock.json, *.min.js,
+█
+█
+Office temps, …
+█
+█
+█
+█
+█
+█
+█
+█
+█
+█
+Cancel
+Apply
+█
+█
+█
+█
+█

@@ -64,6 +64,12 @@ from srxy.application.search_options import (
 	search_options_from_args,
 )
 from srxy.application.search_runner_adapter import AdaptiveSearchRunner
+from srxy.application.settings import (
+	apply_scan_switches,
+	load_persisted_search_prefs,
+	save_persisted_filters,
+	scan_switches_from_options,
+)
 from srxy.application.skipped_file_warnings import format_skipped_file_warnings
 from srxy.application.subprocess_events import subprocess_event_to_search_event
 from srxy.bootstrap import build_app_services
@@ -323,6 +329,13 @@ class SrxyApp(App[int]):
 		self._search_subprocess: asyncio.subprocess.Process | None = None
 		self.search_options = search_options_from_args(args)
 		self.search_filters = search_filters_from_args(args)
+		self._persist_filters = False
+		prefs = load_persisted_search_prefs()
+		if prefs.persist_filters and prefs.filters is not None:
+			self._persist_filters = True
+			self.search_filters = prefs.filters
+		if prefs.scan is not None:
+			self.search_options = apply_scan_switches(self.search_options, prefs.scan)
 		apply_search_options_to_args(self._args, self.search_options)
 		apply_search_filters_to_args(self._args, self.search_filters)
 
@@ -542,10 +555,26 @@ class SrxyApp(App[int]):
 
 	@work
 	async def action_open_search_filters(self):
-		filters = await self.push_screen_wait(SearchFiltersModal(self.search_filters))
-		if filters is not None:
-			self.search_filters = filters
-			apply_search_filters_to_args(self._args, filters)
+		result = await self.push_screen_wait(
+			SearchFiltersModal(
+				self.search_filters,
+				self._persist_filters,
+				scan_switches_from_options(self.search_options),
+				search_names=self.search_options.search_names,
+			)
+		)
+		if result is not None:
+			self.search_filters = result.filters
+			self._persist_filters = result.persist
+			self.search_options = apply_scan_switches(self.search_options, result.scan)
+			apply_search_filters_to_args(self._args, result.filters)
+			apply_search_options_to_args(self._args, self.search_options)
+			save_persisted_filters(
+				persist_filters=result.persist,
+				filters=result.filters if result.persist else None,
+				options=self.search_options,
+			)
+			self._refresh_options_summary()
 			self._refresh_filters_summary()
 			self._update_search_button_state()
 

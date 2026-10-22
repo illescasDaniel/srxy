@@ -14,6 +14,8 @@ from pytestqt.qtbot import QtBot
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.application.search_formatting import format_score_percent, match_labels
+from srxy.application.search_session import SearchFinishedEvent
+from srxy.domain.models import FileSearchResult
 
 
 pytestmark = [pytest.mark.unit, pytest.mark.gui]
@@ -178,3 +180,55 @@ def test_given_uppercase_readme_when_search_completes_then_results_tree_matches_
 	assert controller.exit_code() == 0
 	assert controller.resultsModel.rowCount() >= 1
 	_assert_snapshot("readme_name_search_results", _results_tree(controller))
+
+
+def _ignore_tree(controller: SearchController, root: Path) -> str:
+	from srxy.adapters.outbound.archive.archive_search import archive_member_path
+
+	t = controller.i18nTr
+	json.loads(controller.addIgnoreRule("*.log"))
+	filters = json.loads(controller.filtersJson())
+	filters.update(ignore_patterns="*.log\n[oops", respect_gitignore=True)
+	lines = [
+		"filtersDialog.ignoreSection:",
+		f"  title: {t('filters.ignore.section')}",
+		f"  placeholder: {t('filters.ignore.placeholder')!r}",
+		f"  buttons: {t('filters.ignore.add_file')}, {t('filters.ignore.add_folder')}",
+		f"  checkbox: {t('filters.ignore.also_respect_gitignore')}",
+		f"  hint: {t('filters.ignore.hint')}",
+		f"  helpKey: ignore -> {controller.helpText('ignore')[:40]}",
+		f"  invalidLineError: {controller.validateIgnorePatterns('*.log' + chr(10) + '[oops')}",
+		f"  appliedError: {controller.validateFiltersJson(json.dumps(filters))}",
+		f"  summaryAfterAdd: {controller.filtersSummary}",
+		"resultContextMenu.ignore:",
+		f"  toast: {json.loads(controller.addIgnoreRule('/app/debug.log'))['toast']}",
+		f"  toastButtons: {t('gui.toast.undo')}, {t('gui.toast.edit_list')}",
+	]
+	files = [root / "app" / "debug.log", archive_member_path(root / "data" / "b.zip", "inner/x.txt")]
+	for index, path in enumerate(files):
+		results = [FileSearchResult(path=path, score=0.9, breakdown={"name": 0.9}, lines=[])]
+		controller.handle_search_event_for_tests(SearchFinishedEvent(results=results, skipped_files=[]))
+		controller._results_root = root  # pyright: ignore[reportPrivateUsage]
+		lines.append(f"  row{index} ({path.name}):")
+		for choice in json.loads(controller.resultIgnoreChoicesJson(0)):
+			lines.append(f"    - {choice['kind']}: {choice['label']} -> {choice['pattern']}")
+	return "\n".join(lines) + "\n"
+
+
+def test_given_ignore_rules_when_dumping_filters_and_menu_then_matches_snapshot(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	from srxy.i18n import set_language
+
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	set_language("en")
+	args = build_parser().parse_args(["", ".", "--cli"])
+	controller = SearchController(args)
+	controller.setLanguage("en")
+
+	# when
+	tree = _ignore_tree(controller, Path("/work"))
+
+	# then
+	_assert_snapshot("filters_ignore", tree)

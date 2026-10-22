@@ -29,19 +29,87 @@ Search filters
 Filters
 All fi
 █
+Include __pycache__, node_modules, etc.
 █
 cript≥25%
 █
-Limits
 █
 ┌
 █
+X
+Junk & lock files
 █
 ┐
 │
 Match
 Path
 Match
+█
+Include uv.lock, package-lock.json, *.min.js,
+█
+│
+│
+█
+Office temps, …
+█
+Text
+│
+│
+█
+█
+│
+│
+█
+X
+Skipped file names
+█
+│
+│
+█
+Also match names of files skipped by Hidden /
+▁▁
+█
+│
+│
+█
+Cache & vendor / Junk
+█
+│
+│
+█
+█
+│
+│
+█
+Binary-looking files (null byte in first 8 KiB)
+█
+│
+│
+█
+skip body text; names can still match. Ignored
+█
+│
+│
+█
+paths always win over the “Noisy files” switches.
+█
+│
+│
+█
+█
+│
+│
+█
+Limits
+█
+│
+│
+Run a search to s
+█
+▇▇
+█
+│
+│
 █
 Max results (empty = no limit)
 █
@@ -50,7 +118,6 @@ Max results (empty = no limit)
 █
 all
 █
-Text
 │
 │
 █
@@ -70,69 +137,6 @@ Hits shown per file
 │
 │
 █
-█
-│
-│
-█
-Document size limit (MiB, 0 = unlimited)
-█
-│
-│
-█
-100
-█
-│
-│
-█
-█
-│
-│
-█
-Image text size limit (MiB)
-█
-│
-│
-█
-50
-█
-│
-│
-█
-█
-│
-│
-Run a search to s
-█
-Audio/video size limit (MiB)
-█
-│
-│
-█
-500
-▂▂
-█
-│
-│
-█
-█
-│
-│
-█
-Sensitivity
-█
-│
-│
-█
-█
-│
-│
-█
-Minimum match %
-█
-│
-│
-█
-35
 █
 │
 │

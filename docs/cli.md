@@ -68,7 +68,7 @@ Folders never match on content (no OCR/tags/CLIP), so `--content-only` turns bot
 | **Matching** | `--threshold`, `--semantic-image-threshold`, `--transcribe-threshold`, `--semantic`, `--semantic-image`, `--semantic-all`, `--ocr`, `--transcribe`, `--transcribe-model` |
 | **Limits** | `--max-file-size` (default 100 MiB; `0` = unlimited), `--max-ocr-file-size`, `--max-transcribe-file-size`, `--max-matches`, `-l` / `--limit` |
 | **Output** | `--format grouped\|flat`, `--json`, `-o` / `--output` |
-| **Walk** | `--include-subdirectories` / `--no-include-subdirectories`, `--include-hidden`, `--include-noise`, `--include-noise-files`, `--match-skipped-names`, `--include-archives` |
+| **Walk** | `--include-subdirectories` / `--no-include-subdirectories`, `--include-hidden`, `--include-noise`, `--include-noise-files`, `--match-skipped-names`, `--include-archives`, `--ignore PATTERN` (repeatable, gitignore-style), `--respect-gitignore` |
 | **UX** | `--progress` / `--no-progress`, `--cli`, `--tui`, `--version` |
 
 `--max-line-matches` is deprecated; use `--max-matches`.

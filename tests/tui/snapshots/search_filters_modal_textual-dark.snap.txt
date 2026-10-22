@@ -12,31 +12,42 @@ Search filters
 █
 █
 █
-Limits
+Which files to scan
 █
 █
+▆▆
 █
 █
-Max results (empty = no limit)
+Ignore (one pattern per line)
 █
 █
-all
+▊
+▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔▔
+▎
 █
 █
+▊
+e.g. node_modules/ or *.log
+▎
 █
 █
-Hits shown per file
+▊
+▎
 █
 █
-50
+▊
+▎
 █
 █
+▊
+▎
 █
 █
-Document size limit (MiB, 0 = unlimited)
+▊
+▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁▁
+▎
 █
 █
-100
 █
 █
 █

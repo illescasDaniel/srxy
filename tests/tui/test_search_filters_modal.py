@@ -40,6 +40,8 @@ def test_given_search_filters_modal_when_typing_in_field_then_matches_snapshot(t
 		async with app.run_test(size=(80, 28)) as pilot:
 			app.push_screen(SearchFiltersModal(initial), wait_for_dismiss=False)
 			await pilot.pause()
+			app.screen.query_one("#sf-top-files").scroll_visible(animate=False)
+			await pilot.pause()
 			await pilot.click("#sf-top-files")
 			await pilot.pause()
 			await pilot.press("2", "5")
@@ -64,6 +66,8 @@ def test_given_tui_when_typing_in_filters_dialog_then_matches_snapshot(theme: st
 			await pilot.click("#search-filters-button")
 			await pilot.pause()
 			assert isinstance(app.screen, SearchFiltersModal)
+			app.screen.query_one("#sf-max-matches").scroll_visible(animate=False)
+			await pilot.pause()
 			await pilot.click("#sf-max-matches")
 			await pilot.pause()
 			await pilot.press("1", "0", "0")
