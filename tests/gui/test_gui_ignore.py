@@ -6,9 +6,10 @@ import json
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, QPointF, QUrl
-from PySide6.QtQuick import QQuickItem
-from tests.gui.helpers import ensure_qapp, load_main
+from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, QPointF, Qt, QUrl
+from PySide6.QtQuick import QQuickItem, QQuickWindow
+from PySide6.QtTest import QTest
+from tests.gui.helpers import GuiHarness, ensure_qapp, load_main
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
@@ -510,6 +511,226 @@ def test_given_path_outside_root_when_picking_then_returns_error_and_adds_nothin
 
 
 # --- QML objects -------------------------------------------------------------------------------
+
+
+def test_given_empty_ignore_editor_when_focusing_then_first_line_stays_inside_outline(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	harness = load_main(_controller(tmp_path), qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		editor = harness.find("fltIgnore")
+		assert isinstance(editor, QQuickItem)
+
+		# when / then: check actual text inset before looking up presentation hooks.
+		for focused in (False, True, False):
+			editor.setProperty("focus", focused)
+			qapp.processEvents()
+			cursor = harness.prop("fltIgnore", "cursorRectangle")
+			assert cursor.x() == pytest.approx(12, abs=1)
+			assert cursor.y() == pytest.approx(12, abs=1)
+			for side in ("topPadding", "leftPadding", "bottomPadding", "rightPadding"):
+				assert float(editor.property(side)) == pytest.approx(12)
+	finally:
+		harness.shutdown()
+
+
+def _editor_item(harness: GuiHarness, name: str) -> QQuickItem:
+	item = harness.find(name)
+	assert isinstance(item, QQuickItem)
+	return item
+
+
+def _assert_ignore_origin(harness: GuiHarness):
+	editor = _editor_item(harness, "fltIgnore")
+	harness.set_prop("fltIgnore", "cursorPosition", 0)
+	cursor = harness.prop("fltIgnore", "cursorRectangle")
+	assert (cursor.x(), cursor.y()) == pytest.approx((12, 12), abs=1)
+	placeholder = _editor_item(harness, "fltIgnorePlaceholder")
+	origin = placeholder.mapToItem(editor, QPointF(0, 0))
+	assert (origin.x(), origin.y()) == pytest.approx((cursor.x(), cursor.y()), abs=1)
+	assert placeholder.property("font") == editor.property("font")
+	assert float(placeholder.width()) <= float(editor.width()) - 24
+
+
+def test_given_empty_ignore_editor_when_typing_and_clearing_then_example_tracks_empty_state(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	harness = load_main(_controller(tmp_path), qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		editor = _editor_item(harness, "fltIgnore")
+		window = editor.window()
+		assert isinstance(window, QQuickWindow)
+
+		# when / then
+		for focused in (False, True, False, True):
+			editor.setFocus(focused)
+			qapp.processEvents()
+			assert bool(harness.prop("fltIgnorePlaceholder", "visible"))
+			_assert_ignore_origin(harness)
+		editor.forceActiveFocus()
+		for key in (Qt.Key.Key_Asterisk, Qt.Key.Key_Period, Qt.Key.Key_L, Qt.Key.Key_O, Qt.Key.Key_G):
+			QTest.keyClick(window, key)
+		qapp.processEvents()
+		assert harness.prop("fltIgnore", "text") == "*.log"
+		assert not bool(harness.prop("fltIgnorePlaceholder", "visible"))
+		_assert_ignore_origin(harness)
+		assert QMetaObject.invokeMethod(editor, "selectAll")
+		QTest.keyClick(window, Qt.Key.Key_Backspace)
+		qapp.processEvents()
+		assert harness.prop("fltIgnore", "text") == ""
+		assert bool(harness.prop("fltIgnorePlaceholder", "visible"))
+		_assert_ignore_origin(harness)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("is_dir", [False, True], ids=["file", "folder"])
+def test_given_loaded_ignore_draft_when_picker_appends_then_rules_keep_same_inset(
+	qapp: QCoreApplication, tmp_path: Path, is_dir: bool
+):
+	# given
+	controller = _controller(tmp_path)
+	assert controller.applyFiltersJson(_filters_payload(controller, ignore_patterns="*.log")) == ""
+	picked = tmp_path / "chosen"
+	picked.mkdir() if is_dir else picked.write_text("sample", encoding="utf-8")
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		assert harness.prop("fltIgnore", "text") == "*.log"
+		_assert_ignore_origin(harness)
+
+		# when: exercise the same QML handler called by the native chooser.
+		assert QMetaObject.invokeMethod(
+			harness.window,
+			"applyIgnorePick",
+			Q_ARG("QVariant", QUrl.fromLocalFile(str(picked)).toString()),
+			Q_ARG("QVariant", is_dir),
+		)
+		qapp.processEvents()
+
+		# then
+		assert harness.prop("fltIgnore", "text") == "*.log\n/chosen" + ("/" if is_dir else "")
+		assert not bool(harness.prop("fltIgnorePlaceholder", "visible"))
+		_assert_ignore_origin(harness)
+		assert _ignore_text(controller) == "*.log"
+	finally:
+		harness.shutdown()
+
+
+def test_given_invalid_ignore_draft_when_validating_then_geometry_and_plain_text_are_preserved(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	controller = _controller(tmp_path)
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		editor = _editor_item(harness, "fltIgnore")
+		before = (editor.width(), editor.height())
+
+		# when
+		harness.set_text("fltIgnore", "*.log\n[unclosed")
+
+		# then
+		assert harness.prop("fltIgnore", "text") == "*.log\n[unclosed"
+		assert (editor.width(), editor.height()) == pytest.approx(before, abs=1)
+		_assert_ignore_origin(harness)
+		assert not bool(harness.prop("fltIgnorePlaceholder", "visible"))
+		assert bool(harness.prop("fltIgnoreError", "visible"))
+		assert not bool(harness.prop("filtersOkButton", "enabled"))
+		assert "2" in str(harness.prop("fltIgnoreError", "text"))
+		assert _ignore_text(controller) == ""
+	finally:
+		harness.shutdown()
+
+
+def test_given_narrow_ignore_editor_when_scrolling_multiline_rules_then_hint_and_buttons_stay_below(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	harness = load_main(_controller(tmp_path), qapp)
+	try:
+		harness.window.setProperty("width", 640)
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		harness.set_prop("filtersDialog", "width", 360)
+		rules = "\n".join(f"/folder{index}/" + "long_name_" * 20 for index in range(30))
+		harness.set_text("fltIgnore", rules)
+		harness.wait_until(
+			lambda: float(harness.prop("fltIgnoreScroll", "height")) == pytest.approx(104, abs=1), timeout_ms=5000
+		)
+
+		# when
+		flick = harness.prop("fltIgnoreScroll", "contentItem")
+		assert isinstance(flick, QObject)
+		assert float(flick.property("contentHeight")) > float(flick.property("height"))
+		flick.setProperty("contentY", 40)
+		qapp.processEvents()
+
+		# then
+		assert float(flick.property("contentY")) > 0
+		assert harness.prop("fltIgnore", "text") == rules
+		viewport = _editor_item(harness, "fltIgnoreScroll")
+		hint = _editor_item(harness, "fltIgnoreHint")
+		button = _editor_item(harness, "fltAddFile")
+		viewport_bottom = viewport.mapToScene(QPointF(0, viewport.height())).y()
+		hint_top = hint.mapToScene(QPointF(0, 0)).y()
+		hint_bottom = hint.mapToScene(QPointF(0, hint.height())).y()
+		assert viewport.height() == pytest.approx(104, abs=1)
+		assert hint_top >= viewport_bottom
+		assert button.mapToScene(QPointF(0, 0)).y() >= hint_bottom
+		assert hint.height() > float(harness.prop("fltIgnore", "cursorRectangle").height())
+		harness.set_prop("fltIgnore", "cursorPosition", len(rules))
+		qapp.processEvents()
+		editor = _editor_item(harness, "fltIgnore")
+		window = editor.window()
+		assert isinstance(window, QQuickWindow)
+		editor.forceActiveFocus()
+		QTest.keyClick(window, Qt.Key.Key_X)
+		qapp.processEvents()
+		assert harness.prop("fltIgnore", "text") == rules + "x"
+		assert QMetaObject.invokeMethod(editor, "selectAll")
+		QTest.keyClick(window, Qt.Key.Key_Backspace)
+		qapp.processEvents()
+		assert harness.prop("fltIgnore", "text") == ""
+		assert bool(harness.prop("fltIgnorePlaceholder", "visible"))
+		_assert_ignore_origin(harness)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("accept", [False, True], ids=["cancel", "apply"])
+def test_given_corrected_ignore_editor_when_closing_then_draft_is_applied_or_discarded(
+	qapp: QCoreApplication, tmp_path: Path, accept: bool
+):
+	# given
+	controller = _controller(tmp_path)
+	assert controller.applyFiltersJson(_filters_payload(controller, ignore_patterns="*.tmp")) == ""
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		rules = "# exact draft\n*.log\n/build/"
+		harness.set_text("fltIgnore", rules)
+		_assert_ignore_origin(harness)
+
+		# when
+		if accept:
+			harness.apply_dialog_ok("filtersOkButton", "filtersDialog")
+		else:
+			assert QMetaObject.invokeMethod(harness.find("filtersDialog"), "reject")
+			harness.wait_until(lambda: not bool(harness.prop("filtersDialog", "visible")), timeout_ms=5000)
+
+		# then
+		expected = rules if accept else "*.tmp"
+		assert _ignore_text(controller) == expected
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		assert harness.prop("fltIgnore", "text") == expected
+		_assert_ignore_origin(harness)
+	finally:
+		harness.shutdown()
 
 
 def test_given_main_window_when_opening_filters_dialog_then_has_ignore_controls(qapp: QCoreApplication, tmp_path: Path):

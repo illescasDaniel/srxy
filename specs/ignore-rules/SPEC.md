@@ -6,6 +6,7 @@
 - **Wireframe:** [wireframes/ignore-rules.html](../../wireframes/ignore-rules.html). **Wireframe approved** 2026-10-21 (chat); **revised 2026-10-21** (“Which files to scan” moves into Filters) — approved 2026-10-21 (chat)
 - **Design decisions approved:** 2026-10-21 (chat)
 - **Spec approved:** 2026-10-21 (chat)
+- **GUI editor alignment amendment (2026-10-23):** [wireframes/ignore-editor-alignment.html](../../wireframes/ignore-editor-alignment.html), wireframe and amendment spec approved 2026-10-23 (chat). Original approvals above remain historical. Scope: editor presentation and regression coverage only; existing matching, failure handling, resource budgets and trust boundaries apply unchanged.
 - **Related:** none (extends persisted Filters, `SearchFilters`)
 
 ## Design decisions
@@ -62,6 +63,9 @@
 
 ## Visual & UI rules
 
+- **GUI editor alignment amendment (approved 2026-10-23):** Follow the approved alignment wireframe's empty, filled, narrow and error examples. Placeholder, typed text and cursor use a consistent padded top-left origin inside the outline. The example appears only while empty (including when focused), never floats onto the border, disappears when typing, and returns when cleared. Focus changes must not shift the entered text. The wireframe's pixel values describe the visual target; respect Qt font metrics and device-independent sizing.
+- Preserve multiline editing and scrolling, keep the explanatory hint below the editor with wrapping at narrow widths, and retain alignment when validation displays an error. Preserve localized copy, surrounding controls and platform theme colors; shared QML must not import a platform-specific control style.
+- Add real-QML regression assertions for placeholder visibility and editor geometry alongside GUI text-tree snapshots. The presentation correction adds no polling, workers or filesystem/network access, interprets patterns as plain text, and preserves existing validation, picker, apply/cancel and persistence behavior. It introduces no domain entities or public interfaces.
 - **"Which files to scan" moves from Search options to Filters** (GUI and TUI): subdirectories, archives, hidden, cache & vendor folders, junk & lock files, skipped file names and the binary-looking-files hint. The Search options dialog/modal keeps only "Where to search" and "How to match". These six switches keep their meaning, defaults, storage (search options) and CLI flags; Filters OK applies filters and switches together, Cancel discards both; "Reset to defaults" in Filters resets them, the Options reset no longer does.
 - Persistence of the moved switches: they are saved under Filters (settings.json `scan`, written only when "Remember filters" is ticked) and are no longer part of the persisted search options. Simple migration: when loading, if `scan` is absent but the old persisted `options` blob has those keys, they are used as the scan switches (and dropped from `options` on the next save). A 1.7 settings file therefore keeps its values, provided "Persist options" was on and "Remember filters" is ticked next time they are saved.
 - GUI and TUI follow `wireframes/ignore-rules.html`: the Ignore list is the first item of the new first section of Filters, same scroll area, same OK-disabled-on-error behaviour, info button, "Add file…" / "Add folder…" (GUI only), "Respect .gitignore files" checkbox, summary text "ignoring N patterns (+.gitignore)" in the filters summary.
@@ -256,6 +260,34 @@
 ### Scenario: CLI json shape unchanged
 
 **Given** `--ignore '*.log' --json` **When** run **Then** output is still a top-level JSON array of results.
+
+### Scenario: GUI empty ignore editor including focus
+
+**Given** an empty ignore list **When** Filters opens and the editor gains or loses focus **Then** the example stays inside the editor at the same padded origin and never touches its top border.
+
+### Scenario: GUI ignore editor typing and clearing
+
+**Given** an empty editor with a visible example **When** the user types a rule **Then** the example disappears and the rule and cursor occupy the same padded first-line origin; clearing all text restores the example.
+
+### Scenario: GUI populated ignore draft and picker additions
+
+**Given** rules loaded into the draft or appended through Add file or Add folder **When** they appear in the editor **Then** only the entered rules are visible, with consistent top padding and no floating example.
+
+### Scenario: GUI ignore editor multiline scrolling and narrow layout
+
+**Given** multiline rules including long lines **When** the user scrolls the editor or uses a narrower supported dialog width **Then** the rules remain editable, scrolling remains available, and the explanatory hint wraps below the editor without overlapping it or the buttons.
+
+### Scenario: GUI invalid ignore text preserves alignment
+
+**Given** a malformed rule such as `[unclosed` **When** validation runs **Then** the draft remains visible as plain text at the same inset, the existing error appears, OK is disabled, and no pattern-triggered filesystem or network operation occurs.
+
+### Scenario: GUI ignore editor theme compatibility
+
+**Given** the supported Material, Windows and macOS styles **When** the editor renders empty, filled or invalid **Then** the text remains readable and inside its outline, without shared-QML imports forcing a different platform style.
+
+### Scenario: GUI ignore editor apply and cancel
+
+**Given** edits in the corrected editor **When** OK or Cancel is selected **Then** the existing apply or discard behavior is preserved without losing or altering pattern text through layout changes.
 
 ## Out of scope
 

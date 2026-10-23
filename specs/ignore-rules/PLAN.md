@@ -218,3 +218,52 @@ Names follow `test_given_..._when_..._then_...` with `# given` / `# when` / `# t
 - Adding a rule from a result row marks current results stale (`_refresh_stale` compares `asdict(filters)`); results stay on screen.
 - Persisted filters override command-line filters at GUI/TUI startup (existing rule for all filters).
 - `parser.error` prints the usage line before the error message.
+
+## GUI editor alignment amendment — architecture approved (2026-10-23)
+
+The alignment wireframe, SPEC amendment and this Phase 2 architecture deliverable were explicitly approved in chat
+on 2026-10-23. Tests and implementation may proceed.
+
+### Scope and interfaces
+
+- Keep the existing `fltIgnore` TextArea and its surrounding ScrollView in `src/srxy/adapters/inbound/gui/qml/Main.qml`.
+  Its text, validation handler, picker updates and draft/apply/cancel bindings remain the existing interface.
+- No new domain types, ports, controller slots or shared control abstraction are needed: this is local presentation state.
+- Set all four editor paddings to 12 logical pixels, all four insets to zero, the viewport target height to 104 logical
+  pixels, and use `TextEdit.AlignTop`. Material currently derives padding from
+  the custom background's missing implicit height; Fluent can default to vertical centering. Explicit geometry removes
+  both dependencies while retaining normal Qt text editing, selection, accessibility and scrolling.
+- Set the style-owned `placeholderText` to empty. Draw one stationary, noninteractive placeholder in the custom
+  background, visible only when entered text and IME preedit text are both empty, using the localized existing placeholder string, editor font,
+  render type, placeholder color and matching top/left padding. Give it a stable objectName for real-QML tests.
+  The background is the decoration surface that Qt keeps stationary when the editor scrolls. Constrain the placeholder
+  to the usable width and elide long examples rather than overflowing.
+- Preserve the existing error-border binding, theme palette and explanatory hint below the editor. Shared QML imports
+  remain platform-neutral. Choose the inset and minimum editor height to match the approved visual target using Qt
+  logical sizing; do not force a new global font size.
+
+### Phase 3 — regression tests
+
+- `coder-python` owns Python test changes under `tests/gui/`, using the existing real-QML harness. Prefer a dedicated
+  editor test module if that keeps geometry checks separate from broader flow tests; update the existing GUI snapshot
+  test/tree to represent empty and filled placeholder states as appropriate.
+- Cover all seven amendment scenarios: empty focus transitions, typing/clearing, loaded and picker-added rules,
+  multiline/long-line scrolling and narrow layout, invalid text/error alignment, supported theme behavior, and apply/cancel.
+- Assert actual editor padding, text/cursor origin, placeholder geometry and visibility, and hint bounds. Capture the
+  original failing behavior before changing QML; assertions must establish the UI outcome rather than merely matching
+  source strings or the implementation's object structure.
+- Run styles in separate Qt processes because style selection happens before engine creation. Exercise styles available
+  on the host and report unavailable native styles as remaining platform QA, not as verified. Text snapshots supplement
+  real geometry assertions.
+
+### Phase 4 — implementation and validation
+
+1. `coder` owns the local QML correction in `Main.qml`; `coder-python` owns test/snapshot changes. Neither changes
+   matching, persistence, controllers or other UI inputs.
+2. Run the focused real-QML regressions and refresh intentional GUI text snapshots. Inspect a rendered Material editor
+   in empty, focused, filled and invalid states, including scrolling and a narrow dialog.
+3. `utility` runs `uv run task checks -- --quiet --fix --all`, then `uv run task checks -- --quiet --all`, following the project
+   GUI-change requirement to include all buckets. Resolve failures and repeat
+   until both pass; report actual environment blockers rather than claiming a pass.
+4. `code-grader` independently grades this amendment against SPEC.md, the approved wireframe and the change diff.
+   Fix findings within the prescribed two rounds; the orchestrator owns memory updates and the final scorecard.

@@ -10,6 +10,7 @@ import pytest
 from PySide6.QtCore import QCoreApplication
 from PySide6.QtGui import QGuiApplication
 from pytestqt.qtbot import QtBot
+from tests.gui.helpers import load_main
 
 from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
@@ -180,6 +181,39 @@ def test_given_uppercase_readme_when_search_completes_then_results_tree_matches_
 	assert controller.exit_code() == 0
 	assert controller.resultsModel.rowCount() >= 1
 	_assert_snapshot("readme_name_search_results", _results_tree(controller))
+
+
+def test_given_ignore_editor_states_when_rendered_then_text_tree_matches_snapshot(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+):
+	# given
+	monkeypatch.setenv("SRXY_SETTINGS_PATH", str(tmp_path / "settings.json"))
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	controller.setLanguage("en")
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		lines = ["filtersDialog.ignoreEditor:"]
+
+		# when
+		for state, text in (("empty", ""), ("filled", "*.log\n/build/"), ("invalid", "*.log\n[unclosed")):
+			harness.set_text("fltIgnore", text)
+			lines.extend(
+				[
+					f"  {state}:",
+					f"    text: {harness.prop('fltIgnore', 'text')!r}",
+					f"    example: {harness.prop('fltIgnorePlaceholder', 'text')!r}",
+					f"    exampleVisible: {harness.prop('fltIgnorePlaceholder', 'visible')}",
+					f"    errorVisible: {harness.prop('fltIgnoreError', 'visible')}",
+					f"    okEnabled: {harness.prop('filtersOkButton', 'enabled')}",
+				]
+			)
+
+		# then
+		_assert_snapshot("filters_ignore_editor", "\n".join(lines) + "\n")
+	finally:
+		harness.shutdown()
 
 
 def _ignore_tree(controller: SearchController, root: Path) -> str:

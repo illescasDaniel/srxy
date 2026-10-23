@@ -1,13 +1,15 @@
 # Active Context
 
-_Last updated: 2026-10-21_
+_Last updated: 2026-10-23_
 
 ## Branch
 
-- `feature/ignore-rules` — topic branch off `feature/1.8.0` for the ignore-rules feature (uncommitted).
+- `feature/ignore-rules` — topic branch off `feature/1.8.0` for the ignore-rules feature.
 - `feature/1.8.0` @ `879dbab` — PR #53 macOS offline installer SDK 26 / Mach-O launcher squash-merged.
 
 ## Current focus
+
+0. **Ignore editor alignment fix — implemented and independently graded PASS (2026-10-23):** all three approvals recorded. Original cursor y=0 regression confirmed before QML correction; focused GUI/snapshot suite passed (53), with strengthened typing/scroll tests also passing. Main.qml now owns padding/insets/top alignment and stationary empty/preedit-only placeholder. Material light/dark and narrow renders inspected; fresh Material/Fusion/FluentWinUI3 processes each passed 8 targeted regressions on Linux. Both `uv run task checks -- --quiet --fix --all` and `uv run task checks -- --quiet --all` passed with 0 errors/warnings after lockfile-only certifi 2026.10.19, Pillow 13.0.0 and pypdf 6.21.2 security updates; all four pytest buckets passed. Independent grader: 6 PASS, UI fidelity PARTIAL solely for unavailable native Windows/macOS inspection; no product defects identified. Daniel confirmed the fix and requested commit/push. Remaining follow-up: native Windows/macOS visual QA of empty/focused/filled/error/narrow/scrolling states.
 
 0. **Ignore files/folders in search** — SDD Phase 5 done (2 fix rounds used; final grade PASS with 6 PARTIAL findings awaiting Daniel's call: adversarial-glob perf +15-17% vs 15% budget, row-ignore follows symlinks, stale fltMatchSkipped binding after Options Cancel, missing hint sentence, untested gitignore_only summary, misleading toast on cap rejection). Gate green except pre-existing pip-audit CVEs (pillow, pypdf, certifi). Uncommitted. progress.md/decisions.md/jevmem notes still to write.
 

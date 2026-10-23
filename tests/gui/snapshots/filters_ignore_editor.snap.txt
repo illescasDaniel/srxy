@@ -1,0 +1,19 @@
+filtersDialog.ignoreEditor:
+  empty:
+    text: ''
+    example: 'e.g. node_modules/ or *.log'
+    exampleVisible: True
+    errorVisible: False
+    okEnabled: True
+  filled:
+    text: '*.log\n/build/'
+    example: 'e.g. node_modules/ or *.log'
+    exampleVisible: False
+    errorVisible: False
+    okEnabled: True
+  invalid:
+    text: '*.log\n[unclosed'
+    example: 'e.g. node_modules/ or *.log'
+    exampleVisible: False
+    errorVisible: True
+    okEnabled: False

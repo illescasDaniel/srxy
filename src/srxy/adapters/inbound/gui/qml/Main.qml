@@ -2189,13 +2189,25 @@ ApplicationWindow {
 					InfoButton { helpKey: "ignore" }
 				}
 				ScrollView {
+					objectName: "fltIgnoreScroll"
 					Layout.fillWidth: true
-					Layout.preferredHeight: 72
+					Layout.preferredHeight: 104
 					clip: true
 					TextArea {
 						id: fltIgnore
 						objectName: "fltIgnore"
-						placeholderText: root.t("filters.ignore.placeholder")
+						placeholderText: ""
+						Accessible.name: root.t("filters.ignore.section")
+						Accessible.description: root.t("filters.ignore.placeholder")
+						leftPadding: 12
+						rightPadding: 12
+						topPadding: 12
+						bottomPadding: 12
+						leftInset: 0
+						rightInset: 0
+						topInset: 0
+						bottomInset: 0
+						verticalAlignment: TextEdit.AlignTop
 						wrapMode: TextEdit.NoWrap
 						selectByMouse: true
 						font.family: Qt.platform.os === "windows"
@@ -2203,10 +2215,23 @@ ApplicationWindow {
 							: (Qt.platform.os === "osx" ? "Menlo" : "monospace")
 						property bool invalid: fltIgnoreError.visible
 						background: Rectangle {
+							objectName: "fltIgnoreBackground"
 							color: "transparent"
 							radius: 4
 							border.width: 1
 							border.color: fltIgnore.invalid ? "#c62828" : root.palette.mid
+							Text {
+								objectName: "fltIgnorePlaceholder"
+								x: fltIgnore.leftPadding
+								y: fltIgnore.topPadding
+								width: Math.max(0, parent.width - fltIgnore.leftPadding - fltIgnore.rightPadding)
+								text: root.t("filters.ignore.placeholder")
+								font: fltIgnore.font
+								renderType: fltIgnore.renderType
+								color: fltIgnore.placeholderTextColor
+								elide: Text.ElideRight
+								visible: fltIgnore.length === 0 && fltIgnore.preeditText.length === 0
+							}
 						}
 						onTextChanged: validateFiltersDraft()
 					}

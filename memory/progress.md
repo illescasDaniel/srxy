@@ -76,6 +76,9 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 
 ## Bugs / sub-tasks discovered
 
+- [x] Ignore-pattern GUI editor: alignment/placeholder correction implemented after all three approvals; regression tests, Material light/dark inspection and both full gates pass. Independent grade PASS (6 PASS, UI fidelity PARTIAL only for native-platform QA), no product defects identified (2026-10-23).
+- [ ] Ignore editor follow-up: inspect empty/focused/filled/error/narrow/scrolling states on native Windows/macOS; Linux Material/Fusion/FluentWinUI3 geometry checks passed (2026-10-23).
+
 - [x] Preview file open spam (`DirectWrite: CreateFontFaceFromHDC` for `8514oem`/`Fixedsys`, then `OpenType support missing` for Tahoma/Arial/… scripts) — preview HTML used bare `font-family:monospace`, which Windows Qt resolves as TypeWriter bitmap fonts DirectWrite cannot load. Fixed via `preview_font_family()` (Consolas / Menlo / monospace) in `gui/preview.py`, matching QML; unit tests added. `checks-win-quiet` PASSED. Applied from worktree `r9oj`.
 - [x] Search aborts or noisy failures on PermissionError (errno 13) for inaccessible files/folders under large trees (e.g. home). Fixed: skip + warn via existing ⚠ skipped-files UI; prune unlistable dirs during walk; parent prune after denied file when folder is not listable.
 - [x] `AccentButton` binding loop on `foreground` at GUI launch — `foreground` read `control.palette.*` while assigning `palette.buttonText`. Fixed via sibling `SystemPalette` for face/disabled colours; `checks-win-quiet` PASSED.
