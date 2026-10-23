@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-10-01_
+_Last updated: 2026-10-23_
 
 ## v1.7.0 — shipped 2026-09-11
 
@@ -44,7 +44,7 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 #### v1.8.0 (`feature/1.8.0`)
 
 - [x] **GUI recent searches + restore last path/query session — merged into feature/1.8.0 (2026-10-01):** PR #42 squash-merged @ `b93dc97` after CI green (quality / test-macos / test-windows / Gitleaks / GitGuardian). Launch banner + recent-searches popover (path/query/mode only, cap 20). Also skips Linux AppImage online-bootstrap `go test` on Windows (xdist worker crash flake).
-- [x] **Ignore files/folders in search** (1.8.0, branch `feature/ignore-rules`, uncommitted) — SDD phases 0-5 done: gitignore-style per-search list + opt-in `.gitignore` (GUI Filters, TUI Filters, CLI `--ignore` / `--respect-gitignore`), row context-menu "Ignore…" with Undo toast, "Which files to scan" moved into Filters (settings `scan` + migration). Grader PASS after 2 fix rounds + follow-up fixes; perf of an adversarial glob mix accepted (+15-17%). Pre-existing pip-audit CVEs (pillow, pypdf, certifi) still block the gate.
+- [x] **Ignore files/folders in search** — merged from `feature/ignore-rules` into `feature/1.8.0` by fast-forward and pushed to origin @ `38e5002` (2026-10-23). SDD phases 0-5 done: gitignore-style per-search list + opt-in `.gitignore` (GUI Filters, TUI Filters, CLI `--ignore` / `--respect-gitignore`), row context-menu "Ignore…" with Undo toast, "Which files to scan" moved into Filters (settings `scan` + migration). Grader PASS after 2 fix rounds + follow-up fixes; perf of an adversarial glob mix accepted (+15-17%). Latest editor-alignment fix and security dependency updates passed both full quality gates before merge; native Windows/macOS visual follow-up remains open below.
 - [x] **GUI drag-and-drop path field — merged into feature/1.8.0 (2026-10-01):** PR #41 squash-merged @ `905876b` after CI green (quality / test-macos / test-windows / Gitleaks / GitGuardian). Trello [voZsdHYf](https://trello.com/c/voZsdHYf). Includes macOS Finder window filter + Where GroupBox spacing fix.
 - [x] **Search button top-fixed — merged into feature/1.8.0 (2026-10-01):** PR #51 squash-merged @ `2e8433b` after CI green (quality / test-macos / test-windows). Trello `yO4X6JDM`.
 - [x] **Search button top-fixed (multi-term):** On macOS/Linux, `searchButton.Layout.alignment` fell back to `Qt.AlignVCenter` (only Windows `stretchToField` used `AlignTop`), so growing the multi-term list re-centred Search away from its initial y. Added `searchButton.pinTop` (`stretchToField || modeBox.currentIndex === 1`) and used it for the Search button plus the query-issue/search-warnings `ToolButton`s' `Layout.alignment`. Added `objectName: "multiTermColumn"` for test hooks. Geometry regression test `test_given_multi_term_growth_when_terms_added_then_search_button_stays_top_pinned` in `tests/gui/test_gui_query_layout.py` asserts `searchButton.mapToScene(...)` y is unchanged (±1px) as the term list grows from 1→6 terms and shrinks back; verified it fails without the fix (`initial_y=186.0 grown_y=324.0`). Merged via PR #51.
@@ -76,6 +76,7 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 
 ## Bugs / sub-tasks discovered
 
+- [x] Codex workflow skills: added apply-worktree, delete-worktree, copy-venv, and save-changes under `.agents/skills` for automatic discovery (2026-10-23). Adapted Cursor-specific instructions; four skill validations passed. Daniel approved commit/push on 2026-10-23.
 - [x] Ignore-pattern GUI editor: alignment/placeholder correction implemented after all three approvals; regression tests, Material light/dark inspection and both full gates pass. Independent grade PASS (6 PASS, UI fidelity PARTIAL only for native-platform QA), no product defects identified (2026-10-23).
 - [ ] Ignore editor follow-up: inspect empty/focused/filled/error/narrow/scrolling states on native Windows/macOS; Linux Material/Fusion/FluentWinUI3 geometry checks passed (2026-10-23).
 
