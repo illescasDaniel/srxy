@@ -237,11 +237,11 @@ class ProgressBar:
 			self.refresh()
 
 	def finish(self):
+		self.clear()
 		self._activity = None
 		self._two_line = False
 		if not self._tty:
 			return
-		self.clear()
 		self._stream.write("\n")
 		self._stream.flush()
 
@@ -769,84 +769,82 @@ def execute_search(
 def run_plain(args: argparse.Namespace) -> int:
 	from srxy.bootstrap import build_app_services
 
-	if args.query is None:
-		print("error: the following arguments are required: query", file=sys.stderr)
-		return 2
-
-	error = run_preflight(args, interactive=sys.stdin.isatty())
-	if error is not None:
-		print(error, file=sys.stderr)
-		return 2
-
 	try:
-		resolve_file_query(args)
-	except FileQueryParseError as error:
-		print(f"error: invalid query: {error}", file=sys.stderr)
-		return 2
+		if args.query is None:
+			print("error: the following arguments are required: query", file=sys.stderr)
+			return 2
 
-	services = build_app_services()
-	skipped_files: list[SkippedFile] = []
-	show_progress = resolve_show_progress(args)
-	progress = ProgressBar() if show_progress else None
-	writer = StreamingResultWriter(
-		as_json=args.json,
-		output_format=args.format,
-		query=args.query,
-		stdout=sys.stdout,
-		output_path=args.output,
-		progress=progress,
-	)
+		error = run_preflight(args, interactive=sys.stdin.isatty())
+		if error is not None:
+			print(error, file=sys.stderr)
+			return 2
 
-	def on_progress(current: int, total: int):
-		if progress is not None:
-			progress.set_activity(None)
-			progress.update(current, total)
+		try:
+			resolve_file_query(args)
+		except FileQueryParseError as error:
+			print(f"error: invalid query: {error}", file=sys.stderr)
+			return 2
 
-	def on_activity(update: ActivityUpdate | None):
-		if progress is not None:
-			progress.set_activity(update)
-
-	def on_result(_result: FileSearchResult):
-		if progress is not None:
-			progress.flash_match()
-
-	try:
-		results, skipped_files = services.file_search.execute(
-			args,
-			skipped_files=skipped_files,
-			on_progress=on_progress,
-			on_activity=on_activity,
-			on_result=on_result,
+		services = build_app_services()
+		skipped_files: list[SkippedFile] = []
+		show_progress = resolve_show_progress(args)
+		progress = ProgressBar() if show_progress else None
+		writer = StreamingResultWriter(
+			as_json=args.json,
+			output_format=args.format,
+			query=args.query,
+			stdout=sys.stdout,
+			output_path=args.output,
+			progress=progress,
 		)
-	except FileNotFoundError as error:
-		if progress is not None:
-			progress.finish()
-		writer.close()
-		print(error, file=sys.stderr)
-		return 2
-	except ValueError as error:
-		if progress is not None:
-			progress.finish()
-		writer.close()
-		print(error, file=sys.stderr)
-		return 2
 
-	if progress is not None:
-		progress.finish()
+		def on_progress(current: int, total: int):
+			if progress is not None:
+				progress.set_activity(None)
+				progress.update(current, total)
 
-	for result in results:
-		writer.write_result(result)
-	writer.finalize()
-	writer.close()
+		def on_activity(update: ActivityUpdate | None):
+			if progress is not None:
+				progress.set_activity(update)
 
-	skipped_warnings = format_skipped_file_warnings(skipped_files, args.max_file_size)
-	if skipped_warnings:
-		print(skipped_warnings, file=sys.stderr)
+		def on_result(_result: FileSearchResult):
+			if progress is not None:
+				progress.flash_match()
 
-	if not results:
-		print(format_no_matches_message(args.query, args.path), file=sys.stderr)
+		try:
+			try:
+				try:
+					results, skipped_files = services.file_search.execute(
+						args,
+						skipped_files=skipped_files,
+						on_progress=on_progress,
+						on_activity=on_activity,
+						on_result=on_result,
+					)
+				finally:
+					if progress is not None:
+						progress.finish()
+			except (FileNotFoundError, ValueError) as error:
+				print(error, file=sys.stderr)
+				return 2
 
-	return 0 if results else 1
+			for result in results:
+				writer.write_result(result)
+			writer.finalize()
+		finally:
+			writer.close()
+
+		skipped_warnings = format_skipped_file_warnings(skipped_files, args.max_file_size)
+		if skipped_warnings:
+			print(skipped_warnings, file=sys.stderr)
+
+		if not results:
+			print(format_no_matches_message(args.query, args.path), file=sys.stderr)
+
+		return 0 if results else 1
+	except KeyboardInterrupt:
+		print("Search cancelled.", file=sys.stderr)
+		return 130
 
 
 def _configure_stdio_utf8():

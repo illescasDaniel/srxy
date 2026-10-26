@@ -78,6 +78,8 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 
 ## Bugs / sub-tasks discovered
 
+- [x] **CLI Ctrl+C traceback (2026-10-26):** catch KeyboardInterrupt at the plain CLI boundary, return 130 with a stderr cancellation message, close output files and stop/clear progress including the activity line. Six regression cases, 114 passing CLI tests, real SIGINT smoke and both required four-bucket quality gates passed.
+
 - [x] **KDE native Browse encoded path (2026-10-26):** fixed the typed QUrl-to-native boundary; loaded-QML acceptance and real searches pass for #, literal %23/%20 and Unicode. Both full gates pass; independent targeted grade PASS. Live KDE portal interaction remains a manual QA follow-up, separate from the upstream fallback listing bug.
 
 - [ ] **Qt 6.11.1 fallback picker reserved-character paths (2026-10-24):** standalone FolderListModel lists wrong directory for #/literal%20 despite correct URL. QtWidgets alternative proved6/6 but needs reviewed bootstrap/packaging/UI scope; no private workaround shipped; documented limitation accepted for the startup-path patch on 2026-10-26, backend repair remains open.
