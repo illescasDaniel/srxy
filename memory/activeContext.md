@@ -4,9 +4,11 @@ _Last updated: 2026-10-26_
 
 ## Branch
 
-- `feature/1.8.0` @ `05a0d27` — task changes remain uncommitted; baseline includes Codex workflow skills.
+- `feature/1.8.0` — CLI interrupt and GUI launch/picker fixes committed and pushed through `7073c33`; current update records release scope.
 
 ## Current focus
+
+- **v1.8.0 release scope (2026-10-26):** review directly on native Windows and macOS, then proceed toward a normal release. RC CI planning is shelved and preserved in the local `release candidate` stash. Unlimited OCR is deferred beyond v1.8.0 because Daniel recalled out-of-memory issues; leave draft PR #38 as-is.
 
 - **CLI Ctrl+C traceback — fixed (2026-10-26):** plain CLI catches KeyboardInterrupt during preflight, search and result output; finishes progress/spinner cleanup, closes the output writer, prints `Search cancelled.` to stderr and returns 130. Six regression cases failed before the fix; all 114 CLI tests pass. Real subprocess SIGINT during search returned 130 without a traceback. Required autofix and verify gates passed all four buckets with zero errors/warnings. Changes remain uncommitted.
 
@@ -18,16 +20,16 @@ _Last updated: 2026-10-26_
 
 0. **Codex workflow skills** — added discoverable `.agents/skills` versions of apply-worktree, delete-worktree, copy-venv, and save-changes. Four skill validations passed; instruction-only changes reuse existing venv helpers. Daniel approved committing and pushing the skill and memory changes on 2026-10-23.
 
-1. **v1.8.0 train** — offline installer Liquid Glass + Finder open fix landed; Unlimited OCR (draft PR #38) still open.
+1. **v1.8.0 train** — offline installer Liquid Glass + Finder open fix landed; Unlimited OCR (draft PR #38) is deferred beyond this release.
 2. Next topic / QA as Daniel directs.
 
 ## Next steps
 
-- Daniel approved the CLI interrupt fix and authorized commit/push to `feature/1.8.0`; save after fresh autofix/verify gates. The bare `srxy` command still uses the separately installed copy; `.venv/bin/srxy` runs the fixed checkout.
+- Review the current feature branch directly on native Windows and macOS, including ignore-editor states and native folder-picker behavior, before a normal v1.8.0 release.
 
-- Full precommit gates passed; task is ready for the authorized commit/push to feature/1.8.0. After saving, continue with native-picker QA or other work as Daniel directs. Keep Qt fallback backend repair and native picker QA tracked as follow-ups; the documented limitation is accepted for this patch.
+- Keep Qt fallback backend repair and native picker QA tracked as follow-ups; the documented limitation is accepted for the startup-path patch. CLI interrupt and GUI launch/picker task changes have already been saved and pushed.
 
-1. Daniel GPU QA / undraft Unlimited OCR (#38) when ready.
+- Leave Unlimited OCR draft PR #38 untouched; it is not a v1.8.0 release requirement.
 
 ## Memory protocol (2026-09-01)
 
