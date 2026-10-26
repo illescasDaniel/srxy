@@ -359,7 +359,8 @@ def build_parser() -> argparse.ArgumentParser:
 		default=None,
 		help="Search string; use | for OR, & for AND, quotes for phrases (e.g. '(red|blue)&color')",
 	)
-	parser.add_argument("path", nargs="?", default=".", help="File or directory to search (default: .)")
+	parser.add_argument("path", nargs="?", default=None, help="File or directory to search (default: .)")
+	parser.add_argument("--app-launch", action="store_true", help=argparse.SUPPRESS)
 	parser.add_argument("--threshold", type=float, default=0.35, help="Minimum match score (default: 0.35)")
 	parser.add_argument(
 		"--max-file-size",
@@ -903,6 +904,9 @@ def main(argv: list[str] | None = None) -> int:
 
 		mark("gui_selected")
 		return run_gui(args, auto_start=auto_start)
+
+	if args.path is None:
+		args.path = "."
 
 	if should_use_tui(args):
 		from srxy.adapters.inbound.tui import run_tui

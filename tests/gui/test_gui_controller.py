@@ -49,21 +49,201 @@ def test_given_query_when_controller_syncs_then_builds_file_query(qapp: QCoreApp
 	assert Path(synced.path) == tmp_path
 
 
-def test_given_default_cli_path_when_opening_gui_then_uses_home(
+@pytest.mark.parametrize("app_launch", [False, True])
+def test_given_explicit_dot_when_opening_gui_then_uses_caller_directory(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, app_launch: bool
+):
+	# given
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.chdir(tmp_path)
+	args = build_parser().parse_args(["needle", ".", "--cli"])
+	args.app_launch = app_launch
+
+	# when
+	controller = SearchController(args)
+
+	# then
+	assert Path(str(controller.path)) == tmp_path
+	assert Path(controller.sync_args_for_tests().path) == tmp_path
+
+
+@pytest.mark.parametrize("app_launch", [False, True])
+def test_given_symlink_parent_root_when_opening_ignore_picker_then_qt_keeps_requested_target(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, app_launch: bool
+):
+	from PySide6.QtCore import QDir
+
+	# given
+	caller = tmp_path / "caller"
+	caller.mkdir()
+	external = tmp_path / "external"
+	linked_directory = external / "child"
+	linked_directory.mkdir(parents=True)
+	requested_target = external / "target"
+	requested_target.mkdir()
+	(caller / "target").mkdir()
+	try:
+		(caller / "link").symlink_to(linked_directory, target_is_directory=True)
+	except OSError:
+		if os.name == "nt":
+			pytest.skip("Directory symlink creation requires Windows symlink privileges")
+		raise
+	monkeypatch.chdir(caller)
+	raw = os.path.join("link", "..", "target")
+	args = build_parser().parse_args(["needle", raw, "--cli"])
+	args.app_launch = app_launch
+	controller = SearchController(args)
+	selected_path = controller.path
+	original_target = Path(raw).resolve(strict=True)
+	assert original_target == requested_target
+
+	# when
+	folder_url = controller.ignorePickerFolderUrl()
+
+	# then
+	assert Path(QDir.cleanPath(folder_url.toLocalFile())) == original_target
+	assert controller.path == selected_path
+	assert controller.hasSearched is False
+
+
+@pytest.mark.parametrize("app_launch", [False, True])
+def test_given_omitted_path_and_saved_recent_when_opening_gui_then_defaults_without_restoring_or_searching(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path, app_launch: bool
+):
+	# given
+	from srxy.application.settings import RecentSearchEntry
+
+	home = tmp_path / "home"
+	home.mkdir()
+	set_fake_home(monkeypatch, home)
+	monkeypatch.chdir(tmp_path)
+	entry = RecentSearchEntry(path=str(tmp_path / "saved"), query_mode="simple", simple_query="old")
+	monkeypatch.setattr("srxy.application.settings.load_recent_searches", lambda: [entry])
+	args = build_parser().parse_args([])
+	args.app_launch = app_launch
+
+	# when
+	controller = SearchController(args)
+
+	# then
+	assert controller.path == str(home if app_launch else tmp_path)
+	assert controller.simpleQuery == ""
+	assert controller.searching is False
+	assert controller.hasSearched is False
+	assert controller.search_thread_for_tests() is None
+
+
+def test_given_unavailable_cwd_when_opening_gui_then_uses_home_without_search(
 	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
 ):
 	# given
 	home = tmp_path / "home"
 	home.mkdir()
 	set_fake_home(monkeypatch, home)
-	args = build_parser().parse_args(["", ".", "--cli"])
+
+	def unavailable():
+		raise FileNotFoundError("caller directory removed")
+
+	monkeypatch.setattr(os, "getcwd", unavailable)
+	args = build_parser().parse_args([])
 
 	# when
 	controller = SearchController(args)
 
 	# then
-	assert Path(str(controller.path)) == home
-	assert Path(controller.sync_args_for_tests().path) == home
+	assert controller.path == str(home)
+	assert controller.hasSearched is False
+
+
+def test_given_unreadable_cwd_when_opening_gui_then_selects_it_without_access_probe(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+	# given
+	monkeypatch.chdir(tmp_path)
+	args = build_parser().parse_args([])
+
+	def guard_root(original):
+		def guarded(path=".", *args, **kwargs):
+			if str(path) in {str(tmp_path), "."}:
+				pytest.fail("Startup must not probe search-root access or enumerate it")
+			return original(path, *args, **kwargs)
+
+		return guarded
+
+	for name in ("access", "listdir", "scandir", "walk"):
+		monkeypatch.setattr(os, name, guard_root(getattr(os, name)))
+	monkeypatch.setattr(Path, "iterdir", guard_root(Path.iterdir))
+
+	# when
+	controller = SearchController(args)
+
+	# then
+	assert controller.path == str(tmp_path)
+	assert controller.hasSearched is False
+
+
+@pytest.mark.parametrize("selected", [".", "", "relative folder/ñ #100%"])
+def test_given_later_path_edit_when_syncing_search_then_does_not_reapply_startup_default(
+	qapp: QCoreApplication, tmp_path: Path, selected: str
+):
+	# given
+	args = build_parser().parse_args(["needle", str(tmp_path)])
+	args.app_launch = True
+	controller = SearchController(args)
+	controller.path = selected
+
+	# when
+	synced = controller.sync_args_for_tests()
+
+	# then
+	assert controller.path == selected
+	assert synced.path == selected
+
+
+def test_given_recent_dot_path_when_restoring_then_sync_preserves_selected_root(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+	# given
+	from srxy.application.settings import RecentSearchEntry
+
+	entry = RecentSearchEntry(path=".", query_mode="simple", simple_query="old")
+	monkeypatch.setattr("srxy.application.settings.load_recent_searches", lambda: [entry])
+	controller = SearchController(build_parser().parse_args(["", str(tmp_path)]))
+
+	# when
+	controller.restoreRecentSearch(0, False)
+	synced = controller.sync_args_for_tests()
+
+	# then
+	assert controller.path == "."
+	assert synced.path == "."
+	assert controller.hasSearched is False
+
+
+def test_given_empty_search_root_when_accepting_ignore_pick_then_rejects_cwd_scope(
+	qapp: QCoreApplication, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+):
+	# given
+	from PySide6.QtCore import QUrl
+
+	monkeypatch.chdir(tmp_path)
+	picked = tmp_path / "candidate.txt"
+	picked.write_text("example", encoding="utf-8")
+	controller = SearchController(build_parser().parse_args(["needle", str(tmp_path)]))
+	controller.path = ""
+	before = controller.filtersJson()
+
+	# when
+	response = json.loads(controller.ignorePatternForPick(QUrl.fromLocalFile(str(picked)).toString(), False, "*.log"))
+
+	# then
+	assert response.get("error")
+	assert "text" not in response
+	assert controller.path == ""
+	assert controller.filtersJson() == before
+	assert controller.hasSearched is False
 
 
 def test_given_explicit_path_when_opening_gui_then_keeps_path(qapp: QCoreApplication, tmp_path: Path):
@@ -96,6 +276,85 @@ def test_given_browsed_path_when_normalizing_then_strips_url_prefix(raw: str, ex
 	from srxy.adapters.inbound.gui.controller import _normalize_browsed_path  # pyright: ignore[reportPrivateUsage]
 
 	assert _normalize_browsed_path(raw) == expected
+
+
+@pytest.mark.parametrize("folder_name", ["folder#tag", "folder%23tag", "folder%20tag", "café folder"])
+def test_given_native_path_when_typed_browsed_or_dropped_then_encoding_is_decoded_only_for_urls(
+	qapp: QCoreApplication, tmp_path: Path, folder_name: str
+):
+	# given
+	from PySide6.QtCore import QUrl
+
+	root = tmp_path / folder_name
+	root.mkdir()
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	url = QUrl.fromLocalFile(str(root))
+
+	# when / then — native text must never receive URL percent decoding.
+	controller.path = str(root)
+	assert str(controller.path) == str(root)
+	assert not controller.pathIssue
+	controller.path = str(tmp_path)
+	controller.setBrowsedPath(url)
+	assert str(controller.path) == str(root)
+	assert not controller.pathIssue
+	controller.path = str(tmp_path)
+	controller.handleDroppedPathUrls([url.toString()])
+	assert str(controller.path) == str(root)
+	assert not controller.pathIssue
+
+	# then — ignore acceptance also decodes exactly once and retains containment.
+	child = root / "child#%23%20.txt"
+	child.write_text("hello", encoding="utf-8")
+	payload = json.loads(controller.ignorePatternForPick(QUrl.fromLocalFile(str(child)).toString(), False, ""))
+	assert "error" not in payload
+	assert "/child#%23%20.txt" in payload["text"]
+
+
+@pytest.mark.parametrize("url_text", ["", "https://example.com/folder", "relative/path"])
+def test_given_non_file_browse_url_when_accepted_then_search_path_is_unchanged(
+	qapp: QCoreApplication, tmp_path: Path, url_text: str
+):
+	# given
+	from PySide6.QtCore import QUrl
+
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# when
+	controller.setBrowsedPath(QUrl(url_text))
+
+	# then
+	assert str(controller.path) == str(tmp_path)
+
+
+def test_given_symlink_parent_path_when_browsed_then_native_target_is_not_normalized(
+	qapp: QCoreApplication, tmp_path: Path
+):
+	# given
+	from PySide6.QtCore import QUrl
+
+	other = tmp_path / "other"
+	(other / "child").mkdir(parents=True)
+	target = other / "target#%23"
+	target.mkdir()
+	link = tmp_path / "link"
+	try:
+		link.symlink_to(other / "child", target_is_directory=True)
+	except OSError:
+		pytest.skip("symlinks unavailable")
+	picked = str(link) + "/../target#%23"
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+
+	# when
+	controller.setBrowsedPath(QUrl.fromLocalFile(picked))
+
+	# then
+	assert str(controller.path) == picked
+	assert not controller.pathIssue
+	assert Path(controller.sync_args_for_tests().path).samefile(target)
 
 
 def test_given_windows_url_when_controller_sets_path_then_no_leading_slash(

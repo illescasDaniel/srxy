@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 
 import pytest
-from PySide6.QtCore import Q_ARG, QCoreApplication, QMetaObject, QObject, QPointF, Qt, QUrl
+from PySide6.QtCore import Q_ARG, Property, QCoreApplication, QMetaObject, QObject, QPointF, Qt, QUrl
+from PySide6.QtGui import QGuiApplication
+from PySide6.QtQml import QQmlEngine, QQmlProperty
 from PySide6.QtQuick import QQuickItem, QQuickWindow
 from PySide6.QtTest import QTest
 from tests.gui.helpers import GuiHarness, ensure_qapp, load_main
@@ -15,6 +18,7 @@ from srxy.adapters.inbound.cli.cli import build_parser
 from srxy.adapters.inbound.gui.controller import SearchController
 from srxy.adapters.outbound.archive.archive_search import archive_member_path
 from srxy.application.search_session import SearchFinishedEvent
+from srxy.application.settings import RecentSearchEntry, save_recent_search
 from srxy.domain.models import FileSearchResult
 
 
@@ -897,18 +901,43 @@ _SCAN_LABEL_KEYS = (
 
 
 def _texts_under(root: QObject) -> set[str]:
-	"""Every non-empty ``text`` property in the QML item subtree below ``root``."""
+	"""Every non-empty text property in the visual QML subtree, including clipped items."""
+	assert isinstance(root, QQuickItem)
 	found: set[str] = set()
-	stack: list[QObject] = [root]
+	seen: set[QQuickItem] = set()
+	stack: list[QQuickItem] = [root]
 	while stack:
 		node = stack.pop()
-		text = node.property("text")
+		if node in seen:
+			continue
+		seen.add(node)
+		text = QQmlProperty(node, "text").read()
 		if isinstance(text, str) and text:
 			found.add(text)
-		if isinstance(node, QQuickItem):
-			stack.extend(node.childItems())
-		stack.extend(node.children())
+		stack.extend(node.childItems())
 	return found
+
+
+def test_given_visual_child_without_object_parent_when_collecting_text_then_excludes_nonvisual_decoy(
+	qapp: QCoreApplication,
+):
+	# given: visual ownership is independent of QObject ownership.
+	class VisualLabel(QQuickItem):
+		@Property(str, constant=True)
+		def text(self):
+			return "scan label"
+
+	root = QQuickItem()
+	child = VisualLabel()
+	child.setParentItem(root)
+	child.setVisible(False)
+	decoy = QObject(root)
+	decoy.setProperty("text", "nonvisual decoy")
+	assert child.parent() is None
+	assert child not in root.children()
+
+	# when / then: clipped or hidden visual labels count; implementation objects do not.
+	assert _texts_under(root) == {"scan label"}
 
 
 def _menu_item_at(menu: QObject, index: int) -> object:
@@ -921,8 +950,8 @@ def _dialog_texts(harness, dialog_name: str) -> set[str]:
 	dialog = harness.find(dialog_name)
 	texts: set[str] = set()
 	for part in ("contentItem", "header", "footer"):
-		item = dialog.property(part)
-		if isinstance(item, QObject):
+		item = QQmlProperty(dialog, part).read()
+		if isinstance(item, QQuickItem):
 			texts |= _texts_under(item)
 	return texts
 
@@ -1119,3 +1148,320 @@ def test_given_rule_breaking_caps_when_adding_then_error_toast_and_nothing_added
 	assert reply["added"] is False
 	assert pattern not in reply["toast"]
 	assert _ignore_text(controller) == existing
+
+
+@pytest.fixture
+def non_native_pickers(qapp: QCoreApplication):
+	"""Keep chooser navigation deterministic and in-process on every host."""
+	attribute = Qt.ApplicationAttribute.AA_DontUseNativeDialogs
+	previous = QCoreApplication.testAttribute(attribute)
+	QCoreApplication.setAttribute(attribute, True)
+	try:
+		yield
+	finally:
+		QCoreApplication.setAttribute(attribute, previous)
+
+
+def _open_ignore_picker(harness: GuiHarness, kind: str) -> QObject:
+	name = "fltPickFileDialog" if kind == "file" else "fltPickFolderDialog"
+	button = "fltAddFile" if kind == "file" else "fltAddFolder"
+	harness.open_dialog_via(button, name)
+	return harness.find(name)
+
+
+def _reject_ignore_picker(harness: GuiHarness, dialog: QObject):
+	name = dialog.objectName()
+	assert QMetaObject.invokeMethod(dialog, "reject")
+	if name == "fltPickFolderDialog":
+		harness.wait_until(lambda: harness.window.findChild(QObject, name) is None, timeout_ms=5000)
+	else:
+		harness.wait_until(
+			lambda: not bool(dialog.property("visible")),
+			timeout_ms=5000,
+		)
+
+
+def _navigate_ignore_picker(harness: GuiHarness, kind: str, target: Path):
+	"""Navigate through the fallback picker's address field without wrapping private children."""
+	windows = [window for window in QGuiApplication.topLevelWindows() if window.isVisible()]
+	window = next(window for window in windows if window is not harness.window)
+	assert isinstance(window, QQuickWindow)
+	window.requestActivate()
+	harness.qapp.processEvents()
+	QTest.keyClick(window, Qt.Key.Key_L, Qt.KeyboardModifier.ControlModifier)
+	harness.qapp.processEvents()
+	address = window.activeFocusItem()
+	assert isinstance(address, QQuickItem)
+	address.forceActiveFocus()
+	assert address.setProperty("text", str(target))
+	assert QMetaObject.invokeMethod(address, "accepted")
+	harness.qapp.processEvents()
+
+
+def _assert_picker_folder(dialog: QObject, expected: Path):
+	# Qt's non-native folder model updates asynchronously after navigation/opening.
+	expected_url = QUrl.fromLocalFile(str(expected))
+	for _ in range(100):
+		if dialog.property("currentFolder") == expected_url:
+			break
+		QTest.qWait(10)
+	actual = dialog.property("currentFolder")
+	assert isinstance(actual, QUrl)
+	assert actual.isLocalFile()
+	assert Path(actual.toLocalFile()) == expected
+	assert actual == expected_url
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_given_current_root_when_ignore_picker_clicked_and_reopened_then_resets_to_exact_root(
+	qapp: QCoreApplication, tmp_path: Path, non_native_pickers, kind: str
+):
+	# given: one path exercises all URL-sensitive characters together.
+	root = tmp_path / "café space #100%"
+	root.mkdir()
+	visited = tmp_path / "visited"
+	visited.mkdir()
+	controller = _controller(root)
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+
+		# when / then: native navigation overwrites currentFolder; every click must reset it.
+		for _ in range(2):
+			dialog = _open_ignore_picker(harness, kind)
+			_assert_picker_folder(dialog, root)
+			_navigate_ignore_picker(harness, kind, visited)
+			_assert_picker_folder(dialog, visited)
+			_reject_ignore_picker(harness, dialog)
+		assert controller.path == str(root)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+@pytest.mark.parametrize("route", ["typing", "browse", "drop", "recent"])
+def test_given_changed_root_when_ignore_picker_reopened_then_uses_latest_selected_directory(
+	qapp: QCoreApplication, tmp_path: Path, non_native_pickers, kind: str, route: str
+):
+	# given
+	first = tmp_path / "first"
+	first.mkdir()
+	second = tmp_path / "second"
+	second.mkdir()
+	if route == "recent":
+		save_recent_search(
+			RecentSearchEntry(path=str(second), query_mode="simple", simple_query="alpha", display="alpha")
+		)
+	controller = _controller(first)
+	harness = load_main(controller, qapp)
+	try:
+		if bool(controller.launchBannerVisible):
+			harness.click("launchBannerDismissButton")
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		dialog = _open_ignore_picker(harness, kind)
+		_assert_picker_folder(dialog, first)
+		_reject_ignore_picker(harness, dialog)
+		assert QMetaObject.invokeMethod(harness.find("filtersDialog"), "reject")
+		harness.wait_until(lambda: not bool(harness.prop("filtersDialog", "visible")), timeout_ms=5000)
+
+		# when: use the same public routes as the main path controls.
+		if route == "typing":
+			harness.set_text("pathField", str(second))
+		elif route == "browse":
+			context = QQmlEngine.contextForObject(harness.window)
+			assert context is not None
+			browse = context.objectForName("folderDialog")
+			assert isinstance(browse, QObject)
+			harness.click("browseButton")
+			harness.wait_until(lambda: bool(browse.property("visible")), timeout_ms=5000)
+			assert browse.setProperty("selectedFolder", QUrl.fromLocalFile(str(second)))
+			assert QMetaObject.invokeMethod(browse, "accept")
+			harness.wait_until(lambda: not bool(browse.property("visible")), timeout_ms=5000)
+		elif route == "drop":
+			controller.handleDroppedPathUrls([QUrl.fromLocalFile(str(second)).toString()])
+		else:
+			harness.open_dialog_via("recentSearchesButton", "recentSearchesPopup")
+			harness.click("recentRestoreButton_0")
+		qapp.processEvents()
+		assert controller.path == str(second)
+		assert harness.prop("pathField", "text") == str(second)
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		dialog = _open_ignore_picker(harness, kind)
+
+		# then
+		_assert_picker_folder(dialog, second)
+		_reject_ignore_picker(harness, dialog)
+		assert not bool(controller.hasSearched)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+@pytest.mark.parametrize("invalid", ["empty", "missing", "file", "inaccessible"])
+def test_given_invalid_root_when_ignore_picker_opens_then_requests_home_without_mutating_state(
+	qapp: QCoreApplication, tmp_path: Path, monkeypatch: pytest.MonkeyPatch, non_native_pickers, kind: str, invalid: str
+):
+	# given
+	root = tmp_path / "root"
+	root.mkdir()
+	controller = _controller(root)
+	assert controller.applyFiltersJson(_filters_payload(controller, ignore_patterns="*.committed")) == ""
+	harness = load_main(controller, qapp)
+	try:
+		if invalid == "empty":
+			requested = ""
+		elif invalid == "missing":
+			requested = str(tmp_path / "missing")
+		elif invalid == "file":
+			file = tmp_path / "plain-file"
+			file.write_text("sample", encoding="utf-8")
+			requested = str(file)
+		else:
+			requested = str(root)
+			real_access = os.access
+			monkeypatch.setattr(
+				os,
+				"access",
+				lambda path, mode, **kwargs: False if str(path) == requested else real_access(path, mode, **kwargs),
+			)
+		harness.set_text("pathField", requested)
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		harness.set_text("fltIgnore", "*.draft")
+		search_changes = _SignalCounter(controller.searchingChanged)
+
+		# when
+		dialog = _open_ignore_picker(harness, kind)
+
+		# then
+		_assert_picker_folder(dialog, Path.home())
+		_reject_ignore_picker(harness, dialog)
+		assert controller.path == requested
+		assert harness.prop("pathField", "text") == requested
+		assert harness.prop("fltIgnore", "text") == "*.draft"
+		assert _ignore_text(controller) == "*.committed"
+		assert search_changes.count == 0
+		assert not bool(controller.hasSearched)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+def test_given_ignore_draft_when_picker_navigated_and_cancelled_then_preserves_state_without_search(
+	qapp: QCoreApplication, tmp_path: Path, non_native_pickers, kind: str
+):
+	# given
+	visited = tmp_path / "visited"
+	visited.mkdir()
+	controller = _controller(tmp_path)
+	assert controller.applyFiltersJson(_filters_payload(controller, ignore_patterns="*.committed")) == ""
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		harness.set_text("fltIgnore", "# draft\n*.draft")
+		search_changes = _SignalCounter(controller.searchingChanged)
+		dialog = _open_ignore_picker(harness, kind)
+
+		# when
+		_navigate_ignore_picker(harness, kind, visited)
+		_reject_ignore_picker(harness, dialog)
+
+		# then
+		assert controller.path == str(tmp_path)
+		assert harness.prop("fltIgnore", "text") == "# draft\n*.draft"
+		assert _ignore_text(controller) == "*.committed"
+		assert search_changes.count == 0
+		assert not bool(controller.hasSearched)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("kind", ["file", "folder"])
+@pytest.mark.parametrize("escape", ["sibling", "symlink"])
+def test_given_picker_at_root_when_accepting_outside_path_then_rejects_without_changing_draft(
+	qapp: QCoreApplication, tmp_path: Path, non_native_pickers, kind: str, escape: str
+):
+	# given
+	root = tmp_path / "root"
+	root.mkdir()
+	outside = tmp_path / "outside"
+	outside.mkdir()
+	picked = outside / "chosen"
+	picked.mkdir() if kind == "folder" else picked.write_text("sample", encoding="utf-8")
+	if escape == "symlink":
+		link = root / "escape"
+		try:
+			link.symlink_to(outside, target_is_directory=True)
+		except OSError as error:
+			pytest.skip(f"symlinks unavailable: {error}")
+		picked = link / "chosen"
+	controller = _controller(root)
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		harness.set_text("fltIgnore", "*.draft")
+		dialog = _open_ignore_picker(harness, kind)
+		_assert_picker_folder(dialog, root)
+
+		# when: trigger the real dialog acceptance handler.
+		property_name = "selectedFile" if kind == "file" else "selectedFolder"
+		assert dialog.setProperty(property_name, QUrl.fromLocalFile(str(picked)))
+		assert QMetaObject.invokeMethod(dialog, "accept")
+		qapp.processEvents()
+
+		# then
+		assert harness.prop("fltIgnore", "text") == "*.draft"
+		assert harness.prop("fltPickMessage", "text")
+		assert _ignore_text(controller) == ""
+		assert controller.path == str(root)
+		assert not bool(controller.hasSearched)
+	finally:
+		harness.shutdown()
+
+
+@pytest.mark.parametrize("accept", [False, True], ids=["cancel", "accept"])
+def test_given_folder_picker_when_closed_then_destroyed_and_reopened_as_fresh_visible_dialog(
+	qapp: QCoreApplication, tmp_path: Path, non_native_pickers, accept: bool
+):
+	# given
+	chosen = tmp_path / "chosen"
+	chosen.mkdir()
+	controller = _controller(tmp_path)
+	harness = load_main(controller, qapp)
+	try:
+		harness.open_dialog_via("filtersButton", "filtersDialog")
+		harness.set_text("fltIgnore", "*.draft")
+		dialog = _open_ignore_picker(harness, "folder")
+		assert dialog.property("parentWindow") == harness.window
+
+		# when
+		if accept:
+			assert dialog.setProperty("selectedFolder", QUrl.fromLocalFile(str(chosen)))
+			assert QMetaObject.invokeMethod(dialog, "accept")
+		else:
+			assert QMetaObject.invokeMethod(dialog, "reject")
+		harness.wait_until(
+			lambda: harness.window.findChild(QObject, "fltPickFolderDialog") is None,
+			timeout_ms=5000,
+			message="closed folder picker was not destroyed",
+		)
+
+		# then
+		expected = "*.draft\n/chosen/" if accept else "*.draft"
+		assert harness.prop("fltIgnore", "text") == expected
+		assert controller.path == str(tmp_path)
+		assert _ignore_text(controller) == ""
+		assert not bool(controller.hasSearched)
+		reopened = _open_ignore_picker(harness, "folder")
+		assert reopened is not dialog
+		assert bool(reopened.property("visible"))
+		assert reopened.property("parentWindow") == harness.window
+		_assert_picker_folder(reopened, tmp_path)
+		_reject_ignore_picker(harness, reopened)
+		harness.wait_until(
+			lambda: harness.window.findChild(QObject, "fltPickFolderDialog") is None,
+			timeout_ms=5000,
+			message="reopened folder picker was not destroyed after cancellation",
+		)
+		assert harness.prop("fltIgnore", "text") == expected
+	finally:
+		harness.shutdown()

@@ -56,8 +56,12 @@ def launch_installed_app(prefix: Path | str):
 	launcher = installed_launcher_path(root)
 	if not launcher.is_file():
 		raise FileNotFoundError(f"srxy launcher not found at {launcher}")
+	command = [str(launcher)]
+	# The GUI executable marks app intent itself; ordinary command shims do not.
+	if platform.system().lower() != "windows" or launcher.name != "Srxy.exe":
+		command.append("--app-launch")
 	subprocess.Popen(  # noqa: S603 — launches the installer-written prefix binary
-		[str(launcher)],
+		command,
 		cwd=str(Path.home()),
 		stdin=subprocess.DEVNULL,
 		stdout=subprocess.DEVNULL,

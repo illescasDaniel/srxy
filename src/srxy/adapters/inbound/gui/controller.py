@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import threading
 from collections.abc import Callable, Sequence
 from dataclasses import asdict, replace
@@ -11,7 +12,7 @@ from pathlib import Path
 from typing import cast
 from urllib.parse import unquote
 
-from PySide6.QtCore import Q_ARG, Property, QMetaObject, QObject, Qt, QThread, QTimer, Signal, Slot
+from PySide6.QtCore import Q_ARG, Property, QMetaObject, QObject, Qt, QThread, QTimer, QUrl, Signal, Slot
 from PySide6.QtGui import QTextDocument
 
 from srxy.adapters.inbound.gui.capabilities import (
@@ -32,6 +33,7 @@ from srxy.adapters.inbound.gui.preview import (
 from srxy.adapters.inbound.gui.preview_highlighter import PreviewHighlighter
 from srxy.adapters.outbound.worker.search_worker import iter_subprocess_search_events
 from srxy.application.deps_preflight import deps_only_preflight
+from srxy.application.gui_startup import initial_gui_search_path
 from srxy.application.model_preflight import (
 	PendingModelDownload,
 	download_fn_for_kind,
@@ -140,14 +142,6 @@ def resolve_dropped_folder_path(urls: Sequence[str]) -> str | None:
 		local_url = f"file://{parsed.path}" if parsed.netloc else text
 		return unquote(_normalize_browsed_path(local_url))
 	return None
-
-
-def resolve_gui_search_path(raw: str | None) -> str:
-	"""Default GUI search root is the user's home (CLI default ``.`` maps here)."""
-	text = (raw or "").strip()
-	if not text or text == ".":
-		return str(Path.home())
-	return text
 
 
 class _SearchWorker(QObject):
@@ -369,7 +363,16 @@ class SearchController(QObject):
 		self._term_rows_json = "[]"
 		if self._simple_query:
 			self._term_rows_json = json.dumps([{"term": self._simple_query, "join": None}])
-		self._path = resolve_gui_search_path(getattr(args, "path", None))
+		try:
+			cwd = os.getcwd()
+		except OSError:
+			cwd = None
+		self._path = initial_gui_search_path(
+			getattr(args, "path", None),
+			app_launch=bool(getattr(args, "app_launch", False)),
+			cwd=cwd,
+			home=str(Path.home()),
+		)
 		self._path_drop_hover = False
 		self._status = ""
 		self._activity_spinner = ""
@@ -503,7 +506,6 @@ class SearchController(QObject):
 		self._refresh_stale()
 		self.pathIssueChanged.emit()
 		self.canSearchChanged.emit()
-		import os
 
 		# Defer the GPU capability probe until after first paint. Tests probe
 		# synchronously so capability assertions stay deterministic without a loop.
@@ -832,6 +834,12 @@ class SearchController(QObject):
 			self._refresh_stale()
 
 	path = Property(str, _get_path, _set_path, notify=pathChanged)
+
+	@Slot(QUrl)
+	def setBrowsedPath(self, url: QUrl):  # noqa: N802
+		"""Convert the picker's local URL once before updating the native search path."""
+		if url.isLocalFile():
+			self._set_path(url.toLocalFile())
 
 	def _get_path_drop_hover(self) -> bool:
 		return self._path_drop_hover
@@ -1204,7 +1212,7 @@ class SearchController(QObject):
 			expr = FileQ.leaf(text)
 			args.query = format_file_query(expr)
 			args.query_expr = file_q_to_dict(expr)
-		args.path = resolve_gui_search_path(self._path)
+		args.path = self._path
 		apply_search_filters_to_args(args, self._filters)
 		apply_search_options_to_args(args, self._options)
 		return args
@@ -2408,17 +2416,33 @@ class SearchController(QObject):
 
 		return validate_ignore_text(text)
 
+	@Slot(result=QUrl)
+	def ignorePickerFolderUrl(self) -> QUrl:  # noqa: N802
+		"""Request the current search directory each time an ignore picker opens."""
+		try:
+			if self._path.strip():
+				root = Path(self._path).expanduser()
+				if root.is_dir() and os.access(root, os.R_OK | os.X_OK):
+					return QUrl.fromLocalFile(str(root.resolve()))
+		except (OSError, ValueError, RuntimeError):
+			pass
+		return QUrl.fromLocalFile(str(Path.home()))
+
 	@Slot(str, bool, str, result=str)
 	def ignorePatternForPick(self, url: str, is_dir: bool, current_text: str) -> str:  # noqa: N802
 		"""Append the picked file/folder (as an anchored pattern) to ``current_text``; JSON ``{text}`` or ``{error}``."""
 		from srxy.application.ignore_edit import PathOutsideRootError, add_ignore_line, pattern_for_path
 		from srxy.i18n import tr
 
-		picked = Path(_normalize_browsed_path(unquote(url)))
-		root = Path(resolve_gui_search_path(self._path))
 		try:
+			if not self._path.strip():
+				raise PathOutsideRootError
+			root = Path(self._path).expanduser()
+			if not root.is_dir():
+				raise PathOutsideRootError
+			picked = Path(_normalize_browsed_path(unquote(url)))
 			pattern = pattern_for_path(picked, root, is_dir=is_dir)
-		except PathOutsideRootError:
+		except (PathOutsideRootError, OSError, ValueError, RuntimeError):
 			return json.dumps({"error": tr("filters.ignore.pick_outside_root")})
 		text, _added = add_ignore_line(current_text, pattern)
 		return json.dumps({"text": text})

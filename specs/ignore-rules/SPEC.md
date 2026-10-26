@@ -7,7 +7,8 @@
 - **Design decisions approved:** 2026-10-21 (chat)
 - **Spec approved:** 2026-10-21 (chat)
 - **GUI editor alignment amendment (2026-10-23):** [wireframes/ignore-editor-alignment.html](../../wireframes/ignore-editor-alignment.html), wireframe and amendment spec approved 2026-10-23 (chat). Original approvals above remain historical. Scope: editor presentation and regression coverage only; existing matching, failure handling, resource budgets and trust boundaries apply unchanged.
-- **Related:** none (extends persisted Filters, `SearchFilters`)
+- **Picker start-directory amendment (2026-10-23):** spec approved 2026-10-23 (chat), coordinated with [GUI initial search path](../gui-startup-path/SPEC.md). Daniel requested this behavior and explicitly waived another wireframe; this amendment has its own approval in addition to the historical approvals above.
+- **Related:** [GUI initial search path](../gui-startup-path/SPEC.md); extends persisted Filters, `SearchFilters`.
 
 ## Design decisions
 
@@ -26,6 +27,7 @@
 - Precedence: the per-search list beats deeper `.gitignore` files, which beat shallower ones. Within one source, the last matching line wins. A user `!x` re-includes something a `.gitignore` excludes.
 - Matching is **case-insensitive on every OS**, consistent with srxy's case-insensitive search. (A future case-sensitivity toggle would also drive this; out of scope here.)
 - With the list empty and "respect .gitignore" off, results are identical to 1.7 behaviour.
+- **Picker amendment (approved 2026-10-23):** Add file/Add folder starts at the current valid directory in the main GUI's **Where to search** field on every opening, including after typing, Browse, drag/drop or recent-search restoration. The picker does not reuse a previously visited directory when it differs from the current root.
 
 ### Failure handling
 
@@ -33,6 +35,7 @@
 - Invalid lines inside a `.gitignore` are skipped silently (as git does). An unreadable `.gitignore` contributes no rules and no warning; the search completes.
 - A hand-edited invalid persisted ignore list makes the persisted filters fall back to factory defaults (today's rule for invalid persisted filters). A 1.7 settings file with no ignore keys loads with an empty list and `.gitignore` off.
 - Picking a file or folder outside the search root is rejected with a message; nothing is added.
+- **Picker amendment (approved 2026-10-23):** an empty, missing, inaccessible or non-directory root requests home as the picker starting location, without changing the main path. Existing root-relative acceptance validation still applies. Cancelling leaves both the ignore draft and search root untouched. No directory is created; native handling of an inaccessible home remains unchanged.
 - Adding a rule that already exists in the list is a no-op.
 - Undo removes only the rule just added, never other lines.
 
@@ -43,6 +46,7 @@
 - Matching time is linear in path-segment length for any pattern/name; no pattern can cause catastrophic backtracking (own matcher, no backtracking regexes on user input).
 - Caps: 1,000 lines and 1,024 characters per line in the per-search list; each `.gitignore` is read up to 1 MiB and 10,000 lines (the rest is ignored).
 - Pattern strings are plain JSON-safe values in the search args; worker subprocesses compile them themselves. The content cache gets no new reads or writes; existing entries for newly ignored paths are left in place.
+- **Picker amendment (approved 2026-10-23):** deriving the start folder adds only bounded local path checks per opening, no recursive walk, polling, content reads or network work. Normal native picker directory listing is unchanged.
 
 ### Trust boundary
 
@@ -51,6 +55,7 @@
 - Symlinks are matched by their own path (not their target); `followlinks` behaviour is unchanged. A symlink to a folder counts as a folder (so `link/` matches it), a deliberate difference from git; links to files or broken links count as files.
 - Paths are normalised to `/` on Windows; picked paths are always written with `/`. `\` remains the gitignore escape character.
 - Picked paths are made root-relative via `resolve()`; any pick that resolves outside the root is rejected.
+- **Picker amendment (approved 2026-10-23):** convert the current root to a local file URL with path-safe encoding. Starting a picker at the root does not authorize outside-root ignore entries or change existing symlink containment validation.
 - Persistence: the ignore list and the checkbox are saved to user settings only when "Remember filters" is ticked (the existing filters rule, extended to the TUI). Within a session, the list stays for all searches regardless. Anchored patterns (`/src/old/`) apply to whatever root the next search uses.
 
 ## Triggers & routing
@@ -240,6 +245,32 @@
 ### Scenario: picking a folder inside the root
 
 **Given** search root `~/work` **When** the user picks `~/work/src/old` via "Add folder…" **Then** `/src/old/` is appended.
+
+### Scenario: ignore pickers start at the selected search directory
+
+**Given** Where to search contains valid directory A **When** Add file or Add folder is clicked **Then** the corresponding native picker opens in A. This applies to both terminal-current-folder and app-home startup defaults.
+
+### Scenario: ignore pickers follow search root changes
+
+**Given** a picker previously visited directory A and the root is now B through typing, Browse, drag/drop or recent-search restoration **When** either ignore picker is opened **Then** it starts in B. Reopening after navigating within a picker also resets to the current root.
+
+### Scenario: invalid search root uses home only as picker start
+
+**Given** the search root is empty, missing, inaccessible or not a directory **When** either ignore picker opens **Then** it requests home as the start directory, preserves the main path and ignore draft, and does not change existing root-relative acceptance rules.
+
+### Scenario: cancelling an ignore picker preserves state
+
+**Given** a search root and an ignore draft **When** the user opens either picker, navigates and cancels **Then** both values remain unchanged and no search starts.
+
+### Scenario: selected root is encoded as a local picker URL
+
+**Given** the selected directory contains spaces, non-ASCII text, `#` or `%` **When** either ignore picker opens **Then** its starting URL identifies that exact directory on the current platform.
+
+**Accepted exception (2026-10-26):** correctly encoded URLs do not repair Qt 6.11.1's non-native fallback listing defect for names containing `#` or literal `%20`. Replacing that backend remains outside this patch; the main root, selected path and containment checks retain their existing guarantees. See [accepted scope amendment](../gui-startup-path/QT-FALLBACK-DECISION.md).
+
+### Scenario: starting at root preserves containment checks
+
+**Given** a picker opened at search root A **When** the user navigates and selects a sibling, unrelated path or symlink resolving outside A **Then** the existing outside-root message appears and no ignore rule is added.
 
 ### Scenario: picking a path outside the root is rejected
 

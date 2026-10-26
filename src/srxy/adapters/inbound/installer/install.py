@@ -785,6 +785,14 @@ def _write_desktop_entry(prefix: Path):
 	apps.mkdir(parents=True, exist_ok=True)
 	desktop = apps / "srxy.desktop"
 	exec_path = prefix / "bin" / "srxy"
+	# Exec quoting is decoded after desktop string escapes; literal backslashes
+	# therefore need four backslashes in the file. Percent signs are field codes.
+	exec_arg = "".join("\\" + char if char in '\\"`$' else char for char in str(exec_path))
+	exec_arg = exec_arg.replace("\\", "\\\\").replace("\n", "\\n").replace("\r", "\\r").replace("\t", "\\t")
+	exec_arg = exec_arg.replace("%", "%%")
+	# GLib checks the executable before expanding %% field escapes. Let env
+	# execute percent-containing paths after expansion as an ordinary argument.
+	exec_prefix = "/usr/bin/env " if "%" in str(exec_path) else ""
 	desktop.write_text(
 		"\n".join(
 			[
@@ -792,7 +800,7 @@ def _write_desktop_entry(prefix: Path):
 				"Type=Application",
 				"Name=srxy",
 				"Comment=Find files by what you mean",
-				f"Exec={exec_path}",
+				f'Exec={exec_prefix}"{exec_arg}" --app-launch',
 				"Icon=srxy",
 				"Terminal=false",
 				"Categories=Utility;FileTools;",

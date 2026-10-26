@@ -1,0 +1,72 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>srxy — initial search folder review</title>
+<style>
+* { box-sizing: border-box; }
+body { margin: 0; background: #f3f5f7; color: #202731; font: 16px/1.5 system-ui, sans-serif; }
+main { max-width: 1100px; margin: auto; padding: 44px 28px; }
+h1 { margin: 8px 0; font-size: 30px; line-height: 1.2; }
+h2 { margin: 0 0 16px; font-size: 21px; }
+p { margin: 8px 0 20px; }
+.kicker { color: #526479; font-size: 12px; font-weight: 700; letter-spacing: .12em; text-transform: uppercase; }
+.intro { max-width: 740px; color: #52606f; }
+.scenarios { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-top: 30px; }
+article { min-width: 0; }
+.launch { min-height: 115px; padding: 18px; background: #e8edf2; border: 1px solid #d2dae3; border-radius: 10px; margin-bottom: 18px; }
+.launch p { margin: 0; }
+code, pre { font: 14px/1.6 ui-monospace, monospace; }
+pre { margin: 0; white-space: pre-wrap; overflow-wrap: anywhere; }
+.window { border: 1px solid #c7ced7; border-radius: 10px; background: white; overflow: hidden; box-shadow: 0 8px 22px #24354a0d; }
+.titlebar { padding: 11px 18px; background: #f6f7f9; border-bottom: 1px solid #e0e4e9; font-size: 14px; font-weight: 600; }
+.body { padding: 24px 20px 28px; }
+fieldset { border: 1px solid #c8cfd8; border-radius: 5px; padding: 16px 12px 18px; margin: 0; min-width: 0; }
+legend { padding: 0 7px; font-size: 14px; }
+.row { display: flex; align-items: center; gap: 10px; }
+input { width: 100%; min-width: 0; font: 14px system-ui, sans-serif; padding: 11px 9px; border: 1px solid #969fa9; border-radius: 4px; color: #202731; background: white; }
+button { font: 14px system-ui, sans-serif; padding: 10px 13px; border: 1px solid #aeb8c4; border-radius: 4px; background: #f6f7f9; color: #202731; }
+.review { margin-top: 18px; padding: 15px 18px; border-left: 3px solid #547da8; background: #eaf0f7; font-size: 14px; }
+.review strong { display: block; margin-bottom: 4px; color: #405a79; font-size: 12px; text-transform: uppercase; letter-spacing: .06em; }
+.rules { margin-top: 28px; background: white; border: 1px solid #d2dae3; border-radius: 10px; padding: 20px 24px; }
+.rules p { margin: 8px 0; font-size: 14px; }
+@media (max-width: 760px) { main { padding: 28px 16px; } .scenarios { grid-template-columns: 1fr; } .launch { min-height: auto; } }
+</style>
+</head>
+<body>
+<main>
+<div class="kicker">Design review · startup behavior</div>
+<h1>Start searching in the right folder</h1>
+<p class="intro">Only the initial value of the existing “Where to search” field changes. The GUI keeps its current layout, labels, browsing, and search behavior. These excerpts isolate that field for review.</p>
+<div class="scenarios">
+<article>
+<h2>Opened from a terminal</h2>
+<div class="launch"><pre>$ cd /home/daniel/Documents
+$ srxy</pre></div>
+<div class="window">
+<div class="titlebar">srxy</div>
+<div class="body"><fieldset><legend>Where to search</legend><div class="row"><input aria-label="Terminal initial search folder" value="/home/daniel/Documents" readonly><button type="button">Browse…</button></div></fieldset></div>
+</div>
+<div class="review"><strong>Review only</strong>The current terminal folder becomes the initial search folder when no path was supplied.</div>
+</article>
+<article>
+<h2>Opened as an installed app</h2>
+<div class="launch"><p>Start menu, desktop shortcut, application launcher, or macOS Finder</p></div>
+<div class="window">
+<div class="titlebar">srxy</div>
+<div class="body"><fieldset><legend>Where to search</legend><div class="row"><input aria-label="Installed app initial search folder" value="/home/daniel" readonly><button type="button">Browse…</button></div></fieldset></div>
+</div>
+<div class="review"><strong>Review only</strong>Use the user’s home folder. Never initialize to the installation folder or the shortcut’s working folder.</div>
+</article>
+</div>
+<div class="rules">
+<div class="kicker">Review only · shared rules</div>
+<p><b>An explicit path wins:</b> <code>srxy "registry" /home/daniel/Projects</code> keeps <code>/home/daniel/Projects</code> as the initial folder.</p>
+<p><b>Platform equivalents:</b> home means <code>C:\Users\Daniel</code> on Windows, <code>/Users/daniel</code> on macOS, and <code>/home/daniel</code> on this Linux example.</p>
+<p><b>On startup:</b> no search runs automatically when opening without a query. Restoring a recent search remains a user-triggered action.</p>
+<p><b>Scope:</b> startup value only. These explanatory cards and notes do not appear in the application.</p>
+</div>
+</main>
+</body>
+</html>

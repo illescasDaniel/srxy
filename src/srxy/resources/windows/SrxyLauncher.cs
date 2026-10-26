@@ -49,12 +49,12 @@ internal static class Program
 			if (File.Exists(pythonw))
 			{
 				fileName = pythonw;
-				arguments = "-m srxy" + FormatArgs(args);
+				arguments = "-m srxy --app-launch" + FormatArgs(args);
 			}
 			else if (File.Exists(srxyExe))
 			{
 				fileName = srxyExe;
-				arguments = FormatArgs(args).TrimStart();
+				arguments = "--app-launch" + FormatArgs(args);
 			}
 			else
 			{
@@ -69,7 +69,6 @@ internal static class Program
 			ProcessStartInfo psi = new ProcessStartInfo();
 			psi.FileName = fileName;
 			psi.Arguments = arguments;
-			psi.WorkingDirectory = prefix;
 			psi.UseShellExecute = false;
 			psi.CreateNoWindow = true;
 			Process.Start(psi);
@@ -100,11 +99,22 @@ internal static class Program
 		StringBuilder sb = new StringBuilder();
 		foreach (string arg in args)
 		{
-			sb.Append(' ');
-			if (arg.IndexOfAny(new char[] { ' ', '"', '\t' }) >= 0)
-				sb.Append('"').Append(arg.Replace("\"", "\\\"")).Append('"');
-			else
-				sb.Append(arg);
+			sb.Append(' ').Append('"');
+			int backslashes = 0;
+			foreach (char c in arg)
+			{
+				if (c == '\\')
+				{
+					backslashes++;
+					continue;
+				}
+				// Windows doubles backslashes before a quote, then escapes the quote.
+				sb.Append('\\', c == '"' ? backslashes * 2 + 1 : backslashes);
+				sb.Append(c);
+				backslashes = 0;
+			}
+			// Trailing backslashes must not escape the closing quote.
+			sb.Append('\\', backslashes * 2).Append('"');
 		}
 		return sb.ToString();
 	}

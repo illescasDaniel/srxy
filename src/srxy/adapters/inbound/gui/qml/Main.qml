@@ -574,29 +574,32 @@ ApplicationWindow {
 
 	FolderDialog {
 		id: folderDialog
+		objectName: "searchFolderDialog"
 		onAccepted: {
 			if (controller) {
-				// QUrl.toString() returns "file:///C:/path" on Windows and
-				// "file:///home/user" on Unix.  Strip the scheme correctly so
-				// the result is always a native absolute path.
-				var raw = selectedFolder.toString()
-				// Windows: file:///C:/... → C:/...
-				var path = raw.replace(/^file:\/\/\/([A-Za-z]:)/, "$1")
-				// Unix absolute: file:///home/... → /home/...
-				path = path.replace(/^file:\/\//, "")
-				controller.path = path
+				controller.setBrowsedPath(selectedFolder)
 			}
 		}
 	}
 
 	FileDialog {
 		id: fltPickFileDialog
+		objectName: "fltPickFileDialog"
 		onAccepted: root.applyIgnorePick(selectedFile.toString(), false)
 	}
 
-	FolderDialog {
-		id: fltPickFolderDialog
-		onAccepted: root.applyIgnorePick(selectedFolder.toString(), true)
+	// Qt 6.11 only applies FolderDialog.currentFolder on its first opening.
+	Component {
+		id: fltPickFolderDialogComponent
+		FolderDialog {
+			objectName: "fltPickFolderDialog"
+			parentWindow: root
+			onAccepted: {
+				root.applyIgnorePick(selectedFolder.toString(), true)
+				Qt.callLater(() => destroy())
+			}
+			onRejected: Qt.callLater(() => destroy())
+		}
 	}
 
 	ColumnLayout {
@@ -2267,12 +2270,19 @@ ApplicationWindow {
 					SecondaryButton {
 						objectName: "fltAddFile"
 						text: root.t("filters.ignore.add_file")
-						onClicked: fltPickFileDialog.open()
+						onClicked: {
+							fltPickFileDialog.currentFolder = controller.ignorePickerFolderUrl()
+							fltPickFileDialog.open()
+						}
 					}
 					SecondaryButton {
 						objectName: "fltAddFolder"
 						text: root.t("filters.ignore.add_folder")
-						onClicked: fltPickFolderDialog.open()
+						onClicked: {
+							const fltPickFolderDialog = fltPickFolderDialogComponent.createObject(root)
+							fltPickFolderDialog.currentFolder = controller.ignorePickerFolderUrl()
+							fltPickFolderDialog.open()
+						}
 					}
 				}
 				StyledCheckBox {

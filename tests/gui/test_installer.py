@@ -1470,7 +1470,7 @@ def test_given_prefix_with_launcher_when_launching_installed_app_then_spawns_det
 	launch_app.launch_installed_app(prefix)
 
 	# then
-	assert seen == [[str(launcher.resolve())]]
+	assert seen == [[str(launcher.resolve()), "--app-launch"]]
 
 
 def test_given_darwin_app_bundle_when_launching_then_uses_open(

@@ -14,6 +14,19 @@ def _args(argv: list[str]) -> argparse.Namespace:
 	return build_parser().parse_args(argv)
 
 
+def test_given_redirected_streams_when_gui_available_then_keeps_command_routing(monkeypatch: pytest.MonkeyPatch):
+	# given
+	monkeypatch.setattr("srxy.application.launch.gui_importable", lambda: True)
+	monkeypatch.setattr("srxy.application.launch.gui_display_available", lambda: True)
+	stream = type("Redirected", (), {"isatty": staticmethod(lambda: False)})()
+	monkeypatch.setattr("srxy.application.launch.sys.stdout", stream)
+	monkeypatch.setattr("srxy.application.launch.sys.stderr", stream)
+	monkeypatch.delenv("CI", raising=False)
+
+	# when / then
+	assert should_use_gui(_args([])) is True
+
+
 def test_given_cli_flag_when_should_use_gui_then_returns_false(monkeypatch: pytest.MonkeyPatch):
 	monkeypatch.setattr("srxy.application.launch.gui_importable", lambda: True)
 	monkeypatch.setattr("srxy.application.launch.gui_display_available", lambda: True)

@@ -151,13 +151,14 @@ def qapp() -> QCoreApplication:
 	return app
 
 
-def test_given_default_controller_when_dumping_chrome_then_matches_snapshot(qapp: QCoreApplication):
+def test_given_app_controller_when_dumping_chrome_then_matches_snapshot(qapp: QCoreApplication):
 	from srxy.i18n import set_language
 
 	set_language("en")
-	args = build_parser().parse_args(["", ".", "--cli"])
+	args = build_parser().parse_args(["", "--app-launch"])
 	controller = SearchController(args)
 	controller.setLanguage("en")
+	assert controller.path == str(Path.home())
 	_assert_snapshot("main_window", _chrome_tree(controller))
 
 

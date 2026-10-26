@@ -1,6 +1,6 @@
 # Progress
 
-_Last updated: 2026-10-23_
+_Last updated: 2026-10-26_
 
 ## v1.7.0 — shipped 2026-09-11
 
@@ -43,6 +43,8 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 
 #### v1.8.0 (`feature/1.8.0`)
 
+- [x] **GUI startup search path + ignore picker directory (2026-10-26):** startup defaults, installed launch markers, live-root ignore pickers and KDE Browse conversion implemented; full gates and independent reviews completed. Daniel accepted the documented upstream fallback limitation and requested commit/push after fresh full checks. Known fallback defect and native picker QA remain separate follow-ups.
+
 - [x] **GUI recent searches + restore last path/query session — merged into feature/1.8.0 (2026-10-01):** PR #42 squash-merged @ `b93dc97` after CI green (quality / test-macos / test-windows / Gitleaks / GitGuardian). Launch banner + recent-searches popover (path/query/mode only, cap 20). Also skips Linux AppImage online-bootstrap `go test` on Windows (xdist worker crash flake).
 - [x] **Ignore files/folders in search** — merged from `feature/ignore-rules` into `feature/1.8.0` by fast-forward and pushed to origin @ `38e5002` (2026-10-23). SDD phases 0-5 done: gitignore-style per-search list + opt-in `.gitignore` (GUI Filters, TUI Filters, CLI `--ignore` / `--respect-gitignore`), row context-menu "Ignore…" with Undo toast, "Which files to scan" moved into Filters (settings `scan` + migration). Grader PASS after 2 fix rounds + follow-up fixes; perf of an adversarial glob mix accepted (+15-17%). Latest editor-alignment fix and security dependency updates passed both full quality gates before merge; native Windows/macOS visual follow-up remains open below.
 - [x] **GUI drag-and-drop path field — merged into feature/1.8.0 (2026-10-01):** PR #41 squash-merged @ `905876b` after CI green (quality / test-macos / test-windows / Gitleaks / GitGuardian). Trello [voZsdHYf](https://trello.com/c/voZsdHYf). Includes macOS Finder window filter + Where GroupBox spacing fix.
@@ -75,6 +77,10 @@ Active work lives on `feature/1.8.0` (and its topic branches). Track Open items 
 - [x] **PR #41 macOS Finder still no + / missing section gap (2026-10-01):** Mutual `anchors.fill` siblings collapsed GroupBox content height on Aqua (no margin before What/How; zero-height drop target). Sized `pathDropTarget` from `pathRow.implicitHeight`. Added window-level `PathDropWindowFilter` so Finder gets an accepted drag (`+` cursor) via `controller.pathDropHover` + `handleDroppedPathUrls`.
 
 ## Bugs / sub-tasks discovered
+
+- [x] **KDE native Browse encoded path (2026-10-26):** fixed the typed QUrl-to-native boundary; loaded-QML acceptance and real searches pass for #, literal %23/%20 and Unicode. Both full gates pass; independent targeted grade PASS. Live KDE portal interaction remains a manual QA follow-up, separate from the upstream fallback listing bug.
+
+- [ ] **Qt 6.11.1 fallback picker reserved-character paths (2026-10-24):** standalone FolderListModel lists wrong directory for #/literal%20 despite correct URL. QtWidgets alternative proved6/6 but needs reviewed bootstrap/packaging/UI scope; no private workaround shipped; documented limitation accepted for the startup-path patch on 2026-10-26, backend repair remains open.
 
 - [x] Codex workflow skills: added apply-worktree, delete-worktree, copy-venv, and save-changes under `.agents/skills` for automatic discovery (2026-10-23). Adapted Cursor-specific instructions; four skill validations passed. Daniel approved commit/push on 2026-10-23.
 - [x] Ignore-pattern GUI editor: alignment/placeholder correction implemented after all three approvals; regression tests, Material light/dark inspection and both full gates pass. Independent grade PASS (6 PASS, UI fidelity PARTIAL only for native-platform QA), no product defects identified (2026-10-23).

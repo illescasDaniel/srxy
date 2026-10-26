@@ -87,6 +87,50 @@ def test_given_path_query_options_filters_when_searching_then_results_and_progre
 	harness.shutdown()
 
 
+@pytest.mark.parametrize("folder_name", ["folder#tag", "folder%23tag", "folder%20tag", "café folder"])
+def test_given_encoded_browse_selection_when_accepted_then_native_path_is_searchable(
+	qapp, tmp_path: Path, folder_name: str
+):
+	# given — exercise the actual QML acceptance handler without a desktop portal.
+	from PySide6.QtCore import QMetaObject, QUrl
+
+	root = tmp_path / folder_name
+	root.mkdir()
+	hit = root / "browse-needle.txt"
+	hit.write_text("unique browse content\n", encoding="utf-8")
+	args = build_parser().parse_args(["", str(tmp_path), "--cli"])
+	controller = SearchController(args)
+	harness = load_main(controller, qapp)
+	try:
+		dialog = harness.find("searchFolderDialog")
+		assert dialog is not None
+		assert QMetaObject.invokeMethod(dialog, "open")
+		qapp.processEvents()
+
+		# when — KDE/native dialogs supply a QUrl, with reserved characters escaped.
+		assert dialog.setProperty("selectedFolder", QUrl.fromLocalFile(str(root)))
+		assert dialog.property("selectedFolder") == QUrl.fromLocalFile(str(root))
+		assert QMetaObject.invokeMethod(dialog, "accepted")
+		assert QMetaObject.invokeMethod(dialog, "close")
+		qapp.processEvents()
+
+		# then — show the native name, validate that target, and search inside it.
+		assert str(controller.path) == str(root)
+		assert str(harness.prop("pathField", "text")) == str(root)
+		assert not controller.pathIssue
+		assert not bool(harness.prop("pathIssueButton", "visible"))
+		assert not controller.hasSearched
+		harness.set_text("simpleQueryField", "browse-needle")
+		assert bool(harness.prop("searchButton", "enabled"))
+		harness.click("searchButton")
+		harness.wait_until(lambda: bool(controller.hasSearched), timeout_ms=10_000, message="search never started")
+		harness.wait_search_finished()
+		assert controller.exit_code() == 0
+		assert str(hit) in _result_paths(controller)
+	finally:
+		harness.shutdown()
+
+
 def test_given_folder_dropped_on_path_field_when_handled_then_path_updates_without_search(
 	qapp,
 	tmp_path: Path,

@@ -81,14 +81,16 @@ int main(int argc, char **argv)
 
 	append_log("===== srxy.app Mach-O launch =====");
 
-	if (argc + 3 >= (int)(sizeof(new_argv) / sizeof(new_argv[0])))
+	/* Four fixed arguments plus the user arguments and terminating NULL. */
+	if (argc > (int)(sizeof(new_argv) / sizeof(new_argv[0])) - 4)
 		return 126;
 	new_argv[0] = python;
 	new_argv[1] = "-m";
 	new_argv[2] = "srxy";
+	new_argv[3] = "--app-launch";
 	for (i = 1; i < argc; i++)
-		new_argv[i + 2] = argv[i];
-	new_argv[argc + 2] = NULL;
+		new_argv[i + 3] = argv[i];
+	new_argv[argc + 3] = NULL;
 
 	execv(python, new_argv);
 	perror("execv SrxyPython");

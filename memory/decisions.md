@@ -1,5 +1,27 @@
 # Decisions
 
+## 2026-10-24 — KDE Browse URL conversion
+
+The main Browse handler stripped the `file://` prefix but retained escaping, so KDE's selected `#` directory became `%23` in the search field and failed validation. Pass the selected `QUrl` directly to a dedicated controller slot and convert with `toLocalFile()` once. Do not decode manually typed native paths: literal `%23` and `%20` names must remain literal. Loaded-QML acceptance followed by real search passes for `#`, literal `%23`, literal `%20` and Unicode. This repairs srxy's acceptance boundary independently of the still-open upstream fallback listing defect.
+
+## 2026-10-24 — Preserve explicit path traversal; canonicalize validated picker targets
+
+- **Context:** Lexically normalizing `link/../target` changes its filesystem target when `link` is a symlink, and can incorrectly make `missing/../target` valid. Qt's own lexical cleanup can repeat that mistake after URL handoff.
+- **Decision:** Startup anchors explicit relative input without collapsing its components; only exact `.` is simplified. The picker resolves an existing, accessible directory to its physical path after validation, without changing the main search field.
+- **Rationale:** This preserves the caller's requested search target and gives Qt the correct picker directory. Red-first symlink/missing-component and Qt-cleanup regressions pass; startup policy remains free of filesystem I/O.
+
+## 2026-10-23 — Fresh Qt folder picker per opening
+
+- **Context:** Qt 6.11's FolderDialog applies its initial directory only on first show; a reused dialog ignored root changes. A dynamically created dialog also needed an explicit window parent to become visible.
+- **Decision:** Create a fresh ignore folder dialog for each click, set `parentWindow: root` and the live-root `currentFolder`, and defer destruction after acceptance/rejection. Keep the working reusable file dialog.
+- **Rationale:** This preserves the approved repeated-opening behavior and normal native dialog presentation; real-QML regression tests exercise changed roots, navigation, acceptance and cancellation.
+
+## 2026-10-23 — Explicit GUI app-launch intent and startup-only defaults
+
+- **Context:** Terminal GUI searches should start at caller cwd while installed desktop/Start menu/Finder launches start at home; explicit paths must retain precedence.
+- **Decision:** Approved architecture uses hidden `--app-launch` on app entrypoints and preserves path omission until GUI initialization. Ordinary command shims remain unmarked; startup defaults are not reapplied to edits or restored paths. Ignore pickers derive their start URL from the live root on every opening and retain outside-root rejection.
+- **Rationale:** Explicit intent avoids TTY/cwd heuristics and inherited environment markers; separating initialization from later path handling preserves user choices.
+
 _Log of significant technical, structural, or dependency choices. Newest first._
 
 ## 2026-10-23 — Ignore editor owns its padding and stationary placeholder

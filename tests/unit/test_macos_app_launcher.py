@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import json
 import os
 import platform
 import re
@@ -148,3 +149,69 @@ def test_given_real_venv_python_when_write_launcher_then_embedded_sdk_is_26(tmp_
 	assert embedded.stat().st_ino != real_py.stat().st_ino
 	show = subprocess.check_output(["/usr/bin/vtool", "-show-build", str(embedded)], text=True)  # noqa: S603
 	assert re.search(r"sdk\s+26(\.|$|\s)", show), show
+
+
+@pytest.mark.skipif(platform.system() not in {"Linux", "Darwin"}, reason="Unix C launcher probe")
+@pytest.mark.parametrize("argument_count", [3, 59, 60])
+def test_given_app_launcher_when_forwarding_arguments_then_marker_and_capacity_are_safe(
+	tmp_path: Path,
+	monkeypatch: pytest.MonkeyPatch,
+	argument_count: int,
+):
+	# given — Linux substitutes only the dyld executable-location API; the real
+	# packaged launcher source, argv allocation and execv all execute unchanged.
+	clang = shutil.which("clang")
+	if clang is None:
+		pytest.skip("clang unavailable")
+	app_dir = tmp_path / "Srxy café # 100%.app/Contents/MacOS"
+	app_dir.mkdir(parents=True)
+	probe = app_dir / "SrxyPython"
+	probe.write_text(
+		'#!/bin/sh\nprintf "%s\\0" "$PWD" "$@" > "$SRXY_STARTUP_PROBE"\n',
+		encoding="utf-8",
+	)
+	probe.chmod(0o755)
+	record = tmp_path / "argv.bin"
+	monkeypatch.setenv("SRXY_STARTUP_PROBE", str(record))
+	include: list[str] = []
+	if platform.system() == "Linux":
+		header = tmp_path / "include/mach-o/dyld.h"
+		header.parent.mkdir(parents=True)
+		header.write_text(
+			"#include <stdint.h>\n#include <unistd.h>\n"
+			"static int _NSGetExecutablePath(char *buf, uint32_t *size) {\n"
+			' ssize_t n = readlink("/proc/self/exe", buf, *size - 1);\n'
+			" if (n < 0) return -1; buf[n] = 0; return 0;\n}\n",
+			encoding="utf-8",
+		)
+		include = ["-I", str(header.parent.parent)]
+	executable = app_dir / "srxy"
+	defines = [
+		f"-D{name}={json.dumps(str(tmp_path))}"
+		for name in (
+			"SRXY_HOME_PATH",
+			"SRXY_PYTHONHOME",
+			"SRXY_SITE_PACKAGES",
+			"SRXY_PATH_PREFIX",
+			"SRXY_TESSDATA",
+			"SRXY_LOG_FILE",
+		)
+	]
+	subprocess.run(  # noqa: S603
+		[clang, *include, *defines, str(app_launcher_c_path()), "-o", str(executable)],
+		check=True,
+		capture_output=True,
+	)
+	caller = tmp_path / "caller café"
+	caller.mkdir()
+	args = ["--", "folder café # 100%/", "."] + [f"arg-{i}" for i in range(argument_count - 3)]
+	# when
+	result = subprocess.run([str(executable), *args], cwd=caller, check=False, capture_output=True)  # noqa: S603
+	# then
+	if argument_count == 60:
+		assert result.returncode == 126
+		assert not record.exists()
+	else:
+		assert result.returncode == 0, result.stderr
+		values = record.read_bytes().decode("utf-8").split("\0")[:-1]
+		assert values == [str(caller), "-m", "srxy", "--app-launch", *args]
