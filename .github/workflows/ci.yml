@@ -58,6 +58,7 @@ jobs:
         run: ./scripts/quality/checks.sh --scope=core,gui,tui
 
   test-macos:
+    if: false # TEMP: macOS CI disabled (runner queue stalls); re-enable
     runs-on: macos-latest
     timeout-minutes: 30
     permissions:
