@@ -1,2 +1,0 @@
-# Append-only technical log: keep both sides when branches merge.
-memory/decisions.md merge=union

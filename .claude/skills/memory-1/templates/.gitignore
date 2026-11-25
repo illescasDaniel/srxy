@@ -1,0 +1,2 @@
+# Session transcripts stay on this machine. No trailing slash, so a worktree symlink matches too.
+/sessions
