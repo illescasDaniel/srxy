@@ -1,3 +1,17 @@
+---
+id: DOC-004
+title: Interactive TUI
+summary: Textual TUI: layout, query builder, clipboard, keybindings and when srxy falls back to it
+type: reference
+status: current
+updated: 2026-10-01
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/adapters/inbound/tui]
+related: [DOC-002, DOC-003]
+supersedes:
+superseded_by:
+---
+
 # Interactive TUI
 
 Launch with **`--tui`**. On an interactive terminal when the GUI cannot start (no display / no PySide6), srxy falls through to this Textual TUI.

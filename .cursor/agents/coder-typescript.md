@@ -43,7 +43,7 @@ are already loaded; call them directly.
 - Verify: run the relevant tests, type checker and linter for what you touched (commands from the project's
   `CLAUDE.md` / `AGENTS.md` / build config). Fix failures you caused. If something already failed before your change,
   say so and leave it.
-- Never write to `memory/` or jevmem, commit, push, create branches or add dependencies unless the brief says to.
+- Never write to `memory/`, commit, push, create branches or add dependencies unless the brief says to.
 - Delete files with `trash <path>`, never `rm`.
 
 ## Report

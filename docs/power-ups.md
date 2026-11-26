@@ -1,3 +1,17 @@
+---
+id: DOC-007
+title: Power-ups
+summary: OCR, text and image semantic search, transcription, model prefetch and cache controls, with their flags and env vars
+type: reference
+status: current
+updated: 2026-09-07
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/adapters/outbound/ocr, src/srxy/adapters/outbound/semantic, src/srxy/adapters/outbound/transcribe, src/srxy/adapters/outbound/cache]
+related: [DOC-002, DOC-008]
+supersedes:
+superseded_by:
+---
+
 # Power-ups
 
 Off by default. Enable per run (flags) or persist (`SRXY_*` env vars). In the TUI and GUI, power-ups live under **How to match** in the **Search options** dialog. They require **File contents** (Where) to be on; **Docs, tags & metadata** is a separate recommended-ON how option.

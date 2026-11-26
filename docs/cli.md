@@ -1,3 +1,17 @@
+---
+id: DOC-002
+title: CLI reference
+summary: Every srxy flag, boolean query syntax, output formats and examples for the plain CLI
+type: reference
+status: current
+updated: 2026-10-22
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/adapters/inbound/cli]
+related: [DOC-003, DOC-004, DOC-007]
+supersedes:
+superseded_by:
+---
+
 # CLI reference
 
 Same flags in the GUI/TUI (pre-filled on launch) and plain CLI (`--cli`, non-TTY, or CI).

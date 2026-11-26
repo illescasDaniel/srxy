@@ -1,3 +1,17 @@
+---
+id: DOC-003
+title: Graphical UI
+summary: PySide6/QML window: startup folder, layout, content preview, query modes, drag-and-drop, snapshots and flow tests
+type: reference
+status: current
+updated: 2026-10-26
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/adapters/inbound/gui, src/srxy/adapters/inbound/shared]
+related: [DOC-002, DOC-004, DOC-010]
+supersedes:
+superseded_by:
+---
+
 # Graphical UI
 
 On a graphical session, **srxy opens a PySide6 + QML window by default**.

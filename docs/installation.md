@@ -1,3 +1,17 @@
+---
+id: DOC-008
+title: Installation
+summary: Install srxy from PyPI, a desktop installer or a checkout, including GPU extras and system dependencies
+type: how-to
+status: current
+updated: 2026-09-07
+verified: 2026-11-25 87a4cfa
+covers: [packaging, pyproject.toml]
+related: [DOC-009, DOC-011]
+supersedes:
+superseded_by:
+---
+
 # Installation
 
 Requires **Python 3.11+**.

@@ -1,20 +1,11 @@
 {
   "mcpServers": {
-    "jevmem": {
-      "type": "stdio",
-      "command": "uvx",
-      "args": [
-        "--from",
-        "jevmem>=0.4.0,<0.5",
-        "jevmem-mcp"
-      ]
-    },
     "codenav": {
       "type": "stdio",
       "command": "uvx",
       "args": [
         "--from",
-        "codenav-mcp>=0.2.1,<0.3",
+        "codenav-mcp==1.0.2",
         "codenav-mcp"
       ]
     },

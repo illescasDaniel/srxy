@@ -3,7 +3,7 @@ name: code-grader
 description: Independent read-only reviewer that grades finished SDD work against its approved SPEC.md and the project's conventions. Use after Phase 4 implementation is green, before reporting the feature done. Pass the spec path and diff base.
 model: opus
 effort: high
-disallowedTools: Edit, Write, NotebookEdit, mcp__jevmem__memory_write, mcp__jevmem__memory_forget, mcp__jevmem__memory_pin, mcp__jevmem__memory_resolve, mcp__jevmem__memory_dismiss, mcp__jevmem__memory_consolidate, mcp__jevmem__memory_flush_pending
+disallowedTools: Edit, Write, NotebookEdit
 color: orange
 ---
 

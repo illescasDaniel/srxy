@@ -1,10 +1,11 @@
 # Now
-Updated: 2026-11-25 (memory-1 migration)
+Updated: 2026-11-25 (codenav test + jevmem removal)
 
 ## Doing
 v1.8.0 release scope on `feature/1.8.0`: native Windows/macOS review, then a normal release.
 
 ## Done recently
+- jevmem fully removed (hooks, MCP server entries, tool references, skills); memory-1/docs-1 migration stands. `codenav-mcp` pinned to 1.0.1 everywhere and end-to-end tested ([memory note](notes/codenav-mcp-1-0-1-pinned.md)).
 - Migrated project memory to memory-1 (`NOW.md`, `MEMORY.md`, `notes/`) and docs to docs-1 frontmatter plus a generated `docs/INDEX.md`; old memory files are archived under `memory/archive/` ([memory note](notes/memory-layout-memory-1.md), [docs note](notes/docs-layout-docs-1.md)).
 - CLI Ctrl+C returns 130 with `Search cancelled.` and no traceback; 114 CLI tests plus real SIGINT smoke pass.
 - KDE Browse passes the typed `QUrl` to the controller and decodes once; `#`, literal `%23`/`%20` and Unicode paths search correctly.

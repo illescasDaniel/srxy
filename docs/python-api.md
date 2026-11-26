@@ -1,3 +1,17 @@
+---
+id: DOC-005
+title: Python API
+summary: Stable srxy imports: file search, in-memory search, boolean queries, match types and streaming callbacks
+type: reference
+status: current
+updated: 2026-08-03
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/__init__.py, src/srxy/application/use_cases/search_files.py]
+related: [DOC-001, DOC-006]
+supersedes:
+superseded_by:
+---
+
 # Python API
 
 Import from `srxy` only — [`__init__.__all__`](../src/srxy/__init__.py) is the stable contract:

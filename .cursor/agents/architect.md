@@ -12,7 +12,7 @@ essential is missing and the code can't answer it, put it under "Open questions"
 
 ## Before designing
 - Read the project's `CLAUDE.md` / `AGENTS.md` and any rules they point to: layering, conventions, quality gate.
-- If they exist: `memory/decisions.md` (past decisions you must respect or explicitly revisit), the feature's
+- If they exist: `memory/MEMORY.md` and its notes (past decisions you must respect or explicitly revisit), the feature's
   `specs/<feature>/SPEC.md` and wireframe.
 - If the `memory_recall` tool is available, recall past decisions, bug causes and gotchas for the area you're
   designing. Treat recalled notes as dated claims, and check them against the code. If it says `sufficient: false`,

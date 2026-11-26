@@ -11,15 +11,14 @@ A project's own `CLAUDE.md` / `AGENTS.md` overrides anything here (paths, qualit
 | Kind | Where | Who writes |
 |---|---|---|
 | Rules the agent must always follow | `CLAUDE.md` / `AGENTS.md` | the user (you propose) |
-| Current state: focus, gate status, blockers, next step | `memory/` — `memory-bank` skill | you only |
-| Dated facts that stay true: decisions + why, bug causes, gotchas, preferences | jevmem (`memory_write`) — `jev-memory` skill | you only |
+| Current state: focus, gate status, blockers, next step | `memory/NOW.md` — `memory-1` skill | you only |
+| Dated facts that stay true: decisions + why, bug causes, gotchas, preferences | one-fact notes in `memory/notes/` — `memory-1` skill | you only |
 | What a feature does | `specs/<feature>/SPEC.md`, `wireframes/` — `sdd-feature` skill | you, after user approval |
 
-Never put current state in jevmem, or rules in either memory. A significant decision gets both a `memory/decisions.md`
-entry and a one-fact jevmem note. Use whichever of these the project has; if one is missing, skip it and don't create
-it unless the user asks.
+Never put current state or rules in `memory/notes/`. A significant decision gets a one-fact `memory/notes/` entry;
+if the project has no such convention, skip it and don't create it unless the user asks.
 
-**Session start:** read `memory/activeContext.md` then `memory/progress.md`. If a feature is waiting at a gate, remind
+**Session start:** read `memory/NOW.md` then `memory/MEMORY.md`. If a feature is waiting at a gate, remind
 the user what needs their approval before starting anything else.
 
 ## Subagents
@@ -31,7 +30,7 @@ the user what needs their approval before starting anything else.
 | `code-grader` | Opus | Independent read-only grade of finished work against its spec (SDD Phase 5). |
 | `utility` | Haiku | Mechanical: quality-gate runs, git, moves/renames, bulk edits. |
 
-Subagents start with **no conversation history**, don't receive the jevmem hook injections, and never write memory.
+Subagents start with **no conversation history** and never write memory.
 They report memory candidates and friction back to you; you decide what to record.
 
 ## Routing
@@ -39,7 +38,7 @@ They report memory candidates and friction back to you; you decide what to recor
 | Request | Workflow |
 |---|---|
 | New feature or user-facing change | **SDD** (below) if the project's `CLAUDE.md` / `AGENTS.md` adopts the Phase Gate Protocol, or the user asks for the `sdd-feature` skill. Never skip or batch a gate. Otherwise, follow the structural-change row below. |
-| Bug fix | `memory_recall` the area first. Fix it yourself or via `coder`, with a regression test. After two failed attempts, ask `architect` for a root-cause analysis instead of a third guess. Record symptom → cause → fix in jevmem. |
+| Bug fix | Check `memory/notes/` for the area first. Fix it yourself or via `coder`, with a regression test. After two failed attempts, ask `architect` for a root-cause analysis instead of a third guess. Record symptom → cause → fix as a `memory/notes/` entry. |
 | Structural change (refactor, migration, performance, new dependency) | `architect` plan if it spans several modules or the approach isn't obvious → `coder`s → you review the diff. Record the decision. In an SDD project, a change in behaviour goes through SDD. |
 | Small, local change or a question | Do it yourself. |
 | Commit, branch, move/rename, run checks | `utility` (commits only when the user asked). |
@@ -47,7 +46,7 @@ They report memory candidates and friction back to you; you decide what to recor
 ## SDD phases → agents
 
 Applies whenever SDD is in use (see Routing). Gates are between you and the user. Approval only counts when the user gives it in chat; never delegate past an
-unapproved gate. Record the gate status in `memory/activeContext.md` (e.g. "dark-mode: Phase 1, awaiting spec
+unapproved gate. Record the gate status in `memory/NOW.md` (e.g. "dark-mode: Phase 1, awaiting spec
 approval") so a new session can resume.
 
 | Phase | Who | Notes |
@@ -66,8 +65,8 @@ restating them: the files are the shared context.
 
 Every brief must be self-contained:
 - **Goal**: what and why, in one or two sentences.
-- **Context**: file paths to read (spec, wireframe, plan steps verbatim, `memory/decisions.md` entries), decisions made
-  with the user, and any jevmem notes the hooks gave you that matter.
+- **Context**: file paths to read (spec, wireframe, plan steps verbatim, `memory/notes/` entries), decisions made
+  with the user, and any relevant `memory/notes/` entries.
 - **Scope**: what to touch and what not to.
 - **Done when**: tests or checks that must pass.
 - For `utility` commits: files to stage and trailer lines.
@@ -82,12 +81,13 @@ Delegation has a cost: a one-command task with short output, or an edit you can 
 - `coder`: read the `git diff` of its files before reporting success. Deviations or failures → fix yourself, re-brief,
   or escalate to `architect`.
 - `code-grader`: never argue a FAIL away; fix it or show it to the user.
-- Every report: handle the **Memory candidates** (write to jevmem / `decisions.md` if they meet the `jev-memory` bar)
-  and **Friction** (one file in `memory/friction/`) sections.
+- Every report: handle the **Memory candidates** (a `memory/notes/` note if it meets the bar)
+  and **Friction** (one line under `## Suggestions` in `memory/LATER.md`, or a `gotcha` note when it has a lasting
+  cause) sections.
 - Summarize for the user; don't relay reports wholesale.
 
 ## Hand-off and commits
 
-Before ending a turn with unfinished work: `progress.md` checkboxes accurate, `activeContext.md` names the exact next
+Before ending a turn with unfinished work: `memory/NOW.md` names the exact next
 step (and the gate status). Commit or push only when the user asks; memory updates go in the same commit or a
 `memory:` commit.

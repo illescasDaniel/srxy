@@ -1,3 +1,17 @@
+---
+id: DOC-012
+title: Parallel file search benchmark
+summary: Measured thread-pool and process-pool search benchmark on a 22-file fixture, with methodology and hot-path results
+type: explanation
+status: current
+updated: 2026-07-05
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/application, src/srxy/adapters/outbound/worker]
+related: [DOC-001]
+supersedes:
+superseded_by:
+---
+
 # Parallel File Search Benchmark
 
 > **Status:** Temporary reference — results captured during implementation of

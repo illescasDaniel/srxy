@@ -1,3 +1,17 @@
+---
+id: DOC-010
+title: Development
+summary: Dev setup, platform-aware sync, quality-gate buckets and flags, fixtures, benchmarks and the release version bump
+type: how-to
+status: current
+updated: 2026-09-11
+verified: 2026-11-25 87a4cfa
+covers: [scripts/quality, scripts/dev, pyproject.toml, tests]
+related: [DOC-001, DOC-003]
+supersedes:
+superseded_by:
+---
+
 # Development
 
 Requires [uv](https://docs.astral.sh/uv/).

@@ -1,3 +1,17 @@
+---
+id: DOC-009
+title: Desktop installers
+summary: Desktop installer artifacts per OS: offline wizard, online bootstrap, build from source and signing
+type: reference
+status: current
+updated: 2026-09-07
+verified: 2026-11-25 87a4cfa
+covers: [packaging, .github/workflows]
+related: [DOC-008, DOC-011]
+supersedes:
+superseded_by:
+---
+
 # Desktop installers
 
 Optional desktop installers for people who prefer a wizard over `uv tool install` / PyPI. Linux AppImages, macOS installer wrappers, and a Windows offline fat PySide installer are available.

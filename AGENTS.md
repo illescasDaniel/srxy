@@ -145,12 +145,20 @@ You are the orchestrator: delegate to the `architect`, `coder`, `code-grader` an
 and memory write. Read `.claude/development-workflow.md` before delegating: it defines routing, briefs and the
 memory protocol.
 
-## Memory bank
+## Memory
 
-Project state lives in `memory/` (git-tracked, so it follows the branch). At session start, read
-`memory/activeContext.md` then `memory/progress.md`. Update on these triggers only: a task is completed or discovered
-(`progress.md`); focus changes, a blocker is hit or work concludes (`activeContext.md`); a significant technical
-decision is made (`decisions.md`, append-only, newest first). Full protocol: the `memory-bank` skill.
+Project memory lives in `memory/` as plain Markdown (git-tracked, so it follows the branch). At session start, read
+`memory/NOW.md` then `memory/MEMORY.md`; open only the notes the task touches. Write durable decisions, preferences,
+incidents and gotchas as one-fact notes under `memory/notes/`, update `NOW.md` whenever the plan changes and before
+ending a session with work, and put open items that are not next in `memory/LATER.md`. Full protocol: the `memory-1`
+skill; check it with `python3 .agents/skills/memory-1/scripts/memory_check.py --memory memory`.
+
+## Documentation
+
+Project docs live in `docs/` as plain Markdown with docs-1 frontmatter (`id`, `summary`, `type`, `covers`). Start at
+[`docs/INDEX.md`](docs/INDEX.md), open only the docs whose index line answers the question, and check `verified`/`covers`
+before relying on a doc. Update the doc in the same change as the code it describes, then regenerate the index:
+`python3 .agents/skills/docs-1/scripts/docs_index.py write` and run `... check`. Full protocol: the `docs-1` skill.
 
 ## Phase Gate Protocol (Spec-Driven Development)
 

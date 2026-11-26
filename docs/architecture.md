@@ -1,3 +1,17 @@
+---
+id: DOC-001
+title: Architecture
+summary: Hexagonal layers (domain, ports, application, adapters), their dependency rules, the composition root and launch modes
+type: explanation
+status: current
+updated: 2026-08-03
+verified: 2026-11-25 87a4cfa
+covers: [src/srxy/domain, src/srxy/ports, src/srxy/application, src/srxy/adapters, src/srxy/bootstrap.py]
+related: [DOC-005, DOC-006]
+supersedes:
+superseded_by:
+---
+
 # Architecture
 
 srxy is organized as a **hexagonal (ports & adapters)** package:

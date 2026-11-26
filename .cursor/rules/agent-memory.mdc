@@ -1,56 +1,58 @@
 ---
-description: Always-on project memory and context protocol
+description: Always-on project memory and documentation protocol
 globs: *
 alwaysApply: true
 ---
-# Agent Context & Memory Protocol
+# Agent Context, Memory & Docs Protocol
 
-## Memory File Roles
-- `memory/progress.md`: The macro checklist (what is done, what is pending, open bugs).
-- `memory/activeContext.md`: The micro scratchpad (current focus, active blockers, touched files, immediate next steps).
-- `memory/decisions.md`: The technical log (significant technical, structural, or dependency decisions along with their rationale).
+## Memory (memory-1)
 
----
+Project memory lives in `memory/` as plain Markdown and is tracked in git, so it follows the branch.
 
-## 1. Session Initialization
-1. Read `memory/activeContext.md` to load immediate state and focus.
-2. Read `memory/progress.md` to review broader pending tasks.
+| Path | Role |
+|------|------|
+| `memory/NOW.md` | What we are doing, what was just done, what is next, open questions. Overwritten every time. |
+| `memory/MEMORY.md` | Index: one line per note, grouped by type. Read at session start. |
+| `memory/notes/<slug>.md` | One dated fact per file: decision, preference, incident, gotcha or context. |
+| `memory/LATER.md` | Open items that are not next; not read at session start. |
+| `memory/archive/` | The pre-memory-1 `activeContext.md` / `progress.md` / `decisions.md`, kept as history. Do not update. |
 
-## 2. When to Update Specific Files (Triggers)
+### Session start
+1. Read `memory/NOW.md`, then `memory/MEMORY.md`.
+2. Check `NOW.md` against `git log` / `git status` since its date; work listed as next may already be done.
+3. Open individual notes only when the task touches them. Code at HEAD wins for current behaviour; notes win for why
+   and history; the newest current note wins between notes.
 
-### Update `memory/progress.md` ONLY when:
-- **Task Completed:** Checking off a task (`[ ]` -> `[x]`).
-- **New Task/Bug Discovered:** Adding a new item to the task checklist or backlog.
+### When to write
+- **`NOW.md`**: the plan changes, a blocker appears, work concludes, or the session ends with work done. Rewrite it from
+  scratch (at most 50 lines); never append an "Earlier" trail.
+- **A note**: a durable decision (with why and rejected options), a preference or correction from the user, an incident
+  with its cause and fix, a non-obvious gotcha, or project context that is not in the repository.
+- **`LATER.md`**: something a person would act on later that is not one of the next steps. `(User)` lines are for what
+  the user owes; your own follow-ups go under `## Suggestions` and must name a real cost.
+- **Supersede, do not rewrite**: when a decision changes, write a new note with `supersedes: <old-slug>`; set the old
+  note to `status: superseded` and `superseded_by: <new-slug>`. Move its index line to History.
+- After any memory change, run
+  `python3 .agents/skills/memory-1/scripts/memory_check.py --memory memory` and fix every `FIX` line.
 
-### Update `memory/activeContext.md` ONLY when:
-- **Switching Focus:** Changing the immediate goal or sub-task you are working on.
-- **Hitting a Blocker:** Recording an unexpected issue or failed test that needs attention.
-- **Concluding Work / Step Completion:** Logging modified files, current state, and the exact step the next session should execute.
+### Never write to memory
+- Worktree cleanup / deletion — per-developer local hygiene, and recording it in tracked memory causes merge noise.
+- Secrets, or anything the code, tests or docs already say.
 
-### Append to `memory/decisions.md` ONLY when:
-- **Making Significant Choices:** You make a significant technical, structural, or dependency decision. You MUST explicitly record the context, the decision made, and the rationale behind it.
+## Docs (docs-1)
 
-### Never write to memory:
-- **Worktree cleanup / deletion** — do not add, check off, or carry forward tasks about deleting unused project worktrees (e.g. `/delete-worktree-srxy`, `git worktree remove`, or "clean up worktree X when ready"). That is per-developer local hygiene; recording it in tracked `memory/` causes needless merge conflicts across teammates. If the user asks to delete a worktree, do it (or guide them) without touching `memory/`.
+Docs live in `docs/` with docs-1 frontmatter. Start at [`docs/INDEX.md`](../../docs/INDEX.md).
 
----
+- Read the index, then only the docs whose line answers the question.
+- Before changing code, run `python3 .agents/skills/docs-1/scripts/docs_index.py covers <path>...` and update the
+  docs that cover those files in the same change.
+- New doc: copy the `docs-1` template, take the next ID from `docs_index.py next-id`, fill `summary` / `type` /
+  `covers`, then run `docs_index.py write` and `docs_index.py check`.
+- A doc replaced by another gets `status: superseded`, `superseded_by`, and moves to `docs/archive/`. Never delete a doc
+  with history value.
+- `README.md`, `AGENTS.md`, `CLAUDE.md`, `CHANGELOG.md` and licence files stay where they are and are not indexed.
 
-## 3. Hand-off Protocol
-Before finishing any response where progress was made:
-1. Ensure `progress.md` reflects the true checkbox state of the project.
-2. Ensure `activeContext.md` accurately describes the exact starting point for the next prompt or session.
+## Version control
 
----
-
-## 4. Version Control (memory is tracked in git)
-
-`memory/` is tracked, per-branch — each worktree/checkout carries its branch's version. Not scratch; treat edits as project state.
-
-- **Commit memory updates at milestones** (with feature commits or a `memory:` commit); don't leave the tree permanently dirty.
-- **`decisions.md`: append-only, never cleaned.** Auto-unions on merge (`.gitattributes` `merge=union`); newest first.
-- **Branch start:** when the user starts a new feature branch/worktree and asks to initialize memory:
-  1. `progress.md` — new section header for the feature/version; empty Done; carry forward only relevant Open items.
-  2. `activeContext.md` — rewrite: branch name, focus = new feature, no blockers, only relevant next steps.
-  3. `decisions.md` — untouched.
-  Commit the initialization in the branch's first commit.
-- **On merge:** keep the feature branch's `progress.md`/`activeContext.md` (superset); `decisions.md` unions itself.
+`memory/` and `docs/` are tracked project state, not scratch. Commit them with the feature work or in a `memory:` /
+`docs:` commit; do not leave the tree permanently dirty. Never delete note files or doc history to resolve a merge.

@@ -1,3 +1,17 @@
+---
+id: DOC-011
+title: Privacy and third-party notice
+summary: What srxy may download, third-party licences, privacy policy and the disclaimer of warranties
+type: reference
+status: current
+updated: 2026-08-30
+verified: 2026-11-25 87a4cfa
+covers: [packaging, pyproject.toml]
+related: [DOC-008, DOC-009]
+supersedes:
+superseded_by:
+---
+
 # Privacy & third-party notice
 
 srxy itself is **MIT**-licensed. You can install it from PyPI, a desktop installer, or another channel and use the GUI, TUI, CLI, or library.
